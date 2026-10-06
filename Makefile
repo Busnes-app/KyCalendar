@@ -1,4 +1,4 @@
-.PHONY: all build build-web test test-race test-postgres test-web tidy-check lint smoke ci run clean docker-build
+.PHONY: all build build-web test test-race test-postgres test-web test-fork tidy-check lint smoke ci run clean docker-build
 
 all: build-web build
 
@@ -28,6 +28,10 @@ test-web:
 	@echo "==> Running frontend test suite..."
 	@cd web && npm ci && npm test
 
+test-fork:
+	@echo "==> Running vendored go-webdav tests..."
+	@go -C third_party/go-webdav test ./...
+
 # The same gate CI runs: a stale go.sum fails the build there, so fail here first.
 tidy-check:
 	@echo "==> Checking go.mod is tidy..."
@@ -42,7 +46,7 @@ lint:
 smoke: build
 	@./scripts/smoke-test.sh
 
-ci: tidy-check lint test-race test-web smoke
+ci: tidy-check lint test-race test-fork test-web smoke
 	@echo "==> Local CI checks passed"
 
 run: build
