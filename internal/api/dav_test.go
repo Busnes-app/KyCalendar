@@ -458,3 +458,47 @@ func TestCalDAVBareHostDiscovery(t *testing.T) {
 		t.Fatalf("PROPFIND / followed: %d %s", r.StatusCode, got)
 	}
 }
+
+// Encoded slashes and dot segments never carry alice's request into bob's home.
+func TestCalDAVEncodedTraversal(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice := davUser(t, st, "alice", "user")
+	bob := davUser(t, st, "bob", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	bobObj := "/dav/usr_bob/calendars/default/x.ics"
+	secret := strings.Replace(evA, "SUMMARY:A", "SUMMARY:bob-secret", 1)
+	if r := rawDAV(t, ts, "PUT", bobObj, "bob", bob, secret, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("bob PUT: %d", r.StatusCode)
+	}
+	paths := []string{
+		"/dav/usr_alice/calendars/default/%2F..%2F..%2Fusr_bob%2Fcalendars%2Fdefault%2Fx.ics",
+		"/dav/usr_alice/calendars/default/..%2F..%2F..%2Fusr_bob%2Fcalendars%2Fdefault%2Fx.ics",
+		"/dav/usr_alice/..%2Fusr_bob/calendars/default/x.ics",
+		"/dav/usr_alice/..%2Fusr_bob/",
+		"/dav/usr_alice/%2E%2E/usr_bob/calendars/default/x.ics",
+		"/dav/usr_alice/calendars/%2E%2E%2F%2E%2E%2F%2E%2E%2Fusr_bob%2Fcalendars%2Fdefault/x.ics",
+		"/dav/usr_alice/../usr_bob/calendars/default/x.ics",
+		"/dav/%75sr_bob/calendars/default/x.ics",
+	}
+	for _, p := range paths {
+		for _, m := range []string{"GET", "PROPFIND", "PUT", "DELETE"} {
+			body, hdr := "", map[string]string{}
+			switch m {
+			case "PROPFIND":
+				body, hdr = `<d:propfind xmlns:d="DAV:"><d:allprop/></d:propfind>`, map[string]string{"Depth": "1", "Content-Type": "application/xml"}
+			case "PUT":
+				body, hdr = strings.Replace(evA, "SUMMARY:A", "SUMMARY:alice-overwrote", 1), map[string]string{"Content-Type": "text/calendar"}
+			}
+			r := rawDAV(t, ts, m, p, "alice", alice, body, hdr)
+			got := readAll(r)
+			if (r.StatusCode != http.StatusForbidden && r.StatusCode != http.StatusNotFound) || strings.Contains(got, "bob-secret") || strings.Contains(got, "usr_bob") {
+				t.Fatalf("%s %s: %d %q", m, p, r.StatusCode, got)
+			}
+		}
+	}
+	r := rawDAV(t, ts, "GET", bobObj, "bob", bob, "", nil)
+	if got := readAll(r); r.StatusCode != http.StatusOK || got != secret {
+		t.Fatalf("bob's object changed: %d %q", r.StatusCode, got)
+	}
+}
