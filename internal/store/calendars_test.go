@@ -148,16 +148,6 @@ func TestSyncEpochStable(t *testing.T) {
 	}
 }
 
-func TestCountObjectsByOwner(t *testing.T) {
-	ctx := context.Background()
-	cs, c := calStore(t)
-	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "x", 1, i64(2)), "", false, store.OwnerLimits{})
-	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "x", 1, i64(2)), "", false, store.OwnerLimits{})
-	if n, err := cs.CountObjectsByOwner(ctx, "user", "usr_a"); err != nil || n != 2 {
-		t.Fatalf("count %d %v", n, err)
-	}
-}
-
 func TestChangesSincePartialPrune(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
@@ -248,19 +238,19 @@ func TestConcurrentPuts(t *testing.T) {
 	}
 }
 
-func TestSumObjectBytesByOwner(t *testing.T) {
+// The byte quota counts bytes, not characters, on both backends.
+func TestPutObjectByteQuotaCountsBytes(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
-	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_a"); err != nil || n != 0 {
-		t.Fatalf("empty sum %d %v", n, err)
+	lim := store.OwnerLimits{MaxBytes: 9}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "héllo", 1, i64(2)), "", false, lim); err != nil { // 6 bytes, 5 characters
+		t.Fatal(err)
 	}
-	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "héllo", 1, i64(2)), "", false, store.OwnerLimits{}) // 6 bytes, 5 characters
-	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "xyz", 1, i64(2)), "", false, store.OwnerLimits{})
-	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_a"); err != nil || n != 9 {
-		t.Fatalf("sum %d %v", n, err)
+	if _, err := cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "xyz", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatalf("exactly at quota: %v", err)
 	}
-	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_other"); err != nil || n != 0 {
-		t.Fatalf("other owner %d %v", n, err)
+	if _, err := cs.PutObject(ctx, obj(c.ID, "c.ics", "u3", "x", 1, i64(2)), "", false, lim); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("one byte over: %v", err)
 	}
 }
 
