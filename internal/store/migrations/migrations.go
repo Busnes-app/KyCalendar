@@ -249,6 +249,92 @@ CREATE TABLE device_pairings (
 );
 CREATE INDEX idx_pairings_expires ON device_pairings(expires_at);`,
 	},
+	{
+		Version: 6,
+		Name:    "calendars",
+		SQLite: `
+CREATE TABLE calendars (
+    id TEXT PRIMARY KEY,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('user', 'group')),
+    owner_id TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    seq INTEGER NOT NULL DEFAULT 0,
+    min_sync_seq INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    UNIQUE (owner_kind, owner_id, slug)
+);
+CREATE TABLE calendar_objects (
+    calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    uid TEXT NOT NULL,
+    etag TEXT NOT NULL,
+    data BLOB NOT NULL,
+    first_start INTEGER NOT NULL,
+    last_end INTEGER,
+    modified_at DATETIME NOT NULL,
+    PRIMARY KEY (calendar_id, name),
+    UNIQUE (calendar_id, uid)
+);
+CREATE INDEX idx_calendar_objects_range ON calendar_objects(calendar_id, first_start);
+CREATE TABLE calendar_changes (
+    calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    deleted INTEGER NOT NULL,
+    changed_at DATETIME NOT NULL,
+    PRIMARY KEY (calendar_id, seq)
+);
+CREATE INDEX idx_calendar_changes_time ON calendar_changes(changed_at);
+CREATE TABLE calendar_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+INSERT INTO calendar_meta (key, value) VALUES ('sync_epoch', lower(hex(randomblob(8))));`,
+		Postgres: `
+CREATE TABLE calendars (
+    id VARCHAR(64) PRIMARY KEY,
+    owner_kind VARCHAR(16) NOT NULL CHECK (owner_kind IN ('user', 'group')),
+    owner_id VARCHAR(64) NOT NULL,
+    slug VARCHAR(64) NOT NULL,
+    name TEXT NOT NULL,
+    color VARCHAR(32) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    seq BIGINT NOT NULL DEFAULT 0,
+    min_sync_seq BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL,
+    UNIQUE (owner_kind, owner_id, slug)
+);
+CREATE TABLE calendar_objects (
+    calendar_id VARCHAR(64) NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    uid TEXT NOT NULL,
+    etag VARCHAR(64) NOT NULL,
+    data BYTEA NOT NULL,
+    first_start BIGINT NOT NULL,
+    last_end BIGINT,
+    modified_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (calendar_id, name),
+    UNIQUE (calendar_id, uid)
+);
+CREATE INDEX idx_calendar_objects_range ON calendar_objects(calendar_id, first_start);
+CREATE TABLE calendar_changes (
+    calendar_id VARCHAR(64) NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    seq BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    deleted INTEGER NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (calendar_id, seq)
+);
+CREATE INDEX idx_calendar_changes_time ON calendar_changes(changed_at);
+CREATE TABLE calendar_meta (
+    key VARCHAR(64) PRIMARY KEY,
+    value TEXT NOT NULL
+);
+INSERT INTO calendar_meta (key, value) VALUES ('sync_epoch', substr(md5(random()::text), 1, 16));`,
+	},
 }
 
 // Run executes all pending migrations for the specified database driver.

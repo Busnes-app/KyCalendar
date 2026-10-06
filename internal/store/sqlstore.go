@@ -13,14 +13,15 @@ import (
 
 // SQLStore implements Store on top of database/sql.
 type SQLStore struct {
-	db       *sql.DB
-	driver   string
-	users    *userStore
-	sessions *sessionStore
-	devices  *deviceStore
-	groups   *groupStore
-	audit    *auditStore
-	settings *settingsStore
+	db        *sql.DB
+	driver    string
+	users     *userStore
+	sessions  *sessionStore
+	devices   *deviceStore
+	groups    *groupStore
+	calendars *calendarStore
+	audit     *auditStore
+	settings  *settingsStore
 }
 
 // newSQLStore creates and initializes a SQLStore, running migrations automatically.
@@ -43,18 +44,20 @@ func newSQLStore(ctx context.Context, db *sql.DB, driver string) (*SQLStore, err
 	s.sessions = &sessionStore{store: s}
 	s.devices = &deviceStore{store: s}
 	s.groups = &groupStore{store: s}
+	s.calendars = &calendarStore{store: s}
 	s.audit = &auditStore{store: s}
 	s.settings = &settingsStore{store: s}
 
 	return s, nil
 }
 
-func (s *SQLStore) Users() UserStore        { return s.users }
-func (s *SQLStore) Sessions() SessionStore  { return s.sessions }
-func (s *SQLStore) Devices() DeviceStore    { return s.devices }
-func (s *SQLStore) Groups() GroupStore      { return s.groups }
-func (s *SQLStore) Audit() AuditStore       { return s.audit }
-func (s *SQLStore) Settings() SettingsStore { return s.settings }
+func (s *SQLStore) Users() UserStore         { return s.users }
+func (s *SQLStore) Sessions() SessionStore   { return s.sessions }
+func (s *SQLStore) Devices() DeviceStore     { return s.devices }
+func (s *SQLStore) Groups() GroupStore       { return s.groups }
+func (s *SQLStore) Calendars() CalendarStore { return s.calendars }
+func (s *SQLStore) Audit() AuditStore        { return s.audit }
+func (s *SQLStore) Settings() SettingsStore  { return s.settings }
 
 func (s *SQLStore) Driver() string                 { return s.driver }
 func (s *SQLStore) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }

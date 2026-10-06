@@ -87,3 +87,23 @@ type Setting struct {
 	Value     string    `json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type Calendar struct {
+	ID, OwnerKind, OwnerID, Slug, Name, Color, Description string
+	Seq                                                    int64
+	CreatedAt                                              time.Time
+}
+
+type CalendarObject struct {
+	CalendarID, Name, UID, ETag string
+	Data                        []byte
+	FirstStart                  int64
+	LastEnd                     *int64
+	ModifiedAt                  time.Time
+}
+
+type CalendarChange struct {
+	Seq     int64
+	Name    string
+	Deleted bool
+}

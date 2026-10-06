@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -10,6 +11,10 @@ var (
 	ErrAlreadyExists  = errors.New("record already exists")
 	ErrSessionExpired = errors.New("session expired")
 	ErrPairingExpired = errors.New("pairing session expired")
+
+	ErrPreconditionFailed = errors.New("precondition failed")
+	ErrUIDConflict        = errors.New("uid already used in calendar")
+	ErrSyncTokenExpired   = errors.New("sync token expired")
 )
 
 // Store defines the unified storage contract implemented across SQLite, PostgreSQL, and MySQL.
@@ -18,6 +23,7 @@ type Store interface {
 	Sessions() SessionStore
 	Devices() DeviceStore
 	Groups() GroupStore
+	Calendars() CalendarStore
 	Audit() AuditStore
 	Settings() SettingsStore
 
@@ -89,4 +95,21 @@ type SettingsStore interface {
 	SetSetting(ctx context.Context, key, val string) error
 	DeleteSetting(ctx context.Context, key string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
+}
+
+// CalendarStore persists calendars, their objects and the per-calendar change log.
+type CalendarStore interface {
+	CreateCalendar(ctx context.Context, c *Calendar) error
+	GetCalendarBySlug(ctx context.Context, ownerKind, ownerID, slug string) (*Calendar, error)
+	ListCalendarsByOwner(ctx context.Context, ownerKind, ownerID string) ([]*Calendar, error)
+	UpdateCalendar(ctx context.Context, id string, name, description, color *string) error
+	GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error)
+	ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error)
+	ListObjectsInRange(ctx context.Context, calendarID string, start, end int64) ([]*CalendarObject, error)
+	PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool) (created bool, err error)
+	DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error
+	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
+	PruneChanges(ctx context.Context, before time.Time) error
+	CountObjectsByOwner(ctx context.Context, ownerKind, ownerID string) (int, error)
+	SyncEpoch(ctx context.Context) (string, error)
 }
