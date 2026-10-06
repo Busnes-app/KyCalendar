@@ -275,17 +275,25 @@ func (u *userStore) SpendTOTPCounter(ctx context.Context, userID string, counter
 	return nil
 }
 
+// DeleteUser also deletes the user's calendars (objects and changes cascade): calendars.owner_id
+// has no foreign key, and orphaned bytes would count against the instance cap forever.
 func (u *userStore) DeleteUser(ctx context.Context, id string) error {
-	q := u.store.rebind("DELETE FROM users WHERE id = ?")
-	res, err := u.store.db.ExecContext(ctx, q, id)
+	tx, err := u.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM calendars WHERE owner_kind = 'user' AND owner_id = ?"), id); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ?"), id)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 // userFilterColumns maps each filterable field to its column; only these names reach SQL.

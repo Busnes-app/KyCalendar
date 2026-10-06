@@ -216,6 +216,12 @@ func TestSCIMRemovingRolesDemotesAdmin(t *testing.T) {
 		"patch remove roles": func(string) (string, any) {
 			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "remove", "path": "roles"}}}
 		},
+		"patch remove filtered role": func(string) (string, any) {
+			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "remove", "path": `roles[value eq "admin"]`}}}
+		},
+		"patch remove urn roles": func(string) (string, any) {
+			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "remove", "path": scim.SchemaUser + ":roles"}}}
+		},
 		"patch replace empty roles": func(string) (string, any) {
 			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "replace", "path": "roles", "value": []any{}}}}
 		},

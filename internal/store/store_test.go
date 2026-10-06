@@ -316,3 +316,38 @@ func TestGetUserByUsernamePrefersLocalAccount(t *testing.T) {
 		}
 	}
 }
+
+// A deleted user's calendars must go with them, or their bytes count against the instance cap forever.
+func TestDeleteUserRemovesTheirCalendars(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_gone", Username: "gone", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	cs := st.Calendars()
+	c := &store.Calendar{ID: "cal_gone", OwnerKind: "user", OwnerID: "usr_gone", Slug: "default", Name: "x"}
+	if err := cs.CreateCalendar(ctx, c, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: c.ID, Name: "a.ics", UID: "u", Data: []byte("abcd"), FirstStart: 1}, "", false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Users().DeleteUser(ctx, "usr_gone"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.GetCalendarBySlug(ctx, "user", "usr_gone", "default"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("calendar survived its owner: %v", err)
+	}
+	// The freed bytes are available to everyone else again.
+	other := &store.Calendar{ID: "cal_other", OwnerKind: "user", OwnerID: "usr_other", Slug: "default", Name: "y"}
+	if err := cs.CreateCalendar(ctx, other, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: other.ID, Name: "b.ics", UID: "v", Data: []byte("efgh"), FirstStart: 1}, "", false, store.OwnerLimits{MaxTotalBytes: 4}); err != nil {
+		t.Fatalf("deleted user's bytes still counted: %v", err)
+	}
+}

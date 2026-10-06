@@ -161,19 +161,23 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 	}
 	oldRole, oldStatus := user.Role, user.Status
 	for _, op := range operations {
-		if op.Op == protocol.PatchOperationRemove {
-			if op.Path != nil && strings.EqualFold(op.Path.String(), "roles") {
-				user.Role = "user"
-			}
-			continue
-		}
 		if op.Path == nil {
-			if values, ok := op.Value.(map[string]interface{}); ok {
+			if values, ok := op.Value.(map[string]interface{}); ok && op.Op != protocol.PatchOperationRemove {
 				applyUserValues(user, values)
 			}
 			continue
 		}
-		applyUserValue(user, strings.ToLower(op.Path.String()), op.Value)
+		// Match on the attribute name, so "urn:...:User:roles" and "roles[value eq ...]" count.
+		attr := strings.ToLower(op.Path.AttributePath.AttributeName)
+		if op.Op == protocol.PatchOperationRemove {
+			if attr == "roles" || attr == "role" {
+				user.Role = "user" // the role is single-valued: removing any value removes the grant
+			}
+			continue
+		}
+		if op.Path.ValueExpression == nil && op.Path.SubAttribute == nil && op.Path.AttributePath.SubAttribute == nil {
+			applyUserValue(user, attr, op.Value)
+		}
 	}
 	if err := h.store.Users().UpdateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)

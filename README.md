@@ -87,7 +87,10 @@ positive or startup fails.
 
 The instance cap exists because a capsule carries the SQLite database as one file and refuses a
 file over 64 MiB: past it, every backup fails for everyone. Raising it on SQLite trades that
-guarantee away. Postgres deployments make no capsules, so the cap is off there.
+guarantee away. Postgres deployments make no capsules, so the cap is off there. The cap is
+shared: once it is full, every user's writes get 507 until data is removed, which is visible,
+where a backup that silently stopped is not. Keep the per-user cap well below it; deleting a user
+deletes their calendars and frees their share.
 
 ## Connect a phone
 
