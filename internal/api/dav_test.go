@@ -435,3 +435,26 @@ func TestCalDAVObjectNames(t *testing.T) {
 		}
 	}
 }
+
+// Bare-host discovery: DAV methods on / redirect to the well-known URL instead of serving the SPA.
+func TestCalDAVBareHostDiscovery(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	for _, m := range []string{"PROPFIND", "REPORT", "OPTIONS"} {
+		w := davDo(srv, m, "/", "", "")
+		if w.Code != http.StatusPermanentRedirect || w.Header().Get("Location") != "/.well-known/caldav" || strings.Contains(w.Body.String(), "<html") {
+			t.Fatalf("%s /: %d %q", m, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := davDo(srv, "GET", "/", "", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "<html") {
+		t.Fatalf("GET / must still serve the SPA: %d", w.Code)
+	}
+	// A client that follows redirects keeps PROPFIND and lands on the principal.
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	body := `<d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>`
+	r := rawDAV(t, ts, "PROPFIND", "/", "alice", token, body, map[string]string{"Depth": "0", "Content-Type": "application/xml"})
+	if got := readAll(r); r.StatusCode != http.StatusMultiStatus || !strings.Contains(got, "/dav/usr_alice/") {
+		t.Fatalf("PROPFIND / followed: %d %s", r.StatusCode, got)
+	}
+}

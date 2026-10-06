@@ -40,14 +40,21 @@ PASS raw PROPFIND after revoke is 401 401
 SMOKE OK
 ```
 
+The line "principal discovered from bare URL" is mislabelled: the client started at
+`/.well-known/caldav` (see `smoke.py`), so this run tested well-known discovery, not the bare host.
+
 Process hygiene: the server was stopped by recorded PID; `ps` showed no kycalendar process afterwards.
 
 ## Findings
 
-- PROPFIND on the bare `/` returns the SPA HTML (200), not a DAV response. Discovery works from
-  `/.well-known/caldav` (308 to `/dav/<user-id>/`), so the smoke starts the client there.
-  Clients that skip well-known and probe `/` would not find the principal; the settings page tells
-  users to enter the bare host, so confirm DAVx5 and Thunderbird take the well-known path (below).
+- In the run above, PROPFIND on the bare `/` returned the SPA HTML (200), not a DAV response.
+  Fixed afterwards: PROPFIND, REPORT and OPTIONS on `/` now answer 308 to `/.well-known/caldav`,
+  which answers 308 to `/dav/<user-id>/`. 308 rather than 301 because a 301 lets a client turn
+  PROPFIND into GET (Go's client does), which would land on the SPA. Re-checked with the same
+  python `caldav` client given `url="http://127.0.0.1:18432/"`: the pre-fix binary failed
+  (`AttributeError` parsing the SPA), the fixed one printed
+  `principal from bare host: http://127.0.0.1:18432/dav/usr_smokealice01/` and listed
+  `calendars/default/`. Real devices still need the bare-host column below.
 - The `caldav` library re-serializes event data on read (property order, line endings); the
   byte-identical check therefore uses a plain urllib PUT and GET.
 
@@ -210,15 +217,19 @@ create an app password on Phones & apps, then for each client:
    DAVx5: Add account > Login with URL and user name, URL `https://<host>/`;
    Thunderbird: New Calendar > On the Network, location `https://<host>/`).
 2. Create an event on the device.
-3. Confirm it appears via `GET /dav/<user-id>/calendars/default/`.
+3. Confirm the server has it: `PROPFIND` with `Depth: 1` on `/dav/<user-id>/calendars/default/`
+   lists the new object, or the event shows up on a second client on the same account.
 4. Edit it on the device and confirm the change syncs.
 5. Delete it on the device and confirm it is gone.
 6. Revoke the app password on Phones & apps and confirm the next sync fails.
 
-| Client | Version | 1 add | 2 create | 3 server sees it | 4 edit | 5 delete | 6 revoke | Notes |
-|---|---|---|---|---|---|---|---|---|
-| iOS Calendar | | | | | | | | |
-| DAVx5 | | | | | | | | |
-| Thunderbird | | | | | | | | |
+Also record whether the client reached the principal when given only the bare host
+`https://<host>/` (yes/no), and which URL it actually used if the log shows it.
+
+| Client | Version | Reached principal from bare host? yes/no | 1 add | 2 create | 3 server sees it | 4 edit | 5 delete | 6 revoke | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| iOS Calendar | | | | | | | | | |
+| DAVx5 | | | | | | | | | |
+| Thunderbird | | | | | | | | | |
 
 Do not mark Plan 1 done until these are filled in.

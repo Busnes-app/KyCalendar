@@ -310,6 +310,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, X-KySignOn-Signature")
 
+	// Bare-host CalDAV discovery: 308 keeps the method, as the fork's own well-known hop does.
+	if r.URL.Path == "/" && (r.Method == "PROPFIND" || r.Method == "REPORT" || r.Method == http.MethodOptions) {
+		http.Redirect(w, r, "/.well-known/caldav", http.StatusPermanentRedirect)
+		return
+	}
+
 	if r.Method == http.MethodOptions && !isDAVPath(r.URL.Path) {
 		if origin != "" && !sameOrigin(origin, s.config.Server.AppURL) {
 			http.Error(w, "Origin not allowed", http.StatusForbidden)

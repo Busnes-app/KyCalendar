@@ -266,7 +266,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 
 #### Plan 1 CalDAV contracts
 
-- DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; any other user's home is 403.
+- DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; PROPFIND, REPORT and OPTIONS on the bare `/` answer 308 there (308 keeps the method; a 301 may become GET and hit the SPA). Any other user's home is 403.
 - App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
 - DAV login failures: 10 per IP per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
 - Administrators are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
