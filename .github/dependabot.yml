@@ -7,10 +7,10 @@ version: 2
 # pin to a tagged release once it does. The pattern is a prefix so a /v2 module path
 # or a published submodule stays in this group instead of falling through to `go`.
 #
-# web/dist is committed and CI diff-checks it. Build-tool bumps (vite, postcss, vitest)
-# usually leave the bundle unchanged and go green as-is; a runtime bump changes the bundle and
-# fails the diff check until someone runs `npm run build` and commits web/dist to the
-# Dependabot branch. The groups split the two so build-tool PRs are not held up.
+# web/dist is committed and CI diff-checks it. Any npm bump that changes the bundle (runtime
+# packages, or the bundler and its plugins) fails that check until someone runs
+# `npm run build` and commits web/dist to the Dependabot branch. The npm groups share
+# web/package-lock.json and web/dist, so whichever merges second must be rebased and rebuilt.
 #
 # Three days of cooldown on every ecosystem here: a tag that has been out for three days
 # has had three days for someone to find it was yanked. Per the Dependabot options
