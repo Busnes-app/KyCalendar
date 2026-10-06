@@ -14,9 +14,16 @@ export default function AppPasswords({ username }: { username: string }) {
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Resolves to null on a network error so every caller handles one failure path.
+  const send = (url: string, init?: RequestInit) => secureFetch(url, init).catch(() => null);
+
   const load = useCallback(async () => {
-    const res = await secureFetch("/api/app-passwords");
-    if (res.ok) setList(await res.json());
+    const res = await secureFetch("/api/app-passwords").catch(() => null);
+    if (!res?.ok) {
+      setError("Could not load your app passwords. Reload the page to try again.");
+      return;
+    }
+    setList(await res.json());
   }, []);
 
   useEffect(() => {
@@ -26,13 +33,13 @@ export default function AppPasswords({ username }: { username: string }) {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const res = await secureFetch("/api/app-passwords", {
+    const res = await send("/api/app-passwords", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ label }),
     });
-    if (!res.ok) {
-      setError((await res.json().catch(() => null))?.error ?? "Could not create the app password");
+    if (!res?.ok) {
+      setError((await res?.json().catch(() => null))?.error ?? "Could not create the app password");
       return;
     }
     setCreated((await res.json()).password);
@@ -41,7 +48,12 @@ export default function AppPasswords({ username }: { username: string }) {
   }
 
   async function revoke(id: string) {
-    await secureFetch(`/api/app-passwords/${encodeURIComponent(id)}`, { method: "DELETE" });
+    setError(null);
+    const res = await send(`/api/app-passwords/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res?.ok) {
+      setError("Could not revoke the app password. It still works; try again.");
+      return;
+    }
     await load();
   }
 
