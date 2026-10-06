@@ -281,8 +281,8 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 	out := make([]caldav.CalendarObject, 0, len(list))
 	for _, o := range list {
 		co := b.toObject(slug, o)
-		// A time-range query never expands an unbounded object: the index already counts it as overlapping.
-		if ranged && o.LastEnd == nil {
+		// A time-range query never expands a recurring or unbounded object: the index already counts it as overlapping.
+		if ranged && (o.LastEnd == nil || bytes.Contains(o.Data, []byte("RRULE")) || bytes.Contains(o.Data, []byte("RDATE"))) {
 			out = append(out, co)
 			continue
 		}

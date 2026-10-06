@@ -9,7 +9,7 @@ Maps CalDAV (the go-webdav fork) onto the calendar store for one authenticated u
 - Bytes from PUT are stored as received; GET, calendar-data and sync serve `Raw` and never decode. Only objects that go through `caldav.Match` are decoded.
 - Per-user caps answer 507 (`store.ErrQuotaExceeded`): objects on create, calendars on MKCALENDAR and default creation, stored bytes on every PUT (total minus the replaced object plus the new body). The store enforces them atomically; the backend only passes the limits.
 - Calendars cannot be deleted over CalDAV (403).
-- Query results keep objects whose filter match errors. In a query with a VEVENT time range, objects indexed unbounded (`LastEnd == nil`) skip `caldav.Match` and are returned; other queries match every object.
+- Query results keep objects whose filter match errors. In a query with a VEVENT time range, objects indexed unbounded (`LastEnd == nil`) or whose raw bytes contain `RRULE` or `RDATE` (R29, `bytes.Contains`, never decoded) skip `caldav.Match` and are returned, so the index alone decides overlap and a large series costs no expansion per query; other queries match every object.
 - DELETE `If-Match` reaches the backend through `WithIfMatch`. Any `If-Match` (including `*`) on a missing object is 412 for PUT and DELETE; `*` is passed to the store, which checks it inside the write transaction.
 
 ## Verification

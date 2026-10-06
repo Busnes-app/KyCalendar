@@ -290,6 +290,34 @@ func TestCalDAVUnboundedRecurrenceQueryable(t *testing.T) {
 	}
 }
 
+// Bounded recurring objects skip caldav.Match in ranged queries too (R29): expanding a large
+// series costs CPU on every query. The range sits between occurrences, so only the no-Match path returns it.
+func TestCalDAVBoundedRecurrenceSkipsMatch(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	cal := "/dav/usr_alice/calendars/default/"
+	ev := strings.Replace(strings.Replace(evA, "DTEND:20261007T100000Z", "DTEND:20261007T091000Z", 1),
+		"SUMMARY:A", "SUMMARY:A\r\nRRULE:FREQ=HOURLY;COUNT=99000", 1)
+	if r := rawDAV(t, ts, "PUT", cal+"evt-a.ics", "alice", token, ev, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("PUT HOURLY: %d %s", r.StatusCode, readAll(r))
+	}
+	c := davClient(t, ts, "alice", token)
+	start := time.Date(2036, 1, 1, 9, 20, 0, 0, time.UTC)
+	began := time.Now()
+	objs, err := c.QueryCalendar(context.Background(), cal, &caldav.CalendarQuery{
+		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR"},
+		CompFilter:  caldav.CompFilter{Name: "VCALENDAR", Comps: []caldav.CompFilter{{Name: "VEVENT", Start: start, End: start.Add(30 * time.Minute)}}},
+	})
+	if err != nil || len(objs) != 1 {
+		t.Fatalf("bounded series not returned conservatively: %d %v", len(objs), err)
+	}
+	if d := time.Since(began); d > 500*time.Millisecond {
+		t.Fatalf("query took %s", d)
+	}
+}
+
 func TestCalDAVIfMatch(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	token := davUser(t, st, "alice", "user")
