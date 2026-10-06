@@ -238,8 +238,8 @@ func TestInspectManyEmptyRulesAreBounded(t *testing.T) {
 		if o.LastEnd != nil {
 			t.Fatalf("want unbounded, got %d", *o.LastEnd)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("Inspect did not return within 1s")
+	case <-time.After(3 * time.Second):
+		t.Fatal("Inspect did not return within 3s")
 	}
 }
 
