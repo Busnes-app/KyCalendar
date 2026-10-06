@@ -84,8 +84,10 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 
 		if comp.Props.Get(ical.PropRecurrenceRule) != nil && !unbounded {
 			recurring++
-			if recurring > maxRecurringComponents || fastFreq(comp) {
-				unbounded = true // too many rules, or too fine-grained to index cheaply
+			if recurring > maxRecurringComponents || slack > 0 || len(comp.Props[ical.PropRecurrenceRule]) > 1 || fastFreq(comp) {
+				// Too many rules, inexact zone (UNTIL is UTC, expansion is wall-clock), several
+				// rules, or too fine-grained: index unbounded without expanding.
+				unbounded = true
 			} else if lastOcc, ok := ruleLast(comp, start, &budget); !ok {
 				unbounded = true
 			} else if !lastOcc.IsZero() {

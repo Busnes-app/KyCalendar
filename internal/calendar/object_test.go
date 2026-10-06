@@ -264,3 +264,29 @@ func TestInspectRDateBudgetExhaustion(t *testing.T) {
 		t.Fatalf("%+v", o)
 	}
 }
+
+func TestInspectUnknownZoneRuleIsUnbounded(t *testing.T) {
+	for name, body := range map[string]string{
+		"unknown tzid": "DTSTART;TZID=Tokyo Standard Time:20261007T090000\nDTEND;TZID=Tokyo Standard Time:20261007T100000\nRRULE:FREQ=WEEKLY;UNTIL=20261014T000000Z\n",
+		"floating":     "DTSTART:20261007T090000\nDTEND:20261007T100000\nRRULE:FREQ=WEEKLY;COUNT=3\n",
+		"date":         "DTSTART;VALUE=DATE:20261007\nRRULE:FREQ=WEEKLY;COUNT=3\n",
+	} {
+		o, err := Inspect(decode(t, ev(body)))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if o.LastEnd != nil {
+			t.Errorf("%s: want nil LastEnd, got %d", name, *o.LastEnd)
+		}
+	}
+}
+
+func TestInspectTwoRRulesAreUnbounded(t *testing.T) {
+	o, err := Inspect(decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=DAILY;COUNT=2\nRRULE:FREQ=WEEKLY\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.LastEnd != nil {
+		t.Fatalf("want nil LastEnd, got %d", *o.LastEnd)
+	}
+}

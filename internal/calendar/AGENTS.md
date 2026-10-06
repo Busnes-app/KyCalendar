@@ -9,6 +9,7 @@ Pure iCalendar rules: what a calendar object must contain and how it is indexed;
 - `FirstStart`/`LastEnd` are conservative: unknown or floating zones widen by 14h; rules past 100 years, or needing more than 100000 occurrences, index as unbounded (`LastEnd == nil`).
 - Recurrence work is bounded by the rrule-go set iterator and one 100000-occurrence budget per object (VEVENTs and RDATE instances); RDATE is scanned locally (go-ical reads EXDATE instead). RRULEs are expanded by `ruleLast` with iteration cut at the 100-year horizon; a rule with neither COUNT nor UNTIL, or an unparseable rule or RDATE, indexes as unbounded. EXDATE is ignored (it only narrows).
 - At most 10 RRULE-bearing VEVENTs per object are evaluated (the 11th and later index unbounded, no further expansion); FREQ=SECONDLY and FREQ=MINUTELY are never expanded (unbounded). RDATE parsing stops when the budget is spent (unbounded, FirstStart = epoch).
+- An RRULE on a component with an unknown or floating DTSTART zone, or more than one RRULE on a component, indexes unbounded without expansion.
 - Sync tokens are `urn:kycalendar:sync:<epoch>:<seq>`.
 
 ## Verification
