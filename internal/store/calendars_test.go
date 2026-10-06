@@ -338,6 +338,28 @@ func TestConcurrentQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	concurrentQuota(t, st)
+}
+
+// A Postgres default of REPEATABLE READ would freeze the snapshot before the owner lock;
+// quota transactions pin READ COMMITTED so the counts after the lock stay current.
+func TestConcurrentQuotaRepeatableReadDefault(t *testing.T) {
+	cfg := testdb.Config(t)
+	if cfg.Driver != "postgres" {
+		t.Skip("postgres only")
+	}
+	cfg.DSN += "&default_transaction_isolation=repeatable%20read"
+	ctx := context.Background()
+	st, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	concurrentQuota(t, st)
+}
+
+func concurrentQuota(t *testing.T, st store.Store) {
+	ctx := context.Background()
 	t.Logf("driver=%s", st.Driver())
 	cs := st.Calendars()
 	var cals []string

@@ -30,9 +30,20 @@ func (c *calendarStore) lockOwner(ctx context.Context, tx *sql.Tx, ownerKind, ow
 	return err
 }
 
+// quotaTx begins a transaction for lockOwner callers. Postgres pins READ COMMITTED so each
+// statement after the lock sees writes committed before it; a server default of REPEATABLE READ
+// would freeze the snapshot first. SQLite takes the default.
+func (c *calendarStore) quotaTx(ctx context.Context) (*sql.Tx, error) {
+	var opts *sql.TxOptions
+	if c.store.driver == "postgres" {
+		opts = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+	}
+	return c.store.db.BeginTx(ctx, opts)
+}
+
 func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar, maxPerOwner int) error {
 	cal.CreatedAt = time.Now().UTC()
-	tx, err := c.store.db.BeginTx(ctx, nil)
+	tx, err := c.quotaTx(ctx)
 	if err != nil {
 		return err
 	}
@@ -185,7 +196,7 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	o.ETag = hex.EncodeToString(sum[:])
 	o.ModifiedAt = time.Now().UTC()
 
-	tx, err := c.store.db.BeginTx(ctx, nil)
+	tx, err := c.quotaTx(ctx)
 	if err != nil {
 		return false, err
 	}
