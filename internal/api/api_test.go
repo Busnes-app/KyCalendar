@@ -125,15 +125,17 @@ func TestAuthAndSessionEndpoints(t *testing.T) {
 		t.Fatalf("settings expected 200 OK, got %d", w.Code)
 	}
 
-	// 4. /api/devices/pair/init
-	pairReq := httptest.NewRequest("POST", "/api/devices/pair/init", nil)
-	pairReq.AddCookie(sessionCookie)
-	pairReq.AddCookie(csrfCookie)
-	pairReq.Header.Set(auth.HeaderCSRF, csrfCookie.Value)
-	w = httptest.NewRecorder()
-	srv.ServeHTTP(w, pairReq)
-	if w.Code != http.StatusOK {
-		t.Fatalf("pair init expected 200 OK, got %d", w.Code)
+	// 4. Device pairing was removed (R27): no route mints a pairing or a session from one.
+	for _, route := range []struct{ method, path string }{{"POST", "/api/devices/pair/init"}, {"POST", "/api/devices/pair/verify"}, {"GET", "/api/devices/pair/poll?secret=x"}} {
+		pairReq := httptest.NewRequest(route.method, route.path, strings.NewReader(`{"secret":"x"}`))
+		pairReq.AddCookie(sessionCookie)
+		pairReq.AddCookie(csrfCookie)
+		pairReq.Header.Set(auth.HeaderCSRF, csrfCookie.Value)
+		w = httptest.NewRecorder()
+		srv.ServeHTTP(w, pairReq)
+		if strings.Contains(w.Header().Get("Content-Type"), "json") || strings.Contains(w.Body.String(), "secret") || len(w.Result().Cookies()) > 0 {
+			t.Fatalf("%s %s still answers: %d %s", route.method, route.path, w.Code, w.Body.String())
+		}
 	}
 
 	// 5. /api/backup/drill
@@ -478,52 +480,6 @@ func TestMFALimiterKeyIsBounded(t *testing.T) {
 	}
 }
 
-// The poll route is unauthenticated: anyone holding a secret must not learn the user behind
-// it or the device's push token.
-func TestPairPollProjectsTheRecord(t *testing.T) {
-	srv, st, _ := setupTestServer(t)
-
-	pairing := &store.DevicePairing{
-		Secret:     "s3cr3t-pairing-secret",
-		UserID:     "usr_alice",
-		DeviceName: "Alice Phone",
-		Platform:   "android",
-		PushToken:  "push-token-value",
-		Status:     "pending",
-		CreatedAt:  time.Now().UTC(),
-		ExpiresAt:  time.Now().UTC().Add(90 * time.Second),
-	}
-	if err := st.Devices().CreatePairing(context.Background(), pairing); err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest("GET", "/api/devices/pair/poll?secret="+pairing.Secret, nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("poll expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	body := w.Body.String()
-	for _, leak := range []string{"secret", "push_token", "user_id", pairing.Secret, pairing.PushToken, pairing.UserID} {
-		if strings.Contains(body, leak) {
-			t.Errorf("poll response leaks %q: %s", leak, body)
-		}
-	}
-	var got map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got["status"] != "pending" || got["device_name"] != "Alice Phone" {
-		t.Errorf("poll response lost the fields the client needs: %v", got)
-	}
-	if _, ok := got["expires_at"]; !ok {
-		t.Errorf("poll response has no expires_at: %v", got)
-	}
-}
-
-// Eviction must not favour long windows. Login windows are a minute and MFA windows a minute,
-// but any caller that can mint keys at all would starve whichever window is shortest.
 func TestFullLimiterStillThrottlesLogin(t *testing.T) {
 	srv, _, _ := setupTestServer(t)
 

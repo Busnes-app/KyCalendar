@@ -1,7 +1,7 @@
 # Web
 
 ## Purpose
-React 19 + TypeScript + Vite PWA frontend embedding KySecurity color tokens (Busnes light/dark defaults plus `Patina Ky`, `Cyber`, `Nord`, `Paper`, `OLED`), 90-second ephemeral QR device pairing modals, client-side WebCrypto PoW CAPTCHA, and administrative management panels.
+React 19 + TypeScript + Vite PWA frontend embedding KySecurity color tokens (Busnes light/dark defaults plus `Patina Ky`, `Cyber`, `Nord`, `Paper`, `OLED`), client-side WebCrypto PoW CAPTCHA, the Phones and apps (app password) page, and administrative management panels.
 
 ## Ownership
 Owns user interface components, service worker caching, PWA installation manifests, and frontend theme switching.
@@ -13,7 +13,8 @@ Owns user interface components, service worker caching, PWA installation manifes
 - The authenticated shell uses a persistent sidebar; the selected page is marked by a quiet surface and slim accent rail, with a horizontal overflow navigation on small screens.
 - Dynamic theme selection applies `data-theme` attribute to the root HTML document and persists to `localStorage`.
 - Authenticated state-changing requests use `secureFetch` so the `ky_csrf` cookie is mirrored into `X-CSRF-Token`.
-- Register the service worker from the production JS bundle; keep `script-src 'self'` intact. Pairing uses a native modal dialog for focus containment, Escape and focus restoration. It shows only the QR code (no typed PIN) and treats poll status `consumed` as linked.
+- Register the service worker from the production JS bundle; keep `script-src 'self'` intact. There is no device-pairing UI (R27); native CalDAV clients use app passwords from Phones and apps.
+- `src/pages/AppPasswords.tsx` shows a new password once, and a `role="alert"` message when listing, creating or revoking fails (non-OK or network error).
 - Worker caching is limited to the same-origin public shell, manifest and assets. HTML is network-first with offline fallback so deployments refresh; dynamic/auth routes stay uncached.
 - `Backup.tsx` warns for as long as `database_driver` from `/api/backup/status` is not `sqlite`: only the SQLite path can snapshot a database into a capsule, so a Postgres deployment makes no capsules at all.
 

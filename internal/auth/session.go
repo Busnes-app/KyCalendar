@@ -36,12 +36,7 @@ func NewSessionManager(st store.Store, cfg config.SecurityConfig) *SessionManage
 // IssueSession creates an active session for credentials verified just now and writes the
 // HttpOnly cookie + CSRF token.
 func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User) (*store.Session, string, error) {
-	return sm.IssueDerivedSession(ctx, w, r, user, time.Now().UTC())
-}
-
-// IssueDerivedSession issues a session whose credentials were verified at authenticatedAt,
-// for a session minted from another one (device pairing) without a fresh sign-in.
-func (sm *SessionManager) IssueDerivedSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, authenticatedAt time.Time) (*store.Session, string, error) {
+	authenticatedAt := time.Now().UTC()
 	rawToken := crypto.RandomHex(32)
 	tokenHash := crypto.SHA256Hex([]byte(rawToken))
 

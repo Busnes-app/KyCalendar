@@ -46,8 +46,8 @@ type MFAChallenge struct {
 
 // DevicePairing represents a 90-second ephemeral session to link mobile/PWA wrappers.
 type DevicePairing struct {
-	// Secret and PushToken never serialise: this record is reached by unauthenticated
-	// pair/verify and pair/poll callers. A handler that must return one needs its own type.
+	// No route serves pairings (R27); the table stays for existing migrations. Secret and
+	// PushToken never serialise, so a handler that must return one needs its own type.
 	Secret     string    `json:"-"` // Ephemeral secret for exchange
 	UserID     string    `json:"user_id,omitempty"`
 	DeviceName string    `json:"device_name,omitempty"`

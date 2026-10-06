@@ -14,7 +14,6 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/config"
-	"github.com/Busnes-app/kycalendar/internal/devices"
 	"github.com/Busnes-app/kycalendar/internal/scim"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -32,7 +31,6 @@ type Server struct {
 	config     *config.Config
 	store      store.Store
 	sessions   *auth.SessionManager
-	pairing    *devices.PairingService
 	kysignon   *sso.KySignOnClient
 	oidc       *sso.GenericOIDCClient
 	saml       *sso.SAMLServiceProvider
@@ -133,7 +131,6 @@ const attemptsCap = 10000
 
 func NewServer(cfg *config.Config, st store.Store) *Server {
 	sessions := auth.NewSessionManager(st, cfg.Security)
-	pairing := devices.NewPairingService(st, cfg.Server.AppName, cfg.Server.AppURL)
 	kysignon := sso.NewKySignOnClient(cfg.SSO, st)
 	oidc := sso.NewGenericOIDCClient(cfg.SSO, st)
 	saml := sso.NewSAMLServiceProvider(cfg.SSO.SAMLEntityID, cfg.Server.AppURL+"/saml/acs")
@@ -144,7 +141,6 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 		config:   cfg,
 		store:    st,
 		sessions: sessions,
-		pairing:  pairing,
 		kysignon: kysignon,
 		oidc:     oidc,
 		saml:     saml,
@@ -220,11 +216,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/sso/kysignon/sync", s.handleKySignOnSyncWebhook)
 	s.mux.HandleFunc("/saml/metadata", s.handleSAMLMetadata)
 
-	// Devices & Ephemeral QR Pairing
-	s.mux.HandleFunc("/api/devices/pair/init", s.requireAuthenticated(s.handlePairInit))
-	s.mux.HandleFunc("/api/devices/pair/verify", s.handlePairVerify)
-	s.mux.HandleFunc("/api/devices/pair/poll", s.handlePairPoll)
-
 	// Feature 0 KyBackup & Restore Drills. Capsules carry site data and keys: admins only.
 	// Method patterns: only the declared method reaches a handler. Export is a POST so the
 	// CSRF check covers a download that carries the whole instance.
@@ -272,20 +263,6 @@ func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 		}
 		if user.Role != "admin" {
 			s.writeError(w, http.StatusForbidden, "Administrator role required")
-			return
-		}
-		h(w, r)
-	}
-}
-
-func (s *Server) requireAuthenticated(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, err := s.sessions.AuthenticateRequest(r); err != nil {
-			if errors.Is(err, auth.ErrPasswordChangeRequired) {
-				s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
-			} else {
-				s.writeError(w, http.StatusUnauthorized, "Authentication required")
-			}
 			return
 		}
 		h(w, r)

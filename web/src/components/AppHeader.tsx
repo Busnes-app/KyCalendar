@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
-import { QRPairingModal } from './QRPairingModal';
 
 interface AppHeaderProps {
   appName: string;
@@ -12,8 +11,6 @@ interface AppHeaderProps {
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout }) => {
-  const [showPairing, setShowPairing] = useState<boolean>(false);
-
   const navItems = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'scim', label: 'Directory & SCIM', icon: Users },
@@ -48,11 +45,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
             })}
           </nav>
         <div className="app-header-actions">
-          <button className="btn-secondary app-pair" onClick={() => setShowPairing(true)}>
-            <Smartphone size={16} style={{ color: 'var(--accent)' }} />
-            <span>Pair Device</span>
-          </button>
-
           <ThemeSwitcher />
 
           {user && (
@@ -73,8 +65,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
           )}
         </div>
       </header>
-
-      {showPairing && <QRPairingModal onClose={() => setShowPairing(false)} />}
     </>
   );
 };

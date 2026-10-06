@@ -29,13 +29,13 @@ The subsequent browser-regression change moves worker registration into the JS b
 
 `web/browser/ui.spec.mjs` runs against a freshly built Go server with disposable SQLite data, real login and production CSP at 390×900 and 1280×900 in both OS themes. CI retains screenshots and failure traces for seven days and requires the browser job before publishing.
 
-The assertions cover worker activation and stale-shell refresh, invalid-login errors, theme persistence and cross-tab/OS transitions, Paper-to-Busnes switching, selected navigation/focus, Settings overflow, and pairing dialog containment/Escape/focus return. The tests exposed and fixed the old 480px minimum Settings column and non-modal pairing behavior. These are workflow checks, not all-page E2E or full accessibility coverage.
+The assertions cover worker activation and stale-shell refresh, invalid-login errors, theme persistence and cross-tab/OS transitions, Paper-to-Busnes switching, selected navigation/focus, Settings overflow, and the absence of the removed Pair Device entry point. The tests exposed and fixed the old 480px minimum Settings column. These are workflow checks, not all-page E2E or full accessibility coverage.
 
-Representative captures from the automated run (2026-09-25; scratch pairing codes expire and the server is deleted afterward):
+Representative capture from the automated run (2026-09-25; the server is deleted afterward):
 
-| Mobile Settings — light | Mobile pairing — dark |
-| --- | --- |
-| ![Settings fits mobile](docs/browser-settings-light-mobile.png) | ![Native pairing dialog](docs/browser-pairing-dark-mobile.png) |
+| Mobile Settings — light |
+| --- |
+| ![Settings fits mobile](docs/browser-settings-light-mobile.png) |
 
 Build the frontend, then run `go build -o .browser/server ./cmd/server` from the repo root and `cd web && npx playwright install chromium && npm run test:browser`.
 

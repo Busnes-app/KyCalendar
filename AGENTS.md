@@ -244,7 +244,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 #### Operating rules
 
-- Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges, device pairings and app passwords. Untouched existing accounts are not retroactively flagged.
+- Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges and app passwords. Untouched existing accounts are not retroactively flagged.
 
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.
@@ -259,7 +259,7 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `govulncheck` and `npm audit --audit-level=high`
 - `scripts/smoke-test.sh`: runs the built binary and asserts CLI, auth, session, and SPA behavior
 - Docker image build and container HTTP check
-- Chromium regressions against the built server: production CSP/worker, themes, responsive layout and keyboard dialogs; the browser job gates publishing.
+- Chromium regressions against the built server: production CSP/worker, themes, responsive layout and keyboard navigation; the browser job gates publishing.
 - On a push to `master` that passes every job, `publish` pushes the exact image the Docker check ran against (handed over as an artifact, no rebuild) to `ghcr.io/busnes-app/kycalendar:<commit sha>`, attests it and verifies the attestation pinned to this workflow on `master`; `promote` then moves `:latest` to that digest, only at the tip of `master`, and asserts the tag resolves to the attested digest. `docker-compose.yml` names the published image and never builds; source installs add `docker-compose.build.yml` to the `COMPOSE_FILE` chain in `.env` (overlay tags `kycalendar:local`) so every compose command, recovery docs included, uses the local build.
 
 Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork test-web smoke`); add `make test-postgres` when a Postgres instance is available.
@@ -269,6 +269,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; PROPFIND, REPORT and OPTIONS on the bare `/` answer 308 there (308 keeps the method; a 301 may become GET and hit the SPA). Any other user's home is 403.
 - App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
 - DAV login failures: 10 per IP per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
+- Inherited QR device pairing (`/api/devices/pair/*`, `internal/devices`, header Pair Device) is removed (R27): it minted full sessions and no KyCalendar client uses it. The `device_pairings` table and migrations stay; never edit existing migrations.
 - Administrators are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
 - VEVENT only. PUT bodies are stored and served as the raw bytes received; the parsed form is used only for validation, indexing and filter matching.
 - Change rows older than 90 days are pruned daily by `cmd/server`; a sync token older than the prune horizon gets `ErrSyncTokenExpired` and the client resyncs.
@@ -283,7 +284,6 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - [internal/sso/AGENTS.md](internal/sso/AGENTS.md): Single Sign-On federation (KySignOn, OIDC, SAML 2.0).
 - [internal/scim/AGENTS.md](internal/scim/AGENTS.md): SCIM 2.0 user and group provisioning engine.
 - [internal/backup/AGENTS.md](internal/backup/AGENTS.md): Product-side adapters over `ky-primitives/recoveryclient`: payload collection, drill checks, settings and sealer glue.
-- [internal/devices/AGENTS.md](internal/devices/AGENTS.md): 90-second ephemeral QR device pairing and push registration.
 - [internal/testdb/AGENTS.md](internal/testdb/AGENTS.md): Test-only isolated database provisioning (SQLite or PostgreSQL).
 - [internal/api/AGENTS.md](internal/api/AGENTS.md): HTTP REST API endpoints, routing, and middleware.
 - [internal/calendar/AGENTS.md](internal/calendar/AGENTS.md): Pure iCalendar validation, indexing bounds and sync tokens.
