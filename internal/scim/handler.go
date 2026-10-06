@@ -85,10 +85,7 @@ type userResourceHandler struct{ store store.Store }
 
 func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
 	username, _ := attrs["userName"].(string)
-	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: primaryValue(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", "")}
-	if user.Role == "" {
-		user.Role = "user"
-	}
+	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleOrUser(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", "")}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
@@ -104,18 +101,27 @@ func (h *userResourceHandler) Get(r *http.Request, id string) (protocol.Resource
 	return userResource(user), nil
 }
 
-var equalityFilter = regexp.MustCompile(`(?i)(?:userName|email|displayName)\s+eq\s+"([^"]+)"`)
+// equalityFilter is the one filter shape IdPs send to look a user up: a single exact eq.
+var equalityFilter = regexp.MustCompile(`(?i)^\s*(userName|emails\.value|emails|email|displayName)\s+eq\s+"([^"]*)"\s*$`)
+
+var filterFields = map[string]store.UserField{
+	"username":     store.UserFieldUsername,
+	"emails.value": store.UserFieldEmail,
+	"emails":       store.UserFieldEmail,
+	"email":        store.UserFieldEmail,
+	"displayname":  store.UserFieldDisplayName,
+}
 
 func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
-	search := ""
+	var filter store.UserFilter
 	if raw := r.URL.Query().Get("filter"); raw != "" {
 		match := equalityFilter.FindStringSubmatch(raw)
-		if len(match) != 2 {
+		if len(match) != 3 {
 			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
 		}
-		search = match[1]
+		filter = store.UserFilter{Field: filterFields[strings.ToLower(match[1])], Value: match[2]}
 	}
-	users, total, err := h.store.Users().ListUsers(r.Context(), params.StartIndex-1, params.Count, search)
+	users, total, err := h.store.Users().ListUsers(r.Context(), params.StartIndex-1, params.Count, filter)
 	if err != nil {
 		return protocol.Page{}, err
 	}
@@ -135,9 +141,7 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	user.Username, _ = attrs["userName"].(string)
 	user.Email = primaryValue(attrs["emails"])
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
-	if role := primaryValue(attrs["roles"]); role != "" {
-		user.Role = role
-	}
+	user.Role = roleOrUser(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
 	if err := h.store.Users().UpdateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
@@ -158,6 +162,9 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 	oldRole, oldStatus := user.Role, user.Status
 	for _, op := range operations {
 		if op.Op == protocol.PatchOperationRemove {
+			if op.Path != nil && strings.EqualFold(op.Path.String(), "roles") {
+				user.Role = "user"
+			}
 			continue
 		}
 		if op.Path == nil {
@@ -180,6 +187,14 @@ func (h *userResourceHandler) revokeIfPrivilegesChanged(r *http.Request, user *s
 		_ = h.store.Sessions().DeleteUserSessions(r.Context(), user.ID)
 		_ = h.store.AppPasswords().DeleteByUser(r.Context(), user.ID)
 	}
+}
+
+// roleOrUser is the stated role, or "user" when the IdP states none.
+func roleOrUser(value interface{}) string {
+	if v := primaryValue(value); v != "" {
+		return v
+	}
+	return "user"
 }
 
 func applyUserValues(user *store.User, values map[string]interface{}) {
@@ -206,9 +221,7 @@ func applyUserValue(user *store.User, path string, value interface{}) {
 			user.Username = v
 		}
 	case "roles", "role":
-		if v := primaryValue(value); v != "" {
-			user.Role = v
-		}
+		user.Role = roleOrUser(value)
 	case "emails":
 		user.Email = primaryValue(value)
 	}

@@ -49,7 +49,7 @@ type UserStore interface {
 	// not greater than the stored one, which is how a replayed code inside the skew window fails.
 	SpendTOTPCounter(ctx context.Context, userID string, counter int64) error
 	DeleteUser(ctx context.Context, id string) error
-	ListUsers(ctx context.Context, offset, limit int, search string) ([]*User, int, error)
+	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
 	CountUsers(ctx context.Context) (int, error)
 }
 

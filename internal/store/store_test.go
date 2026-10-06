@@ -90,7 +90,7 @@ func TestUserStoreLifecycle(t *testing.T) {
 	}
 
 	// 6. List & Count
-	users, count, err := st.Users().ListUsers(ctx, 0, 10, "alice")
+	users, count, err := st.Users().ListUsers(ctx, 0, 10, store.UserFilter{Field: store.UserFieldUsername, Value: "ALICE"})
 	if err != nil {
 		t.Fatalf("ListUsers error: %v", err)
 	}
@@ -291,5 +291,28 @@ func TestDeleteSettingIsIdempotent(t *testing.T) {
 	_ = st.Settings().DeleteSetting(ctx, "k")
 	if _, err := st.Settings().GetSetting(ctx, "k"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+// Usernames are unique only case-sensitively, so an SSO "ADMIN" can exist beside local "admin";
+// the case-insensitive lookup behind password login and init-admin must pick the local account.
+func TestGetUserByUsernamePrefersLocalAccount(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_sso", Username: "ADMIN", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_local", Username: "admin", Role: "admin", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"admin", "Admin", "ADMIN"} {
+		u, err := st.Users().GetUserByUsername(ctx, name)
+		if err != nil || u.ID != "usr_local" {
+			t.Errorf("%s: got %+v %v, want usr_local", name, u, err)
+		}
 	}
 }

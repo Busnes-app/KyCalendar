@@ -44,6 +44,7 @@ export interface BackupStatus {
   threshold?: number;
   total_shares?: number;
   last_deposit?: DepositReceipt;
+  last_run?: LastRun;
   local_dir?: string;
   local_keep?: number;
   local_copies?: LocalCopy[];
@@ -51,6 +52,14 @@ export interface BackupStatus {
   interval_sec?: number;
   min_interval_sec?: number;
   next_run_at?: string;
+}
+
+// The latest run from any actor, scheduler included.
+type LastRun = { at: string; outcome: 'success' } | { at: string; outcome: 'failure'; error: string };
+
+function lastRunNote(run?: LastRun): string {
+  if (!run) return 'Counts from the last attempt, successful or not';
+  return run.outcome === 'success' ? `Last run succeeded ${when(run.at)}` : `Last run failed ${when(run.at)}: ${run.error}`;
 }
 
 interface DrillCheck {
@@ -390,7 +399,9 @@ export const Backup: React.FC = () => {
             <Badge tone={scheduleOn ? 'success' : 'danger'}>{every(status?.interval_sec)}</Badge>
           </div>
           <div className="dr-fact-value">{scheduleOn && status?.next_run_at ? `Next ${when(status.next_run_at)}` : 'Manual only'}</div>
-          <div className="dr-fact-note">Counts from the last attempt, successful or not</div>
+          <div className="dr-fact-note" role={status?.last_run?.outcome === 'failure' ? 'alert' : undefined}>
+            {lastRunNote(status?.last_run)}
+          </div>
         </div>
       </div>
 

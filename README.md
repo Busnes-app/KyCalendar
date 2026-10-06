@@ -74,18 +74,25 @@ are not retroactively flagged, since the server cannot infer whether they still 
 
 ## Calendar limits
 
-Native clients sync over CalDAV at `/dav/` with an app password. Each user is capped; a write past
-a cap gets 507 Insufficient Storage. Each limit must be positive or startup fails.
+Native clients sync over CalDAV at `/dav/` with an app password. Each user is capped, and so is
+the instance; a write past a cap gets 507 Insufficient Storage. Each per-user limit must be
+positive or startup fails.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `KY_CALENDAR_MAX_OBJECTS_PER_USER` | `20000` | Events across all of a user's calendars. |
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
-| `KY_CALENDAR_MAX_BYTES_PER_USER` | `268435456` (256 MiB) | Stored event bytes across all of a user's calendars. |
+| `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB) | Stored event bytes across all of a user's calendars. |
+| `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite, `0` (off) on Postgres | Stored event bytes across every user. |
+
+The instance cap exists because a capsule carries the SQLite database as one file and refuses a
+file over 64 MiB: past it, every backup fails for everyone. Raising it on SQLite trades that
+guarantee away. Postgres deployments make no capsules, so the cap is off there.
 
 ## Connect a phone
 
-Native clients need the server on HTTPS. Sign in as an everyday user (administrators are refused
+Native clients need the server on HTTPS. With an `https://` `KY_APP_URL`, session cookies are
+`Secure` and HSTS is sent; `KY_COOKIE_SECURE=false` overrides that for local testing only. Sign in as an everyday user (administrators are refused
 on CalDAV), open **Phones & apps**, name the device and create an app password. The page shows
 the server, your user name and the password once; revoke it there at any time.
 

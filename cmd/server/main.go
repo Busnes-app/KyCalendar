@@ -255,6 +255,7 @@ func recordRun(ctx context.Context, st store.Store, actor string, res recoverycl
 	details["outcome"] = outcome
 	_ = st.Audit().LogAudit(ctx, &store.AuditRecord{UserID: actor, Action: action,
 		Resource: res.Manifest.CapsuleID, Details: api.AuditDetails(details)})
+	api.RecordLastRun(ctx, st.Settings(), outcome, err)
 	if err != nil {
 		log.Printf("[BACKUP] %s: %s", actor, recoveryclient.AuditSafe(err.Error()))
 		return

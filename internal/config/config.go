@@ -26,11 +26,12 @@ type Config struct {
 	Calendar CalendarConfig `json:"calendar"`
 }
 
-// CalendarConfig bounds per-user calendar storage.
+// CalendarConfig bounds per-user calendar storage, and MaxBytesTotal (0 = off) every user's.
 type CalendarConfig struct {
 	MaxObjectsPerUser   int   `json:"max_objects_per_user"`
 	MaxCalendarsPerUser int   `json:"max_calendars_per_user"`
 	MaxBytesPerUser     int64 `json:"max_bytes_per_user"`
+	MaxBytesTotal       int64 `json:"max_bytes_total"`
 }
 
 // ServerConfig defines HTTP and network settings.
@@ -102,7 +103,7 @@ type BackupConfig struct {
 
 // CaptchaConfig holds anti-abuse settings (PoW default, Turnstile, Friendly).
 type CaptchaConfig struct {
-	Provider      string `json:"provider"` // "pow", "turnstile", "friendly", "none"
+	Provider      string `json:"provider"` // "pow" or "none"
 	SiteKey       string `json:"site_key"`
 	SecretKey     string `json:"secret_key"`
 	DifficultyPoW int    `json:"difficulty_pow"`
@@ -168,7 +169,15 @@ func LoadFromEnv() (*Config, error) {
 	calCfg := CalendarConfig{
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
-		MaxBytesPerUser:     int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", 256<<20)),
+		MaxBytesPerUser:     int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", 16<<20)),
+	}
+	// The SQLite snapshot is one capsule member, capped at 64 MiB; leave room for everything else.
+	defaultTotal := 0
+	if driver != "postgres" {
+		defaultTotal = 40 << 20
+	}
+	if calCfg.MaxBytesTotal = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_TOTAL", defaultTotal)); calCfg.MaxBytesTotal < 0 {
+		return nil, fmt.Errorf("KY_CALENDAR_MAX_BYTES_TOTAL must not be negative")
 	}
 	for key, v := range map[string]int64{
 		"KY_CALENDAR_MAX_OBJECTS_PER_USER":   int64(calCfg.MaxObjectsPerUser),
@@ -178,6 +187,11 @@ func LoadFromEnv() (*Config, error) {
 		if v <= 0 {
 			return nil, fmt.Errorf("%s must be positive", key)
 		}
+	}
+
+	// Only PoW is verified server-side; accepting another name would disable the check silently.
+	if captcha := getEnv("KY_CAPTCHA_PROVIDER", "pow"); captcha != "pow" && captcha != "none" {
+		return nil, fmt.Errorf("KY_CAPTCHA_PROVIDER: %q is not verified by this server; use pow or none", captcha)
 	}
 
 	trustedProxies, err := ParseTrustedProxies(getEnv("KY_TRUSTED_PROXIES", ""))
@@ -206,7 +220,7 @@ func LoadFromEnv() (*Config, error) {
 		Security: SecurityConfig{
 			SessionSecret:  sessionSecret,
 			EncryptionKey:  encryptionKey,
-			CookieSecure:   getEnvBool("KY_COOKIE_SECURE", env == "production"),
+			CookieSecure:   getEnvBool("KY_COOKIE_SECURE", env == "production" || strings.HasPrefix(strings.ToLower(appURL), "https://")),
 			CookieDomain:   getEnv("KY_COOKIE_DOMAIN", ""),
 			SessionTTL:     7 * 24 * time.Hour,
 			TrustedProxies: trustedProxies,

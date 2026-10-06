@@ -108,10 +108,28 @@ type CalendarObject struct {
 	ModifiedAt                  time.Time
 }
 
-// OwnerLimits caps one owner's calendar objects; zero means no limit.
+// UserField names a user column a list may filter on.
+type UserField int
+
+const (
+	UserFieldNone UserField = iota
+	UserFieldUsername
+	UserFieldEmail
+	UserFieldDisplayName
+)
+
+// UserFilter is an exact, case-insensitive match on one field; UserFieldNone lists everyone.
+type UserFilter struct {
+	Field UserField
+	Value string
+}
+
+// OwnerLimits caps one owner's calendar objects, and MaxTotalBytes every owner's together;
+// zero means no limit.
 type OwnerLimits struct {
-	MaxObjects int
-	MaxBytes   int64
+	MaxObjects    int
+	MaxBytes      int64
+	MaxTotalBytes int64
 }
 
 type CalendarChange struct {

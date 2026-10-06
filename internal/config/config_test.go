@@ -36,7 +36,7 @@ func TestConfigLoadFromEnvOverrides(t *testing.T) {
 	t.Setenv("KY_DB_DRIVER", "postgres")
 	t.Setenv("KY_DB_DSN", "postgres://user:pass@localhost:5432/testdb")
 	t.Setenv("KY_APP_NAME", "CustomBusnesApp")
-	t.Setenv("KY_CAPTCHA_PROVIDER", "turnstile")
+	t.Setenv("KY_CAPTCHA_PROVIDER", "none")
 
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
@@ -55,8 +55,8 @@ func TestConfigLoadFromEnvOverrides(t *testing.T) {
 	if cfg.Server.AppName != "CustomBusnesApp" {
 		t.Errorf("expected custom app name, got %s", cfg.Server.AppName)
 	}
-	if cfg.Captcha.Provider != "turnstile" {
-		t.Errorf("expected captcha provider turnstile, got %s", cfg.Captcha.Provider)
+	if cfg.Captcha.Provider != "none" {
+		t.Errorf("expected captcha provider none, got %s", cfg.Captcha.Provider)
 	}
 }
 
@@ -149,7 +149,7 @@ func TestCalendarMaxObjectsPerUser(t *testing.T) {
 func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	cfg, err := config.LoadFromEnv()
-	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 256<<20 {
+	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 16<<20 || cfg.Calendar.MaxBytesTotal != 40<<20 {
 		t.Fatalf("defaults: %+v %v", cfg, err)
 	}
 	for _, key := range []string{"KY_CALENDAR_MAX_CALENDARS_PER_USER", "KY_CALENDAR_MAX_BYTES_PER_USER"} {
@@ -159,5 +159,47 @@ func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
 				t.Fatalf("want %s error, got %v", key, err)
 			}
 		})
+	}
+}
+
+// Capsules are SQLite-only, so only SQLite needs the instance cap that keeps one under 64 MiB.
+func TestCalendarInstanceCap(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	t.Setenv("KY_DB_DRIVER", "postgres")
+	cfg, err := config.LoadFromEnv()
+	if err != nil || cfg.Calendar.MaxBytesTotal != 0 {
+		t.Fatalf("postgres default: %+v %v", cfg, err)
+	}
+	t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", "-1")
+	if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_CALENDAR_MAX_BYTES_TOTAL") {
+		t.Fatalf("want KY_CALENDAR_MAX_BYTES_TOTAL error, got %v", err)
+	}
+}
+
+// An HTTPS deployment gets Secure cookies (and HSTS) without also having to set KY_ENV.
+func TestCookieSecureFollowsHTTPSAppURL(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	for url, want := range map[string]bool{"https://cal.example.com": true, "HTTPS://cal.example.com": true, "http://localhost:8080": false} {
+		t.Setenv("KY_APP_URL", url)
+		cfg, err := config.LoadFromEnv()
+		if err != nil || cfg.Security.CookieSecure != want {
+			t.Errorf("%s: CookieSecure=%v err=%v, want %v", url, cfg != nil && cfg.Security.CookieSecure, err, want)
+		}
+	}
+	t.Setenv("KY_APP_URL", "https://cal.example.com")
+	t.Setenv("KY_COOKIE_SECURE", "false")
+	if cfg, _ := config.LoadFromEnv(); cfg.Security.CookieSecure {
+		t.Error("an explicit KY_COOKIE_SECURE=false must win")
+	}
+}
+
+// Only the PoW provider is verified server-side; any other name would silently turn the check off.
+func TestUnverifiedCaptchaProviderFailsStartup(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	for _, p := range []string{"turnstile", "friendly", "POW "} {
+		t.Setenv("KY_CAPTCHA_PROVIDER", p)
+		if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_CAPTCHA_PROVIDER") {
+			t.Errorf("%q: want KY_CAPTCHA_PROVIDER error, got %v", p, err)
+		}
 	}
 }

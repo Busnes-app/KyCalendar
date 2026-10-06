@@ -296,6 +296,9 @@ func (s *Server) handleRunBackup(w http.ResponseWriter, r *http.Request) {
 	action, outcome, details := recoveryclient.Outcome(res, err)
 	details["outcome"] = outcome
 	s.auditBackup(ctx, actor, r, action, res.Manifest.CapsuleID, AuditDetails(details))
+	if !errors.Is(err, recoveryclient.ErrInProgress) {
+		RecordLastRun(ctx, s.store.Settings(), outcome, err)
+	}
 
 	if errors.Is(err, recoveryclient.ErrReceiptUnrecorded) {
 		// The store has the capsule; only this side's record is missing. This is the one path
@@ -464,6 +467,26 @@ func (s *Server) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 
 // handleBackupStatus reports pairing and the last receipt. It never decrypts or echoes the
 // credential.
+// lastRunSetting holds the latest run's outcome from any actor. The lib keeps only the attempt
+// time and the last success, so without it a failing schedule never reaches the screen.
+const lastRunSetting = "backup_last_run"
+
+// RecordLastRun stores one run's outcome for the status route.
+func RecordLastRun(ctx context.Context, settings store.SettingsStore, outcome string, err error) {
+	run := struct {
+		At      time.Time `json:"at"`
+		Outcome string    `json:"outcome"`
+		Error   string    `json:"error,omitempty"`
+	}{At: time.Now().UTC(), Outcome: outcome}
+	if err != nil {
+		run.Error = recoveryclient.AuditSafe(err.Error())
+	}
+	raw, _ := json.Marshal(run)
+	if err := settings.SetSetting(ctx, lastRunSetting, string(raw)); err != nil {
+		log.Printf("[BACKUP] last run not recorded: %s", recoveryclient.AuditSafe(err.Error()))
+	}
+}
+
 func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -499,6 +522,9 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if last, ok, err := recoveryclient.LastDeposit(settings); err == nil && ok {
 		out["last_deposit"] = last
+	}
+	if raw, err := s.store.Settings().GetSetting(ctx, lastRunSetting); err == nil && json.Valid([]byte(raw)) {
+		out["last_run"] = json.RawMessage(raw)
 	}
 	if s.config.Backup.Dir != "" {
 		out["local_dir"] = s.config.Backup.Dir

@@ -139,6 +139,9 @@ func TestRunWithPinnedKeyAndNoDestination(t *testing.T) {
 	if fake.got != nil {
 		t.Error("an unpaired instance sent bytes to the store")
 	}
+	if run, _ := statusOf(t, srv, session)["last_run"].(map[string]any); run["outcome"] != "failure" || run["error"] == "" || run["at"] == "" {
+		t.Errorf("status must show the failed run: %v", run)
+	}
 }
 
 func TestRunWritesLocalCopy0600(t *testing.T) {
@@ -190,6 +193,9 @@ func TestRunWritesLocalCopy0600(t *testing.T) {
 	copies, _ := status["local_copies"].([]any)
 	if status["paired"] != false || status["key_pinned"] != true || len(copies) != 1 || status["local_dir"] != cfg.Backup.Dir {
 		t.Errorf("status %v", status)
+	}
+	if run, _ := status["last_run"].(map[string]any); run["outcome"] != "success" || run["error"] != nil {
+		t.Errorf("status must show the successful run: %v", run)
 	}
 }
 

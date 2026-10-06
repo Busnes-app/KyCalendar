@@ -42,6 +42,7 @@ func (s *Server) handleDAV(w http.ResponseWriter, r *http.Request) {
 	backend := &davbackend.Backend{
 		Store: s.store, User: user,
 		MaxObjectsPerUser: limits.MaxObjectsPerUser, MaxCalendarsPerUser: limits.MaxCalendarsPerUser, MaxBytesPerUser: limits.MaxBytesPerUser,
+		MaxBytesTotal: limits.MaxBytesTotal,
 	}
 	h := &caldav.Handler{Backend: backend, Prefix: davbackend.Prefix, MaxResourceSize: calendar.MaxObjectSize}
 	h.ServeHTTP(w, r.WithContext(davbackend.WithIfMatch(r.Context(), r.Header.Get("If-Match"))))

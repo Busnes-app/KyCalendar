@@ -398,3 +398,26 @@ func TestIfMatchWildcard(t *testing.T) {
 		t.Fatalf("* on existing DELETE: %v", err)
 	}
 }
+
+// The instance cap spans owners: it keeps the SQLite snapshot under the backup capsule's file cap.
+func TestPutObjectInstanceByteCap(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	other := &store.Calendar{ID: "cal_b", OwnerKind: "user", OwnerID: "usr_b", Slug: "default", Name: "B"}
+	if err := cs.CreateCalendar(ctx, other, 0); err != nil {
+		t.Fatal(err)
+	}
+	lim := store.OwnerLimits{MaxBytes: 100, MaxTotalBytes: 8}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "aaaaa", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.PutObject(ctx, obj(other.ID, "b.ics", "u2", "bbbb", 1, i64(2)), "", false, lim); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("another owner over the instance cap: %v", err)
+	}
+	if _, err := cs.PutObject(ctx, obj(other.ID, "b.ics", "u2", "bbb", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatalf("exactly at the instance cap: %v", err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "aaaaa", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatalf("replacement counts only its new size: %v", err)
+	}
+}

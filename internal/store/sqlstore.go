@@ -179,8 +179,12 @@ SELECT id, username, email, display_name, password_hash, role, status,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE LOWER(username) = LOWER(?)
+ORDER BY CASE WHEN sso_provider = 'local' THEN 0 ELSE 1 END, CASE WHEN username = ? THEN 0 ELSE 1 END
+LIMIT 1
 `)
-	return u.scanUser(u.store.db.QueryRowContext(ctx, q, username))
+	// Uniqueness is case-sensitive, so an SSO "ADMIN" can sit beside local "admin": the local
+	// account wins, then the exact spelling, or password login and init-admin hit the wrong row.
+	return u.scanUser(u.store.db.QueryRowContext(ctx, q, username, username))
 }
 
 func (u *userStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
@@ -284,7 +288,14 @@ func (u *userStore) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
-func (u *userStore) ListUsers(ctx context.Context, offset, limit int, search string) ([]*User, int, error) {
+// userFilterColumns maps each filterable field to its column; only these names reach SQL.
+var userFilterColumns = map[UserField]string{
+	UserFieldUsername:    "username",
+	UserFieldEmail:       "email",
+	UserFieldDisplayName: "display_name",
+}
+
+func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -295,10 +306,10 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, search str
 	var countQuery, listQuery string
 	var countArgs, listArgs []any
 
-	if strings.TrimSpace(search) != "" {
-		like := "%" + strings.ToLower(strings.TrimSpace(search)) + "%"
-		countQuery = "SELECT COUNT(1) FROM users WHERE LOWER(username) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(email) LIKE ?"
-		countArgs = []any{like, like, like}
+	if col, ok := userFilterColumns[filter.Field]; ok {
+		where := "WHERE LOWER(" + col + ") = LOWER(?)"
+		countQuery = "SELECT COUNT(1) FROM users " + where
+		countArgs = []any{filter.Value}
 
 		listQuery = `
 SELECT id, username, email, display_name, password_hash, role, status,
@@ -306,9 +317,9 @@ SELECT id, username, email, display_name, password_hash, role, status,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users
-WHERE LOWER(username) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(email) LIKE ?
+` + where + `
 ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		listArgs = []any{like, like, like, limit, offset}
+		listArgs = []any{filter.Value, limit, offset}
 	} else {
 		countQuery = "SELECT COUNT(1) FROM users"
 		listQuery = `

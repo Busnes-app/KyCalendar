@@ -23,10 +23,14 @@ func isUniqueViolation(err error) bool {
 // advisory lock also covers an owner with no calendar rows yet, which row locks cannot. SQLite
 // needs nothing: its single connection already serializes transactions.
 func (c *calendarStore) lockOwner(ctx context.Context, tx *sql.Tx, ownerKind, ownerID string) error {
+	return c.lockKey(ctx, tx, "calendar-owner:"+ownerKind+":"+ownerID)
+}
+
+func (c *calendarStore) lockKey(ctx context.Context, tx *sql.Tx, key string) error {
 	if c.store.driver != "postgres" {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "calendar-owner:"+ownerKind+":"+ownerID)
+	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key)
 	return err
 }
 
@@ -202,6 +206,12 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	}
 	defer tx.Rollback()
 
+	if lim.MaxTotalBytes > 0 {
+		// Instance lock before any owner lock: one order for every writer that takes both.
+		if err := c.lockKey(ctx, tx, "calendar-total"); err != nil {
+			return false, err
+		}
+	}
 	limited := lim.MaxObjects > 0 || lim.MaxBytes > 0
 	var ownerKind, ownerID string
 	if limited {
@@ -246,6 +256,17 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name 
 			return false, err
 		}
 		if (lim.MaxObjects > 0 && !exists && n >= lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data)) > lim.MaxBytes) {
+			return false, ErrQuotaExceeded
+		}
+	}
+	if lim.MaxTotalBytes > 0 {
+		var used int64
+		err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(data)), 0) FROM calendar_objects WHERE NOT (calendar_id = ? AND name = ?)`),
+			o.CalendarID, o.Name).Scan(&used)
+		if err != nil {
+			return false, err
+		}
+		if used+int64(len(o.Data)) > lim.MaxTotalBytes {
 			return false, ErrQuotaExceeded
 		}
 	}

@@ -2,6 +2,8 @@ package calendar
 
 import (
 	"errors"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -288,5 +290,44 @@ func TestInspectTwoRRulesAreUnbounded(t *testing.T) {
 	}
 	if o.LastEnd != nil {
 		t.Fatalf("want nil LastEnd, got %d", *o.LastEnd)
+	}
+}
+
+// rrule-go builds a whole period's batch before the first occurrence is returned, so the
+// occurrence budget alone cannot bound a rule whose BYHOUR x BYMINUTE x BYSECOND is wide.
+func TestInspectWideTimeSetIsUnboundedWithoutExpansion(t *testing.T) {
+	list := func(n int) string {
+		s := make([]string, n)
+		for i := range s {
+			s[i] = strconv.Itoa(i)
+		}
+		return strings.Join(s, ",")
+	}
+	rule := "RRULE:FREQ=YEARLY;COUNT=1000000000;BYMONTH=1,2,3,4,5,6,7,8,9,10,11,12;BYMONTHDAY=" +
+		strings.Join(strings.Split(list(32), ",")[1:], ",") +
+		";BYHOUR=" + list(24) + ";BYMINUTE=" + list(60) + ";BYSECOND=" + list(60) + "\n"
+	cal := decode(t, ev("DTSTART:20260101T000000Z\nDTEND:20260101T010000Z\n"+rule))
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	o, err := Inspect(cal)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.LastEnd != nil {
+		t.Fatalf("wide time-set must index as unbounded, got %d", *o.LastEnd)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 16<<20 {
+		t.Fatalf("Inspect allocated %d bytes; the rule was expanded", alloc)
+	}
+}
+
+func TestInspectHourlyMinutesStillBounded(t *testing.T) {
+	o, err := Inspect(decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T091500Z\nRRULE:FREQ=DAILY;COUNT=4;BYHOUR=9,17;BYMINUTE=0,30\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.LastEnd == nil || *o.LastEnd != unix("20261007T174500Z") {
+		t.Fatalf("%+v", o)
 	}
 }

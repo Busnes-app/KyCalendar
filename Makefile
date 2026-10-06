@@ -22,7 +22,7 @@ test-race:
 # Runs the same suite against PostgreSQL; needs a reachable server.
 test-postgres:
 	@echo "==> Running test suite against PostgreSQL..."
-	@KY_TEST_POSTGRES_DSN="$${KY_TEST_POSTGRES_DSN:-postgres://postgres:postgrespassword@127.0.0.1:5432/ky_server?sslmode=disable}" go test -count=1 ./...
+	@KY_TEST_POSTGRES_DSN="$${KY_TEST_POSTGRES_DSN:-postgres://postgres:$${KY_POSTGRES_PASSWORD}@127.0.0.1:5432/ky_server?sslmode=disable}" go test -count=1 ./...
 
 test-web:
 	@echo "==> Running frontend test suite..."

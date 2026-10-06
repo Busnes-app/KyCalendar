@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ type Server struct {
 	mux        *http.ServeMux
 	attemptsMu sync.Mutex
 	attempts   map[string]attemptWindow
+	accounts   map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
 	davFails   davFailures
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
@@ -126,7 +128,8 @@ type attemptWindow struct {
 // expiry would always sacrifice the shortest windows first, so a caller minting keys with a
 // long window could keep the one-minute login counter from ever reaching its limit. Every key
 // is therefore equally likely to go. The real defence is that no key carries caller-supplied
-// bytes, so filling the map costs an attacker one slot per IP.
+// bytes, so filling the map costs an attacker one slot per IPv4 address or IPv6 /64.
+// Per-account windows live in their own map, so no flood of address keys can reset them.
 const attemptsCap = 10000
 
 func NewServer(cfg *config.Config, st store.Store) *Server {
@@ -148,6 +151,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 		recovery: recovery,
 		mux:      http.NewServeMux(),
 		attempts: make(map[string]attemptWindow),
+		accounts: make(map[string]attemptWindow),
 	}
 
 	s.routes()
@@ -163,6 +167,17 @@ func (s *Server) allowAttempt(key string, limit int, window time.Duration) bool 
 	}
 	entry := bumpWindow(s.attempts[key], now, window)
 	s.attempts[key] = entry
+	return entry.count <= limit
+}
+
+// allowAccountAttempt counts a per-account window. Keys are built only from real user IDs, so
+// the map is bounded by the user count and never evicts.
+func (s *Server) allowAccountAttempt(key string, limit int, window time.Duration) bool {
+	now := time.Now()
+	s.attemptsMu.Lock()
+	defer s.attemptsMu.Unlock()
+	entry := bumpWindow(s.accounts[key], now, window)
+	s.accounts[key] = entry
 	return entry.count <= limit
 }
 
@@ -200,6 +215,18 @@ func (s *Server) requestIP(r *http.Request) string {
 	return auth.ClientIP(r, s.config.Security.TrustedProxies)
 }
 
+// limitIP is requestIP with IPv6 cut to its /64: one host is routinely given a whole /64, so
+// per-address keys would hand it endless fresh windows.
+func (s *Server) limitIP(r *http.Request) string {
+	ip := s.requestIP(r)
+	if a, err := netip.ParseAddr(ip); err == nil && a.Is6() {
+		if p, err := a.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return ip
+}
+
 func (s *Server) routes() {
 	// Auth
 	s.mux.HandleFunc("/api/auth/pow-challenge", s.handlePoWChallenge)
@@ -211,9 +238,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/auth/change-password", s.handleChangePassword)
 
 	// SSO
-	s.mux.HandleFunc("/api/sso/kysignon/login", s.handleKySignOnLogin)
-	s.mux.HandleFunc("/api/sso/kysignon/callback", s.handleKySignOnCallback)
-	s.mux.HandleFunc("/api/sso/kysignon/sync", s.handleKySignOnSyncWebhook)
+	s.mux.HandleFunc("/api/sso/kysignon/login", s.requireSSO(s.handleKySignOnLogin))
+	s.mux.HandleFunc("/api/sso/kysignon/callback", s.requireSSO(s.handleKySignOnCallback))
+	s.mux.HandleFunc("/api/sso/kysignon/sync", s.requireSSO(s.handleKySignOnSyncWebhook))
 	s.mux.HandleFunc("/saml/metadata", s.handleSAMLMetadata)
 
 	// Feature 0 KyBackup & Restore Drills. Capsules carry site data and keys: admins only.
@@ -306,6 +333,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusForbidden, "Invalid CSRF token")
 		return
 	}
+	// Login and MFA run before a session (and its CSRF token) exists; a cross-site form posting
+	// there would plant the attacker's session in the victim's browser.
+	if isUnsafeMethod(r.Method) && strings.HasPrefix(r.URL.Path, "/api/auth/") && crossSite(r) {
+		s.writeError(w, http.StatusForbidden, "Cross-site request refused")
+		return
+	}
 	if r.Body != nil {
 		limit := int64(1 << 20)
 		if isDAVPath(r.URL.Path) {
@@ -330,6 +363,24 @@ func isUnsafeMethod(method string) bool {
 func hasSessionCookie(r *http.Request) bool {
 	cookie, err := r.Cookie(auth.SessionCookieName)
 	return err == nil && cookie.Value != ""
+}
+
+// crossSite reports a browser request from another site. Non-browser clients omit
+// Sec-Fetch-Site and pass; so do browsers older than the header, which stay exposed.
+func crossSite(r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	return site != "" && site != "same-origin" && site != "none"
+}
+
+// requireSSO makes KY_SSO_ENABLED=false a kill switch for sign-in, provisioning and sync.
+func (s *Server) requireSSO(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.config.SSO.Enabled {
+			s.writeError(w, http.StatusNotFound, "Single sign-on is disabled")
+			return
+		}
+		next(w, r)
+	}
 }
 
 func csrfExempt(path string) bool {

@@ -72,4 +72,17 @@ describe('Backup', () => {
     await screen.findByText('https://recovery.example');
     expect(screen.queryByText(/Backups do not include the PostgreSQL database/)).toBeNull();
   });
+
+  it('shows a failed last run, which the schedule alone would hide', async () => {
+    mockStatus({ ...PAIRED, last_run: { at: '2026-10-06T10:00:00Z', outcome: 'failure', error: 'capsule too large' } });
+    render(<Backup />);
+    expect(await screen.findByText(/Last run failed/)).toBeTruthy();
+    expect(screen.getByText(/capsule too large/)).toBeTruthy();
+  });
+
+  it('shows a successful last run', async () => {
+    mockStatus({ ...PAIRED, last_run: { at: '2026-10-06T10:00:00Z', outcome: 'success' } });
+    render(<Backup />);
+    expect(await screen.findByText(/Last run succeeded/)).toBeTruthy();
+  });
 });

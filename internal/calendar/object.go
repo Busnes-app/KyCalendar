@@ -52,6 +52,18 @@ func fastFreq(comp *ical.Component) bool {
 	return false
 }
 
+// maxTimeSet bounds BYHOUR x BYMINUTE x BYSECOND. rrule-go materialises every day of a period
+// times that set before yielding the first occurrence, so the budget cannot cap it.
+const maxTimeSet = 96 // every 15 minutes of a day
+
+func wideTimeSet(opt *rrule.ROption) bool {
+	n := 1
+	for _, by := range [][]int{opt.Byhour, opt.Byminute, opt.Bysecond} {
+		n *= max(len(by), 1)
+	}
+	return n > maxTimeSet
+}
+
 // Inspect validates a decoded calendar object and computes its index bounds.
 func Inspect(cal *ical.Calendar) (Object, error) {
 	var o Object
@@ -137,6 +149,9 @@ func ruleLast(comp *ical.Component, start time.Time, budget *int) (last time.Tim
 		return time.Time{}, false
 	case opt.Until.IsZero():
 		opt.Until, cut = limit, true
+	}
+	if wideTimeSet(opt) {
+		return time.Time{}, false
 	}
 	opt.Dtstart = start
 	rule, err := rrule.NewRRule(*opt)

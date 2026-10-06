@@ -66,10 +66,11 @@ services:
     profiles: ["postgres"]
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      # Set in .env; the image refuses to start without it.
+      POSTGRES_PASSWORD: ${KY_POSTGRES_PASSWORD:-}
       POSTGRES_DB: ky_server
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432" # host-local only; the app reaches postgres:5432 on the compose network
     volumes:
       - pgdata:/var/lib/postgresql/data
 

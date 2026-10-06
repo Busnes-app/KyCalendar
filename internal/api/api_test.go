@@ -558,6 +558,12 @@ func TestMFAPerAccountWindow(t *testing.T) {
 				t.Fatalf("attempt %d for the account was throttled, want no earlier than 6", i)
 			}
 			codes++
+			if i == 5 {
+				// Fresh per-IP keys flood the shared map; the account's window must survive it.
+				for j := 0; j < 10*api.AttemptsCapForTest; j++ {
+					api.AllowAttemptForTest(srv, "login:flood-"+strconv.Itoa(j), 20, time.Minute)
+				}
+			}
 			continue
 		}
 		if w.Code != http.StatusTooManyRequests {
@@ -961,5 +967,78 @@ func TestMFAChallengeRejectedAfterPasswordRotation(t *testing.T) {
 	}
 	if got := post(); got != http.StatusForbidden {
 		t.Fatalf("stale challenge: got %d, want 403", got)
+	}
+}
+
+// Login and MFA skip the CSRF token (no session exists yet), so a cross-site form could plant
+// the attacker's session; the browser's Sec-Fetch-Site header refuses it.
+func TestPreSessionRoutesRefuseCrossSiteRequests(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	hash, _ := password.Hash("SuperSecretPass123!")
+	if err := st.Users().CreateUser(context.Background(), &store.User{ID: "usr_m", Username: "mallory", PasswordHash: hash, Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"username":"mallory","password":"SuperSecretPass123!","x":"="}`
+	for _, path := range []string{"/api/auth/login", "/api/auth/mfa/totp", "/api/auth/mfa/recovery-code"} {
+		for _, site := range []string{"cross-site", "same-site"} {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+			req.Header.Set("Content-Type", "text/plain")
+			req.Header.Set("Sec-Fetch-Site", site)
+			w := httptest.NewRecorder()
+			srv.ServeHTTP(w, req)
+			if w.Code != http.StatusForbidden || len(w.Result().Cookies()) != 0 {
+				t.Errorf("%s from %s: got %d with %d cookies", path, site, w.Code, len(w.Result().Cookies()))
+			}
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("same-origin login: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// One host routinely holds a whole IPv6 /64; per-address keys would give it endless windows.
+func TestLoginLimiterKeysIPv6ByPrefix(t *testing.T) {
+	srv, _, _ := setupTestServer(t)
+	body, _ := json.Marshal(map[string]string{"username": "nobody", "password": "WrongPass123!"})
+	for i := 1; i <= 21; i++ {
+		req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = fmt.Sprintf("[2001:db8:1:2::%x]:40000", i)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if i == 21 && w.Code != http.StatusTooManyRequests {
+			t.Fatalf("21st login from one /64 answered %d, want 429", w.Code)
+		}
+	}
+	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "[2001:db8:1:3::1]:40000"
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusTooManyRequests {
+		t.Fatal("a neighbouring /64 shared the window")
+	}
+}
+
+// KY_SSO_ENABLED=false is the kill switch for every KySignOn route, not just the login button.
+func TestSSODisabledRefusesKySignOnRoutes(t *testing.T) {
+	srv, _, cfg := setupTestServer(t)
+	cfg.SSO.Enabled = false
+	cfg.SSO.KySignOnIssuer, cfg.SSO.KySignOnClientID = "https://idp.example", "client"
+	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/sso/kysignon/login"},
+		{"GET", "/api/sso/kysignon/callback?code=c&state=s"},
+		{"POST", "/api/sso/kysignon/sync"},
+	} {
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader("{}")))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s %s: got %d, want 404", tc.method, tc.path, w.Code)
+		}
 	}
 }

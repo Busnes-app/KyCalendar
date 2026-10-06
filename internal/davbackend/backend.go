@@ -72,6 +72,7 @@ type Backend struct {
 	MaxObjectsPerUser   int
 	MaxCalendarsPerUser int
 	MaxBytesPerUser     int64
+	MaxBytesTotal       int64
 }
 
 type ifMatchKey struct{}
@@ -363,7 +364,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	o := &store.CalendarObject{CalendarID: c.ID, Name: name, UID: info.UID, Data: opts.Raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}
-	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, store.OwnerLimits{MaxObjects: b.MaxObjectsPerUser, MaxBytes: b.MaxBytesPerUser})
+	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, store.OwnerLimits{MaxObjects: b.MaxObjectsPerUser, MaxBytes: b.MaxBytesPerUser, MaxTotalBytes: b.MaxBytesTotal})
 	switch {
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, errQuota

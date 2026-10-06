@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -170,5 +172,129 @@ func TestSCIMDeactivationRevokesAppPasswords(t *testing.T) {
 	}
 	if list, _ := st.AppPasswords().ListByUser(ctx, "usr_ap"); len(list) != 0 {
 		t.Fatalf("app passwords survived deactivation: %d", len(list))
+	}
+}
+
+func scimDo(t *testing.T, h http.Handler, token, method, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	var r *bytes.Reader
+	if body == nil {
+		r = bytes.NewReader(nil)
+	} else {
+		raw, _ := json.Marshal(body)
+		r = bytes.NewReader(raw)
+	}
+	req := httptest.NewRequest(method, path, r)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
+}
+
+// An IdP removes the admin role by sending no roles; the user must drop to everyday and lose
+// every grant, or a deprovisioned administrator keeps the backup routes.
+func TestSCIMRemovingRolesDemotesAdmin(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+	handler := srv.AuthMiddleware(mux)
+
+	cases := map[string]func(id string) (string, any){
+		"put empty roles": func(id string) (string, any) {
+			return "PUT", map[string]any{"schemas": []string{scim.SchemaUser}, "userName": id, "active": true, "roles": []any{}}
+		},
+		"put without roles": func(id string) (string, any) {
+			return "PUT", map[string]any{"schemas": []string{scim.SchemaUser}, "userName": id, "active": true}
+		},
+		"patch remove roles": func(string) (string, any) {
+			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "remove", "path": "roles"}}}
+		},
+		"patch replace empty roles": func(string) (string, any) {
+			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "replace", "path": "roles", "value": []any{}}}}
+		},
+	}
+	for name, req := range cases {
+		t.Run(name, func(t *testing.T) {
+			id := "usr_" + strings.ReplaceAll(name, " ", "_")
+			if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: id, Role: "admin", Status: "active", SSOProvider: "local"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "x", Hash: "h"}); err != nil {
+				t.Fatal(err)
+			}
+			method, body := req(id)
+			if w := scimDo(t, handler, token, method, "/scim/v2/Users/"+id, body); w.Code != http.StatusOK {
+				t.Fatalf("%s: %d %s", method, w.Code, w.Body.String())
+			}
+			u, _ := st.Users().GetUserByID(ctx, id)
+			if u.Role != "user" {
+				t.Fatalf("role %q after removing roles", u.Role)
+			}
+			if list, _ := st.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
+				t.Fatal("grants survived the demotion")
+			}
+		})
+	}
+}
+
+// eq is an exact, case-insensitive match on the named attribute; a substring hit would let an
+// IdP update the wrong account.
+func TestSCIMEqFilterIsExact(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+	handler := srv.AuthMiddleware(mux)
+	for _, u := range []*store.User{
+		{ID: "usr_devops", Username: "devops", DisplayName: "ops", Email: "ops@example.com", Role: "user", Status: "active", SSOProvider: "local"},
+		{ID: "usr_ops", Username: "Ops", DisplayName: "Operations", Role: "user", Status: "active", SSOProvider: "local"},
+	} {
+		if err := st.Users().CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := func(filter string) []string {
+		w := scimDo(t, handler, token, "GET", "/scim/v2/Users?filter="+url.QueryEscape(filter), nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", filter, w.Code, w.Body.String())
+		}
+		var page struct{ Resources []struct{ ID string } }
+		_ = json.Unmarshal(w.Body.Bytes(), &page)
+		var out []string
+		for _, r := range page.Resources {
+			out = append(out, r.ID)
+		}
+		return out
+	}
+	for filter, want := range map[string]string{
+		`userName eq "ops"`:                       "usr_ops",
+		`displayName eq "ops"`:                    "usr_devops",
+		`emails.value eq "OPS@example.com"`:       "usr_devops",
+		`userName eq "%"`:                         "",
+		`userName eq "devops" or userName eq "x"`: "invalid",
+	} {
+		if want == "invalid" {
+			if w := scimDo(t, handler, token, "GET", "/scim/v2/Users?filter="+url.QueryEscape(filter), nil); w.Code != http.StatusBadRequest {
+				t.Errorf("%s: want 400, got %d", filter, w.Code)
+			}
+			continue
+		}
+		got := strings.Join(ids(filter), ",")
+		if got != want {
+			t.Errorf("%s: got %q want %q", filter, got, want)
+		}
 	}
 }
