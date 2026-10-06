@@ -206,13 +206,14 @@ func TestInspectOccurrenceBudgetIsPerObject(t *testing.T) {
 	}
 }
 
-func TestInspectRecurrenceSetErrorIsUnbounded(t *testing.T) {
+func TestInspectExdateWithUnknownTZIDIsAccepted(t *testing.T) {
 	o, err := Inspect(decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE;TZID=Eastern Standard Time:20261008T090000\n")))
 	if err != nil {
 		t.Fatalf("must accept: %v", err)
 	}
-	if o.LastEnd != nil {
-		t.Fatalf("want nil LastEnd, got %d", *o.LastEnd)
+	// EXDATE only removes instances, so ignoring it keeps the index conservative.
+	if o.LastEnd == nil || *o.LastEnd < unix("20261009T100000Z") {
+		t.Fatalf("%+v", o)
 	}
 }
 
@@ -238,8 +239,8 @@ func TestInspectManyEmptyRulesAreBounded(t *testing.T) {
 		if o.LastEnd != nil {
 			t.Fatalf("want unbounded, got %d", *o.LastEnd)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("Inspect did not return within 3s")
+	case <-time.After(time.Second):
+		t.Fatal("Inspect did not return within 1s")
 	}
 }
 

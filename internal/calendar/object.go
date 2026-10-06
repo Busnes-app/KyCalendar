@@ -84,18 +84,9 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 
 		if comp.Props.Get(ical.PropRecurrenceRule) != nil && !unbounded {
 			recurring++
-			rset, err := (*rrule.Set)(nil), error(nil)
 			if recurring > maxRecurringComponents || fastFreq(comp) {
-				unbounded = true
-			} else {
-				rset, err = comp.RecurrenceSet(time.UTC)
-			}
-			if unbounded {
-				// Not expanded: too many rules, or too fine-grained to index cheaply.
-			} else if err != nil || rset == nil {
-				// Not expandable here (e.g. unknown TZID); index conservatively.
-				unbounded = true
-			} else if lastOcc, ok := lastOccurrence(rset, start.Add(horizon), &budget); !ok {
+				unbounded = true // too many rules, or too fine-grained to index cheaply
+			} else if lastOcc, ok := ruleLast(comp, start, &budget); !ok {
 				unbounded = true
 			} else if !lastOcc.IsZero() {
 				compLast = lastOcc.Add(end.Sub(start)).Add(slack)
@@ -126,19 +117,40 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 	return o, nil
 }
 
-// lastOccurrence walks the set until it ends, spending from budget. ok is false when an
-// occurrence passes limit or the budget runs out, i.e. the rule is treated as unbounded.
-func lastOccurrence(rset *rrule.Set, limit time.Time, budget *int) (last time.Time, ok bool) {
-	next := rset.Iterator()
+// ruleLast returns the last occurrence of the component's RRULE, spending from budget.
+// ok is false (index as unbounded) when the rule has neither COUNT nor UNTIL, runs past the
+// horizon, is unparseable, or exhausts the budget. EXDATE is ignored: it can only narrow.
+// Iteration is cut at the horizon so rules that yield nothing stay cheap.
+func ruleLast(comp *ical.Component, start time.Time, budget *int) (last time.Time, ok bool) {
+	opt, err := comp.Props.RecurrenceRule()
+	if err != nil || opt == nil {
+		return time.Time{}, false
+	}
+	limit := start.Add(horizon)
+	cut := false
+	switch {
+	case opt.Until.IsZero() && opt.Count == 0:
+		return time.Time{}, false
+	case opt.Until.After(limit):
+		return time.Time{}, false
+	case opt.Until.IsZero():
+		opt.Until, cut = limit, true
+	}
+	opt.Dtstart = start
+	rule, err := rrule.NewRRule(*opt)
+	if err != nil {
+		return time.Time{}, false
+	}
+	next := rule.Iterator()
+	yielded := 0
 	for *budget > 0 {
 		*budget--
 		occ, more := next()
 		if !more {
-			return last, true
+			// Ended at the horizon before COUNT was reached: the rule continues beyond it.
+			return last, !(cut && yielded < opt.Count)
 		}
-		if occ.After(limit) {
-			return time.Time{}, false
-		}
+		yielded++
 		last = occ
 	}
 	return time.Time{}, false
