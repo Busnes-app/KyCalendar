@@ -40,6 +40,7 @@ type Server struct {
 	mux        *http.ServeMux
 	attemptsMu sync.Mutex
 	attempts   map[string]attemptWindow
+	davFails   davFailures
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
@@ -243,6 +244,11 @@ func (s *Server) routes() {
 	s.scim.RegisterRoutes(s.mux)
 
 	// Embedded React PWA Frontend
+	// App passwords for native CalDAV clients. Everyday users only.
+	s.mux.HandleFunc("GET /api/app-passwords", s.requireEveryday(s.handleListAppPasswords))
+	s.mux.HandleFunc("POST /api/app-passwords", s.requireEveryday(s.handleCreateAppPassword))
+	s.mux.HandleFunc("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
+
 	s.mux.Handle("/", web.Handler())
 }
 
