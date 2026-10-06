@@ -1,6 +1,8 @@
 # kycalendar
 
-The scaffold every Busnes.app server is built from: Go backend, embedded React PWA, SQLite or
+KyCalendar is the Busnes.app suite calendar: personal calendars served to the web app and to
+native CalDAV clients (iOS and macOS Calendar, DAVx5, Thunderbird) with per-device app
+passwords. Built on the suite server base: Go backend, embedded React PWA, SQLite or
 PostgreSQL, local and federated sign-in (KySignOn, OIDC, SAML), SCIM provisioning, and
 disaster recovery through the suite's KyRecovery.
 
