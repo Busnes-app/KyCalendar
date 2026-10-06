@@ -19,14 +19,45 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate key")
 }
 
-func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar) error {
-	cal.CreatedAt = time.Now().UTC()
-	_, err := c.store.db.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, cal.CreatedAt)
-	if err != nil && isUniqueViolation(err) {
-		return ErrAlreadyExists
+// lockOwner serializes quota-checked writes per owner for the rest of tx. A transaction-scoped
+// advisory lock also covers an owner with no calendar rows yet, which row locks cannot. SQLite
+// needs nothing: its single connection already serializes transactions.
+func (c *calendarStore) lockOwner(ctx context.Context, tx *sql.Tx, ownerKind, ownerID string) error {
+	if c.store.driver != "postgres" {
+		return nil
 	}
+	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "calendar-owner:"+ownerKind+":"+ownerID)
 	return err
+}
+
+func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar, maxPerOwner int) error {
+	cal.CreatedAt = time.Now().UTC()
+	tx, err := c.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if maxPerOwner > 0 {
+		if err := c.lockOwner(ctx, tx, cal.OwnerKind, cal.OwnerID); err != nil {
+			return err
+		}
+		var n int
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*) FROM calendars WHERE owner_kind = ? AND owner_id = ?`), cal.OwnerKind, cal.OwnerID).Scan(&n); err != nil {
+			return err
+		}
+		if n >= maxPerOwner {
+			return ErrQuotaExceeded
+		}
+	}
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, cal.CreatedAt)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrAlreadyExists
+		}
+		return err
+	}
+	return tx.Commit()
 }
 
 const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, seq, created_at`
@@ -149,7 +180,7 @@ func (c *calendarStore) currentETag(ctx context.Context, tx *sql.Tx, calendarID,
 	return etag, err == nil, err
 }
 
-func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool) (bool, error) {
+func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits) (bool, error) {
 	sum := sha256.Sum256(o.Data)
 	o.ETag = hex.EncodeToString(sum[:])
 	o.ModifiedAt = time.Now().UTC()
@@ -160,6 +191,21 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	}
 	defer tx.Rollback()
 
+	limited := lim.MaxObjects > 0 || lim.MaxBytes > 0
+	var ownerKind, ownerID string
+	if limited {
+		err := tx.QueryRowContext(ctx, c.q(`SELECT owner_kind, owner_id FROM calendars WHERE id = ?`), o.CalendarID).Scan(&ownerKind, &ownerID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, ErrNotFound
+		} else if err != nil {
+			return false, err
+		}
+		// Owner lock before the calendar row lock in bump: one order for every quota-checked writer.
+		if err := c.lockOwner(ctx, tx, ownerKind, ownerID); err != nil {
+			return false, err
+		}
+	}
+
 	// bump first: its row lock serializes writers per calendar, so the checks below are race-free.
 	if err := c.bump(ctx, tx, o.CalendarID, o.Name, false); err != nil {
 		return false, err
@@ -168,7 +214,7 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	if err != nil {
 		return false, err
 	}
-	if (ifNoneMatch && exists) || (ifMatch != "" && (!exists || etag != ifMatch)) {
+	if (ifNoneMatch && exists) || (ifMatch != "" && (!exists || (ifMatch != "*" && etag != ifMatch))) {
 		return false, ErrPreconditionFailed
 	}
 	var other string
@@ -178,6 +224,19 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 		return false, ErrUIDConflict
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return false, err
+	}
+	if limited {
+		// Usage of every other object the owner has; the one being replaced does not count.
+		var n int
+		var used int64
+		err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*), COALESCE(SUM(LENGTH(o.data)), 0) FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id
+WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name = ?)`), ownerKind, ownerID, o.CalendarID, o.Name).Scan(&n, &used)
+		if err != nil {
+			return false, err
+		}
+		if (lim.MaxObjects > 0 && !exists && n >= lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data)) > lim.MaxBytes) {
+			return false, ErrQuotaExceeded
+		}
 	}
 
 	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -209,7 +268,7 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 	if !exists {
 		return ErrNotFound
 	}
-	if ifMatch != "" && etag != ifMatch {
+	if ifMatch != "" && ifMatch != "*" && etag != ifMatch {
 		return ErrPreconditionFailed
 	}
 	if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name); err != nil {

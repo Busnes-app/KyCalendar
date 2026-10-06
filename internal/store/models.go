@@ -108,6 +108,12 @@ type CalendarObject struct {
 	ModifiedAt                  time.Time
 }
 
+// OwnerLimits caps one owner's calendar objects; zero means no limit.
+type OwnerLimits struct {
+	MaxObjects int
+	MaxBytes   int64
+}
+
 type CalendarChange struct {
 	Seq     int64
 	Name    string

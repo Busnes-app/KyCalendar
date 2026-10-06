@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func calStore(t *testing.T) (store.CalendarStore, *store.Calendar) {
 	}
 	t.Cleanup(func() { st.Close() })
 	c := &store.Calendar{ID: "cal_1", OwnerKind: "user", OwnerID: "usr_a", Slug: "default", Name: "Calendar"}
-	if err := st.Calendars().CreateCalendar(context.Background(), c); err != nil {
+	if err := st.Calendars().CreateCalendar(context.Background(), c, 0); err != nil {
 		t.Fatal(err)
 	}
 	return st.Calendars(), c
@@ -34,7 +35,7 @@ func i64(v int64) *int64 { return &v }
 func TestCreateCalendarSlugUnique(t *testing.T) {
 	cs, _ := calStore(t)
 	dup := &store.Calendar{ID: "cal_2", OwnerKind: "user", OwnerID: "usr_a", Slug: "default", Name: "x"}
-	if err := cs.CreateCalendar(context.Background(), dup); !errors.Is(err, store.ErrAlreadyExists) {
+	if err := cs.CreateCalendar(context.Background(), dup, 0); !errors.Is(err, store.ErrAlreadyExists) {
 		t.Fatalf("want ErrAlreadyExists, got %v", err)
 	}
 }
@@ -43,13 +44,13 @@ func TestPutObjectSeqAndChanges(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
 	o := obj(c.ID, "a.ics", "u1", "v1", 100, i64(200))
-	created, err := cs.PutObject(ctx, o, "", false)
+	created, err := cs.PutObject(ctx, o, "", false, store.OwnerLimits{})
 	if err != nil || !created || o.ETag == "" {
 		t.Fatalf("put: created=%v etag=%q err=%v", created, o.ETag, err)
 	}
 	first := o.ETag
 	o2 := obj(c.ID, "a.ics", "u1", "v2", 100, i64(200))
-	if created, err := cs.PutObject(ctx, o2, first, false); err != nil || created {
+	if created, err := cs.PutObject(ctx, o2, first, false, store.OwnerLimits{}); err != nil || created {
 		t.Fatalf("update: created=%v err=%v", created, err)
 	}
 	if err := cs.DeleteObject(ctx, c.ID, "a.ics", ""); err != nil {
@@ -72,19 +73,19 @@ func TestPutObjectPreconditions(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
 	o := obj(c.ID, "a.ics", "u1", "v1", 100, i64(200))
-	if _, err := cs.PutObject(ctx, o, "", false); err != nil {
+	if _, err := cs.PutObject(ctx, o, "", false, store.OwnerLimits{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v2", 100, i64(200)), "", true); !errors.Is(err, store.ErrPreconditionFailed) {
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v2", 100, i64(200)), "", true, store.OwnerLimits{}); !errors.Is(err, store.ErrPreconditionFailed) {
 		t.Fatalf("If-None-Match on existing: %v", err)
 	}
-	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v2", 100, i64(200)), "stale", false); !errors.Is(err, store.ErrPreconditionFailed) {
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v2", 100, i64(200)), "stale", false, store.OwnerLimits{}); !errors.Is(err, store.ErrPreconditionFailed) {
 		t.Fatalf("stale If-Match: %v", err)
 	}
 	if err := cs.DeleteObject(ctx, c.ID, "a.ics", "stale"); !errors.Is(err, store.ErrPreconditionFailed) {
 		t.Fatalf("stale delete: %v", err)
 	}
-	if _, err := cs.PutObject(ctx, obj(c.ID, "b.ics", "u1", "v1", 100, i64(200)), "", false); !errors.Is(err, store.ErrUIDConflict) {
+	if _, err := cs.PutObject(ctx, obj(c.ID, "b.ics", "u1", "v1", 100, i64(200)), "", false, store.OwnerLimits{}); !errors.Is(err, store.ErrUIDConflict) {
 		t.Fatalf("UID reuse: %v", err)
 	}
 	got, _ := cs.GetObject(ctx, c.ID, "a.ics")
@@ -100,10 +101,10 @@ func TestPutObjectPreconditions(t *testing.T) {
 func TestListObjectsInRange(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
-	cs.PutObject(ctx, obj(c.ID, "past.ics", "p", "x", 10, i64(20)), "", false)
-	cs.PutObject(ctx, obj(c.ID, "in.ics", "i", "x", 100, i64(200)), "", false)
-	cs.PutObject(ctx, obj(c.ID, "forever.ics", "f", "x", 5, nil), "", false)
-	cs.PutObject(ctx, obj(c.ID, "future.ics", "u", "x", 1000, i64(2000)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "past.ics", "p", "x", 10, i64(20)), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, obj(c.ID, "in.ics", "i", "x", 100, i64(200)), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, obj(c.ID, "forever.ics", "f", "x", 5, nil), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, obj(c.ID, "future.ics", "u", "x", 1000, i64(2000)), "", false, store.OwnerLimits{})
 	got, err := cs.ListObjectsInRange(ctx, c.ID, 150, 500)
 	if err != nil {
 		t.Fatal(err)
@@ -120,8 +121,8 @@ func TestListObjectsInRange(t *testing.T) {
 func TestChangesSinceExpired(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
-	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "", false)
-	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "v1", 1, i64(2)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "v1", 1, i64(2)), "", false, store.OwnerLimits{})
 	if err := cs.PruneChanges(ctx, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -150,8 +151,8 @@ func TestSyncEpochStable(t *testing.T) {
 func TestCountObjectsByOwner(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
-	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "x", 1, i64(2)), "", false)
-	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "x", 1, i64(2)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "x", 1, i64(2)), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "x", 1, i64(2)), "", false, store.OwnerLimits{})
 	if n, err := cs.CountObjectsByOwner(ctx, "user", "usr_a"); err != nil || n != 2 {
 		t.Fatalf("count %d %v", n, err)
 	}
@@ -160,12 +161,12 @@ func TestCountObjectsByOwner(t *testing.T) {
 func TestChangesSincePartialPrune(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
-	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "", false)
-	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "v1", 1, i64(2)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "v1", 1, i64(2)), "", false, store.OwnerLimits{})
 	time.Sleep(20 * time.Millisecond)
 	cutoff := time.Now()
 	time.Sleep(20 * time.Millisecond)
-	cs.PutObject(ctx, obj(c.ID, "c.ics", "u3", "v1", 1, i64(2)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "c.ics", "u3", "v1", 1, i64(2)), "", false, store.OwnerLimits{})
 	if err := cs.PruneChanges(ctx, cutoff); err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,7 @@ func TestConcurrentPuts(t *testing.T) {
 	t.Logf("driver=%s", st.Driver())
 	cs := st.Calendars()
 	c := &store.Calendar{ID: "cal_1", OwnerKind: "user", OwnerID: "usr_a", Slug: "default", Name: "Calendar"}
-	if err := cs.CreateCalendar(ctx, c); err != nil {
+	if err := cs.CreateCalendar(ctx, c, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -222,7 +223,7 @@ func TestConcurrentPuts(t *testing.T) {
 	}
 
 	errs := run(20, func(int) error {
-		_, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v", 1, i64(2)), "", true)
+		_, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v", 1, i64(2)), "", true, store.OwnerLimits{})
 		return err
 	})
 	if ok, pf := count(errs, store.ErrPreconditionFailed); ok != 1 || pf != 19 {
@@ -235,7 +236,7 @@ func TestConcurrentPuts(t *testing.T) {
 
 	names := []string{"x.ics", "y.ics"}
 	errs = run(2, func(i int) error {
-		_, err := cs.PutObject(ctx, obj(c.ID, names[i], "same", "v", 1, i64(2)), "", false)
+		_, err := cs.PutObject(ctx, obj(c.ID, names[i], "same", "v", 1, i64(2)), "", false, store.OwnerLimits{})
 		return err
 	})
 	if ok, uc := count(errs, store.ErrUIDConflict); ok != 1 || uc != 1 {
@@ -253,12 +254,135 @@ func TestSumObjectBytesByOwner(t *testing.T) {
 	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_a"); err != nil || n != 0 {
 		t.Fatalf("empty sum %d %v", n, err)
 	}
-	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "héllo", 1, i64(2)), "", false) // 6 bytes, 5 characters
-	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "xyz", 1, i64(2)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "héllo", 1, i64(2)), "", false, store.OwnerLimits{}) // 6 bytes, 5 characters
+	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "xyz", 1, i64(2)), "", false, store.OwnerLimits{})
 	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_a"); err != nil || n != 9 {
 		t.Fatalf("sum %d %v", n, err)
 	}
 	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_other"); err != nil || n != 0 {
 		t.Fatalf("other owner %d %v", n, err)
+	}
+}
+
+func TestPutObjectOwnerLimits(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	lim := store.OwnerLimits{MaxObjects: 2, MaxBytes: 10}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "aaaa", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "aaaaaaaaaa", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatalf("replacement counts only its new size: %v", err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "b", 1, i64(2)), "", false, lim); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("bytes over cap: %v", err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "aaaa", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "b", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "c.ics", "u3", "c", 1, i64(2)), "", false, lim); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("objects over cap: %v", err)
+	}
+	if _, err := cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "bb", 1, i64(2)), "", false, lim); err != nil {
+		t.Fatalf("update at the object cap: %v", err)
+	}
+	cal, _ := cs.GetCalendarBySlug(ctx, "user", "usr_a", "default")
+	if cal.Seq != 5 {
+		t.Fatalf("refused writes must not bump seq: %d", cal.Seq)
+	}
+	if err := cs.CreateCalendar(ctx, &store.Calendar{ID: "cal_2", OwnerKind: "user", OwnerID: "usr_a", Slug: "two", Name: "x"}, 1); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("calendar cap: %v", err)
+	}
+}
+
+func concurrently(n int, f func(i int) error) []error {
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs[i] = f(i)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	return errs
+}
+
+func tally(t *testing.T, errs []error) (ok, quota int) {
+	t.Helper()
+	for _, e := range errs {
+		switch {
+		case e == nil:
+			ok++
+		case errors.Is(e, store.ErrQuotaExceeded):
+			quota++
+		default:
+			t.Errorf("unexpected error: %v", e)
+		}
+	}
+	return ok, quota
+}
+
+// Quotas span calendars, so a per-calendar row lock alone would let concurrent writers overshoot.
+func TestConcurrentQuota(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	t.Logf("driver=%s", st.Driver())
+	cs := st.Calendars()
+	var cals []string
+	for _, owner := range []string{"usr_a", "usr_b"} {
+		for i := 0; i < 4; i++ {
+			id := "cal_" + owner + strconv.Itoa(i)
+			if err := cs.CreateCalendar(ctx, &store.Calendar{ID: id, OwnerKind: "user", OwnerID: owner, Slug: "s" + strconv.Itoa(i), Name: "x"}, 0); err != nil {
+				t.Fatal(err)
+			}
+			cals = append(cals, id)
+		}
+	}
+	put := func(cal string, i int, lim store.OwnerLimits) error {
+		n := strconv.Itoa(i)
+		_, err := cs.PutObject(ctx, obj(cal, "o"+n+".ics", "u"+n, "12345", 1, i64(2)), "", false, lim)
+		return err
+	}
+	errs := concurrently(20, func(i int) error { return put(cals[i%4], i, store.OwnerLimits{MaxObjects: 5}) })
+	if ok, q := tally(t, errs); ok != 5 || q != 15 {
+		t.Fatalf("objects: %d ok, %d quota", ok, q)
+	}
+	errs = concurrently(20, func(i int) error { return put(cals[4+i%4], i, store.OwnerLimits{MaxBytes: 25}) })
+	if ok, q := tally(t, errs); ok != 5 || q != 15 {
+		t.Fatalf("bytes: %d ok, %d quota", ok, q)
+	}
+	errs = concurrently(10, func(i int) error {
+		n := strconv.Itoa(i)
+		return cs.CreateCalendar(ctx, &store.Calendar{ID: "cal_c" + n, OwnerKind: "user", OwnerID: "usr_c", Slug: "s" + n, Name: "x"}, 3)
+	})
+	if ok, q := tally(t, errs); ok != 3 || q != 7 {
+		t.Fatalf("calendars: %d ok, %d quota", ok, q)
+	}
+}
+
+func TestIfMatchWildcard(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "*", false, store.OwnerLimits{}); !errors.Is(err, store.ErrPreconditionFailed) {
+		t.Fatalf("* on missing: %v", err)
+	}
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "", false, store.OwnerLimits{})
+	if _, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v2", 1, i64(2)), "*", false, store.OwnerLimits{}); err != nil {
+		t.Fatalf("* on existing PUT: %v", err)
+	}
+	if err := cs.DeleteObject(ctx, c.ID, "a.ics", "*"); err != nil {
+		t.Fatalf("* on existing DELETE: %v", err)
 	}
 }

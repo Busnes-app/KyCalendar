@@ -390,13 +390,20 @@ func TestCalDAVObjectNames(t *testing.T) {
 	defer ts.Close()
 	cal := "/dav/usr_alice/calendars/default/"
 	ics := map[string]string{"Content-Type": "text/calendar"}
-	for _, n := range []string{".hidden.ics", "-x.ics", "a%20b.ics", "a%00b.ics", "a%0Ab.ics", strings.Repeat("a", 256)} {
+	for _, n := range []string{"%2E", "%2E%2E", "%00", "a%0Ab.ics", "a%7Fb.ics", "a%FFb.ics", strings.Repeat("a", 256)} {
 		if r := rawDAV(t, ts, "PUT", cal+n, "alice", token, evA, ics); r.StatusCode != http.StatusForbidden {
 			t.Fatalf("name %q: %d", n, r.StatusCode)
 		}
 	}
-	good := "A1b2-C3D4_e.f@g+h" + strings.Repeat("a", 238)
-	if r := rawDAV(t, ts, "PUT", cal+good, "alice", token, evA, ics); r.StatusCode != http.StatusCreated {
-		t.Fatalf("valid name: %d", r.StatusCode)
+	// Names are opaque keys: real clients use UIDs, including Outlook's braces and base64.
+	good := []string{"{9A8B7C6D-1111-2222-3333-444455556666}.ics", "040000008200E00074C5B7101A82E008=.ics", "_x.ics", "a~b.ics", "with%20space.ics", strings.Repeat("a", 255)}
+	for i, n := range good {
+		ev := strings.ReplaceAll(evA, "evt-a", "evt-"+strconv.Itoa(i))
+		if r := rawDAV(t, ts, "PUT", cal+n, "alice", token, ev, ics); r.StatusCode != http.StatusCreated {
+			t.Fatalf("name %q: %d", n, r.StatusCode)
+		}
+		if r := rawDAV(t, ts, "GET", cal+n, "alice", token, "", nil); r.StatusCode != http.StatusOK || readAll(r) != ev {
+			t.Fatalf("GET %q: %d", n, r.StatusCode)
+		}
 	}
 }

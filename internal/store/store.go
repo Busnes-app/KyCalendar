@@ -15,6 +15,7 @@ var (
 	ErrPreconditionFailed = errors.New("precondition failed")
 	ErrUIDConflict        = errors.New("uid already used in calendar")
 	ErrSyncTokenExpired   = errors.New("sync token expired")
+	ErrQuotaExceeded      = errors.New("owner quota exceeded")
 )
 
 // Store defines the unified storage contract implemented across SQLite, PostgreSQL, and MySQL.
@@ -110,14 +111,16 @@ type AppPasswordStore interface {
 
 // CalendarStore persists calendars, their objects and the per-calendar change log.
 type CalendarStore interface {
-	CreateCalendar(ctx context.Context, c *Calendar) error
+	// CreateCalendar refuses with ErrQuotaExceeded when the owner already has maxPerOwner calendars (0 = no limit).
+	CreateCalendar(ctx context.Context, c *Calendar, maxPerOwner int) error
 	GetCalendarBySlug(ctx context.Context, ownerKind, ownerID, slug string) (*Calendar, error)
 	ListCalendarsByOwner(ctx context.Context, ownerKind, ownerID string) ([]*Calendar, error)
 	UpdateCalendar(ctx context.Context, id string, name, description, color *string) error
 	GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error)
 	ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error)
 	ListObjectsInRange(ctx context.Context, calendarID string, start, end int64) ([]*CalendarObject, error)
-	PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool) (created bool, err error)
+	// PutObject enforces lim across every calendar of the target calendar's owner, atomically with the write.
+	PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits) (created bool, err error)
 	DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error
 	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
 	PruneChanges(ctx context.Context, before time.Time) error

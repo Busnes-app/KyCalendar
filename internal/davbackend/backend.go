@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
@@ -27,10 +28,20 @@ const (
 	defaultSlug = "default"
 )
 
-var (
-	slugPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
-	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@+-]{0,254}$`)
-)
+var slugPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+
+// validName accepts any opaque object key: 1-255 bytes of UTF-8, no slash, no control characters, not a dot segment.
+func validName(name string) bool {
+	if len(name) == 0 || len(name) > 255 || name == "." || name == ".." || !utf8.ValidString(name) {
+		return false
+	}
+	for _, c := range name {
+		if c == '/' || c < 0x20 || c == 0x7f {
+			return false
+		}
+	}
+	return true
+}
 
 var errQuota = webdav.NewHTTPError(http.StatusInsufficientStorage, errors.New("calendar quota reached"))
 
@@ -50,10 +61,10 @@ func WithIfMatch(ctx context.Context, header string) context.Context {
 	return context.WithValue(ctx, ifMatchKey{}, webdav.ConditionalMatch(header))
 }
 
-// ifMatchETag returns the strong ETag to compare, or "" for none or "*".
+// ifMatchETag returns the store's If-Match: "" for none, "*" for any current version, else the strong ETag.
 func ifMatchETag(m webdav.ConditionalMatch) (string, error) {
 	if !m.IsSet() || m.IsWildcard() {
-		return "", nil
+		return string(m), nil
 	}
 	etag, err := m.ETag()
 	if err != nil {
@@ -80,7 +91,7 @@ func (b *Backend) split(p string) (slug, name string, err error) {
 	if !slugPattern.MatchString(slug) {
 		return "", "", webdav.NewHTTPError(http.StatusNotFound, errors.New("no such calendar"))
 	}
-	if name != "" && !namePattern.MatchString(name) {
+	if name != "" && !validName(name) {
 		return "", "", webdav.NewHTTPError(http.StatusForbidden, errors.New("unsupported object name"))
 	}
 	return slug, name, nil
@@ -94,7 +105,7 @@ func (b *Backend) ensureDefault(ctx context.Context) error {
 	err = b.Store.Calendars().CreateCalendar(ctx, &store.Calendar{
 		ID: "cal_" + uuid.NewString(), OwnerKind: ownerUser, OwnerID: b.User.ID,
 		Slug: defaultSlug, Name: "Calendar",
-	})
+	}, b.MaxCalendarsPerUser)
 	if errors.Is(err, store.ErrAlreadyExists) {
 		return nil
 	}
@@ -170,13 +181,6 @@ func (b *Backend) CreateCalendar(ctx context.Context, cal *caldav.Calendar) erro
 	if err != nil || name != "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars live directly under the home set"))
 	}
-	owned, err := b.Store.Calendars().ListCalendarsByOwner(ctx, ownerUser, b.User.ID)
-	if err != nil {
-		return err
-	}
-	if len(owned) >= b.MaxCalendarsPerUser {
-		return errQuota
-	}
 	display := cal.Name
 	if display == "" {
 		display = slug
@@ -184,9 +188,12 @@ func (b *Backend) CreateCalendar(ctx context.Context, cal *caldav.Calendar) erro
 	err = b.Store.Calendars().CreateCalendar(ctx, &store.Calendar{
 		ID: "cal_" + uuid.NewString(), OwnerKind: ownerUser, OwnerID: b.User.ID,
 		Slug: slug, Name: display, Description: cal.Description, Color: cal.Color,
-	})
-	if errors.Is(err, store.ErrAlreadyExists) {
+	}, b.MaxCalendarsPerUser)
+	switch {
+	case errors.Is(err, store.ErrAlreadyExists):
 		return webdav.NewHTTPError(http.StatusMethodNotAllowed, err)
+	case errors.Is(err, store.ErrQuotaExceeded):
+		return errQuota
 	}
 	return err
 }
@@ -327,37 +334,12 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	if err != nil {
 		return nil, err
 	}
-	oldSize := int64(0)
-	existing, err := b.Store.Calendars().GetObject(ctx, c.ID, name)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		if opts.IfMatch.IsSet() {
-			return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, errors.New("no current representation"))
-		}
-		n, err := b.Store.Calendars().CountObjectsByOwner(ctx, ownerUser, b.User.ID)
-		if err != nil {
-			return nil, err
-		}
-		if n >= b.MaxObjectsPerUser {
-			return nil, errQuota
-		}
-	case err != nil:
-		return nil, err
-	default:
-		oldSize = int64(len(existing.Data))
-	}
-	used, err := b.Store.Calendars().SumObjectBytesByOwner(ctx, ownerUser, b.User.ID)
-	if err != nil {
-		return nil, err
-	}
-	if used-oldSize+int64(len(opts.Raw)) > b.MaxBytesPerUser {
-		return nil, errQuota
-	}
-
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	o := &store.CalendarObject{CalendarID: c.ID, Name: name, UID: info.UID, Data: opts.Raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}
-	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch)
+	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, store.OwnerLimits{MaxObjects: b.MaxObjectsPerUser, MaxBytes: b.MaxBytesPerUser})
 	switch {
+	case errors.Is(err, store.ErrQuotaExceeded):
+		return nil, errQuota
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, err)
 	case errors.Is(err, store.ErrUIDConflict):
