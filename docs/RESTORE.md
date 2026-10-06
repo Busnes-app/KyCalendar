@@ -64,7 +64,7 @@ dump, but nothing in it can be decrypted without `encryption.key`.
 With the binary (from a release, or `go build ./cmd/server`):
 
 ```bash
-ky_server_base restore -capsule Busnes_2eapp.cap-XXXXXXXX.kycap -to ./restored
+kycalendar restore -capsule Busnes_2eapp.cap-XXXXXXXX.kycap -to ./restored
 ```
 
 `-service` defaults to `KY_APP_NAME`, then `Busnes.app`. Pass it only when the backup was made
@@ -81,26 +81,26 @@ if the filtered copy was written in full, so your secrets are never truncated. T
 in `.env` after the drill: see the README's upgrade note for moving off it. Images built before 2026-09-16 can no longer be verified by name: the owner they were attested under is not held by this project, so do not point `--repo` or `--cert-identity` at it. Pin a commit built after that date, or build that commit from source with `docker-compose.build.yml`.
 
 ```bash
-sha=<full commit sha you intend to run, e.g. $(git rev-parse origin/master)>
-d=$(docker buildx imagetools inspect ghcr.io/busnes-app/ky-server-base:$sha --format '{{.Manifest.Digest}}') \
-  && gh attestation verify "oci://ghcr.io/busnes-app/ky-server-base@$d" --repo Busnes-app/ky-server-base \
-       --cert-identity https://github.com/Busnes-app/ky-server-base/.github/workflows/ci.yml@refs/heads/master \
-  && [ "$(gh attestation verify "oci://ghcr.io/busnes-app/ky-server-base@$d" --repo Busnes-app/ky-server-base \
-       --cert-identity https://github.com/Busnes-app/ky-server-base/.github/workflows/ci.yml@refs/heads/master \
+sha=<full commit sha you intend to run, e.g. $(git rev-parse origin/main)>
+d=$(docker buildx imagetools inspect ghcr.io/busnes-app/kycalendar:$sha --format '{{.Manifest.Digest}}') \
+  && gh attestation verify "oci://ghcr.io/busnes-app/kycalendar@$d" --repo Busnes-app/KyCalendar \
+       --cert-identity https://github.com/Busnes-app/KyCalendar/.github/workflows/ci.yml@refs/heads/main \
+  && [ "$(gh attestation verify "oci://ghcr.io/busnes-app/kycalendar@$d" --repo Busnes-app/KyCalendar \
+       --cert-identity https://github.com/Busnes-app/KyCalendar/.github/workflows/ci.yml@refs/heads/main \
        --format json --jq '.[0].verificationResult.statement.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit')" = "$sha" ] \
   && (umask 077; t=$(mktemp ./.env.XXXXXX) && touch .env && { grep -v '^KY_IMAGE=' .env || [ $? -eq 1 ]; } > "$t" \
-      && echo "KY_IMAGE=ghcr.io/busnes-app/ky-server-base@$d" >> "$t" && mv "$t" .env) \
-  && grep -qxF "KY_IMAGE=ghcr.io/busnes-app/ky-server-base@$d" .env
+      && echo "KY_IMAGE=ghcr.io/busnes-app/kycalendar@$d" >> "$t" && mv "$t" .env) \
+  && grep -qxF "KY_IMAGE=ghcr.io/busnes-app/kycalendar@$d" .env
 ```
 
 Then, in the same shell (the check compares against `$d`), refuse to go on unless the image in
-effect is exactly that digest. A source install passes on its `ky_server_base:local` build instead,
+effect is exactly that digest. A source install passes on its `kycalendar:local` build instead,
 since `docker-compose.build.yml` wins over the pin, which is what a source install wants. The
 two refusal messages are distinct on purpose: a broken invocation is not an unpinned image.
 
 ```bash
 imgs=$(docker compose config --images) || { echo 'refusing: compose could not resolve the image'; false; }
-printf '%s\n' "$imgs" | grep -qxF "ghcr.io/busnes-app/ky-server-base@$d" || printf '%s\n' "$imgs" | grep -qxF 'ky_server_base:local' \
+printf '%s\n' "$imgs" | grep -qxF "ghcr.io/busnes-app/kycalendar@$d" || printf '%s\n' "$imgs" | grep -qxF 'kycalendar:local' \
   || { echo "refusing: image in effect is '$imgs', not the digest verified above"; false; }
 ```
 

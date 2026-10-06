@@ -12,6 +12,8 @@ RUN npm run build
 FROM golang:1.27.1-alpine AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
+# go.mod replaces go-webdav with this vendored fork; it must exist before download.
+COPY third_party/ ./third_party/
 RUN go mod download
 COPY . ./
 COPY --from=frontend-builder /app/web/dist ./web/dist

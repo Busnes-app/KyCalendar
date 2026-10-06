@@ -2,18 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A superseded PR run is cancelled. A push to master is not: cancelling it mid-
+# A superseded PR run is cancelled. A push to main is not: cancelling it mid-
 # publish could leave a :<sha> tag in GHCR with no attestation behind it.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NODE_VERSION: "22"
@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           img="ghcr.io/${GITHUB_REPOSITORY,,}"
-          ident="https://github.com/$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/master"
+          ident="https://github.com/$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main"
           # every compose file and every non-historical doc an operator might copy from;
           # superpowers plans are historical records and may retain old coordinates.
           mapfile -t all < <(git ls-files 'docker-compose*.yml' '*.md' | grep -v '^docs/superpowers/')
@@ -242,24 +242,24 @@ jobs:
 
       # Hand the exact image the checks above ran against to the publish job,
       # so what gets pushed is what was tested, never a second build.
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           docker save kycalendar:ci | gzip > tested-image.tar.gz
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tested-image
           path: tested-image.tar.gz
           retention-days: 1
 
-  # Publishes the image CI tested: only for pushes to master, only
+  # Publishes the image CI tested: only for pushes to main, only
   # after every job passed, and with no checkout and no build of its own, so
   # the pushed bytes are the tested bytes. A pull request from a fork must
   # never reach this job or write a package.
   publish:
     needs: [go, postgres, web, browser, security, smoke, docker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # No concurrency group here on purpose: GitHub cancels a *pending* job when a
     # newer one queues into the same group, which would leave that commit with no
@@ -312,20 +312,20 @@ jobs:
         run: |
           set -euo pipefail
           gh attestation verify "oci://$NAME@$DIGEST" --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/master"
+            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main"
 
 
   # :latest advances only to an image whose provenance verified above, and only
-  # to the current tip of master. Serialised here, not in publish: a pending
+  # to the current tip of main. Serialised here, not in publish: a pending
   # promote cancelled by a newer one queuing is harmless, since a newer run
   # existing is exactly what makes this commit no longer the tip. Promotion is
   # by digest and the result is asserted, so :latest is the attested manifest.
   promote:
     needs: publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
-      group: promote-master
+      group: promote-main
       cancel-in-progress: false
     permissions:
       contents: read
@@ -340,9 +340,9 @@ jobs:
           DIGEST: ${{ needs.publish.outputs.digest }}
         run: |
           set -euo pipefail
-          tip="$(gh api "repos/$GITHUB_REPOSITORY/branches/master" --jq .commit.sha)"
+          tip="$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)"
           if [ "$tip" != "$GITHUB_SHA" ]; then
-            echo "Published \`$NAME@$DIGEST\` as \`:$GITHUB_SHA\` only: master has moved on to $tip" >> "$GITHUB_STEP_SUMMARY"
+            echo "Published \`$NAME@$DIGEST\` as \`:$GITHUB_SHA\` only: main has moved on to $tip" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           # --prefer-index=false: with the default, buildx wraps a single manifest in a
@@ -355,5 +355,5 @@ jobs:
             exit 1
           fi
           gh attestation verify "oci://$NAME:latest" --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/master"
+            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main"
           echo "Published \`$NAME@$DIGEST\` as \`:latest\` and \`:$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
