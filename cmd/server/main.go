@@ -108,6 +108,21 @@ func runServer() {
 		}
 	}
 
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			if err := st.Calendars().PruneChanges(ctx, time.Now().Add(-90*24*time.Hour)); err != nil {
+				log.Printf("calendar change prune failed: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
 	srv := api.NewServer(cfg, st)
 	backupDone := make(chan struct{})
 	go backupLoop(ctx, cfg, st, backupDone)

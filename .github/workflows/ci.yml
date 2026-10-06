@@ -88,6 +88,9 @@ jobs:
       - name: Tests with race detector and coverage
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
 
+      - name: Vendored go-webdav tests
+        run: go -C third_party/go-webdav test ./...
+
       - name: Coverage summary
         run: |
           go tool cover -func=coverage.out | tail -n 1 | tee -a "$GITHUB_STEP_SUMMARY"

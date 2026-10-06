@@ -81,6 +81,19 @@ a cap gets 507 Insufficient Storage. Each limit must be positive or startup fail
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
 | `KY_CALENDAR_MAX_BYTES_PER_USER` | `268435456` (256 MiB) | Stored event bytes across all of a user's calendars. |
 
+## Connect a phone
+
+Native clients need the server on HTTPS. Sign in as an everyday user (administrators are refused
+on CalDAV), open **Phones & apps**, name the device and create an app password. The page shows
+the server, your user name and the password once; revoke it there at any time.
+
+- iPhone and iPad: Settings > Calendar > Accounts > Add Account > Other > Add CalDAV Account.
+- Android: DAVx5 > Add account > Login with URL and user name, URL `https://<your host>/`.
+- Thunderbird: New Calendar > On the Network, location `https://<your host>/`.
+
+Enter the app password where the client asks for a password. Per-user caps are in
+[Calendar limits](#calendar-limits).
+
 ## Disaster recovery
 
 Every backup is one `.kycap` capsule: the database snapshot, the deployment's encryption key,

@@ -254,7 +254,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `make lint` equivalent: gofmt, `go vet`, `go mod tidy`/`verify`
-- `go test -race` with coverage on SQLite, and the same suite against PostgreSQL 17
+- `go test -race` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17
 - Frontend vitest suite, then typecheck/build plus a check that committed `web/dist` matches source (it is embedded in the binary)
 - `govulncheck` and `npm audit --audit-level=high`
 - `scripts/smoke-test.sh`: runs the built binary and asserts CLI, auth, session, and SPA behavior
@@ -262,7 +262,16 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - Chromium regressions against the built server: production CSP/worker, themes, responsive layout and keyboard dialogs; the browser job gates publishing.
 - On a push to `master` that passes every job, `publish` pushes the exact image the Docker check ran against (handed over as an artifact, no rebuild) to `ghcr.io/busnes-app/kycalendar:<commit sha>`, attests it and verifies the attestation pinned to this workflow on `master`; `promote` then moves `:latest` to that digest, only at the tip of `master`, and asserts the tag resolves to the attested digest. `docker-compose.yml` names the published image and never builds; source installs add `docker-compose.build.yml` to the `COMPOSE_FILE` chain in `.env` (overlay tags `kycalendar:local`) so every compose command, recovery docs included, uses the local build.
 
-Run the same checks locally with `make ci` (`tidy-check lint test-race test-web smoke`); add `make test-postgres` when a Postgres instance is available.
+Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork test-web smoke`); add `make test-postgres` when a Postgres instance is available.
+
+#### Plan 1 CalDAV contracts
+
+- DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; any other user's home is 403.
+- App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
+- Administrators are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
+- VEVENT only. PUT bodies are stored and served as the raw bytes received; the parsed form is used only for validation, indexing and filter matching.
+- Change rows older than 90 days are pruned daily by `cmd/server`; a sync token older than the prune horizon gets `ErrSyncTokenExpired` and the client resyncs.
+- Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
 
 #### Server child DOX index
 
