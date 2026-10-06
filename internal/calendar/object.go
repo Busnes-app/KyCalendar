@@ -36,12 +36,28 @@ const horizon = 100 * 365 * 24 * time.Hour
 // exhausting it indexes the object as unbounded.
 const maxIndexOccurrences = 100000
 
+// maxRecurringComponents bounds RRULE-bearing VEVENTs evaluated per object: a rule can burn CPU
+// without yielding occurrences, so the occurrence budget alone does not cap the work.
+const maxRecurringComponents = 10
+
+// fastFreq reports an RRULE with FREQ=SECONDLY or MINUTELY, which is never expanded.
+func fastFreq(comp *ical.Component) bool {
+	for _, p := range comp.Props[ical.PropRecurrenceRule] {
+		for _, part := range strings.Split(strings.ToUpper(p.Value), ";") {
+			if part == "FREQ=SECONDLY" || part == "FREQ=MINUTELY" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Inspect validates a decoded calendar object and computes its index bounds.
 func Inspect(cal *ical.Calendar) (Object, error) {
 	var o Object
 	first, last := int64(0), int64(0)
 	unbounded, seen := false, false
-	budget := maxIndexOccurrences
+	budget, recurring := maxIndexOccurrences, 0
 
 	for _, comp := range cal.Children {
 		switch comp.Name {
@@ -67,8 +83,16 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 		compFirst, compLast := start.Add(-slack), end.Add(slack)
 
 		if comp.Props.Get(ical.PropRecurrenceRule) != nil && !unbounded {
-			rset, err := comp.RecurrenceSet(time.UTC)
-			if err != nil || rset == nil {
+			recurring++
+			rset, err := (*rrule.Set)(nil), error(nil)
+			if recurring > maxRecurringComponents || fastFreq(comp) {
+				unbounded = true
+			} else {
+				rset, err = comp.RecurrenceSet(time.UTC)
+			}
+			if unbounded {
+				// Not expanded: too many rules, or too fine-grained to index cheaply.
+			} else if err != nil || rset == nil {
 				// Not expandable here (e.g. unknown TZID); index conservatively.
 				unbounded = true
 			} else if lastOcc, ok := lastOccurrence(rset, start.Add(horizon), &budget); !ok {
@@ -122,16 +146,18 @@ func lastOccurrence(rset *rrule.Set, limit time.Time, budget *int) (last time.Ti
 
 // rdateBounds returns the widest span of all RDATE instances (zero times when there are none).
 // go-ical's RecurrenceSet does not read RDATE, so it is scanned here. ok is false when a value
-// is unparseable or the budget runs out. Parsing is bounded by object size, so it always finishes.
+// is unparseable or the budget runs out, at which point parsing stops.
 func rdateBounds(comp *ical.Component, dur time.Duration, budget *int) (first, last time.Time, ok bool) {
 	ok = true
 	for _, p := range comp.Props[ical.PropRecurrenceDates] {
+		loc, zslack := rdateZone(&p)
 		for _, v := range strings.Split(p.Value, ",") {
-			*budget--
-			if *budget < 0 {
-				ok = false
+			if *budget <= 0 {
+				// Out of budget: stop parsing; FirstStart falls to the epoch to stay conservative.
+				return time.Unix(0, 0), last, false
 			}
-			start, end, slack, err := parseRDate(&p, strings.TrimSpace(v), dur)
+			*budget--
+			start, end, slack, err := parseRDate(strings.TrimSpace(v), loc, zslack, dur)
 			if err != nil {
 				ok = false
 				continue
@@ -142,18 +168,23 @@ func rdateBounds(comp *ical.Component, dur time.Duration, budget *int) (first, l
 	return first, last, ok
 }
 
+// rdateZone resolves an RDATE property's zone once; slack is set when it is unknown.
+func rdateZone(p *ical.Prop) (*time.Location, time.Duration) {
+	tzid := p.Params.Get(ical.ParamTimezoneID)
+	if tzid == "" {
+		return time.UTC, 0
+	}
+	if l, err := time.LoadLocation(tzid); err == nil {
+		return l, 0
+	}
+	return time.UTC, zoneSlack
+}
+
 // parseRDate reads one RDATE value: DATE, DATE-TIME, or PERIOD (start/end or start/duration).
-func parseRDate(p *ical.Prop, v string, dur time.Duration) (start, end time.Time, slack time.Duration, err error) {
+func parseRDate(v string, loc *time.Location, slack, dur time.Duration) (start, end time.Time, _ time.Duration, err error) {
 	startText, rest, isPeriod := strings.Cut(v, "/")
-	loc := time.UTC
-	if tzid := p.Params.Get(ical.ParamTimezoneID); tzid != "" {
-		if l, lerr := time.LoadLocation(tzid); lerr == nil {
-			loc = l
-		} else {
-			slack = zoneSlack
-		}
-	} else if !strings.HasSuffix(startText, "Z") {
-		slack = zoneSlack
+	if !strings.HasSuffix(startText, "Z") && loc == time.UTC {
+		slack = zoneSlack // floating, or TZID unresolved
 	}
 	start, err = parseWall(startText, loc)
 	if err != nil {
@@ -161,7 +192,7 @@ func parseRDate(p *ical.Prop, v string, dur time.Duration) (start, end time.Time
 	}
 	end = start.Add(dur)
 	if !isPeriod {
-		return
+		return start, end, slack, nil
 	}
 	if strings.HasPrefix(rest, "P") || strings.HasPrefix(rest, "+P") || strings.HasPrefix(rest, "-P") {
 		d, derr := (&ical.Prop{Value: rest}).Duration()
@@ -172,7 +203,7 @@ func parseRDate(p *ical.Prop, v string, dur time.Duration) (start, end time.Time
 	} else if end, err = parseWall(rest, loc); err != nil {
 		return
 	}
-	return
+	return start, end, slack, nil
 }
 
 func parseWall(s string, loc *time.Location) (time.Time, error) {

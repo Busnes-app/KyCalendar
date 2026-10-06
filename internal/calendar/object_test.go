@@ -215,3 +215,51 @@ func TestInspectRecurrenceSetErrorIsUnbounded(t *testing.T) {
 		t.Fatalf("want nil LastEnd, got %d", *o.LastEnd)
 	}
 }
+
+func TestInspectManyEmptyRulesAreBounded(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\n")
+	for i := 0; i < 2000; i++ {
+		b.WriteString("BEGIN:VEVENT\nUID:r\nDTSTAMP:20261001T000000Z\n")
+		if i > 0 {
+			b.WriteString("RECURRENCE-ID:" + time.Unix(unix("20261007T090000Z")+int64(i)*3600, 0).UTC().Format("20060102T150405Z") + "\n")
+		}
+		b.WriteString("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30\nEND:VEVENT\n")
+	}
+	b.WriteString("END:VCALENDAR\n")
+	cal := decode(t, b.String())
+	done := make(chan Object, 1)
+	go func() {
+		o, _ := Inspect(cal)
+		done <- o
+	}()
+	select {
+	case o := <-done:
+		if o.LastEnd != nil {
+			t.Fatalf("want unbounded, got %d", *o.LastEnd)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Inspect did not return within 1s")
+	}
+}
+
+func TestInspectSubHourlyRuleIsUnbounded(t *testing.T) {
+	o, err := Inspect(decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=MINUTELY;COUNT=5\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.LastEnd != nil {
+		t.Fatalf("want nil LastEnd, got %d", *o.LastEnd)
+	}
+}
+
+func TestInspectRDateBudgetExhaustion(t *testing.T) {
+	vals := strings.Repeat("20261015T090000Z,", maxIndexOccurrences+1) + "20261016T090000Z"
+	o, err := Inspect(decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRDATE:"+vals+"\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.LastEnd != nil || o.FirstStart > unix("20261007T090000Z") {
+		t.Fatalf("%+v", o)
+	}
+}
