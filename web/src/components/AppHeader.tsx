@@ -19,6 +19,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
     { id: 'scim', label: 'Directory & SCIM', icon: Users },
     { id: 'backup', label: 'KyBackup (Feature 0)', icon: Archive },
     { id: 'settings', label: 'Settings & DB', icon: SettingsIcon },
+    ...(user?.role !== 'admin' ? [{ id: 'devices', label: 'Phones & apps', icon: Smartphone }] : []),
   ];
 
   return (

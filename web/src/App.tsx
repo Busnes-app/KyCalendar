@@ -6,6 +6,7 @@ import { ChangePassword } from './pages/ChangePassword';
 import { Backup } from './pages/Backup';
 import { SCIMAdmin } from './pages/SCIMAdmin';
 import { Settings } from './pages/Settings';
+import AppPasswords from './pages/AppPasswords';
 import './styles/theme.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
@@ -107,6 +108,7 @@ export const App: React.FC = () => {
         {activeTab === 'scim' && <SCIMAdmin />}
         {activeTab === 'backup' && <Backup />}
         {activeTab === 'settings' && <Settings settings={settings} />}
+        {activeTab === 'devices' && user && <AppPasswords username={user.username} />}
       </main>
     </div>
   );
