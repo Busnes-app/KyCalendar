@@ -131,3 +131,87 @@ func TestInspectOverrideExtendsBounds(t *testing.T) {
 		t.Fatalf("moved occurrence must extend LastEnd: %+v", o)
 	}
 }
+
+func TestInspectRDate(t *testing.T) {
+	base := "DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\n"
+	cases := []struct {
+		name      string
+		body      string
+		wantFirst int64
+		wantLast  int64 // 0: nil
+	}{
+		{"late with rrule", base + "RRULE:FREQ=DAILY;COUNT=2\nRDATE:20300101T090000Z\n", unix("20261007T090000Z"), unix("20300101T100000Z")},
+		{"rdate only", base + "RDATE:20261015T090000Z,20261020T090000Z\n", unix("20261007T090000Z"), unix("20261020T100000Z")},
+		{"before dtstart", base + "RDATE:20260101T090000Z\n", unix("20260101T090000Z"), unix("20261007T100000Z")},
+		{"period end", base + "RDATE;VALUE=PERIOD:20261101T090000Z/20261101T120000Z\n", unix("20261007T090000Z"), unix("20261101T120000Z")},
+		{"period duration", base + "RDATE;VALUE=PERIOD:20261101T090000Z/PT3H\n", unix("20261007T090000Z"), unix("20261101T120000Z")},
+		{"unparseable", base + "RDATE:garbage\n", unix("20261007T090000Z"), 0},
+	}
+	for _, c := range cases {
+		o, err := Inspect(decode(t, ev(c.body)))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if o.FirstStart > c.wantFirst {
+			t.Errorf("%s: FirstStart %d > %d", c.name, o.FirstStart, c.wantFirst)
+		}
+		switch {
+		case c.wantLast == 0 && o.LastEnd != nil:
+			t.Errorf("%s: want nil LastEnd, got %d", c.name, *o.LastEnd)
+		case c.wantLast != 0 && (o.LastEnd == nil || *o.LastEnd < c.wantLast):
+			t.Errorf("%s: LastEnd %v < %d", c.name, o.LastEnd, c.wantLast)
+		}
+	}
+	o, _ := Inspect(decode(t, ev(base+"RDATE:20261015T090000Z\n")))
+	if o.LastEnd == nil || *o.LastEnd != unix("20261015T100000Z") {
+		t.Errorf("exact utc rdate should not widen: %+v", o)
+	}
+}
+
+func TestInspectDurationWithUnknownTZID(t *testing.T) {
+	o, err := Inspect(decode(t, ev("DTSTART;TZID=Eastern Standard Time:20261007T090000\nDURATION:PT10H\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wall-clock start read as UTC, plus DURATION, plus 14h slack.
+	if want := unix("20261008T090000Z"); o.LastEnd == nil || *o.LastEnd < want {
+		t.Fatalf("DURATION ignored: %+v want >= %d", o, want)
+	}
+}
+
+func TestInspectOccurrenceBudgetIsPerObject(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\n")
+	for i := 0; i < 200; i++ {
+		b.WriteString("BEGIN:VEVENT\nUID:r\nDTSTAMP:20261001T000000Z\n")
+		if i > 0 {
+			b.WriteString("RECURRENCE-ID:" + time.Unix(unix("20261007T090000Z")+int64(i)*3600, 0).UTC().Format("20060102T150405Z") + "\n")
+		}
+		b.WriteString("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=SECONDLY;COUNT=1000000\nEND:VEVENT\n")
+	}
+	b.WriteString("END:VCALENDAR\n")
+	cal := decode(t, b.String())
+	done := make(chan Object, 1)
+	go func() {
+		o, _ := Inspect(cal)
+		done <- o
+	}()
+	select {
+	case o := <-done:
+		if o.LastEnd != nil {
+			t.Fatalf("budget exhaustion must index as unbounded, got %d", *o.LastEnd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Inspect did not return within 2s")
+	}
+}
+
+func TestInspectRecurrenceSetErrorIsUnbounded(t *testing.T) {
+	o, err := Inspect(decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE;TZID=Eastern Standard Time:20261008T090000\n")))
+	if err != nil {
+		t.Fatalf("must accept: %v", err)
+	}
+	if o.LastEnd != nil {
+		t.Fatalf("want nil LastEnd, got %d", *o.LastEnd)
+	}
+}
