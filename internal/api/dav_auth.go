@@ -42,15 +42,33 @@ func (f *davFailures) blocked(key string, limit int, now time.Time) (bool, time.
 func (f *davFailures) fail(key string, now time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.seen == nil || len(f.seen) >= davFailKeysCap {
+	if f.seen == nil {
 		f.seen = map[string]davFailure{}
 	}
-	e := f.seen[key]
+	e, known := f.seen[key]
+	if !known && len(f.seen) >= davFailKeysCap {
+		f.makeRoom(now)
+	}
 	if now.Sub(e.since) > davFailWindow {
 		e = davFailure{since: now}
 	}
 	e.count++
 	f.seen[key] = e
+}
+
+// makeRoom drops expired entries, then the single oldest one; live lockouts are never mass-reset.
+func (f *davFailures) makeRoom(now time.Time) {
+	oldest, oldestAt := "", now
+	for k, e := range f.seen {
+		if now.Sub(e.since) > davFailWindow {
+			delete(f.seen, k)
+		} else if e.since.Before(oldestAt) || oldest == "" {
+			oldest, oldestAt = k, e.since
+		}
+	}
+	if len(f.seen) >= davFailKeysCap {
+		delete(f.seen, oldest)
+	}
 }
 
 type davUserKey struct{}
@@ -72,6 +90,10 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			davChallenge(w)
 			return
 		}
+		if !validDAVUsername(username) {
+			davChallenge(w)
+			return
+		}
 		now := time.Now()
 		ipKey, userKey := "ip:"+s.requestIP(r), "user:"+username
 		for _, k := range []struct {
@@ -89,7 +111,7 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 		if !ok {
 			s.davFails.fail(ipKey, now)
 			s.davFails.fail(userKey, now)
-			_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: "user:" + username, IPAddress: s.requestIP(r)})
+			_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: s.davAuditResource(r.Context(), username), IPAddress: s.requestIP(r)})
 			davChallenge(w)
 			return
 		}
@@ -99,6 +121,29 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), davUserKey{}, user)))
 	})
+}
+
+const davMaxUsername = 64
+
+// validDAVUsername bounds attacker-controlled input before it keys the limiter or touches the store.
+func validDAVUsername(name string) bool {
+	if name == "" || len(name) > davMaxUsername {
+		return false
+	}
+	for _, c := range name {
+		if c < 0x20 || c == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// davAuditResource names a failed login's target by user ID; unknown names are never logged.
+func (s *Server) davAuditResource(ctx context.Context, username string) string {
+	if u, err := s.store.Users().GetUserByUsername(ctx, username); err == nil {
+		return u.ID
+	}
+	return "user:unknown"
 }
 
 // checkAppPassword resolves the user only if the token is theirs and they are active.
