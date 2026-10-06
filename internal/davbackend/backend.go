@@ -27,29 +27,39 @@ const (
 	defaultSlug = "default"
 )
 
-var slugPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+var (
+	slugPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@+-]{0,254}$`)
+)
+
+var errQuota = webdav.NewHTTPError(http.StatusInsufficientStorage, errors.New("calendar quota reached"))
 
 // Backend is built per request; User is the authenticated, active, non-admin user.
 type Backend struct {
-	Store             store.Store
-	User              *store.User
-	MaxObjectsPerUser int
+	Store               store.Store
+	User                *store.User
+	MaxObjectsPerUser   int
+	MaxCalendarsPerUser int
+	MaxBytesPerUser     int64
 }
 
 type ifMatchKey struct{}
 
 // WithIfMatch carries a DELETE If-Match header, which go-webdav does not pass to backends.
-func WithIfMatch(ctx context.Context, etag string) context.Context {
-	etag = strings.Trim(etag, `"`)
-	if etag == "*" {
-		etag = "" // any current version; DeleteObject already 404s a missing one
-	}
-	return context.WithValue(ctx, ifMatchKey{}, etag)
+func WithIfMatch(ctx context.Context, header string) context.Context {
+	return context.WithValue(ctx, ifMatchKey{}, webdav.ConditionalMatch(header))
 }
 
-func ifMatchFrom(ctx context.Context) string {
-	v, _ := ctx.Value(ifMatchKey{}).(string)
-	return v
+// ifMatchETag returns the strong ETag to compare, or "" for none or "*".
+func ifMatchETag(m webdav.ConditionalMatch) (string, error) {
+	if !m.IsSet() || m.IsWildcard() {
+		return "", nil
+	}
+	etag, err := m.ETag()
+	if err != nil {
+		return "", webdav.NewHTTPError(http.StatusBadRequest, err)
+	}
+	return etag, nil
 }
 
 func (b *Backend) principal() string { return Prefix + "/" + b.User.ID + "/" }
@@ -67,8 +77,11 @@ func (b *Backend) split(p string) (slug, name string, err error) {
 		return "", "", webdav.NewHTTPError(http.StatusForbidden, errors.New("path outside the user's calendars"))
 	}
 	slug, name, _ = strings.Cut(rest, "/")
-	if !slugPattern.MatchString(slug) || strings.Contains(name, "/") {
+	if !slugPattern.MatchString(slug) {
 		return "", "", webdav.NewHTTPError(http.StatusNotFound, errors.New("no such calendar"))
+	}
+	if name != "" && !namePattern.MatchString(name) {
+		return "", "", webdav.NewHTTPError(http.StatusForbidden, errors.New("unsupported object name"))
 	}
 	return slug, name, nil
 }
@@ -157,6 +170,13 @@ func (b *Backend) CreateCalendar(ctx context.Context, cal *caldav.Calendar) erro
 	if err != nil || name != "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars live directly under the home set"))
 	}
+	owned, err := b.Store.Calendars().ListCalendarsByOwner(ctx, ownerUser, b.User.ID)
+	if err != nil {
+		return err
+	}
+	if len(owned) >= b.MaxCalendarsPerUser {
+		return errQuota
+	}
 	display := cal.Name
 	if display == "" {
 		display = slug
@@ -183,15 +203,12 @@ func (b *Backend) UpdateCalendar(ctx context.Context, p string, u *caldav.Calend
 	return b.Store.Calendars().UpdateCalendar(ctx, c.ID, u.Name, u.Description, u.Color)
 }
 
-func (b *Backend) toObject(slug string, o *store.CalendarObject) (*caldav.CalendarObject, error) {
-	data, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
-	if err != nil {
-		return nil, fmt.Errorf("stored object %s/%s does not parse: %w", slug, o.Name, err)
-	}
-	return &caldav.CalendarObject{
+// toObject serves the stored bytes; Data stays nil because the fork writes Raw everywhere.
+func (b *Backend) toObject(slug string, o *store.CalendarObject) caldav.CalendarObject {
+	return caldav.CalendarObject{
 		Path: b.home() + slug + "/" + o.Name, ModTime: o.ModifiedAt, ContentLength: int64(len(o.Data)),
-		ETag: o.ETag, Data: data, Raw: o.Data,
-	}, nil
+		ETag: o.ETag, Raw: o.Data,
+	}
 }
 
 func (b *Backend) objectAt(ctx context.Context, p string) (string, *store.Calendar, string, error) {
@@ -215,19 +232,16 @@ func (b *Backend) GetCalendarObject(ctx context.Context, p string, req *caldav.C
 	if err != nil {
 		return nil, err
 	}
-	return b.toObject(slug, o)
+	co := b.toObject(slug, o)
+	return &co, nil
 }
 
-func (b *Backend) convert(slug string, list []*store.CalendarObject) ([]caldav.CalendarObject, error) {
+func (b *Backend) convert(slug string, list []*store.CalendarObject) []caldav.CalendarObject {
 	out := make([]caldav.CalendarObject, 0, len(list))
 	for _, o := range list {
-		co, err := b.toObject(slug, o)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *co)
+		out = append(out, b.toObject(slug, o))
 	}
-	return out, nil
+	return out
 }
 
 func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
@@ -239,7 +253,7 @@ func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav
 	if err != nil {
 		return nil, err
 	}
-	return b.convert(slug, list)
+	return b.convert(slug, list), nil
 }
 
 func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
@@ -248,7 +262,8 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 		return nil, err
 	}
 	var list []*store.CalendarObject
-	if r, ok := eventRange(q); ok {
+	r, ranged := eventRange(q)
+	if ranged {
 		list, err = b.Store.Calendars().ListObjectsInRange(ctx, c.ID, r[0], r[1])
 	} else {
 		list, err = b.Store.Calendars().ListObjects(ctx, c.ID)
@@ -258,16 +273,19 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 	}
 	out := make([]caldav.CalendarObject, 0, len(list))
 	for _, o := range list {
-		co, err := b.toObject(slug, o)
-		if err != nil {
-			return nil, err
+		co := b.toObject(slug, o)
+		// A time-range query never expands an unbounded object: the index already counts it as overlapping.
+		if ranged && o.LastEnd == nil {
+			out = append(out, co)
+			continue
 		}
-		// Unbounded objects are never expanded: the index already counts them as overlapping.
+		if co.Data, err = ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err != nil {
+			return nil, fmt.Errorf("stored object %s/%s does not parse: %w", slug, o.Name, err)
+		}
 		// Keep an object when matching errors (e.g. an unknown TZID): an extra result is harmless, a missing one is not.
-		if o.LastEnd == nil {
-			out = append(out, *co)
-		} else if ok, err := caldav.Match(q.CompFilter, co); ok || err != nil {
-			out = append(out, *co)
+		if ok, err := caldav.Match(q.CompFilter, &co); ok || err != nil {
+			co.Data = nil
+			out = append(out, co)
 		}
 	}
 	return out, nil
@@ -305,24 +323,37 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	case err != nil:
 		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarData)
 	}
-	if _, err := b.Store.Calendars().GetObject(ctx, c.ID, name); errors.Is(err, store.ErrNotFound) {
+	ifMatch, err := ifMatchETag(opts.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	oldSize := int64(0)
+	existing, err := b.Store.Calendars().GetObject(ctx, c.ID, name)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		if opts.IfMatch.IsSet() {
+			return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, errors.New("no current representation"))
+		}
 		n, err := b.Store.Calendars().CountObjectsByOwner(ctx, ownerUser, b.User.ID)
 		if err != nil {
 			return nil, err
 		}
 		if n >= b.MaxObjectsPerUser {
-			return nil, webdav.NewHTTPError(http.StatusInsufficientStorage, errors.New("calendar quota reached"))
+			return nil, errQuota
 		}
-	} else if err != nil {
+	case err != nil:
+		return nil, err
+	default:
+		oldSize = int64(len(existing.Data))
+	}
+	used, err := b.Store.Calendars().SumObjectBytesByOwner(ctx, ownerUser, b.User.ID)
+	if err != nil {
 		return nil, err
 	}
-
-	ifMatch := ""
-	if opts.IfMatch.IsSet() && !opts.IfMatch.IsWildcard() {
-		if ifMatch, err = opts.IfMatch.ETag(); err != nil {
-			return nil, webdav.NewHTTPError(http.StatusBadRequest, err)
-		}
+	if used-oldSize+int64(len(opts.Raw)) > b.MaxBytesPerUser {
+		return nil, errQuota
 	}
+
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	o := &store.CalendarObject{CalendarID: c.ID, Name: name, UID: info.UID, Data: opts.Raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}
 	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch)
@@ -345,8 +376,15 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 	if name == "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars cannot be deleted over CalDAV"))
 	}
-	err = b.Store.Calendars().DeleteObject(ctx, c.ID, name, ifMatchFrom(ctx))
+	m, _ := ctx.Value(ifMatchKey{}).(webdav.ConditionalMatch)
+	ifMatch, err := ifMatchETag(m)
+	if err != nil {
+		return err
+	}
+	err = b.Store.Calendars().DeleteObject(ctx, c.ID, name, ifMatch)
 	switch {
+	case errors.Is(err, store.ErrNotFound) && m.IsSet():
+		return webdav.NewHTTPError(http.StatusPreconditionFailed, err)
 	case errors.Is(err, store.ErrNotFound):
 		return webdav.NewHTTPError(http.StatusNotFound, err)
 	case errors.Is(err, store.ErrPreconditionFailed):
@@ -379,9 +417,7 @@ func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.Sy
 		if err != nil {
 			return nil, err
 		}
-		if res.Updated, err = b.convert(slug, list); err != nil {
-			return nil, err
-		}
+		res.Updated = b.convert(slug, list)
 		res.SyncToken = calendar.FormatSyncToken(epoch, c.Seq)
 		return res, nil
 	}
@@ -413,11 +449,7 @@ func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.Sy
 		if err != nil {
 			return nil, err
 		}
-		co, err := b.toObject(slug, o)
-		if err != nil {
-			return nil, err
-		}
-		res.Updated = append(res.Updated, *co)
+		res.Updated = append(res.Updated, b.toObject(slug, o))
 	}
 	res.SyncToken = calendar.FormatSyncToken(epoch, maxSeq)
 	return res, nil

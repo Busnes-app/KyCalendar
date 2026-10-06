@@ -28,7 +28,9 @@ type Config struct {
 
 // CalendarConfig bounds per-user calendar storage.
 type CalendarConfig struct {
-	MaxObjectsPerUser int `json:"max_objects_per_user"`
+	MaxObjectsPerUser   int   `json:"max_objects_per_user"`
+	MaxCalendarsPerUser int   `json:"max_calendars_per_user"`
+	MaxBytesPerUser     int64 `json:"max_bytes_per_user"`
 }
 
 // ServerConfig defines HTTP and network settings.
@@ -163,9 +165,19 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("KY_BACKUP_KEEP: must be at least 1, got %d", backupKeep)
 	}
 
-	maxObjects := getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000)
-	if maxObjects <= 0 {
-		return nil, fmt.Errorf("KY_CALENDAR_MAX_OBJECTS_PER_USER must be positive")
+	calCfg := CalendarConfig{
+		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
+		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
+		MaxBytesPerUser:     int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", 256<<20)),
+	}
+	for key, v := range map[string]int64{
+		"KY_CALENDAR_MAX_OBJECTS_PER_USER":   int64(calCfg.MaxObjectsPerUser),
+		"KY_CALENDAR_MAX_CALENDARS_PER_USER": int64(calCfg.MaxCalendarsPerUser),
+		"KY_CALENDAR_MAX_BYTES_PER_USER":     calCfg.MaxBytesPerUser,
+	} {
+		if v <= 0 {
+			return nil, fmt.Errorf("%s must be positive", key)
+		}
 	}
 
 	trustedProxies, err := ParseTrustedProxies(getEnv("KY_TRUSTED_PROXIES", ""))
@@ -228,7 +240,7 @@ func LoadFromEnv() (*Config, error) {
 			SecretKey:     getEnv("KY_CAPTCHA_SECRET_KEY", ""),
 			DifficultyPoW: getEnvInt("KY_CAPTCHA_POW_DIFFICULTY", 4),
 		},
-		Calendar: CalendarConfig{MaxObjectsPerUser: maxObjects},
+		Calendar: calCfg,
 	}
 
 	return cfg, nil

@@ -13,6 +13,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - Migration 6 adds `calendars` (owner_kind user|group, per-owner unique slug, `seq`, `min_sync_seq`), `calendar_objects` (unique name and uid per calendar), `calendar_changes` and `calendar_meta` (random `sync_epoch`).
 - Migration 7 adds `app_passwords` (id, user_id cascade, label, SHA-256 hex `hash`, `last_used_at`). `AppPasswordStore.Delete` is scoped to the owning user and returns `ErrNotFound` otherwise; `DeleteByUser` revokes all.
 - `CalendarStore.PutObject`/`DeleteObject` run in one transaction: check preconditions (`ErrPreconditionFailed`, `ErrUIDConflict`), bump `calendars.seq`, log one change. Failed writes leave seq and data untouched.
+- `CountObjectsByOwner` and `SumObjectBytesByOwner` (`COALESCE(SUM(LENGTH(data)), 0)`, bytes on SQLite BLOB and Postgres BYTEA) back the per-user CalDAV quotas.
 - Object ETag is the SHA-256 hex of the stored bytes. `first_start` and `last_end` are unix seconds; NULL `last_end` means unbounded.
 - `PruneChanges` sets `min_sync_seq` to the highest pruned seq; `ChangesSince` returns `ErrSyncTokenExpired` only when the token seq is below it.
 - `store.Open(ctx, cfg)` initializes and auto-migrates the configured database backend.

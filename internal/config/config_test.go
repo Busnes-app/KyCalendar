@@ -145,3 +145,19 @@ func TestCalendarMaxObjectsPerUser(t *testing.T) {
 		t.Fatalf("want KY_CALENDAR_MAX_OBJECTS_PER_USER error, got %v", err)
 	}
 }
+
+func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	cfg, err := config.LoadFromEnv()
+	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 256<<20 {
+		t.Fatalf("defaults: %+v %v", cfg, err)
+	}
+	for _, key := range []string{"KY_CALENDAR_MAX_CALENDARS_PER_USER", "KY_CALENDAR_MAX_BYTES_PER_USER"} {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv(key, "0")
+			if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("want %s error, got %v", key, err)
+			}
+		})
+	}
+}

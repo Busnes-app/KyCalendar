@@ -122,5 +122,6 @@ type CalendarStore interface {
 	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
 	PruneChanges(ctx context.Context, before time.Time) error
 	CountObjectsByOwner(ctx context.Context, ownerKind, ownerID string) (int, error)
+	SumObjectBytesByOwner(ctx context.Context, ownerKind, ownerID string) (int64, error)
 	SyncEpoch(ctx context.Context) (string, error)
 }

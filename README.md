@@ -70,6 +70,17 @@ its identity, change the password or sign out; privileged APIs remain blocked. R
 revokes existing sessions, MFA transactions and device pairings atomically. Existing accounts
 are not retroactively flagged, since the server cannot infer whether they still use a bootstrap password.
 
+## Calendar limits
+
+Native clients sync over CalDAV at `/dav/` with an app password. Each user is capped; a write past
+a cap gets 507 Insufficient Storage. Each limit must be positive or startup fails.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `KY_CALENDAR_MAX_OBJECTS_PER_USER` | `20000` | Events across all of a user's calendars. |
+| `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
+| `KY_CALENDAR_MAX_BYTES_PER_USER` | `268435456` (256 MiB) | Stored event bytes across all of a user's calendars. |
+
 ## Disaster recovery
 
 Every backup is one `.kycap` capsule: the database snapshot, the deployment's encryption key,

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -286,5 +287,116 @@ func TestCalDAVUnboundedRecurrenceQueryable(t *testing.T) {
 	}
 	if d := time.Since(began); d > 2*time.Second {
 		t.Fatalf("query took %s", d)
+	}
+}
+
+func TestCalDAVIfMatch(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	p := "/dav/usr_alice/calendars/default/evt-a.ics"
+	ics := map[string]string{"Content-Type": "text/calendar"}
+	star := map[string]string{"Content-Type": "text/calendar", "If-Match": "*"}
+	if r := rawDAV(t, ts, "PUT", p, "alice", token, evA, star); r.StatusCode != http.StatusPreconditionFailed {
+		t.Fatalf("If-Match * PUT on missing: %d", r.StatusCode)
+	}
+	if r := rawDAV(t, ts, "DELETE", p, "alice", token, "", map[string]string{"If-Match": "*"}); r.StatusCode != http.StatusPreconditionFailed {
+		t.Fatalf("If-Match * DELETE on missing: %d", r.StatusCode)
+	}
+	r := rawDAV(t, ts, "PUT", p, "alice", token, evA, ics)
+	etag := r.Header.Get("ETag")
+	if r.StatusCode != http.StatusCreated || etag == "" {
+		t.Fatalf("create: %d %q", r.StatusCode, etag)
+	}
+	changed := strings.Replace(evA, "SUMMARY:A", "SUMMARY:B", 1)
+	r = rawDAV(t, ts, "PUT", p, "alice", token, changed, map[string]string{"Content-Type": "text/calendar", "If-Match": etag})
+	if r.StatusCode != http.StatusCreated || r.Header.Get("ETag") == etag {
+		t.Fatalf("PUT with current ETag: %d", r.StatusCode)
+	}
+	etag = r.Header.Get("ETag")
+	if r := rawDAV(t, ts, "PUT", p, "alice", token, evA, star); r.StatusCode != http.StatusCreated {
+		t.Fatalf("If-Match * PUT on existing: %d", r.StatusCode)
+	}
+	etag = rawDAV(t, ts, "GET", p, "alice", token, "", nil).Header.Get("ETag")
+	if r := rawDAV(t, ts, "DELETE", p, "alice", token, "", map[string]string{"If-Match": etag}); r.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE with current ETag: %d", r.StatusCode)
+	}
+	if r := rawDAV(t, ts, "GET", p, "alice", token, "", nil); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("after DELETE: %d", r.StatusCode)
+	}
+}
+
+func TestCalDAVCalendarCap(t *testing.T) {
+	t.Setenv("KY_CALENDAR_MAX_CALENDARS_PER_USER", "2")
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	for i, want := range []int{http.StatusCreated, http.StatusCreated, http.StatusInsufficientStorage} {
+		p := "/dav/usr_alice/calendars/c" + string(rune('0'+i)) + "/"
+		body := `<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>x</d:displayname></d:prop></d:set></c:mkcalendar>`
+		if r := rawDAV(t, ts, "MKCALENDAR", p, "alice", token, body, map[string]string{"Content-Type": "application/xml"}); r.StatusCode != want {
+			t.Fatalf("MKCALENDAR %d: %d, want %d", i, r.StatusCode, want)
+		}
+	}
+}
+
+func TestCalDAVByteQuota(t *testing.T) {
+	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", strconv.Itoa(len(evA)*3/2))
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	cal := "/dav/usr_alice/calendars/default/"
+	ics := map[string]string{"Content-Type": "text/calendar"}
+	if r := rawDAV(t, ts, "PUT", cal+"a.ics", "alice", token, evA, ics); r.StatusCode != http.StatusCreated {
+		t.Fatalf("first: %d", r.StatusCode)
+	}
+	if r := rawDAV(t, ts, "PUT", cal+"a.ics", "alice", token, strings.Replace(evA, "SUMMARY:A", "SUMMARY:Z", 1), ics); r.StatusCode != http.StatusCreated {
+		t.Fatalf("same-size update must not count the old copy: %d", r.StatusCode)
+	}
+	if r := rawDAV(t, ts, "PUT", cal+"b.ics", "alice", token, strings.ReplaceAll(evA, "evt-a", "evt-b"), ics); r.StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("over byte quota: %d", r.StatusCode)
+	}
+}
+
+func TestCalDAVTextMatchFiltersUnbounded(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	cal := "/dav/usr_alice/calendars/default/"
+	ics := map[string]string{"Content-Type": "text/calendar"}
+	rawDAV(t, ts, "PUT", cal+"a.ics", "alice", token, evA, ics)
+	unbounded := strings.Replace(strings.ReplaceAll(evA, "evt-a", "evt-b"), "SUMMARY:A", "SUMMARY:A\r\nRRULE:FREQ=SECONDLY", 1)
+	if r := rawDAV(t, ts, "PUT", cal+"b.ics", "alice", token, unbounded, ics); r.StatusCode != http.StatusCreated {
+		t.Fatalf("PUT unbounded: %d", r.StatusCode)
+	}
+	objs, err := davClient(t, ts, "alice", token).QueryCalendar(context.Background(), cal, &caldav.CalendarQuery{
+		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR"},
+		CompFilter: caldav.CompFilter{Name: "VCALENDAR", Comps: []caldav.CompFilter{{Name: "VEVENT",
+			Props: []caldav.PropFilter{{Name: "UID", TextMatch: &caldav.TextMatch{Text: "evt-a"}}}}}},
+	})
+	if err != nil || len(objs) != 1 || !strings.HasSuffix(objs[0].Path, "/a.ics") {
+		t.Fatalf("UID text-match: %+v %v", objs, err)
+	}
+}
+
+func TestCalDAVObjectNames(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	cal := "/dav/usr_alice/calendars/default/"
+	ics := map[string]string{"Content-Type": "text/calendar"}
+	for _, n := range []string{".hidden.ics", "-x.ics", "a%20b.ics", "a%00b.ics", "a%0Ab.ics", strings.Repeat("a", 256)} {
+		if r := rawDAV(t, ts, "PUT", cal+n, "alice", token, evA, ics); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("name %q: %d", n, r.StatusCode)
+		}
+	}
+	good := "A1b2-C3D4_e.f@g+h" + strings.Repeat("a", 238)
+	if r := rawDAV(t, ts, "PUT", cal+good, "alice", token, evA, ics); r.StatusCode != http.StatusCreated {
+		t.Fatalf("valid name: %d", r.StatusCode)
 	}
 }

@@ -246,3 +246,19 @@ func TestConcurrentPuts(t *testing.T) {
 		t.Fatalf("seq %d, want 2", cal.Seq)
 	}
 }
+
+func TestSumObjectBytesByOwner(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_a"); err != nil || n != 0 {
+		t.Fatalf("empty sum %d %v", n, err)
+	}
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "héllo", 1, i64(2)), "", false) // 6 bytes, 5 characters
+	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "xyz", 1, i64(2)), "", false)
+	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_a"); err != nil || n != 9 {
+		t.Fatalf("sum %d %v", n, err)
+	}
+	if n, err := cs.SumObjectBytesByOwner(ctx, "user", "usr_other"); err != nil || n != 0 {
+		t.Fatalf("other owner %d %v", n, err)
+	}
+}

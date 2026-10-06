@@ -274,6 +274,14 @@ WHERE c.owner_kind = ? AND c.owner_id = ?`), ownerKind, ownerID).Scan(&n)
 	return n, err
 }
 
+// SumObjectBytesByOwner totals stored object sizes; LENGTH counts bytes on SQLite BLOB and Postgres BYTEA.
+func (c *calendarStore) SumObjectBytesByOwner(ctx context.Context, ownerKind, ownerID string) (int64, error) {
+	var n int64
+	err := c.store.db.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(o.data)), 0) FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id
+WHERE c.owner_kind = ? AND c.owner_id = ?`), ownerKind, ownerID).Scan(&n)
+	return n, err
+}
+
 func (c *calendarStore) SyncEpoch(ctx context.Context) (string, error) {
 	var v string
 	err := c.store.db.QueryRowContext(ctx, c.q(`SELECT value FROM calendar_meta WHERE key = 'sync_epoch'`)).Scan(&v)
