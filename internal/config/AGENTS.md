@@ -13,6 +13,7 @@ Owns environment variable parsing, configuration validation, default fallbacks, 
 - Production startup requires an explicit, durable `KY_SESSION_SECRET`. The encryption key comes from `KY_ENCRYPTION_KEY` when set, otherwise from the keyfile at `<DataDir>/encryption.key`, which `keyfile.LoadOrCreate` mints on first start; either is a valid production configuration.
 
 - `KY_BACKUP_DEPOSIT_INTERVAL` is a Go duration (default `24h`), only the default for the schedule the admin screen stores; `0` is off, anything else below `MinDepositInterval` (15m) or negative fails startup. `KY_BACKUP_DIR` (default empty, off) is the sealed local-copy directory and `KY_BACKUP_KEEP` (default 7) how many to retain; below 1 fails startup because the lib refuses it at write time. `KY_BACKUP_ALLOW_PRIVATE_RECOVERY` (default false) admits RFC1918 and CGNAT KyRecovery destinations only.
+- `KY_CALENDAR_MAX_OBJECTS_PER_USER` (default 20000) caps calendar objects per user across all their calendars; 0 or negative fails startup (unparsable falls back to the default, like every `getEnvInt` variable).
 
 ## Verification
 - `go test -v ./internal/config/...`

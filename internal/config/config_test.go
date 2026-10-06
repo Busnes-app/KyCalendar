@@ -133,3 +133,15 @@ func TestBackupKeepBelowOneIsRefused(t *testing.T) {
 		t.Fatalf("want KY_BACKUP_KEEP error, got %v", err)
 	}
 }
+
+func TestCalendarMaxObjectsPerUser(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	cfg, err := config.LoadFromEnv()
+	if err != nil || cfg.Calendar.MaxObjectsPerUser != 20000 {
+		t.Fatalf("default: %v %v", cfg, err)
+	}
+	t.Setenv("KY_CALENDAR_MAX_OBJECTS_PER_USER", "0")
+	if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_CALENDAR_MAX_OBJECTS_PER_USER") {
+		t.Fatalf("want KY_CALENDAR_MAX_OBJECTS_PER_USER error, got %v", err)
+	}
+}

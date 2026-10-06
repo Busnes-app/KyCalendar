@@ -12,6 +12,7 @@ import (
 
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/kycalendar/internal/auth"
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/devices"
 	"github.com/Busnes-app/kycalendar/internal/scim"
@@ -243,12 +244,17 @@ func (s *Server) routes() {
 	// SCIM 2.0 routes
 	s.scim.RegisterRoutes(s.mux)
 
-	// Embedded React PWA Frontend
 	// App passwords for native CalDAV clients. Everyday users only.
 	s.mux.HandleFunc("GET /api/app-passwords", s.requireEveryday(s.handleListAppPasswords))
 	s.mux.HandleFunc("POST /api/app-passwords", s.requireEveryday(s.handleCreateAppPassword))
 	s.mux.HandleFunc("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
 
+	// CalDAV for native clients; app-password Basic auth, never the session cookie.
+	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))
+	s.mux.Handle("/dav/", dav)
+	s.mux.Handle("/.well-known/caldav", dav)
+
+	// Embedded React PWA Frontend
 	s.mux.Handle("/", web.Handler())
 }
 
@@ -304,7 +310,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, X-KySignOn-Signature")
 
-	if r.Method == http.MethodOptions {
+	if r.Method == http.MethodOptions && !isDAVPath(r.URL.Path) {
 		if origin != "" && !sameOrigin(origin, s.config.Server.AppURL) {
 			http.Error(w, "Origin not allowed", http.StatusForbidden)
 			return
@@ -318,7 +324,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Body != nil {
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		limit := int64(1 << 20)
+		if isDAVPath(r.URL.Path) {
+			limit = calendar.MaxObjectSize + 1<<16 // the fork answers max-resource-size itself
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 	}
 
 	// SCIM middleware

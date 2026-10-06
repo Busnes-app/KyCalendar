@@ -276,6 +276,8 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-web 
 - [internal/devices/AGENTS.md](internal/devices/AGENTS.md): 90-second ephemeral QR device pairing and push registration.
 - [internal/testdb/AGENTS.md](internal/testdb/AGENTS.md): Test-only isolated database provisioning (SQLite or PostgreSQL).
 - [internal/api/AGENTS.md](internal/api/AGENTS.md): HTTP REST API endpoints, routing, and middleware.
+- [internal/calendar/AGENTS.md](internal/calendar/AGENTS.md): Pure iCalendar validation, indexing bounds and sync tokens.
+- [internal/davbackend/AGENTS.md](internal/davbackend/AGENTS.md): CalDAV backend mapping one user's requests onto the calendar store.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 
 `cmd/server` owns the scheduler: `backupLoop` builds the `RunConfig` and client once and

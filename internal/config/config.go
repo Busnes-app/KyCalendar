@@ -23,6 +23,12 @@ type Config struct {
 	SCIM     SCIMConfig     `json:"scim"`
 	Backup   BackupConfig   `json:"backup"`
 	Captcha  CaptchaConfig  `json:"captcha"`
+	Calendar CalendarConfig `json:"calendar"`
+}
+
+// CalendarConfig bounds per-user calendar storage.
+type CalendarConfig struct {
+	MaxObjectsPerUser int `json:"max_objects_per_user"`
 }
 
 // ServerConfig defines HTTP and network settings.
@@ -157,6 +163,11 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("KY_BACKUP_KEEP: must be at least 1, got %d", backupKeep)
 	}
 
+	maxObjects := getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000)
+	if maxObjects <= 0 {
+		return nil, fmt.Errorf("KY_CALENDAR_MAX_OBJECTS_PER_USER must be positive")
+	}
+
 	trustedProxies, err := ParseTrustedProxies(getEnv("KY_TRUSTED_PROXIES", ""))
 	if err != nil {
 		return nil, fmt.Errorf("KY_TRUSTED_PROXIES: %w", err)
@@ -217,6 +228,7 @@ func LoadFromEnv() (*Config, error) {
 			SecretKey:     getEnv("KY_CAPTCHA_SECRET_KEY", ""),
 			DifficultyPoW: getEnvInt("KY_CAPTCHA_POW_DIFFICULTY", 4),
 		},
+		Calendar: CalendarConfig{MaxObjectsPerUser: maxObjects},
 	}
 
 	return cfg, nil
