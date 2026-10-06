@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -95,23 +96,25 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			return
 		}
 		now := time.Now()
-		ipKey, userKey := "ip:"+s.requestIP(r), "user:"+username
-		for _, k := range []struct {
-			key   string
-			limit int
-		}{{ipKey, davFailsPerIP}, {userKey, davFailsPerUser}} {
-			if blocked, wait := s.davFails.blocked(k.key, k.limit, now); blocked {
-				w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
-				http.Error(w, "Too many failed attempts", http.StatusTooManyRequests)
+		ipKey := "ip:" + s.requestIP(r)
+		if s.davLimited(w, ipKey, davFailsPerIP, now) {
+			return
+		}
+		user, secretOK := s.resolveAppPassword(r.Context(), username, token)
+		// Only a holder of one of the user's token IDs can count against them (R28).
+		resource := "user:unknown"
+		if user != nil {
+			resource = user.ID
+			if s.davLimited(w, "user:"+user.ID, davFailsPerUser, now) {
 				return
 			}
 		}
-
-		user, ok := s.checkAppPassword(r.Context(), username, token)
-		if !ok {
+		if user == nil || !secretOK || user.Status != "active" {
 			s.davFails.fail(ipKey, now)
-			s.davFails.fail(userKey, now)
-			_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: s.davAuditResource(r.Context(), username), IPAddress: s.requestIP(r)})
+			if user != nil && !secretOK {
+				s.davFails.fail("user:"+user.ID, now)
+			}
+			_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: resource, IPAddress: s.requestIP(r)})
 			davChallenge(w)
 			return
 		}
@@ -138,27 +141,32 @@ func validDAVUsername(name string) bool {
 	return true
 }
 
-// davAuditResource names a failed login's target by user ID; unknown names are never logged.
-func (s *Server) davAuditResource(ctx context.Context, username string) string {
-	if u, err := s.store.Users().GetUserByUsername(ctx, username); err == nil {
-		return u.ID
+func (s *Server) davLimited(w http.ResponseWriter, key string, limit int, now time.Time) bool {
+	blocked, wait := s.davFails.blocked(key, limit, now)
+	if blocked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		http.Error(w, "Too many failed attempts", http.StatusTooManyRequests)
 	}
-	return "user:unknown"
+	return blocked
 }
 
-// checkAppPassword resolves the user only if the token is theirs and they are active.
-func (s *Server) checkAppPassword(ctx context.Context, username, token string) (*store.User, bool) {
+// resolveAppPassword returns the token's owner when its ID exists and belongs to the named
+// user (case-insensitively), and whether the secret matches. It touches last-used on a match.
+func (s *Server) resolveAppPassword(ctx context.Context, username, token string) (*store.User, bool) {
 	id, secret, ok := apppass.Parse(token)
 	if !ok {
 		return nil, false
 	}
 	p, err := s.store.AppPasswords().Get(ctx, id)
-	if err != nil || !apppass.Matches(p.Hash, secret) {
+	if err != nil {
 		return nil, false
 	}
-	user, err := s.store.Users().GetUserByUsername(ctx, username)
-	if err != nil || user.ID != p.UserID || user.Status != "active" {
+	user, err := s.store.Users().GetUserByID(ctx, p.UserID)
+	if err != nil || !strings.EqualFold(user.Username, username) {
 		return nil, false
+	}
+	if !apppass.Matches(p.Hash, secret) {
+		return user, false
 	}
 	_ = s.store.AppPasswords().TouchLastUsed(ctx, p.ID, time.Now())
 	return user, true

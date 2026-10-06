@@ -69,11 +69,16 @@ func TestDAVAuthInternalAuditsIDsOnly(t *testing.T) {
 	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_alice", Username: "alice", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
 		t.Fatal(err)
 	}
-	_, token, _, _ := apppass.Generate()
+	id, token, hash, _ := apppass.Generate()
+	if err := s.store.AppPasswords().Create(ctx, &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	_, garbage, _, _ := apppass.Generate()
 	davAttempt(h, "nobody-secret-pw", token)
-	davAttempt(h, "alice", token)
+	davAttempt(h, "alice", garbage)
+	davAttempt(h, "alice", token+"x")
 	recs, _, err := s.store.Audit().ListAuditRecords(ctx, 0, 10)
-	if err != nil || len(recs) != 2 {
+	if err != nil || len(recs) != 3 {
 		t.Fatalf("records %d %v", len(recs), err)
 	}
 	got := map[string]bool{}

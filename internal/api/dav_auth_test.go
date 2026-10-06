@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -88,5 +89,63 @@ func TestDAVAuthLockout(t *testing.T) {
 	w := davDo(srv, "PROPFIND", "/dav/", "alice", token)
 	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
 		t.Fatalf("want 429 after 10 failures, got %d", w.Code)
+	}
+}
+
+func davFrom(srv *api.Server, ip, user, pass string) int {
+	req := httptest.NewRequest("PROPFIND", "/dav/", nil)
+	req.RemoteAddr = ip + ":1234"
+	req.SetBasicAuth(user, pass)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w.Code
+}
+
+// A stranger without any of alice's token IDs cannot lock her out (R28).
+func TestDAVAuthStrangerCannotLockOutUser(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	for i := 0; i < 100; i++ {
+		_, garbage, _, _ := apppass.Generate()
+		davFrom(srv, fmt.Sprintf("198.51.100.%d", i), "alice", garbage)
+		davFrom(srv, fmt.Sprintf("198.51.101.%d", i), "alice", "not-a-token")
+	}
+	if code := davFrom(srv, "203.0.113.9", "alice", token); code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
+		t.Fatalf("alice locked out by garbage tokens: %d", code)
+	}
+}
+
+// Wrong secrets for alice's real token ID count against alice from any IP.
+func TestDAVAuthWrongSecretCountsPerUser(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	for i := 0; i < 50; i++ {
+		davFrom(srv, fmt.Sprintf("198.51.100.%d", i), "alice", token+"x")
+	}
+	if code := davFrom(srv, "203.0.113.9", "alice", token); code != http.StatusTooManyRequests {
+		t.Fatalf("want 429 after 50 wrong secrets, got %d", code)
+	}
+}
+
+// Usernames differing only in case resolve through the token's owner, not a LOWER() lookup.
+func TestDAVAuthCaseVariantUsernames(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	lower := davUser(t, st, "alice", "user")
+	upper := davUser(t, st, "Alice", "user")
+	for _, tc := range []struct{ name, token, home string }{
+		{"alice", lower, "/dav/usr_alice/"},
+		{"Alice", upper, "/dav/usr_Alice/"},
+		{"ALICE", upper, "/dav/usr_Alice/"},
+	} {
+		if w := davDo(srv, "OPTIONS", tc.home, tc.name, tc.token); w.Code >= 300 {
+			t.Fatalf("%s: %d", tc.name, w.Code)
+		}
+	}
+	// The token decides the user: alice's token never reaches Alice's home.
+	if w := davDo(srv, "OPTIONS", "/dav/usr_Alice/", "Alice", lower); w.Code != http.StatusForbidden {
+		t.Fatalf("alice's token on Alice's home: %d", w.Code)
+	}
+	if w := davDo(srv, "PROPFIND", "/dav/", "Alice", lower+"x"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret: %d", w.Code)
 	}
 }
