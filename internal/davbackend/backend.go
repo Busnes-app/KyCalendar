@@ -43,6 +43,26 @@ func validName(name string) bool {
 	return true
 }
 
+var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$`)
+
+const (
+	maxCalendarName        = 255
+	maxCalendarDescription = 4096
+)
+
+// checkCalendarProps bounds client-set calendar properties; nil means unchanged.
+func checkCalendarProps(name, description, color *string) error {
+	switch {
+	case name != nil && len(*name) > maxCalendarName:
+		return fmt.Errorf("displayname over %d bytes", maxCalendarName)
+	case description != nil && len(*description) > maxCalendarDescription:
+		return fmt.Errorf("calendar-description over %d bytes", maxCalendarDescription)
+	case color != nil && *color != "" && !colorPattern.MatchString(*color):
+		return errors.New("calendar-color must be #RRGGBB or #RRGGBBAA")
+	}
+	return nil
+}
+
 var errQuota = webdav.NewHTTPError(http.StatusInsufficientStorage, errors.New("calendar quota reached"))
 
 // Backend is built per request; User is the authenticated, active, non-admin user.
@@ -181,6 +201,9 @@ func (b *Backend) CreateCalendar(ctx context.Context, cal *caldav.Calendar) erro
 	if err != nil || name != "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars live directly under the home set"))
 	}
+	if err := checkCalendarProps(&cal.Name, &cal.Description, &cal.Color); err != nil {
+		return webdav.NewHTTPError(http.StatusBadRequest, err)
+	}
 	display := cal.Name
 	if display == "" {
 		display = slug
@@ -206,6 +229,10 @@ func (b *Backend) UpdateCalendar(ctx context.Context, p string, u *caldav.Calend
 	c, err := b.calendar(ctx, slug)
 	if err != nil {
 		return err
+	}
+	// PROPPATCH is atomic: one bad property refuses the whole request.
+	if err := checkCalendarProps(u.Name, u.Description, u.Color); err != nil {
+		return webdav.NewHTTPError(http.StatusForbidden, err)
 	}
 	return b.Store.Calendars().UpdateCalendar(ctx, c.ID, u.Name, u.Description, u.Color)
 }

@@ -502,3 +502,46 @@ func TestCalDAVEncodedTraversal(t *testing.T) {
 		t.Fatalf("bob's object changed: %d %q", r.StatusCode, got)
 	}
 }
+
+// Calendar colour, name and description are bounded at the DAV boundary.
+func TestCalDAVCalendarPropsValidated(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	token := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	xmlCT := map[string]string{"Content-Type": "application/xml"}
+	mk := func(prop string) string {
+		return `<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:ic="http://apple.com/ns/ical/"><d:set><d:prop>` + prop + `</d:prop></d:set></c:mkcalendar>`
+	}
+	patch := func(prop string) string {
+		return `<d:propertyupdate xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:ic="http://apple.com/ns/ical/"><d:set><d:prop>` + prop + `</d:prop></d:set></d:propertyupdate>`
+	}
+	bad := []string{
+		`<ic:calendar-color>red</ic:calendar-color>`,
+		`<ic:calendar-color>#ff88</ic:calendar-color>`,
+		`<ic:calendar-color>#ff8800;x</ic:calendar-color>`,
+		`<d:displayname>` + strings.Repeat("n", 256) + `</d:displayname>`,
+		`<c:calendar-description>` + strings.Repeat("d", 4097) + `</c:calendar-description>`,
+	}
+	for i, prop := range bad {
+		if r := rawDAV(t, ts, "MKCALENDAR", "/dav/usr_alice/calendars/bad"+strconv.Itoa(i)+"/", "alice", token, mk(prop), xmlCT); r.StatusCode != http.StatusBadRequest {
+			t.Fatalf("MKCALENDAR %d: %d", i, r.StatusCode)
+		}
+	}
+	good := `<d:displayname>` + strings.Repeat("n", 255) + `</d:displayname><ic:calendar-color>#FF8800CC</ic:calendar-color><c:calendar-description>` + strings.Repeat("d", 4096) + `</c:calendar-description>`
+	if r := rawDAV(t, ts, "MKCALENDAR", "/dav/usr_alice/calendars/work/", "alice", token, mk(good), xmlCT); r.StatusCode != http.StatusCreated {
+		t.Fatalf("MKCALENDAR at the limits: %d %s", r.StatusCode, readAll(r))
+	}
+	for i, prop := range bad {
+		if r := rawDAV(t, ts, "PROPPATCH", "/dav/usr_alice/calendars/work/", "alice", token, patch(prop), xmlCT); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("PROPPATCH %d: %d", i, r.StatusCode)
+		}
+	}
+	cal, err := st.Calendars().GetCalendarBySlug(context.Background(), "user", "usr_alice", "work")
+	if err != nil || cal.Color != "#FF8800CC" || len(cal.Name) != 255 {
+		t.Fatalf("rejected PROPPATCH changed the calendar: %+v %v", cal, err)
+	}
+	if r := rawDAV(t, ts, "PROPPATCH", "/dav/usr_alice/calendars/work/", "alice", token, patch(`<ic:calendar-color>#00aa11</ic:calendar-color>`), xmlCT); r.StatusCode != http.StatusMultiStatus {
+		t.Fatalf("valid PROPPATCH: %d", r.StatusCode)
+	}
+}
