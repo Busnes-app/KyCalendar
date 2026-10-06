@@ -63,11 +63,11 @@ database volumes). For a new deployment, just run `docker compose up -d`.
 ## First sign-in
 
 Every bootstrap or `init-admin` password must be replaced, including when
-`KY_ADMIN_PASSWORD` supplies it. Operator resets revoke existing sessions, MFA challenges and
-device pairings immediately, reactivate local admins and require replacement at the next login. Sign in, enter the current password and a different password
+`KY_ADMIN_PASSWORD` supplies it. Operator resets revoke existing sessions, MFA challenges,
+device pairings and app passwords immediately, reactivate local admins and require replacement at the next login. Sign in, enter the current password and a different password
 of at least 12 characters, then sign in again. Until replacement, the session can only check
 its identity, change the password or sign out; privileged APIs remain blocked. Replacement
-revokes existing sessions, MFA transactions and device pairings atomically. Existing accounts
+revokes existing sessions, MFA transactions, device pairings and app passwords atomically. Existing accounts
 are not retroactively flagged, since the server cannot infer whether they still use a bootstrap password.
 
 ## Calendar limits

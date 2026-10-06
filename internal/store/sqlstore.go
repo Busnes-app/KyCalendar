@@ -435,7 +435,7 @@ func (u *userStore) ResetAdminPassword(ctx context.Context, userID, newHash stri
 }
 
 func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID, details, ip string, now time.Time) error {
-	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings"} {
+	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
 		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id = ?"), userID); err != nil {
 			return err
 		}

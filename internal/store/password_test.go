@@ -24,6 +24,7 @@ func TestPasswordReplacementIsAtomicAndSingleUse(t *testing.T) {
 	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); err != nil {
 		t.Fatal(err)
 	}
+	addAppPassword(t, st, u.ID)
 	results := make(chan error, 2)
 	var wg sync.WaitGroup
 	for _, hash := range []string{"new-one", "new-two"} {
@@ -52,6 +53,7 @@ func TestPasswordReplacementIsAtomicAndSingleUse(t *testing.T) {
 	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("challenge survived", err)
 	}
+	checkAppPasswordsRevoked(t, st, u.ID)
 	if err := st.Sessions().CreateSession(ctx, sess, "old"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("stale session creation", err)
 	}
@@ -82,6 +84,7 @@ func TestAdminPasswordResetRevokesGrants(t *testing.T) {
 	if err := st.Devices().CreatePairing(ctx, &store.DevicePairing{Secret: "pair", UserID: u.ID, Status: "pending", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
+	addAppPassword(t, st, u.ID)
 	u.Status = "disabled"
 	if err := st.Users().UpdateUser(ctx, u); err != nil {
 		t.Fatal(err)
@@ -106,6 +109,7 @@ func TestAdminPasswordResetRevokesGrants(t *testing.T) {
 	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("challenge survived", err)
 	}
+	checkAppPasswordsRevoked(t, st, u.ID)
 	if err := st.Sessions().CreateSession(ctx, sess, "old"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("stale session creation", err)
 	}
@@ -115,5 +119,20 @@ func TestAdminPasswordResetRevokesGrants(t *testing.T) {
 	audits, n, err := st.Audit().ListAuditRecords(ctx, 0, 10)
 	if err != nil || n != 1 || audits[0].Action != "auth.password_changed" {
 		t.Fatal("audit", n, err)
+	}
+}
+
+// addAppPassword gives the user a CalDAV app password; checkAppPasswordsRevoked asserts it is gone.
+func addAppPassword(t *testing.T, st store.Store, userID string) {
+	t.Helper()
+	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: "ap_" + userID, UserID: userID, Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func checkAppPasswordsRevoked(t *testing.T, st store.Store, userID string) {
+	t.Helper()
+	if list, err := st.AppPasswords().ListByUser(context.Background(), userID); err != nil || len(list) != 0 {
+		t.Fatalf("app passwords survived: %d %v", len(list), err)
 	}
 }

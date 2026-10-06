@@ -244,7 +244,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 #### Operating rules
 
-- Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets atomically revoke sessions, MFA challenges and device pairings. Untouched existing accounts are not retroactively flagged.
+- Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges, device pairings and app passwords. Untouched existing accounts are not retroactively flagged.
 
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.
