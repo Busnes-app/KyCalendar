@@ -160,6 +160,10 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	}
 	defer tx.Rollback()
 
+	// bump first: its row lock serializes writers per calendar, so the checks below are race-free.
+	if err := c.bump(ctx, tx, o.CalendarID, o.Name, false); err != nil {
+		return false, err
+	}
 	etag, exists, err := c.currentETag(ctx, tx, o.CalendarID, o.Name)
 	if err != nil {
 		return false, err
@@ -176,14 +180,14 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 		return false, err
 	}
 
-	if err := c.bump(ctx, tx, o.CalendarID, o.Name, false); err != nil {
-		return false, err
-	}
 	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (calendar_id, name) DO UPDATE SET uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
 		o.CalendarID, o.Name, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return false, ErrUIDConflict
+		}
 		return false, err
 	}
 	return !exists, tx.Commit()
@@ -195,6 +199,9 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 		return err
 	}
 	defer tx.Rollback()
+	if err := c.bump(ctx, tx, calendarID, name, true); err != nil {
+		return err
+	}
 	etag, exists, err := c.currentETag(ctx, tx, calendarID, name)
 	if err != nil {
 		return err
@@ -206,9 +213,6 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 		return ErrPreconditionFailed
 	}
 	if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name); err != nil {
-		return err
-	}
-	if err := c.bump(ctx, tx, calendarID, name, true); err != nil {
 		return err
 	}
 	return tx.Commit()

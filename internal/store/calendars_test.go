@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -153,5 +154,95 @@ func TestCountObjectsByOwner(t *testing.T) {
 	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "x", 1, i64(2)), "", false)
 	if n, err := cs.CountObjectsByOwner(ctx, "user", "usr_a"); err != nil || n != 2 {
 		t.Fatalf("count %d %v", n, err)
+	}
+}
+
+func TestChangesSincePartialPrune(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v1", 1, i64(2)), "", false)
+	cs.PutObject(ctx, obj(c.ID, "b.ics", "u2", "v1", 1, i64(2)), "", false)
+	time.Sleep(20 * time.Millisecond)
+	cutoff := time.Now()
+	time.Sleep(20 * time.Millisecond)
+	cs.PutObject(ctx, obj(c.ID, "c.ics", "u3", "v1", 1, i64(2)), "", false)
+	if err := cs.PruneChanges(ctx, cutoff); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.ChangesSince(ctx, c.ID, 1); !errors.Is(err, store.ErrSyncTokenExpired) {
+		t.Fatalf("token 1: %v", err)
+	}
+	ch, err := cs.ChangesSince(ctx, c.ID, 2)
+	if err != nil || len(ch) != 1 || ch[0].Seq != 3 || ch[0].Name != "c.ics" {
+		t.Fatalf("token 2: %+v %v", ch, err)
+	}
+}
+
+func TestConcurrentPuts(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	t.Logf("driver=%s", st.Driver())
+	cs := st.Calendars()
+	c := &store.Calendar{ID: "cal_1", OwnerKind: "user", OwnerID: "usr_a", Slug: "default", Name: "Calendar"}
+	if err := cs.CreateCalendar(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(n int, f func(i int) error) []error {
+		errs := make([]error, n)
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				errs[i] = f(i)
+			}()
+		}
+		close(start)
+		wg.Wait()
+		return errs
+	}
+	count := func(errs []error, want error) (ok, match int) {
+		for _, e := range errs {
+			if e == nil {
+				ok++
+			} else if errors.Is(e, want) {
+				match++
+			} else {
+				t.Errorf("unexpected error: %v", e)
+			}
+		}
+		return
+	}
+
+	errs := run(20, func(int) error {
+		_, err := cs.PutObject(ctx, obj(c.ID, "a.ics", "u1", "v", 1, i64(2)), "", true)
+		return err
+	})
+	if ok, pf := count(errs, store.ErrPreconditionFailed); ok != 1 || pf != 19 {
+		t.Fatalf("If-None-Match: %d ok, %d precondition", ok, pf)
+	}
+	cal, _ := cs.GetCalendarBySlug(ctx, "user", "usr_a", "default")
+	if cal.Seq != 1 {
+		t.Fatalf("seq %d, want 1", cal.Seq)
+	}
+
+	names := []string{"x.ics", "y.ics"}
+	errs = run(2, func(i int) error {
+		_, err := cs.PutObject(ctx, obj(c.ID, names[i], "same", "v", 1, i64(2)), "", false)
+		return err
+	})
+	if ok, uc := count(errs, store.ErrUIDConflict); ok != 1 || uc != 1 {
+		t.Fatalf("same UID: %d ok, %d conflict", ok, uc)
+	}
+	cal, _ = cs.GetCalendarBySlug(ctx, "user", "usr_a", "default")
+	if cal.Seq != 2 {
+		t.Fatalf("seq %d, want 2", cal.Seq)
 	}
 }
