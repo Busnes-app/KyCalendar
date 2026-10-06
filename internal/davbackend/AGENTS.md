@@ -3,6 +3,9 @@
 ## Purpose
 Maps CalDAV (the go-webdav fork) onto the calendar store for one authenticated user per request.
 
+## Ownership
+Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and object-name rules, calendar property bounds, query matching policy and the mapping of store errors to DAV status codes. Authentication, the per-user path guard and the `caldav.Handler` mount belong to `internal/api`; storage and quotas to `internal/store`; iCalendar validation and indexing to `internal/calendar`.
+
 ## Local Contracts
 - Paths: `/dav/<user-id>/calendars/<slug>/<name>`; anything outside the user's home is 403. Object names are opaque keys (clients use UIDs, including Outlook's `{...}` and base64): 1-255 bytes of valid UTF-8, no `/`, no control characters, not `.` or `..` (403 otherwise).
 - Plan 1 serves personal calendars only (`owner_kind = 'user'`); a `default` calendar is created on listing or on access to its path only when the user owns no calendar.
@@ -15,3 +18,6 @@ Maps CalDAV (the go-webdav fork) onto the calendar store for one authenticated u
 
 ## Verification
 - `go test ./internal/api/ -run 'CalDAV|DAV'`
+
+## Child DOX Index
+None.
