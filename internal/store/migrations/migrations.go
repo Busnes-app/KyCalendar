@@ -335,6 +335,30 @@ CREATE TABLE calendar_meta (
 );
 INSERT INTO calendar_meta (key, value) VALUES ('sync_epoch', substr(md5(random()::text), 1, 16));`,
 	},
+	{
+		Version: 7,
+		Name:    "app_passwords",
+		SQLite: `
+CREATE TABLE app_passwords (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    hash TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    last_used_at DATETIME
+);
+CREATE INDEX idx_app_passwords_user ON app_passwords(user_id);`,
+		Postgres: `
+CREATE TABLE app_passwords (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label VARCHAR(64) NOT NULL,
+    hash VARCHAR(64) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_used_at TIMESTAMPTZ
+);
+CREATE INDEX idx_app_passwords_user ON app_passwords(user_id);`,
+	},
 }
 
 // Run executes all pending migrations for the specified database driver.

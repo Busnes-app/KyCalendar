@@ -136,3 +136,39 @@ func TestSCIMAuthEnforcement(t *testing.T) {
 		t.Errorf("expected 401 Unauthorized for missing token, got %d", w.Code)
 	}
 }
+
+func TestSCIMDeactivationRevokesAppPasswords(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+	handler := srv.AuthMiddleware(mux)
+
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_ap", Username: "ap_user", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw1", UserID: "usr_ap", Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+
+	patch, _ := json.Marshal(map[string]any{
+		"schemas":    []string{scim.SchemaPatchOp},
+		"Operations": []map[string]any{{"op": "replace", "path": "active", "value": false}},
+	})
+	req := httptest.NewRequest("PATCH", "/scim/v2/Users/usr_ap", bytes.NewReader(patch))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", w.Code, w.Body.String())
+	}
+	if list, _ := st.AppPasswords().ListByUser(ctx, "usr_ap"); len(list) != 0 {
+		t.Fatalf("app passwords survived deactivation: %d", len(list))
+	}
+}

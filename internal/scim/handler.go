@@ -178,6 +178,7 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 func (h *userResourceHandler) revokeIfPrivilegesChanged(r *http.Request, user *store.User, oldRole, oldStatus string) {
 	if user.Role != oldRole || user.Status != oldStatus {
 		_ = h.store.Sessions().DeleteUserSessions(r.Context(), user.ID)
+		_ = h.store.AppPasswords().DeleteByUser(r.Context(), user.ID)
 	}
 }
 

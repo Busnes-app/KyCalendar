@@ -99,7 +99,10 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 				return err
 			}
 			if privilegesChanged {
-				return k.store.Sessions().DeleteUserSessions(ctx, existing.ID)
+				if err := k.store.Sessions().DeleteUserSessions(ctx, existing.ID); err != nil {
+					return err
+				}
+				return k.store.AppPasswords().DeleteByUser(ctx, existing.ID)
 			}
 			return nil
 		}
@@ -125,7 +128,10 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		if err := k.store.Users().UpdateUser(ctx, existing); err != nil {
 			return err
 		}
-		return k.store.Sessions().DeleteUserSessions(ctx, existing.ID)
+		if err := k.store.Sessions().DeleteUserSessions(ctx, existing.ID); err != nil {
+			return err
+		}
+		return k.store.AppPasswords().DeleteByUser(ctx, existing.ID)
 
 	case "user.deleted":
 		existing, err := k.store.Users().GetUserBySSO(ctx, "kysignon", payload.ID)

@@ -88,6 +88,12 @@ type Setting struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type AppPassword struct {
+	ID, UserID, Label, Hash string
+	CreatedAt               time.Time
+	LastUsedAt              *time.Time
+}
+
 type Calendar struct {
 	ID, OwnerKind, OwnerID, Slug, Name, Color, Description string
 	Seq                                                    int64

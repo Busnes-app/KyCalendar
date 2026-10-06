@@ -24,6 +24,7 @@ type Store interface {
 	Devices() DeviceStore
 	Groups() GroupStore
 	Calendars() CalendarStore
+	AppPasswords() AppPasswordStore
 	Audit() AuditStore
 	Settings() SettingsStore
 
@@ -95,6 +96,16 @@ type SettingsStore interface {
 	SetSetting(ctx context.Context, key, val string) error
 	DeleteSetting(ctx context.Context, key string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
+}
+
+// AppPasswordStore persists per-user app passwords for native CalDAV clients.
+type AppPasswordStore interface {
+	Create(ctx context.Context, p *AppPassword) error
+	Get(ctx context.Context, id string) (*AppPassword, error)
+	ListByUser(ctx context.Context, userID string) ([]*AppPassword, error)
+	Delete(ctx context.Context, userID, id string) error // ErrNotFound if not the user's
+	DeleteByUser(ctx context.Context, userID string) error
+	TouchLastUsed(ctx context.Context, id string, at time.Time) error
 }
 
 // CalendarStore persists calendars, their objects and the per-calendar change log.

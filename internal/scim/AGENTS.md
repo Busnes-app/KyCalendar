@@ -9,7 +9,7 @@ Owns local persistence adapters and bearer authentication; the library owns `/sc
 ## Local Contracts
 - Content-Type for all SCIM endpoints must be `application/scim+json`.
 - Requests must be authenticated with the configured bearer token.
-- User de-provisioning via `PATCH` with `active: false` updates user status to `inactive`.
+- User de-provisioning via `PATCH` with `active: false` updates user status to `inactive`; any status or role change also revokes the user's sessions and app passwords.
 - SCIM protocol models and parsing must come from `github.com/elimity-com/scim`; do not add parallel local request/response implementations.
 
 ## Verification
