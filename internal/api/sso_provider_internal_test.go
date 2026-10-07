@@ -214,10 +214,10 @@ func TestCallbackExchangeErrorIsGeneric(t *testing.T) {
 func TestOIDCLoginDemotesAStoredAdmin(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
-	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_olga", Username: "olga", Role: "admin", Status: "active", SSOProvider: "oidc", SSOSubject: "o-9"}); err != nil {
+	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_olga", Username: "olga", Role: "admin", Status: "active", SSOProvider: "oidc", SSOSubject: "o-9", SSOIssuer: "oidc https://acme.example"}); err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-9", PreferredUsername: "olga", Roles: []string{access.AdminAppRole}})
+	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-9", PreferredUsername: "olga", Roles: []string{access.AdminAppRole}}, "oidc https://acme.example")
 	if err != nil || u.ID != "usr_olga" || u.Role != "user" {
 		t.Fatalf("oidc login of a stored admin: %+v %v, want usr_olga demoted to user", u, err)
 	}
@@ -234,11 +234,11 @@ func TestOIDCLoginsAreEverydayAndNeverAdoptSCIM(t *testing.T) {
 	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_scim", Username: "sam", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "o-2"}); err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-1", PreferredUsername: "olive", Roles: []string{access.AdminAppRole}})
+	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-1", PreferredUsername: "olive", Roles: []string{access.AdminAppRole}}, "oidc https://acme.example")
 	if err != nil || u.Role != "user" || u.SSOProvider != "oidc" {
 		t.Fatalf("oidc login with the admin role: %+v %v, want an everyday oidc user", u, err)
 	}
-	u, err = s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-2", PreferredUsername: "oscar"})
+	u, err = s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-2", PreferredUsername: "oscar"}, "oidc https://acme.example")
 	if err != nil || u.ID == "usr_scim" {
 		t.Fatalf("oidc sub matching a SCIM row: %+v %v, want a separate account", u, err)
 	}

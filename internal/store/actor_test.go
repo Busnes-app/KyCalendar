@@ -32,7 +32,7 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		"enable self":  func(a store.Actor) error { return st.Users().SetStatus(ctx, a, bob.ID, "active") },
 		"demote root":  func(a store.Actor) error { return st.Users().SetRole(ctx, a, root.ID, "user") },
 		"bind sign-in": func(a store.Actor) error {
-			_, err := st.Users().BindSignIn(ctx, a, []string{"kysignon"}, map[string]string{"signin_provider": "oidc"})
+			_, err := st.Users().BindSignIn(ctx, a, store.SignInBinding{Disable: []string{"kysignon"}}, map[string]string{"signin_provider": "oidc"})
 			return err
 		},
 		"create admin": func(a store.Actor) error {
@@ -112,7 +112,7 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedSession(t, st, bob)
-	if _, err := st.Users().BindSignIn(ctx, bobActs, nil, map[string]string{"signin_provider": "none"}); err != nil {
+	if _, err := st.Users().BindSignIn(ctx, bobActs, store.SignInBinding{}, map[string]string{"signin_provider": "none"}); err != nil {
 		t.Errorf("a live admin is refused by BindSignIn: %v", err)
 	}
 	if err := st.Users().SetRole(ctx, bobActs, ann.ID, "admin"); err != nil {

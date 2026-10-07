@@ -13,12 +13,13 @@ type Provider struct {
 	Kind        string // KindKyIdentity or KindOIDC
 	DisplayName string
 	ID          string
+	Binding     string // Settings.Identity: what the accounts it signs in are stamped with
 	flow        *oauthFlow
 }
 
 // NewProvider builds a provider; a nil client uses the default transport.
 func NewProvider(kind, displayName, issuer, clientID, secret string, client *http.Client) *Provider {
-	return &Provider{Kind: kind, DisplayName: displayName, ID: crypto.RandomHex(8), flow: newOAuthFlow(issuer, clientID, secret, client)}
+	return &Provider{Kind: kind, DisplayName: displayName, ID: crypto.RandomHex(8), Binding: kind + " " + issuer, flow: newOAuthFlow(issuer, clientID, secret, client)}
 }
 
 // AuthURL is the authorization request with PKCE S256 and the nonce.

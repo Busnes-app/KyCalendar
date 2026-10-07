@@ -83,6 +83,9 @@ func TestKySignOnWebhookSync(t *testing.T) {
 	if created.Username != "bob" || created.DisplayName != "Bob Engineer" {
 		t.Errorf("unexpected created user: %+v", created)
 	}
+	if created.SSOIssuer != sso.KindKyIdentity+" https://idp.example" {
+		t.Errorf("created user stamped %q, want the binding", created.SSOIssuer)
+	}
 
 	// 2. Sync deactivation
 	payload.Event = "user.deactivated"
@@ -267,10 +270,10 @@ func TestKySignOnWebhookNeverReactivatesAfterIssuerMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_a", Username: "ann", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-a"}); err != nil {
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_a", Username: "ann", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-a", SSOIssuer: sso.KindKyIdentity + " https://issuer-a.example"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Users().BindSignIn(ctx, store.System, []string{"kysignon"}, map[string]string{sso.KeyBound: sso.KindKyIdentity + " https://issuer-b.example"}); err != nil {
+	if _, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{Disable: []string{"kysignon"}}, map[string]string{sso.KeyBound: sso.KindKyIdentity + " https://issuer-b.example"}); err != nil {
 		t.Fatal(err)
 	}
 	secret := "webhook-secret-999"
@@ -285,7 +288,7 @@ func TestKySignOnWebhookNeverReactivatesAfterIssuerMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, err := st.Users().GetUserByID(ctx, "usr_a")
-	if err != nil || u.Status != "inactive" || u.DisplayName != "Ann A" {
+	if err != nil || u.Status != "inactive" || u.DisplayName != "Ann A" || u.SSOIssuer != sso.KindKyIdentity+" https://issuer-a.example" {
 		t.Fatalf("want the profile updated and the row still inactive: %+v %v", u, err)
 	}
 	if n, _ := st.Users().CountUsers(ctx); n != 1 {
@@ -302,7 +305,7 @@ func (d disableAfterRead) Users() store.UserStore { return disableAfterReadUsers
 func (d disableAfterReadUsers) GetUserBySSO(ctx context.Context, provider, subject string) (*store.User, error) {
 	u, err := d.UserStore.GetUserBySSO(ctx, provider, subject)
 	if err == nil {
-		if _, err := d.BindSignIn(ctx, store.System, []string{"kysignon"}, nil); err != nil {
+		if _, err := d.BindSignIn(ctx, store.System, store.SignInBinding{Disable: []string{"kysignon"}}, nil); err != nil {
 			return nil, err
 		}
 	}

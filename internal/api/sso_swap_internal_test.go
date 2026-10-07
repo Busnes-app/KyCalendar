@@ -116,7 +116,7 @@ func TestCallbackAcrossASaveDuringExchangeIsRefused(t *testing.T) {
 	if _, _, err := s.bindAccounts(ctx, kyidentityAt(idp.URL)); err != nil {
 		t.Fatal(err)
 	}
-	createUsers(t, s, &store.User{ID: "usr_carol", Username: "carol", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-carol"})
+	createUsers(t, s, &store.User{ID: "usr_carol", Username: "carol", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-carol", SSOIssuer: "kyidentity " + idp.URL})
 	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", nil))
 
 	// The account write runs under signinMu.

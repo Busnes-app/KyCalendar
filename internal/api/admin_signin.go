@@ -132,9 +132,9 @@ func (s *Server) discover(ctx context.Context, st sso.Settings) error {
 }
 
 // sameClient reports whether a and b are one provider registration, so a stored secret may be
-// kept: the same kind, issuer (trailing '/' trimmed) and client ID.
+// kept: the same kind, exact issuer and client ID.
 func sameClient(a, b sso.Settings) bool {
-	return bindingIdentity(a) == bindingIdentity(b) && a.ClientID.Value == b.ClientID.Value
+	return a.Identity() == b.Identity() && a.ClientID.Value == b.ClientID.Value
 }
 
 // handleTestSignIn runs discovery for the submitted values without saving anything.

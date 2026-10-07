@@ -1,11 +1,14 @@
 package sso
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
 // Provider kinds. Both run the same OIDC flow; only kyidentity logins can be administrators or
@@ -136,6 +139,16 @@ func (st Settings) Live() bool {
 
 // Identity is what account binding compares: the provider kind and its issuer.
 func (st Settings) Identity() string { return st.Provider.Value + " " + st.Issuer.Value }
+
+// Bound is the stored binding accounts belong to (an Identity), "" when nothing is bound yet.
+// New SSO rows provisioned outside a login (SCIM, the directory webhook) are stamped with it.
+func Bound(ctx context.Context, settings store.SettingsStore) (string, error) {
+	bound, err := settings.GetSetting(ctx, KeyBound)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", nil
+	}
+	return bound, err
+}
 
 // AccountProviders lists the users.sso_provider values a kind's logins reach. A KyIdentity
 // login also signs in as the SCIM row with its sub, so those rows are KyIdentity's too.

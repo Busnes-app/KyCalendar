@@ -57,8 +57,8 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 	}
 	// Only accounts bound to KyIdentity are its directory's: under any other binding a stale
 	// secret would create or re-activate rows another provider's login could adopt.
-	bound, err := k.store.Settings().GetSetting(ctx, KeyBound)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	bound, err := Bound(ctx, k.store.Settings())
+	if err != nil {
 		return err
 	}
 	if kind, _, _ := strings.Cut(bound, " "); kind != KindKyIdentity {
@@ -87,6 +87,7 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 				Status:      status,
 				SSOProvider: "kysignon",
 				SSOSubject:  payload.ID,
+				SSOIssuer:   bound,
 			})
 		}
 		if err != nil {

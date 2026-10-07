@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -64,38 +63,28 @@ func (s *Server) LoadSignIn(ctx context.Context) error {
 		if err := s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: "system", Action: "admin.signin_provider_change", Resource: st.Provider.Value, Details: bindDetails(prev, st, n)}); err != nil {
 			log.Printf("[SSO] audit of the sign-in provider change failed: %v", err)
 		}
-		log.Printf("[SSO] sign-in provider changed from %q to %q: %d accounts of the previous provider disabled", prev, bindingIdentity(st), n)
+		log.Printf("[SSO] sign-in provider changed from %q to %q: %d accounts of the previous provider disabled", prev, st.Identity(), n)
 	}
 	s.signin.Store(s.buildProvider(st))
 	return nil
 }
 
 func bindDetails(prev string, st sso.Settings, n int) string {
-	return "from=" + strconv.Quote(prev) + " to=" + strconv.Quote(bindingIdentity(st)) + " disabled=" + strconv.Itoa(n)
+	return "from=" + strconv.Quote(prev) + " to=" + strconv.Quote(st.Identity()) + " disabled=" + strconv.Itoa(n)
 }
 
 // boundTo is the identity accounts are bound to, "" when nothing is bound yet.
 func (s *Server) boundTo(ctx context.Context) (string, error) {
-	bound, err := s.store.Settings().GetSetting(ctx, sso.KeyBound)
-	if errors.Is(err, store.ErrNotFound) {
-		return "", nil
-	}
-	return bound, err
+	return sso.Bound(ctx, s.store.Settings())
 }
 
 // ssoAccountProviders is every users.sso_provider value a sign-in provider can reach.
 var ssoAccountProviders = []string{"kysignon", "scim", "oidc"}
 
-// bindingIdentity is the identity accounts bind to: the kind and the issuer with every
-// trailing '/' trimmed, so a cosmetic slash is not a provider change. Discovery still gets the
-// issuer as entered.
-func bindingIdentity(st sso.Settings) string {
-	return st.Provider.Value + " " + strings.TrimRight(st.Issuer.Value, "/")
-}
-
-// unchanged reports whether binding st keeps the stored binding.
+// unchanged reports whether binding st keeps the stored binding. Issuers compare exactly: OIDC
+// issuer identifiers are exact strings, so "https://a" and "https://a/" are two issuers.
 func unchanged(bound string, st sso.Settings) bool {
-	return strings.TrimRight(bound, "/") == bindingIdentity(st)
+	return bound == st.Identity()
 }
 
 // disableList is the account providers a change from bound to st disables: the previous kind's,
@@ -131,9 +120,11 @@ func (s *Server) bindAccounts(ctx context.Context, st sso.Settings) (string, int
 // commitSignIn binds accounts to st and writes settings in one store transaction under the
 // actor's recheck. On a change of kind or issuer the previous provider's accounts are disabled
 // in it, so a colliding sub from the new provider reaches a disabled account (403), never a
-// takeover; a failure writes nothing. The first binding disables nothing, and settings that are
-// not live keep the binding. It returns the previous identity ("" when the binding did not
-// change) and how many accounts it disabled.
+// takeover; a failure writes nothing. Every SSO account carries the binding it was provisioned
+// under (users.sso_issuer) and login refuses any other. The first binding disables nothing and
+// stamps its kind's unstamped rows; a change stamps nothing, so no row of an earlier binding
+// ever carries a later one. Settings that are not live keep the binding. It returns the previous
+// identity ("" when the binding did not change) and how many accounts it disabled.
 func (s *Server) commitSignIn(ctx context.Context, actor store.Actor, st sso.Settings, settings map[string]string) (string, int, error) {
 	bound, err := s.boundTo(ctx)
 	if err != nil {
@@ -143,17 +134,19 @@ func (s *Server) commitSignIn(ctx context.Context, actor store.Actor, st sso.Set
 	if !changed && len(settings) == 0 {
 		return "", 0, nil
 	}
-	var disable []string
+	var b store.SignInBinding
 	if changed {
 		if settings == nil {
 			settings = map[string]string{}
 		}
-		settings[sso.KeyBound] = bindingIdentity(st)
-		if bound != "" {
-			disable = disableList(bound, st)
+		settings[sso.KeyBound] = st.Identity()
+		if bound == "" {
+			b.Stamp, b.StampProviders = st.Identity(), sso.AccountProviders(st.Provider.Value)
+		} else {
+			b.Disable = disableList(bound, st)
 		}
 	}
-	n, err := s.store.Users().BindSignIn(ctx, actor, disable, settings)
+	n, err := s.store.Users().BindSignIn(ctx, actor, b, settings)
 	if err != nil || !changed {
 		return "", 0, err
 	}

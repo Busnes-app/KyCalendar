@@ -8,6 +8,7 @@ Owns local persistence adapters and bearer authentication; the library owns `/sc
 
 ## Local Contracts
 - `POST /Users` with an `externalId` that names an existing `kysignon` user adopts that row (same ID, provider kept) through the Replace path, with its revocation, and audits `scim.user.adopt`. This join assumes the SCIM source is KyIdentity, whose `externalId` is its user ID and the KySignOn `sub`; do not feed SCIM from another IdP while KySignOn is enabled, or unrelated accounts with colliding IDs would be joined.
+- A created user is stamped with the stored sign-in binding (`sso.Bound`, "" when none); replace, patch and adoption never change `sso_issuer`, so re-activating a row the binding moved away from does not let the new provider sign in as it.
 - Groups have an owner (`groups.source`). SCIM creates `scim` groups and lists, reads, replaces, patches and deletes only those; a local group is 404 to SCIM, so a reconciling IdP never sees, renames, empties or deletes one. A create whose name a local group holds in any case is a 409 and sets setting `ConflictKey(name)`, which the Groups screen flags until the local group is renamed or deleted.
 - Content-Type for all SCIM endpoints must be `application/scim+json`.
 - Requests must be authenticated with the configured bearer token.

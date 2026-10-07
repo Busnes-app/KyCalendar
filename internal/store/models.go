@@ -6,15 +6,19 @@ import (
 
 // User represents an identity within the system.
 type User struct {
-	ID                 string     `json:"id"`
-	Username           string     `json:"username"`
-	Email              string     `json:"email"`
-	DisplayName        string     `json:"display_name"`
-	PasswordHash       string     `json:"-"`            // Never serialized to JSON
-	Role               string     `json:"role"`         // "admin", "user", "manager"
-	Status             string     `json:"status"`       // "active", "suspended", "inactive"
-	SSOProvider        string     `json:"sso_provider"` // "local", "kysignon", "oidc", "saml", "scim"
-	SSOSubject         string     `json:"sso_subject,omitempty"`
+	ID           string `json:"id"`
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	DisplayName  string `json:"display_name"`
+	PasswordHash string `json:"-"`            // Never serialized to JSON
+	Role         string `json:"role"`         // "admin", "user", "manager"
+	Status       string `json:"status"`       // "active", "suspended", "inactive"
+	SSOProvider  string `json:"sso_provider"` // "local", "kysignon", "oidc", "saml", "scim"
+	SSOSubject   string `json:"sso_subject,omitempty"`
+	// SSOIssuer is the sign-in binding ("<kind> <issuer>", setting signin_bound) the account was
+	// provisioned under; "" for local accounts and SSO rows no binding has stamped. Set at
+	// creation only: UpdateUser never writes it.
+	SSOIssuer          string     `json:"-"`
 	TOTPSecretEnc      string     `json:"-"` // AES-256-GCM encrypted
 	TOTPEnabled        bool       `json:"totp_enabled"`
 	TOTPLastCounter    int64      `json:"-"` // last RFC 6238 counter accepted; refuses replay inside the skew window

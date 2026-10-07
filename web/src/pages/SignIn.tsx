@@ -63,12 +63,11 @@ export default function SignIn() {
 
   const env = (f: Field) => f.source === "environment";
   const secretLocked = view.client_secret.source === "environment";
-  const trim = (u: string) => u.trim().replace(/\/+$/, "");
-  // The server keeps a stored secret only for the same registration.
+  // The server keeps a stored secret only for the same registration; issuers compare exactly.
   const keepsSecret =
     view.client_secret.set &&
     form.provider === view.provider.value &&
-    trim(form.issuer) === trim(view.issuer.value) &&
+    form.issuer.trim() === view.issuer.value &&
     form.client_id === view.client_id.value;
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
 

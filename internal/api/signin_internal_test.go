@@ -52,7 +52,7 @@ func TestProviderChangeRefusesTheOldSubject(t *testing.T) {
 		t.Fatalf("issuer change: %q %d %v", prev, n, err)
 	}
 	for _, sub := range []string{"sub-1", "sub-2"} {
-		_, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: sub, PreferredUsername: "intruder-" + sub})
+		_, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: sub, PreferredUsername: "intruder-" + sub}, "kyidentity https://new.example")
 		if !errors.Is(err, errAccountInactive) {
 			t.Errorf("%s through the new provider: %v, want errAccountInactive", sub, err)
 		}
@@ -76,7 +76,7 @@ func TestOIDCIssuerChangeRefusesTheOldSubject(t *testing.T) {
 	if prev, n, err := s.bindAccounts(ctx, oidcAt("https://b.example")); err != nil || prev != "oidc https://a.example" || n != 1 {
 		t.Fatalf("oidc issuer change: %q %d %v", prev, n, err)
 	}
-	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "s1", PreferredUsername: "mallory"})
+	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "s1", PreferredUsername: "mallory"}, "oidc https://b.example")
 	if !errors.Is(err, errAccountInactive) {
 		t.Fatalf("s1 through the new issuer: %+v %v, want errAccountInactive", u, err)
 	}
@@ -167,7 +167,7 @@ func TestLoadSignInAppliesSavedSettingsUnderTheEnvironment(t *testing.T) {
 	if err := s.LoadSignIn(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1", PreferredUsername: "mallory"}); !errors.Is(err, errAccountInactive) {
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1", PreferredUsername: "mallory"}, "kyidentity https://id2.example"); !errors.Is(err, errAccountInactive) {
 		t.Fatalf("s1 after an environment issuer change: %v, want errAccountInactive", err)
 	}
 
@@ -204,28 +204,7 @@ func TestMoveToKyIdentityDisablesSCIMRows(t *testing.T) {
 	if _, n, err := s.bindAccounts(ctx, kyidentityAt("https://id.example")); err != nil || n != 2 {
 		t.Fatalf("oidc to kyidentity: %d %v, want 2", n, err)
 	}
-	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s-1", PreferredUsername: "mallory"}); !errors.Is(err, errAccountInactive) {
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s-1", PreferredUsername: "mallory"}, "kyidentity https://id.example"); !errors.Is(err, errAccountInactive) {
 		t.Fatalf("scim sub through kyidentity: %v, want errAccountInactive", err)
-	}
-}
-
-// Trailing slashes on the issuer are not a provider change.
-func TestTrailingSlashIsNotAProviderChange(t *testing.T) {
-	s, _ := davInternalServer(t)
-	ctx := context.Background()
-	if _, _, err := s.bindAccounts(ctx, kyidentityAt("https://a.example/")); err != nil {
-		t.Fatal(err)
-	}
-	createUsers(t, s, &store.User{ID: "usr_k", Username: "k", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"})
-	for _, issuer := range []string{"https://a.example", "https://a.example//", "https://a.example/"} {
-		if n, err := s.pendingDisable(ctx, kyidentityAt(issuer)); err != nil || n != 0 {
-			t.Fatalf("pending for %s: %d %v, want 0", issuer, n, err)
-		}
-		if prev, n, err := s.bindAccounts(ctx, kyidentityAt(issuer)); err != nil || prev != "" || n != 0 {
-			t.Fatalf("rebinding %s: %q %d %v, want a no-op", issuer, prev, n, err)
-		}
-	}
-	if u, _ := s.store.Users().GetUserByID(ctx, "usr_k"); u.Status != "active" {
-		t.Fatalf("account after cosmetic issuer edits: %s", u.Status)
 	}
 }

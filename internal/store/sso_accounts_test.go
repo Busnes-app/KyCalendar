@@ -32,7 +32,7 @@ func TestBindSignInDisablesSSOAccounts(t *testing.T) {
 	if n, err := st.Users().CountSSOAccounts(ctx, providers); err != nil || n != 2 {
 		t.Fatalf("count: %d %v, want 2", n, err)
 	}
-	if n, err := st.Users().BindSignIn(ctx, store.System, providers, nil); err != nil || n != 2 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{Disable: providers}, nil); err != nil || n != 2 {
 		t.Fatalf("disable: %d %v, want 2", n, err)
 	}
 	for _, u := range []*store.User{ky, sc, oi, lo, off} {
@@ -47,10 +47,10 @@ func TestBindSignInDisablesSSOAccounts(t *testing.T) {
 	if _, err := st.Calendars().GetCalendarByID(ctx, "cal_ky"); err != nil {
 		t.Errorf("calendar did not survive: %v", err)
 	}
-	if n, err := st.Users().BindSignIn(ctx, store.System, providers, nil); err != nil || n != 0 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{Disable: providers}, nil); err != nil || n != 0 {
 		t.Fatalf("second run: %d %v, want 0", n, err)
 	}
-	if n, err := st.Users().BindSignIn(ctx, store.System, nil, nil); err != nil || n != 0 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{}, nil); err != nil || n != 0 {
 		t.Fatalf("empty list: %d %v, want 0", n, err)
 	}
 }
@@ -66,7 +66,7 @@ func TestBindSignInNeverTouchesLocal(t *testing.T) {
 	if n, err := st.Users().CountSSOAccounts(ctx, local); err != nil || n != 0 {
 		t.Fatalf("count local: %d %v, want 0", n, err)
 	}
-	if n, err := st.Users().BindSignIn(ctx, store.System, local, nil); err != nil || n != 0 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{Disable: local}, nil); err != nil || n != 0 {
 		t.Fatalf("disable local: %d %v, want 0", n, err)
 	}
 	got, _ := st.Users().GetUserByID(ctx, lo.ID)
@@ -86,14 +86,14 @@ func TestBindSignInIsOneWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	if testdb.Config(t).Driver == "postgres" {
-		if _, err := st.Users().BindSignIn(ctx, store.System, []string{"kysignon"}, map[string]string{"b": "\xff"}); err == nil {
+		if _, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{Disable: []string{"kysignon"}}, map[string]string{"b": "\xff"}); err == nil {
 			t.Fatal("invalid UTF-8 was stored")
 		}
 		if u, _ := st.Users().GetUserByID(ctx, ky.ID); u.Status != "active" {
 			t.Fatal("a failed bind kept the disable")
 		}
 	}
-	n, err := st.Users().BindSignIn(ctx, store.System, []string{"kysignon"}, map[string]string{"a": "", "b": "2", "never": ""})
+	n, err := st.Users().BindSignIn(ctx, store.System, store.SignInBinding{Disable: []string{"kysignon"}}, map[string]string{"a": "", "b": "2", "never": ""})
 	if err != nil || n != 1 {
 		t.Fatalf("bind: %d %v", n, err)
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -102,7 +103,12 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 			return protocol.Resource{}, err
 		}
 	}
-	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", "")}
+	// A new row belongs to the current binding; replace and patch never move it to another.
+	bound, err := sso.Bound(r.Context(), h.store.Settings())
+	if err != nil {
+		return protocol.Resource{}, err
+	}
+	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", ""), SSOIssuer: bound}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}

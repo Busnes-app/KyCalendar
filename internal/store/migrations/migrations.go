@@ -393,10 +393,24 @@ CREATE INDEX idx_calendar_grants_group ON calendar_grants(group_id);`,
 		SQLite:   groupSource,
 		Postgres: groupSource,
 	},
+	{
+		Version:  11,
+		Name:     "user_sso_issuer",
+		SQLite:   userSSOIssuer,
+		Postgres: userSSOIssuer,
+	},
 }
 
 const groupSource = `ALTER TABLE groups ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
 UPDATE groups SET source = 'scim';`
+
+// userSSOIssuer records the binding each SSO account belongs to. Existing rows of the stored
+// binding's kind get that binding: they were provisioned under it. With no binding nothing is
+// stamped; the first binding stamps its kind's rows.
+const userSSOIssuer = `ALTER TABLE users ADD COLUMN sso_issuer TEXT NOT NULL DEFAULT '';
+UPDATE users SET sso_issuer = (SELECT value FROM server_settings WHERE key = 'signin_bound')
+WHERE (sso_provider IN ('kysignon', 'scim') AND EXISTS (SELECT 1 FROM server_settings WHERE key = 'signin_bound' AND value LIKE 'kyidentity %'))
+   OR (sso_provider = 'oidc' AND EXISTS (SELECT 1 FROM server_settings WHERE key = 'signin_bound' AND value LIKE 'oidc %'));`
 
 const revokeSSOAdminSessions = `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role = 'admin' AND sso_provider IN ('kysignon', 'scim'));`
 

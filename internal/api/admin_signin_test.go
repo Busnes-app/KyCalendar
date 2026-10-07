@@ -112,10 +112,14 @@ func TestSignInSaveSealsTheSecretAndSwapsLive(t *testing.T) {
 		t.Errorf("admin view: %s", w.Body.String())
 	}
 
-	// Same provider, issuer and client: a blank secret keeps the sealed one.
-	if w := saveSignIn(t, srv, admin, `{"provider":"oidc","display_name":"Acme Two","issuer":"`+a.URL+`/","client_id":"kc"}`); w.Code != http.StatusUnprocessableEntity {
+	// A trailing slash is another issuer: it needs its own secret, and discovery refuses it here.
+	if w := saveSignIn(t, srv, admin, `{"provider":"oidc","display_name":"Acme Two","issuer":"`+a.URL+`/","client_id":"kc"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("a trailing slash with a blank secret: %d %s", w.Code, w.Body.String())
+	}
+	if w := saveSignIn(t, srv, admin, `{"provider":"oidc","display_name":"Acme Two","issuer":"`+a.URL+`/","client_id":"kc","client_secret":"x"}`); w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("a trailing slash the provider does not name: %d %s", w.Code, w.Body.String())
 	}
+	// Same provider, issuer and client: a blank secret keeps the sealed one.
 	if w := saveSignIn(t, srv, admin, `{"provider":"oidc","display_name":"Acme Two","issuer":"`+a.URL+`","client_id":"kc"}`); w.Code != http.StatusOK {
 		t.Fatalf("relabel: %d %s", w.Code, w.Body.String())
 	}
@@ -239,7 +243,7 @@ func TestSignInProviderChangeNeedsConfirmationAndDisables(t *testing.T) {
 // failBind fails the one sign-in transaction, as a store error would after its rollback.
 type failBind struct{ store.UserStore }
 
-func (failBind) BindSignIn(context.Context, store.Actor, []string, map[string]string) (int, error) {
+func (failBind) BindSignIn(context.Context, store.Actor, store.SignInBinding, map[string]string) (int, error) {
 	return 0, errors.New("disk full")
 }
 
@@ -292,9 +296,9 @@ type revokeOnBind struct {
 	revoke func()
 }
 
-func (u revokeOnBind) BindSignIn(ctx context.Context, a store.Actor, disable []string, settings map[string]string) (int, error) {
+func (u revokeOnBind) BindSignIn(ctx context.Context, a store.Actor, b store.SignInBinding, settings map[string]string) (int, error) {
 	u.revoke()
-	return u.UserStore.BindSignIn(ctx, a, disable, settings)
+	return u.UserStore.BindSignIn(ctx, a, b, settings)
 }
 
 func TestSignInSaveRechecksTheActor(t *testing.T) {
@@ -508,5 +512,46 @@ func TestSignInEnvSecretNeverReachesAnAdminIssuer(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Issuers compare exactly: an IdP that moves its issuer to a trailing-slash form is another
+// registration (a new secret) and a provider change (its accounts are disabled).
+func TestSignInTrailingSlashIsAnotherIssuer(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	var ts *httptest.Server
+	suffix := ""
+	ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": ts.URL + suffix, "authorization_endpoint": ts.URL + "/authorize", "token_endpoint": ts.URL + "/token",
+			"jwks_uri": ts.URL + "/keys", "code_challenge_methods_supported": []string{"S256"},
+		})
+	}))
+	t.Cleanup(ts.Close)
+	trustIdPs(srv, ts)
+	if w := saveSignIn(t, srv, admin, oidcBody(ts.URL, `,"client_secret":"a-secret"`)); w.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", w.Code, w.Body.String())
+	}
+	o := &store.User{ID: "usr_o", Username: "o", Role: "user", Status: "active", SSOProvider: "oidc", SSOSubject: "s1", SSOIssuer: "oidc " + ts.URL}
+	if err := st.Users().CreateUser(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	suffix = "/"
+	if w := saveSignIn(t, srv, admin, oidcBody(ts.URL+"/", "")); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "client secret") {
+		t.Fatalf("slashed issuer with a blank secret: %d %s", w.Code, w.Body.String())
+	}
+	if w := saveSignIn(t, srv, admin, oidcBody(ts.URL+"/", `,"client_secret":"b-secret"`)); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"count":1`) {
+		t.Fatalf("slashed issuer unconfirmed: %d %s", w.Code, w.Body.String())
+	}
+	if w := saveSignIn(t, srv, admin, oidcBody(ts.URL+"/", `,"client_secret":"b-secret","confirm_disable":1`)); w.Code != http.StatusOK {
+		t.Fatalf("slashed issuer confirmed: %d %s", w.Code, w.Body.String())
+	}
+	if u, _ := st.Users().GetUserByID(ctx, o.ID); u.Status != "inactive" {
+		t.Fatalf("the previous issuer's account is %s", u.Status)
+	}
+	if v := setting(t, st, sso.KeyBound); v != "oidc "+ts.URL+"/" {
+		t.Fatalf("bound to %q", v)
 	}
 }

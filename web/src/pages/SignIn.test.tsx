@@ -145,8 +145,11 @@ describe("SignIn", () => {
     render(<SignIn />);
     const secret = await screen.findByLabelText<HTMLInputElement>("Client secret");
     expect(secret.required).toBe(false);
-    fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://id.example/" } });
+    fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: " https://id.example " } });
     expect(secret.required).toBe(false);
+    // Issuers compare exactly: a trailing slash is another issuer.
+    fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://id.example/" } });
+    expect(secret.required).toBe(true);
     fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://other.example" } });
     expect(secret.required).toBe(true);
     expect(secret.placeholder).toBe("Required");

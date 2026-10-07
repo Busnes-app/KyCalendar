@@ -188,10 +188,10 @@ func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) err
 	q := u.store.rebind(`
 INSERT INTO users (
     id, username, email, display_name, password_hash, role, status,
-    sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+    sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
     recovery_codes_hash, push_device_id, must_change_password,
     created_at, updated_at, last_login_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 
 	var lastLogin sql.NullTime
@@ -216,7 +216,7 @@ INSERT INTO users (
 	}
 	if _, err := tx.ExecContext(ctx, q,
 		user.ID, user.Username, user.Email, user.DisplayName, user.PasswordHash,
-		user.Role, user.Status, user.SSOProvider, user.SSOSubject,
+		user.Role, user.Status, user.SSOProvider, user.SSOSubject, user.SSOIssuer,
 		user.TOTPSecretEnc, user.TOTPEnabled, user.RecoveryCodesHash,
 		user.PushDeviceID, user.MustChangePassword,
 		user.CreatedAt, user.UpdatedAt, lastLogin,
@@ -248,7 +248,7 @@ func (u *userStore) scanUser(row interface{ Scan(...any) error }) (*User, error)
 
 	err := row.Scan(
 		&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.PasswordHash,
-		&user.Role, &user.Status, &user.SSOProvider, &user.SSOSubject,
+		&user.Role, &user.Status, &user.SSOProvider, &user.SSOSubject, &user.SSOIssuer,
 		&user.TOTPSecretEnc, &user.TOTPEnabled, &user.RecoveryCodesHash,
 		&user.PushDeviceID, &user.MustChangePassword, &user.TOTPLastCounter,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
@@ -268,7 +268,7 @@ func (u *userStore) scanUser(row interface{ Scan(...any) error }) (*User, error)
 func (u *userStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE id = ?
@@ -279,7 +279,7 @@ FROM users WHERE id = ?
 func (u *userStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE LOWER(username) = LOWER(?)
@@ -294,7 +294,7 @@ LIMIT 1
 func (u *userStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE LOWER(email) = LOWER(?)
@@ -305,7 +305,7 @@ FROM users WHERE LOWER(email) = LOWER(?)
 func (u *userStore) GetUserBySSO(ctx context.Context, provider, subject string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE sso_provider = ? AND sso_subject = ?
@@ -434,7 +434,7 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 
 	listQuery := `
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users
@@ -631,7 +631,8 @@ func inList(values []string) (string, []any) {
 	return strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", "), args
 }
 
-func (u *userStore) BindSignIn(ctx context.Context, actor Actor, disable []string, settings map[string]string) (int, error) {
+func (u *userStore) BindSignIn(ctx context.Context, actor Actor, b SignInBinding, settings map[string]string) (int, error) {
+	disable := b.Disable
 	tx, err := u.store.lockedTx(ctx, "local-admins")
 	if err != nil {
 		return 0, err
@@ -658,6 +659,12 @@ func (u *userStore) BindSignIn(ctx context.Context, actor Actor, disable []strin
 		}
 	}
 	now := time.Now().UTC()
+	if b.Stamp != "" && len(b.StampProviders) > 0 {
+		in, args := inList(b.StampProviders)
+		if _, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET sso_issuer = ? WHERE sso_issuer = '' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), append([]any{b.Stamp}, args...)...); err != nil {
+			return 0, err
+		}
+	}
 	for key, val := range settings {
 		q := `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`

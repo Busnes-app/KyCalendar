@@ -21,12 +21,14 @@ var (
 	errAccountInactive = errors.New("account is not active")
 	// errUsernameTaken: a different account already holds the IdP username. Never linked by name.
 	errUsernameTaken = errors.New("username already used by another account")
+	errOtherIssuer   = errors.New("account belongs to another sign-in provider")
 )
 
-// upsertSSOUser maps a verified login onto a local user. A KyIdentity login's admin grant
+// upsertSSOUser maps a verified login through the provider bound as binding onto a local user,
+// which must carry that binding (new rows are stamped with it). A KyIdentity login's admin grant
 // follows the token's `roles` claim on every login; any other provider's users are everyday. A
 // change revokes the user's sessions and app passwords first.
-func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) (*store.User, error) {
+func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, binding string) (*store.User, error) {
 	role := "user"
 	if claims.Provider == "kysignon" && access.IsAdmin(claims.Roles) {
 		role = "admin"
@@ -49,6 +51,7 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 			Status:      "active",
 			SSOProvider: claims.Provider,
 			SSOSubject:  claims.Subject,
+			SSOIssuer:   binding,
 		}
 		if err := s.store.Users().CreateUser(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
 			return nil, errUsernameTaken
@@ -62,6 +65,11 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 	}
 	if user.Status != "active" {
 		return nil, errAccountInactive
+	}
+	// The row belongs to the binding it was provisioned under. Re-activation (SCIM) does not move
+	// it, so a later issuer's colliding sub never takes it over; an unstamped row is no issuer's.
+	if user.SSOIssuer == "" || user.SSOIssuer != binding {
+		return nil, errOtherIssuer
 	}
 	if user.Role == role {
 		return user, nil
@@ -167,13 +175,17 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
 		return
 	}
-	user, err := s.upsertSSOUser(r.Context(), claims)
+	user, err := s.upsertSSOUser(r.Context(), claims, p.Binding)
 	switch {
 	case errors.Is(err, errNotProvisioned):
 		s.writeError(w, http.StatusForbidden, "User account not provisioned")
 		return
 	case errors.Is(err, errAccountInactive):
 		s.writeError(w, http.StatusForbidden, "Account is not active")
+		return
+	case errors.Is(err, errOtherIssuer):
+		log.Printf("sso: sign-in for subject %s refused: the account belongs to another sign-in provider", claims.Subject)
+		s.writeError(w, http.StatusForbidden, "This account belongs to a previous sign-in provider")
 		return
 	case errors.Is(err, errUsernameTaken):
 		log.Printf("sso: sign-in for subject %s refused: username %q belongs to another account", claims.Subject, claims.PreferredUsername)
