@@ -57,6 +57,8 @@ the database there, so a backup refuses while `KY_DB_DSN` opens another file. Un
   the restore. From a local backup directory the file is `<service>.<capsule-id>.kycap`
   (`kycalendar.cap-kycalendar-<n>.kycap`); the newest is the one to use unless
   you have a reason.
+- **Install the `sqlite3` CLI on the host.** The image does not carry it, and the password
+  steps below query the restored and old databases with it.
 - **Gather k custodians.** Each card carries one share, a single line beginning `ky2-`. They
   type or paste it themselves; do not collect the shares in a file, a chat, or an email. Two
   shares in one place is the suite key in one place.

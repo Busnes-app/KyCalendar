@@ -163,9 +163,14 @@ func sqliteIntegrityCheck(name, path string) recoveryclient.Check {
 	return recoveryclient.Check{Name: "SQLite Integrity: " + name, Passed: true, Message: "PRAGMA integrity_check passed ok"}
 }
 
-// openReadOnly opens an absolute path as a read-only SQLite file. URL encoding prevents a
+// openReadOnly opens a path as a read-only SQLite file. URL encoding prevents a
 // filename's '?' or '#' from changing SQLite's options.
-func openReadOnly(absolute string) (*sql.DB, error) {
+func openReadOnly(path string) (*sql.DB, error) {
+	// A relative path (the default ./data) would become a file: URL authority.
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
 	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "mode=ro"}).String()
 	return sql.Open("sqlite", dsn)
 }

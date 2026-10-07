@@ -47,7 +47,8 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	// The capsule restores the database as <DataDir>/kycalendar.db; a DSN elsewhere would seal
 	// a file a restored server never opens.
 	dsnFile, _, _ := strings.Cut(cfg.Database.DSN, "?")
-	if want := filepath.Join(cfg.Database.DataDir, filepath.Base(DatabaseMember)); filepath.Clean(dsnFile) != filepath.Clean(want) {
+	want := filepath.Join(cfg.Database.DataDir, filepath.Base(DatabaseMember))
+	if !samePath(dsnFile, want) {
 		return recoveryclient.Payload{}, fmt.Errorf("%w: KY_DB_DSN opens %s, backups require the default %s; unset KY_DB_DSN or point it there", ErrNoDatabaseSnapshot, dsnFile, want)
 	}
 	dbBytes, counts, err := snapshotSQLite(ctx, cfg.Database.DSN, cfg.Database.DataDir)
@@ -142,6 +143,13 @@ func countCalendars(ctx context.Context, db *sql.DB) (calendarCounts, error) {
 	}
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_objects`).Scan(&c.Objects)
 	return c, err
+}
+
+// samePath compares two paths after making them absolute, so ./data and /abs/data agree.
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	return errA == nil && errB == nil && absA == absB
 }
 
 // Members names what a capsule carries, for the screen; it is what Collect would seal now.

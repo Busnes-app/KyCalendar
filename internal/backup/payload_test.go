@@ -212,3 +212,13 @@ func TestCollectRecordsCalendarCounts(t *testing.T) {
 		t.Fatalf("recipe %v", p.VerificationRecipe)
 	}
 }
+
+// A relative data dir and an absolute DSN naming the same file are the same database.
+func TestCollectAcceptsAnAbsoluteDSNForARelativeDataDir(t *testing.T) {
+	cfg, _ := payloadConfig(t)
+	t.Chdir(filepath.Dir(cfg.Database.DataDir))
+	cfg.Database.DataDir = "./" + filepath.Base(cfg.Database.DataDir)
+	if _, err := backup.Collect(context.Background(), cfg, "1.0.0"); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+}
