@@ -3,6 +3,7 @@ package api_test
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -50,6 +51,7 @@ var (
 
 // public routes authenticate (or not) by design; they have no authorization to test here.
 // Each has its own tests: login, MFA and password limits, SSO, settings tiering, the SPA.
+// Session-tiered public routes (/api/auth/me, /api/settings) are pinned by TestSessionTieredPublicRoutes.
 var public = expect(nil)
 
 // davPatterns are covered by davRows, operation by operation.
@@ -301,5 +303,36 @@ func TestCalDAVAuthorizationMatrix(t *testing.T) {
 				check(t, r.StatusCode, row.want[a])
 			})
 		}
+	}
+}
+
+func TestSessionTieredPublicRoutes(t *testing.T) {
+	w := newWorld(t)
+	for _, a := range actors {
+		t.Run("me/"+string(a), func(t *testing.T) {
+			rec := call(t, w.srv, "GET", "/api/auth/me", "", w.cookies[a])
+			var got struct {
+				Authenticated bool `json:"authenticated"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if want := a != anon && a != deactivated; got.Authenticated != want {
+				t.Errorf("authenticated = %v, want %v", got.Authenticated, want)
+			}
+		})
+		t.Run("settings/"+string(a), func(t *testing.T) {
+			rec := call(t, w.srv, "GET", "/api/settings", "", w.cookies[a])
+			if rec.Code != 200 {
+				t.Fatalf("got %d, want 200", rec.Code)
+			}
+			var got map[string]json.RawMessage
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if _, has := got["extra_settings"]; has != (a == admin) {
+				t.Errorf("extra_settings present = %v, want %v", has, a == admin)
+			}
+		})
 	}
 }
