@@ -37,7 +37,8 @@ type Server struct {
 	saml     *sso.SAMLServiceProvider
 	// signin is the live sign-in provider, nil until LoadSignIn binds accounts to one; saving
 	// sign-in settings swaps it.
-	signin atomic.Pointer[sso.Provider]
+	signin   atomic.Pointer[sso.Provider]
+	signinMu sync.Mutex // one sign-in save at a time: binding and the live provider move together
 	// signinHTTP reaches admin-entered providers: HTTPS only, no redirects, no loopback,
 	// link-local or cloud metadata targets.
 	signinHTTP *http.Client
@@ -301,6 +302,9 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/users/{id}/disable", s.tracked(s.requireAdmin(s.handleDisableUser)))
 	s.handle("POST /api/admin/users/{id}/enable", s.tracked(s.requireAdmin(s.handleEnableUser)))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
+	s.handle("GET /api/admin/signin", s.requireAdmin(s.handleGetSignIn))
+	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
+	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))

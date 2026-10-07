@@ -687,6 +687,15 @@ func (u *userStore) SetStatus(ctx context.Context, actor Actor, userID, status s
 	return u.changeAccess(ctx, actor, userID, func(role, _ string) (string, string) { return role, status })
 }
 
+func (u *userStore) CheckActor(ctx context.Context, actor Actor) error {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return u.checkActor(ctx, tx, actor)
+}
+
 // checkActor is ErrActorRevoked unless actor is System or an active administrator whose session
 // is still live. Run it inside the write's transaction, under the local-admins lock.
 func (u *userStore) checkActor(ctx context.Context, tx *sql.Tx, actor Actor) error {
@@ -1226,6 +1235,27 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 func (s *settingsStore) DeleteSetting(ctx context.Context, key string) error {
 	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM server_settings WHERE key = ?`), key)
 	return err
+}
+
+func (s *settingsStore) SaveSettings(ctx context.Context, values map[string]string) error {
+	tx, err := s.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	for key, val := range values {
+		q := `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+		args := []any{key, val, now}
+		if val == "" {
+			q, args = `DELETE FROM server_settings WHERE key = ?`, []any{key}
+		}
+		if _, err := tx.ExecContext(ctx, s.store.rebind(q), args...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *settingsStore) GetAllSettings(ctx context.Context) (map[string]string, error) {

@@ -31,6 +31,7 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		"restore self": func(a store.Actor) error { return st.Users().SetRole(ctx, a, bob.ID, "admin") },
 		"enable self":  func(a store.Actor) error { return st.Users().SetStatus(ctx, a, bob.ID, "active") },
 		"demote root":  func(a store.Actor) error { return st.Users().SetRole(ctx, a, root.ID, "user") },
+		"check":        func(a store.Actor) error { return st.Users().CheckActor(ctx, a) },
 		"create admin": func(a store.Actor) error {
 			return st.Users().CreateUserAs(ctx, a, &store.User{ID: "usr_new", Username: "new", Role: "admin", Status: "active", SSOProvider: "local"})
 		},
@@ -105,6 +106,9 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedSession(t, st, bob)
+	if err := st.Users().CheckActor(ctx, bobActs); err != nil {
+		t.Errorf("a live admin is refused by CheckActor: %v", err)
+	}
 	if err := st.Users().SetRole(ctx, bobActs, ann.ID, "admin"); err != nil {
 		t.Errorf("a live admin promotes ann: %v", err)
 	}

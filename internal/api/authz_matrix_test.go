@@ -213,6 +213,11 @@ func apiRows(w *world) map[string]apiRow {
 		"PATCH /api/calendars/{id}":                      {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
 		"DELETE /api/calendars/{id}":                     {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
 		"GET /api/events":                                {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
+		"GET /api/admin/signin":                          {method: "GET", path: "/api/admin/signin", want: adminOnly},
+		// http:// is refused before any request, so the admin cell is a 422 without the network.
+		"POST /api/admin/signin/test": {method: "POST", path: "/api/admin/signin/test", body: `{"provider":"oidc","display_name":"M","issuer":"http://idp.invalid","client_id":"m"}`, want: adminOnly},
+		// none touches no account and leaves sign-in closed, as every other row expects.
+		"PUT /api/admin/signin": {method: "PUT", path: "/api/admin/signin", body: `{"provider":"none"}`, want: adminOnly},
 		"POST /api/calendars/{id}/events": {method: "POST", path: "/api/calendars/" + w.group.ID + "/events",
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
 		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed-uid",
