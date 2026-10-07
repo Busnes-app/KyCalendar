@@ -36,9 +36,9 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | POST | `/api/calendars` | everyday | `{name,color?,description?}` → 201 personal calendar; 409 `quota` at `KY_CALENDAR_MAX_CALENDARS_PER_USER` |
 | PATCH | `/api/calendars/{id}` | everyday; owner or manager | partial `{name?,color?,description?}` → 200; 403 reader/editor; 404 cannot read; group changes audit `calendar.update` |
 | DELETE | `/api/calendars/{id}` | everyday; owner, detached and tracked | 204; 403 group calendar (admins delete those); 404 cannot read; audits `calendar.delete` |
-| POST | `/api/calendars/{id}/events` | everyday; editor or owner | event body → 201 `{calendar_id,uid,etag}`; 400 invalid; 403 reader; 404 cannot read |
-| PUT | `/api/events/{cal}/{uid}` | everyday; editor or owner; `If-Match` | body + `scope` (`all`/`this`) + `recurrence_id` → 200 `{etag}`; 428 no `If-Match`; 412 `conflict`; 400 malformed `If-Match`, invalid body, not recurring or no such occurrence; 413 `too_large` |
-| DELETE | `/api/events/{cal}/{uid}?scope&recurrence_id` | everyday; editor or owner; `If-Match` | `all` → 204; `this` → 200 `{etag}`; 428, 412 as above; 400 malformed `If-Match`, not recurring or no such occurrence; 413 `too_large` |
+| POST | `/api/calendars/{id}/events` | everyday; editor or owner | event body → 201 `{calendar_id,uid,etag}`; 400 invalid; 403 reader; 404 cannot read; 409 UID conflict; 413 `too_large`; 422 invalid object; 507 quota |
+| PUT | `/api/events/{cal}/{uid}` | everyday; editor or owner; `If-Match` | body + `scope` (`all`/`this`) + `recurrence_id` → 200 `{etag}`; 428 no `If-Match`; 412 `conflict`; 400 malformed `If-Match`, invalid body, not recurring or no such occurrence; 413 `too_large`; 422 invalid object; 507 quota |
+| DELETE | `/api/events/{cal}/{uid}?scope&recurrence_id` | everyday; editor or owner; `If-Match` | `all` → 204; `this` → 200 `{etag}`; 428, 412 as above; 400 malformed `If-Match`, not recurring or no such occurrence; 413 `too_large`; 422 invalid object; 507 quota |
 | GET | `/api/calendars/{id}/grants` | session: admin or manager | `[grant]` |
 | PUT | `/api/calendars/{id}/grants/{group}` | session: admin or manager | `{role}` -> 200 `[grant]`; 400 bad role or `{group}` over 64 bytes; 404 no such group |
 | DELETE | `/api/calendars/{id}/grants/{group}` | session: admin or manager | 200 `[grant]` (idempotent); 400 `{group}` over 64 bytes |
