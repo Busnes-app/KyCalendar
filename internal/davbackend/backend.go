@@ -113,18 +113,7 @@ func (b *Backend) split(p string) (slug, name string, err error) {
 }
 
 func (b *Backend) ensureDefault(ctx context.Context) error {
-	cals, err := b.Store.Calendars().ListCalendarsByOwner(ctx, ownerUser, b.User.ID)
-	if err != nil || len(cals) > 0 {
-		return err
-	}
-	err = b.Store.Calendars().CreateCalendar(ctx, &store.Calendar{
-		ID: "cal_" + uuid.NewString(), OwnerKind: ownerUser, OwnerID: b.User.ID,
-		Slug: defaultSlug, Name: "Calendar",
-	}, b.MaxCalendarsPerUser)
-	if errors.Is(err, store.ErrAlreadyExists) {
-		return nil
-	}
-	return err
+	return EnsureDefault(ctx, b.Store, b.User.ID, b.MaxCalendarsPerUser)
 }
 
 func (b *Backend) segment(c *store.Calendar) string {
@@ -397,25 +386,20 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	if !role.CanWrite() {
 		return nil, errReadOnly
 	}
-	if _, _, err := caldav.ValidateCalendarObject(cal); err != nil {
-		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
-	}
-	info, err := calendar.Inspect(cal)
-	switch {
-	case errors.Is(err, calendar.ErrUnsupportedComponent):
-		return nil, caldav.NewPreconditionError(caldav.PreconditionSupportedCalendarComponent)
-	case err != nil:
-		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarData)
-	}
 	ifMatch, err := ifMatchETag(opts.IfMatch)
 	if err != nil {
 		return nil, err
 	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
-	o := &store.CalendarObject{CalendarID: c.ID, Name: name, UID: info.UID, Data: opts.Raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}
 	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
-	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, store.OwnerLimits{MaxObjects: b.MaxObjectsPerUser, MaxBytes: b.MaxBytesPerUser, MaxTotalBytes: b.MaxBytesTotal})
+	o, err := Write(ctx, b.Store, c.ID, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits())
 	switch {
+	case errors.Is(err, ErrInvalidResource):
+		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
+	case errors.Is(err, calendar.ErrUnsupportedComponent):
+		return nil, caldav.NewPreconditionError(caldav.PreconditionSupportedCalendarComponent)
+	case errors.Is(err, calendar.ErrInvalidData):
+		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarData)
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, errQuota
 	case errors.Is(err, store.ErrPreconditionFailed):
@@ -426,6 +410,10 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 		return nil, err
 	}
 	return &caldav.CalendarObject{Path: b.home() + slug + "/" + name, ETag: o.ETag, ModTime: o.ModifiedAt}, nil
+}
+
+func (b *Backend) limits() store.OwnerLimits {
+	return store.OwnerLimits{MaxObjects: b.MaxObjectsPerUser, MaxBytes: b.MaxBytesPerUser, MaxTotalBytes: b.MaxBytesTotal}
 }
 
 func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {

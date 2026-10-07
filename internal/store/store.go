@@ -128,6 +128,7 @@ type CalendarStore interface {
 	UserGrants(ctx context.Context, userID string) ([]CalendarGrant, error)
 	UpdateCalendar(ctx context.Context, id string, name, description, color *string) error
 	GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error)
+	GetObjectByUID(ctx context.Context, calendarID, uid string) (*CalendarObject, error)
 	ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error)
 	ListObjectsInRange(ctx context.Context, calendarID string, start, end int64) ([]*CalendarObject, error)
 	// PutObject enforces lim across every calendar of the target calendar's owner, atomically with the write.

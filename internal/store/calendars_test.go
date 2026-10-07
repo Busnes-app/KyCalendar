@@ -421,3 +421,18 @@ func TestPutObjectInstanceByteCap(t *testing.T) {
 		t.Fatalf("replacement counts only its new size: %v", err)
 	}
 }
+
+func TestGetObjectByUID(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	if _, err := cs.PutObject(ctx, obj(c.ID, "file-name.ics", "the-uid", "x", 0, nil), "", false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := cs.GetObjectByUID(ctx, c.ID, "the-uid")
+	if err != nil || got.Name != "file-name.ics" || string(got.Data) != "x" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if _, err := cs.GetObjectByUID(ctx, c.ID, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}

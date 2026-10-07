@@ -235,6 +235,11 @@ func (c *calendarStore) GetObject(ctx context.Context, calendarID, name string) 
 WHERE calendar_id = ? AND name = ?`), calendarID, name))
 }
 
+func (c *calendarStore) GetObjectByUID(ctx context.Context, calendarID, uid string) (*CalendarObject, error) {
+	return scanObject(c.store.db.QueryRowContext(ctx, c.q(`SELECT `+objectCols+` FROM calendar_objects
+WHERE calendar_id = ? AND uid = ?`), calendarID, uid))
+}
+
 func (c *calendarStore) ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error) {
 	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects WHERE calendar_id = ? ORDER BY name`, calendarID)
 }

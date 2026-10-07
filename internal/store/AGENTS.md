@@ -21,6 +21,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - `DeleteUser` deletes the user's calendars in the same transaction (objects and changes cascade); `calendars.owner_id` has no foreign key, and orphaned bytes would hold the instance cap forever.
 - `ListUsers` takes a `UserFilter`: an exact, case-insensitive match on username, email or display name (columns from `userFilterColumns` only), never a substring.
 - `GetUserByUsername` matches case-insensitively and returns the local account first, then the exact spelling: uniqueness is case-sensitive, so an SSO `ADMIN` may exist beside local `admin`.
+- `GetObjectByUID` finds an object by its UID within one calendar (UIDs are unique per calendar), for the JSON event API.
 - Object ETag is the SHA-256 hex of the stored bytes. `first_start` and `last_end` are unix seconds; NULL `last_end` means unbounded.
 - `PruneChanges` sets `min_sync_seq` to the highest pruned seq; `ChangesSince` returns `ErrSyncTokenExpired` only when the token seq is below it.
 - `store.Open(ctx, cfg)` initializes and auto-migrates the configured database backend.
