@@ -29,15 +29,22 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   await expect(item).toBeVisible();
 
   // Open by keyboard, close with Escape, open again.
-  await item.locator('a, [tabindex]').first().focus();
+  const first = item.locator('a, [tabindex]').first();
+  await first.focus();
+  await expect(first).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByLabel('Title')).toHaveValue(title);
+  // Every close refetches events and FullCalendar re-renders the list: wait for it so focus lands on the final node.
+  const refetched = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/events' && r.request().method() === 'GET');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await refetched;
   await expect(item).toBeVisible();
 
-  await item.locator('a, [tabindex]').first().focus();
+  const link = item.locator('a, [tabindex]').first();
+  await link.focus();
+  await expect(link).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog')).toBeVisible();
   page.once('dialog', (d) => d.accept());
