@@ -150,8 +150,11 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	u := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: body.Username, DisplayName: display, Email: body.Email,
 		PasswordHash: hash, Role: body.Role, Status: "active", SSOProvider: "local", MustChangePassword: true}
-	if err := s.store.Users().CreateUser(ctx, u); errors.Is(err, store.ErrAlreadyExists) {
+	if err := s.store.Users().CreateUserAs(ctx, actorOf(ctx), u); errors.Is(err, store.ErrAlreadyExists) {
 		s.writeUsernameTaken(w)
+		return
+	} else if errors.Is(err, store.ErrActorRevoked) {
+		s.writeActorRevoked(w)
 		return
 	} else if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to create the person")
@@ -273,9 +276,16 @@ func (s *Server) writeAccessError(w http.ResponseWriter, err error) {
 		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "This is the last active local administrator; make another one first", "code": "last_admin"})
 	case errors.Is(err, store.ErrNotFound):
 		s.writeError(w, http.StatusNotFound, "No such person")
+	case errors.Is(err, store.ErrActorRevoked):
+		s.writeActorRevoked(w)
 	default:
 		s.writeError(w, http.StatusInternalServerError, "Failed to change the person")
 	}
+}
+
+// writeActorRevoked answers a write whose administrator lost the role or the session mid-request.
+func (s *Server) writeActorRevoked(w http.ResponseWriter) {
+	s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Your administrator access ended; sign in again", "code": "actor_revoked"})
 }
 
 func (s *Server) writeSelf(w http.ResponseWriter, what string) {
@@ -300,12 +310,12 @@ func (s *Server) handleSetUserRole(w http.ResponseWriter, r *http.Request) {
 	if u == nil {
 		return
 	}
-	if u.ID == sessionUser(r.Context()).ID && body.Role != "admin" {
-		s.writeSelf(w, "demote")
+	if u.ID == sessionUser(r.Context()).ID {
+		s.writeSelf(w, "change the role of")
 		return
 	}
 	if u.Role != body.Role {
-		if err := s.store.Users().SetRole(r.Context(), u.ID, body.Role); err != nil {
+		if err := s.store.Users().SetRole(r.Context(), actorOf(r.Context()), u.ID, body.Role); err != nil {
 			s.writeAccessError(w, err)
 			return
 		}
@@ -337,12 +347,12 @@ func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, a
 	if u == nil {
 		return
 	}
-	if u.ID == sessionUser(r.Context()).ID && status != "active" {
-		s.writeSelf(w, "disable")
+	if u.ID == sessionUser(r.Context()).ID {
+		s.writeSelf(w, "enable or disable")
 		return
 	}
 	if u.Status != status {
-		if err := s.store.Users().SetStatus(r.Context(), u.ID, status); err != nil {
+		if err := s.store.Users().SetStatus(r.Context(), actorOf(r.Context()), u.ID, status); err != nil {
 			s.writeAccessError(w, err)
 			return
 		}

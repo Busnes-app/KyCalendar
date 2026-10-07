@@ -125,7 +125,7 @@ func TestAdminRoleAndStatusRules(t *testing.T) {
 	}
 
 	// An SSO admin cannot take away the last active local admin: that account is the way back in.
-	if err := st.Users().SetRole(ctx, "usr_bob", "user"); err != nil {
+	if err := st.Users().SetRole(ctx, store.System, "usr_bob", "user"); err != nil {
 		t.Fatal(err)
 	}
 	ky := &store.User{ID: "usr_ky", Username: "ky", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "k1"}

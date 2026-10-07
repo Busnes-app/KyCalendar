@@ -141,15 +141,18 @@ func (s *SQLStore) lockKey(ctx context.Context, tx *sql.Tx, key string) error {
 	return err
 }
 
-// lockedTx begins a transaction already holding the advisory lock on key.
-func (s *SQLStore) lockedTx(ctx context.Context, key string) (*sql.Tx, error) {
+// lockedTx begins a transaction already holding the advisory locks on keys, in order. Callers
+// holding two take local-admins before user-names.
+func (s *SQLStore) lockedTx(ctx context.Context, keys ...string) (*sql.Tx, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.lockKey(ctx, tx, key); err != nil {
-		_ = tx.Rollback()
-		return nil, err
+	for _, key := range keys {
+		if err := s.lockKey(ctx, tx, key); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
 	}
 	return tx, nil
 }
@@ -163,6 +166,14 @@ type userStore struct {
 }
 
 func (u *userStore) CreateUser(ctx context.Context, user *User) error {
+	return u.createUser(ctx, System, user)
+}
+
+func (u *userStore) CreateUserAs(ctx context.Context, actor Actor, user *User) error {
+	return u.createUser(ctx, actor, user)
+}
+
+func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) error {
 	now := time.Now().UTC()
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now
@@ -188,11 +199,18 @@ INSERT INTO users (
 		lastLogin = sql.NullTime{Time: *user.LastLoginAt, Valid: true}
 	}
 
-	tx, err := u.store.lockedTx(ctx, "user-names")
+	keys := []string{"user-names"}
+	if !actor.system {
+		keys = []string{"local-admins", "user-names"} // serialised with demotions
+	}
+	tx, err := u.store.lockedTx(ctx, keys...)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
 	if err := u.refuseTwin(ctx, tx, user.ID, user.Username); err != nil {
 		return err
 	}
@@ -608,22 +626,43 @@ func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, emai
 	return nil
 }
 
-func (u *userStore) SetRole(ctx context.Context, userID, role string) error {
-	return u.changeAccess(ctx, userID, func(_, status string) (string, string) { return role, status })
+func (u *userStore) SetRole(ctx context.Context, actor Actor, userID, role string) error {
+	return u.changeAccess(ctx, actor, userID, func(_, status string) (string, string) { return role, status })
 }
 
-func (u *userStore) SetStatus(ctx context.Context, userID, status string) error {
-	return u.changeAccess(ctx, userID, func(role, _ string) (string, string) { return role, status })
+func (u *userStore) SetStatus(ctx context.Context, actor Actor, userID, status string) error {
+	return u.changeAccess(ctx, actor, userID, func(role, _ string) (string, string) { return role, status })
+}
+
+// checkActor is ErrActorRevoked unless actor is System or an active administrator whose session
+// is still live. Run it inside the write's transaction, under the local-admins lock.
+func (u *userStore) checkActor(ctx context.Context, tx *sql.Tx, actor Actor) error {
+	if actor.system {
+		return nil
+	}
+	var n int
+	if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT COUNT(1) FROM sessions s JOIN users u ON u.id = s.user_id
+WHERE s.token_hash = ? AND u.id = ? AND u.role = 'admin' AND u.status = 'active' AND s.expires_at > ?`),
+		actor.sessionHash, actor.userID, time.Now().UTC()).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrActorRevoked
+	}
+	return nil
 }
 
 // changeAccess applies change to a local account's role and status under the local-admins lock,
 // so two admins demoting each other cannot both pass the last-admin check.
-func (u *userStore) changeAccess(ctx context.Context, userID string, change func(role, status string) (string, string)) error {
+func (u *userStore) changeAccess(ctx context.Context, actor Actor, userID string, change func(role, status string) (string, string)) error {
 	tx, err := u.store.lockedTx(ctx, "local-admins")
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
 	var role, status string
 	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ? AND sso_provider = 'local'`), userID).Scan(&role, &status)
 	if errorsIs(err, sql.ErrNoRows) {

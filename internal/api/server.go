@@ -320,21 +320,30 @@ type sessionUserKey struct{}
 
 // authenticate resolves the session, or writes the 401 (or password-change 403) answer and
 // returns nil.
-func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) *store.User {
-	user, _, err := s.sessions.AuthenticateRequest(r)
+func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (*store.User, *store.Session) {
+	user, sess, err := s.sessions.AuthenticateRequest(r)
 	if err == nil {
-		return user
+		return user, sess
 	}
 	if errors.Is(err, auth.ErrPasswordChangeRequired) {
 		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
 	} else {
 		s.writeError(w, http.StatusUnauthorized, "Authentication required")
 	}
-	return nil
+	return nil, nil
 }
 
-func withSessionUser(r *http.Request, u *store.User) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), sessionUserKey{}, u))
+type sessionKey struct{}
+
+func withSessionUser(r *http.Request, u *store.User, sess *store.Session) *http.Request {
+	ctx := context.WithValue(r.Context(), sessionUserKey{}, u)
+	return r.WithContext(context.WithValue(ctx, sessionKey{}, sess))
+}
+
+// actorOf is the signed-in administrator as the store rechecks them inside an access write.
+func actorOf(ctx context.Context) store.Actor {
+	sess, _ := ctx.Value(sessionKey{}).(*store.Session)
+	return store.AdminActor(sessionUser(ctx).ID, sess.TokenHash)
 }
 
 // sessionUser is the user requireSession, requireAdmin or requireEveryday authenticated.
@@ -346,8 +355,8 @@ func sessionUser(ctx context.Context) *store.User {
 // requireSession admits any signed-in user; the handler decides by role.
 func (s *Server) requireSession(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if user := s.authenticate(w, r); user != nil {
-			h(w, withSessionUser(r, user))
+		if user, sess := s.authenticate(w, r); user != nil {
+			h(w, withSessionUser(r, user, sess))
 		}
 	}
 }
@@ -355,7 +364,7 @@ func (s *Server) requireSession(h http.HandlerFunc) http.HandlerFunc {
 // requireAdmin rejects requests without a valid session, or with a non-admin one.
 func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user := s.authenticate(w, r)
+		user, sess := s.authenticate(w, r)
 		if user == nil {
 			return
 		}
@@ -363,7 +372,7 @@ func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 			s.writeError(w, http.StatusForbidden, "Administrator role required")
 			return
 		}
-		h(w, withSessionUser(r, user))
+		h(w, withSessionUser(r, user, sess))
 	}
 }
 

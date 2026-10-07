@@ -43,7 +43,7 @@ func TestSetRoleAndStatusRevokeAndKeepALocalAdmin(t *testing.T) {
 	)
 	seedSession(t, st, ann)
 
-	if err := st.Users().SetRole(ctx, ann.ID, "admin"); err != nil {
+	if err := st.Users().SetRole(ctx, store.System, ann.ID, "admin"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Sessions().GetSession(ctx, "tok_"+ann.ID); !errors.Is(err, store.ErrNotFound) {
@@ -52,26 +52,26 @@ func TestSetRoleAndStatusRevokeAndKeepALocalAdmin(t *testing.T) {
 	if list, _ := st.AppPasswords().ListByUser(ctx, ann.ID); len(list) != 0 {
 		t.Errorf("promotion kept %d app passwords", len(list))
 	}
-	if err := st.Users().SetRole(ctx, root.ID, "user"); err != nil {
+	if err := st.Users().SetRole(ctx, store.System, root.ID, "user"); err != nil {
 		t.Fatalf("demote one of two local admins: %v", err)
 	}
 	// ann is now the only active local admin: an SSO admin and an inactive local admin do not count.
-	if err := st.Users().SetStatus(ctx, ann.ID, "inactive"); !errors.Is(err, store.ErrLastAdmin) {
+	if err := st.Users().SetStatus(ctx, store.System, ann.ID, "inactive"); !errors.Is(err, store.ErrLastAdmin) {
 		t.Errorf("disable the last local admin: %v, want ErrLastAdmin", err)
 	}
-	if err := st.Users().SetRole(ctx, ann.ID, "user"); !errors.Is(err, store.ErrLastAdmin) {
+	if err := st.Users().SetRole(ctx, store.System, ann.ID, "user"); !errors.Is(err, store.ErrLastAdmin) {
 		t.Errorf("demote the last local admin: %v, want ErrLastAdmin", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, ann.ID); u.Role != "admin" || u.Status != "active" {
 		t.Errorf("a refused change was stored: %+v", u)
 	}
-	if err := st.Users().SetStatus(ctx, "usr_sso", "inactive"); !errors.Is(err, store.ErrNotFound) {
+	if err := st.Users().SetStatus(ctx, store.System, "usr_sso", "inactive"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("SSO account: %v, want ErrNotFound", err)
 	}
-	if err := st.Users().SetStatus(ctx, root.ID, "inactive"); err != nil {
+	if err := st.Users().SetStatus(ctx, store.System, root.ID, "inactive"); err != nil {
 		t.Fatalf("disable an everyday account: %v", err)
 	}
-	if err := st.Users().SetStatus(ctx, root.ID, "active"); err != nil {
+	if err := st.Users().SetStatus(ctx, store.System, root.ID, "active"); err != nil {
 		t.Fatalf("enable it again: %v", err)
 	}
 }
@@ -92,7 +92,7 @@ func TestConcurrentDemotionKeepsOneLocalAdmin(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			errs[i] = st.Users().SetRole(ctx, id, "user")
+			errs[i] = st.Users().SetRole(ctx, store.System, id, "user")
 		}()
 	}
 	close(start)
@@ -157,7 +157,7 @@ func TestRoleChangeRevokesASessionIssuedDuringIt(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- st.Users().SetRole(ctx, "usr_ann", "admin") }()
+	go func() { done <- st.Users().SetRole(ctx, store.System, "usr_ann", "admin") }()
 	for deadline := time.Now().Add(10 * time.Second); ; {
 		var waiting int
 		if err := raw.QueryRowContext(ctx, `SELECT COUNT(1) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE users SET role%'`).Scan(&waiting); err != nil {
