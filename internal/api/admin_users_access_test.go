@@ -95,6 +95,14 @@ func TestAdminRoleAndStatusRules(t *testing.T) {
 	if w := call(t, srv, "POST", "/api/admin/users/usr_bob/disable", "", admin); w.Code != http.StatusOK {
 		t.Fatalf("disable bob: %d %s", w.Code, w.Body.String())
 	}
+	restore = api.SetStepUpWindowForTest(0)
+	if w := call(t, srv, "POST", "/api/admin/users/usr_bob/enable", "", admin); w.Code != http.StatusForbidden || codeOf(t, w.Body.Bytes()) != "reauth_required" {
+		t.Errorf("enable on a stale session: %d %s, want 403 reauth_required", w.Code, w.Body.String())
+	}
+	restore()
+	if u, _ := st.Users().GetUserByID(ctx, "usr_bob"); u.Status != "inactive" {
+		t.Errorf("a refused enable changed bob: %s", u.Status)
+	}
 	if w := call(t, srv, "POST", "/api/admin/users/usr_bob/enable", "", admin); w.Code != http.StatusOK {
 		t.Fatalf("enable bob: %d %s", w.Code, w.Body.String())
 	}
@@ -132,5 +140,8 @@ func TestAdminRoleAndStatusRules(t *testing.T) {
 		if w := call(t, srv, "POST", tc.path, tc.body, kyAdmin); w.Code != http.StatusConflict || codeOf(t, w.Body.Bytes()) != "last_admin" {
 			t.Errorf("%s: %d %s, want 409 last_admin", tc.path, w.Code, w.Body.String())
 		}
+	}
+	if u, _ := st.Users().GetUserByID(ctx, "usr_root"); u.Role != "admin" || u.Status != "active" {
+		t.Errorf("the last local admin changed: role=%s status=%s", u.Role, u.Status)
 	}
 }

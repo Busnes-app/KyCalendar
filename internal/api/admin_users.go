@@ -322,7 +322,12 @@ func (s *Server) handleDisableUser(w http.ResponseWriter, r *http.Request) {
 	s.setUserStatus(w, r, "inactive", "admin.user_disable")
 }
 
+// handleEnableUser reactivates a local person; it can restore an administrator, so it is a
+// step-up action like disable.
 func (s *Server) handleEnableUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireStepUp(w, r, "enable a person") {
+		return
+	}
 	s.setUserStatus(w, r, "active", "admin.user_enable")
 }
 
