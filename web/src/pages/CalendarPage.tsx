@@ -8,6 +8,8 @@ import type { DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fu
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { browserZone, listCalendars, listEvents, type CalendarInfo, type EventInfo } from '../calendarApi';
 import { CalendarSidebar } from '../components/CalendarSidebar';
+import { EventDialog } from '../components/EventDialog';
+import { emptyForm, formFromEvent, type FormState } from '../eventForm';
 import '../styles/calendar.css';
 
 export const HIDDEN_KEY = 'kycalendar.hiddenCalendars';
@@ -50,6 +52,7 @@ export function CalendarPage() {
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<{ event?: EventInfo; initial: FormState } | null>(null);
   const ref = useRef<FullCalendar>(null);
 
   const loadCalendars = useCallback(async () => {
@@ -64,9 +67,8 @@ export function CalendarPage() {
     void loadCalendars();
   }, [loadCalendars]);
 
-  // Tasks 5 and 6 call this after saves.
+  // Task 6 also calls this after moves.
   const refetch = () => ref.current?.getApi().refetchEvents();
-  void refetch; // used by Tasks 5 and 6
 
   const writable = calendars.filter((c) => c.role !== 'reader');
 
@@ -100,9 +102,12 @@ export function CalendarPage() {
     setHidden(next);
   }
 
-  // Filled in by Tasks 5 and 6.
-  const openCreate = (_start: Date, _end: Date, _allDay: boolean) => {};
-  const openEvent = (_ev: EventInfo) => {};
+  const openCreate = (start: Date, end: Date, allDay: boolean) => {
+    if (writable.length === 0) return;
+    const target = writable.find((c) => !hidden.has(c.id)) ?? writable[0];
+    setDialog({ initial: emptyForm(start, end, allDay, target.id) });
+  };
+  const openEvent = (ev: EventInfo) => setDialog({ event: ev, initial: formFromEvent(ev, 'this') });
   const onMove = (arg: EventDropArg | EventResizeDoneArg) => arg.revert();
 
   return (
@@ -131,6 +136,15 @@ export function CalendarPage() {
           eventDrop={onMove}
           eventResize={onMove}
         />
+        {dialog && (
+          <EventDialog
+            calendars={calendars}
+            event={dialog.event}
+            initial={dialog.initial}
+            onClose={() => setDialog(null)}
+            onDone={() => { setDialog(null); refetch(); }}
+          />
+        )}
       </div>
     </section>
   );

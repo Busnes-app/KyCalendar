@@ -25,3 +25,5 @@
 }
 .kc-calendar .fc .fc-toolbar { flex-wrap: wrap; gap: 0.5rem; }
 .kc-calendar .fc .fc-toolbar-title { font-size: 1.1rem; }
+.kc-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50; box-sizing: border-box; width: min(32rem, 100vw - 2rem); max-width: min(32rem, 100vw - 2rem); max-height: calc(100vh - 2rem); overflow: auto; padding: 1rem; background: var(--ky-panel); border: 1px solid var(--ky-line); border-radius: var(--ky-radius); }
+.kc-dialog input:not([type='checkbox']):not([type='radio']), .kc-dialog select, .kc-dialog textarea { display: block; width: 100%; box-sizing: border-box; }
