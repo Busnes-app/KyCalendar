@@ -244,6 +244,16 @@ plaintext backups stay where they are: move them out of the directory, keep them
 restore from a capsule has been proven, then remove them securely. They are the live
 directory in the clear.
 
+### Upgrading to the `kycalendar` service name
+
+Earlier builds claimed and sealed under `KY_APP_NAME`; the service name is now fixed at
+`kycalendar`. An instance paired under another name must re-pair: the KyRecovery admin
+revokes the old token, then pair again from the screen (the same key comes back, so it is
+accepted). Local copies written under the old name are neither listed nor pruned; move them
+out by hand. An explicitly empty `KY_BACKUP_DIR=` (local copies off) does not carry over:
+compose now defaults to `/app/backups`, so set `KYCALENDAR_BACKUP_DIR=` in `.env` to keep
+them off.
+
 ### Restoring
 
 `docs/RESTORE.md` is the runbook: opening a capsule with the custodians' cards, putting the

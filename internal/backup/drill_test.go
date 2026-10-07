@@ -415,11 +415,11 @@ func TestDrillBrokenObjectNamesIDsNotData(t *testing.T) {
 	objs := twoCalendars()
 	objs["cal-b"]["b1.ics"] = "BEGIN:VCALENDAR\r\nBROKEN secret-body"
 	c := calendarCheckResults(t, objs, nil)["Calendar Objects"]
-	if c.Passed || c.Message != "Cannot parse cal-b/b1.ics" {
+	if c.Passed || c.Message != "Cannot parse object 3 of 3 in cal-b" {
 		t.Fatalf("%+v", c)
 	}
-	if strings.Contains(c.Message, "secret") || strings.Contains(c.Message, "BROKEN") {
-		t.Fatal("message carries object data")
+	if strings.Contains(c.Message, "secret") || strings.Contains(c.Message, "BROKEN") || strings.Contains(c.Message, "b1.ics") {
+		t.Fatal("message carries object data or name")
 	}
 }
 

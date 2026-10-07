@@ -304,11 +304,11 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 
 #### Plan 4 backup and restore contracts
 
-- The service name, claimed and sealed, is `kycalendar` (`backup.ServiceName`); `KY_APP_NAME` is display only. The capsule database member `data/kycalendar.db` (`backup.DatabaseMember`) equals the file the default DSN opens, so a restored tree starts on restored data.
-- Backup variables are `KYCALENDAR_BACKUP_DIR`, `_KEEP`, `_DEPOSIT_INTERVAL`, `_ALLOW_PRIVATE_RECOVERY` and `KYCALENDAR_DNS`; the retired `KY_BACKUP_*` and `KY_DNS` names are refused at startup when non-empty, compose included.
+- The service name, claimed and sealed, is `kycalendar` (`backup.ServiceName`); `KY_APP_NAME` is display only. The capsule database member `data/kycalendar.db` (`backup.DatabaseMember`) equals the file the default DSN opens, so a restored tree starts on restored data; `Collect` refuses a `KY_DB_DSN` that opens any other file.
+- Backup variables are `KYCALENDAR_BACKUP_DIR`, `_KEEP`, `_DEPOSIT_INTERVAL`, `_ALLOW_PRIVATE_RECOVERY` and `KYCALENDAR_DNS`; the server refuses the retired `KY_BACKUP_*` names at startup when non-empty, compose included; the retired `KY_DNS` is compose-only and is simply no longer read.
 - The drill compares the snapshot's calendar and object counts with the restored database and parses up to 50 objects; messages carry IDs only.
 - Unpair requires a sign-in younger than the step-up window (403 `reauth_required`).
-- `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it.
+- `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges, device pairings and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it. Both refuse a target containing `?` or `#`, which the SQLite DSN would cut.
 - Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
 - The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.
 

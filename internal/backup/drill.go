@@ -224,16 +224,16 @@ func calendarChecks(path string, wantCalendars, wantObjects int64) []recoverycli
 	if got.Objects == 0 {
 		return append(out, objects(true, "No objects to parse"))
 	}
-	rows, err := db.Query(`SELECT calendar_id, name, data FROM calendar_objects ORDER BY calendar_id, name LIMIT ?`, maxParsedObjects)
+	rows, err := db.Query(`SELECT calendar_id, data FROM calendar_objects ORDER BY calendar_id, name LIMIT ?`, maxParsedObjects)
 	if err != nil {
 		return append(out, objects(false, "Cannot read objects"))
 	}
 	defer rows.Close()
 	parsed := 0
 	for rows.Next() {
-		var calID, name string
+		var calID string
 		var data []byte
-		if err := rows.Scan(&calID, &name, &data); err != nil {
+		if err := rows.Scan(&calID, &data); err != nil {
 			return append(out, objects(false, "Cannot read objects"))
 		}
 		cal, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
@@ -241,7 +241,8 @@ func calendarChecks(path string, wantCalendars, wantObjects int64) []recoverycli
 			_, err = calendar.Inspect(cal)
 		}
 		if err != nil {
-			return append(out, objects(false, "Cannot parse "+calID+"/"+name))
+			// The object name is client-chosen text; report its position in the sample.
+			return append(out, objects(false, fmt.Sprintf("Cannot parse object %d of %d in %s", parsed+1, min(got.Objects, maxParsedObjects), calID)))
 		}
 		parsed++
 	}
