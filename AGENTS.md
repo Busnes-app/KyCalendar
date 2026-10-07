@@ -295,6 +295,12 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - `GET /api/events` returns at most 5000 instances over at most 400 days within a 2-second expansion budget (422 `too_many_instances`, 400 for a bad range); event `PUT`/`DELETE` require exactly one strong quoted `If-Match` (428 absent, 400 malformed, 412 on conflict).
 - Plan 3b builds the FullCalendar UI on this API; Plan 4's interop gate records real client exports.
 
+#### Plan 3b web calendar contracts
+
+- The calendar is the landing page for everyday users and is never shown to administrators. FullCalendar is 6.1.21 across every package.
+- Event text renders as text through `linkify`; "all occurrences" edits send `series_start`/`series_end`; dragging a recurring event asks for the scope first. Detail and the CSP `font-src data:` ruling are in `web/AGENTS.md`.
+- The browser suite (`web/browser/calendar.spec.mjs`) covers the calendar under the production CSP.
+
 #### Server child DOX index
 
 - [internal/config/AGENTS.md](internal/config/AGENTS.md): Configuration management and environment loader.
