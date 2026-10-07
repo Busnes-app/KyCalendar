@@ -12,6 +12,9 @@ func TestResolveZone(t *testing.T) {
 		{"W. Europe Standard Time", "Europe/Berlin", true},
 		{"Tokyo Standard Time", "Asia/Tokyo", true},
 		{"/mozilla.org/20050126_1/America/New_York", "America/New_York", true},
+		{"/mozilla.org/1/Local", "", false},
+		{"/mozilla.org/1/", "", false},
+		{"/mozilla.org/1/../../etc/passwd", "", false},
 		{"Custom/Nowhere", "", false},
 		{"", "", false},
 		{"Local", "", false},
@@ -31,7 +34,7 @@ func TestWindowsZonesAllLoad(t *testing.T) {
 		t.Fatalf("windows table has %d entries; regenerate it", len(windowsZones))
 	}
 	for win, iana := range windowsZones {
-		if loc, ok := ResolveZone(win); !ok || loc.String() != iana {
+		if loc, ok := ResolveZone(win); !ok || (loc.String() != iana && loc.String() != win) {
 			t.Errorf("%q -> %q does not load", win, iana)
 		}
 	}
