@@ -285,6 +285,14 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - Deleting a group calendar requires a sign-in younger than 10 minutes (403 `reauth_required` otherwise). The delete runs on a detached context and is tracked for shutdown.
 - `internal/api/authz_matrix_test.go` covers every registered route and every CalDAV operation for anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers, and fails when a route has no row.
 
+#### Plan 3 recurrence and event API contracts
+
+- Recurrence is `internal/calendar.Expand` over `rrule-go`; go-ical decodes and encodes only (its `RecurrenceSet` drops RDATE and fails on EXDATE lists and non-IANA TZIDs). TZIDs resolve through `calendar.ResolveZone`: IANA, CLDR Windows names (release-48-2, generated and hash-pinned), Mozilla paths; unresolved zones show in UTC and are flagged.
+- Expansion is bounded: one iteration budget shared per object, at most 10 masters, UNTIL clamped, wall-time skip-ahead (less the event's length) guarded against DST gaps. A master that exhausts the budget, and BYSETPOS/BYWEEKNO/ordinal rules that never match (a two-year-template day check plus an `rrule-go` probe), show only DTSTART, flagged partial; one object never fails the view. A date or floating UNTIL is read in DTSTART's zone; a UTC UNTIL on an all-day series by its UTC date.
+- One write path: CalDAV PUT and every JSON event write call `davbackend.Write`, which refuses objects over `calendar.MaxObjectSize` (`ErrTooLarge`) for both. Web edits are `calendar.NewEvent`/`EditAll`/`EditOne`/`DeleteOne`, which mutate the stored object in place so unknown properties survive. Event text with control characters other than newline and tab, and years outside 1900..9000, are refused.
+- `GET /api/events` returns at most 5000 instances over at most 400 days within a 2-second expansion budget (422 `too_many_instances`, 400 for a bad range); event `PUT`/`DELETE` require exactly one strong quoted `If-Match` (428 absent, 400 malformed, 412 on conflict).
+- Plan 3b builds the FullCalendar UI on this API; Plan 4's interop gate records real client exports.
+
 #### Server child DOX index
 
 - [internal/config/AGENTS.md](internal/config/AGENTS.md): Configuration management and environment loader.

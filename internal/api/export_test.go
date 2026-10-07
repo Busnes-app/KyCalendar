@@ -52,3 +52,11 @@ func SetStepUpWindowForTest(d time.Duration) func() {
 
 // RoutesForTest returns every registered route pattern. Test-only.
 func RoutesForTest(s *Server) []string { return slices.Clone(s.patterns) }
+
+// SetExpandTimeForTest changes the per-request event expansion budget and returns the restore
+// func. Test-only.
+func SetExpandTimeForTest(d time.Duration) func() {
+	old := maxExpandTime
+	maxExpandTime = d
+	return func() { maxExpandTime = old }
+}
