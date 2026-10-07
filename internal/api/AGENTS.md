@@ -31,9 +31,13 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | DELETE | `/api/admin/calendars/{id}` | admin + step-up | 204; 403 `reauth_required`; 404 not a group calendar |
 | GET | `/api/admin/groups` | admin | `{groups:[{id,display_name}],total}`, `offset`/`limit` <= 200 |
 | GET | `/api/admin/audit` | admin | `{records:[...],total}`, `offset`/`limit` <= 200 |
+| GET | `/api/calendars` | everyday | `[{id,name,color,description,kind,role,dav_path}]`, personal first (default created), then readable group calendars by name |
+| GET | `/api/events?start&end[&tz][&calendar=id,id]` | everyday | expanded instances; 400 bad or > 400-day range or non-IANA `tz`; 404 an unreadable `calendar`; 422 `too_many_instances` over 5000 instances or when expansion passes the 2 s per-request budget (`maxExpandTime`, checked after each object) |
 | GET | `/api/calendars/{id}/grants` | session: admin or manager | `[grant]` |
 | PUT | `/api/calendars/{id}/grants/{group}` | session: admin or manager | `{role}` -> 200 `[grant]`; 400 bad role or `{group}` over 64 bytes; 404 no such group |
 | DELETE | `/api/calendars/{id}/grants/{group}` | session: admin or manager | 200 `[grant]` (idempotent); 400 `{group}` over 64 bytes |
+
+- Event instances carry `calendar_id, uid, recurrence_id, etag, title, location, description, start, end, all_day, recurring, override, repeat{freq,weekdays}, floating, unknown_zone, partial, zone, editable`. Timed `start`/`end` are RFC 3339 in the viewer's `tz`; all-day ones are dates. Text is returned verbatim; rendering it safely is the UI's job.
 
 - `requireSession`, `requireAdmin` and `requireEveryday` share `authenticate` and put the user in context (`sessionUser`). Grant routes are `requireSession`. `grantableCalendar` admits admins and managers (via `access.Resolve`), answers 404 to users who cannot read the calendar and 403 to readers and editors. Audit actions `admin.calendar_create`, `admin.calendar_delete`, `calendar.grant_set`, `calendar.grant_remove` carry the session user ID, the calendar ID and `group=`/`role=` details.
 

@@ -286,6 +286,11 @@ func (s *Server) routes() {
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))
 
+	// Calendars and events for everyday users. Roles come from access.Resolve; a calendar the
+	// caller cannot read is 404.
+	s.handle("GET /api/calendars", s.requireEveryday(s.handleListCalendars))
+	s.handle("GET /api/events", s.requireEveryday(s.handleListEvents))
+
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.
 	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))
 	s.handle("/dav/", dav)

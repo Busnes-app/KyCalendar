@@ -44,7 +44,7 @@ func grantViews(gs []store.CalendarGrant) []grantView {
 	return out
 }
 
-func calendarView(c *store.Calendar, gs []store.CalendarGrant) groupCalendarView {
+func groupCalendarViewOf(c *store.Calendar, gs []store.CalendarGrant) groupCalendarView {
 	return groupCalendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, CreatedAt: c.CreatedAt, Grants: grantViews(gs)}
 }
 
@@ -82,7 +82,7 @@ func (s *Server) handleListGroupCalendars(w http.ResponseWriter, r *http.Request
 			s.writeError(w, http.StatusInternalServerError, "Failed to list grants")
 			return
 		}
-		out = append(out, calendarView(c, gs))
+		out = append(out, groupCalendarViewOf(c, gs))
 	}
 	s.writeJSON(w, http.StatusOK, out)
 }
@@ -113,7 +113,7 @@ func (s *Server) handleCreateGroupCalendar(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.auditCalendar(r.Context(), r, "admin.calendar_create", c.ID, "")
-	s.writeJSON(w, http.StatusCreated, calendarView(c, nil))
+	s.writeJSON(w, http.StatusCreated, groupCalendarViewOf(c, nil))
 }
 
 // handleDeleteGroupCalendar deletes a group calendar with every event in it. It is a step-up
