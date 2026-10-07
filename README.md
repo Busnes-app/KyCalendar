@@ -113,6 +113,12 @@ In KyCalendar, **Group calendars** lists every group calendar. Create one, then 
 
 A member's phone shows every group calendar they can read under the same app password, read-only below editor. Removing someone from a group cuts their access on their next sync. Deleting a KyIdentity group removes its access and leaves the calendar for you to re-grant or delete. Deleting a calendar needs a sign-in from the last 10 minutes.
 
+## Groups
+
+**Groups** lists every group: local ones you create here and, when SCIM is connected, the ones your identity provider syncs (badged "Managed by SCIM"; change those in the identity provider). Create a group, rename it, search for people to add, remove members, or delete it. Only active everyday people can be members: administrators never see calendars. Adding or removing someone reaches their phone at its next sync. Deleting a group removes its members and its access to group calendars (the confirm says how many); the calendars stay. Deleting needs a sign-in from the last 10 minutes.
+
+Names are unique ignoring case. If your identity provider sends a group whose name a local group already has, KyCalendar refuses it and the local group shows a warning: rename the local group and the next sync creates the synced one.
+
 ## Calendar limits
 
 Native clients sync over CalDAV at `/dav/` with an app password. Each user is capped, and so is

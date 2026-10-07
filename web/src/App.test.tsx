@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@fullcalendar/react', () => ({ default: () => <div data-testid="fullcalendar" /> }));
@@ -12,6 +12,7 @@ function signedInAs(role: string) {
     const path = String(input).split('?')[0];
     if (path === '/api/auth/me') return new Response(JSON.stringify({ authenticated: true, user: { id: 'u1', username: 'u', role } }), { status: 200 });
     if (path === '/api/calendars') return new Response('[]', { status: 200 });
+    if (path === '/api/admin/groups') return new Response('{"groups":[],"total":0}', { status: 200 });
     return new Response('{}', { status: 200 });
   });
 }
@@ -37,5 +38,22 @@ describe('App landing', () => {
     await screen.findByRole('navigation', { name: 'Primary' });
     expect(screen.queryByRole('button', { name: /^Calendar$/ })).toBeNull();
     expect(screen.queryByTestId('fullcalendar')).toBeNull();
+  });
+
+  it('keeps admin pages from everyday users', async () => {
+    signedInAs('user');
+    render(<App />);
+    const nav = await screen.findByRole('navigation', { name: 'Primary' });
+    for (const label of ['Overview', 'Groups', 'Directory & SCIM', 'KyBackup (Feature 0)', 'Settings & DB']) {
+      expect(within(nav).queryByRole('button', { name: label })).toBeNull();
+    }
+  });
+
+  it('opens the Groups page for admins', async () => {
+    signedInAs('admin');
+    render(<App />);
+    const nav = await screen.findByRole('navigation', { name: 'Primary' });
+    fireEvent.click(within(nav).getByRole('button', { name: 'Groups' }));
+    expect(await screen.findByRole('heading', { name: 'Groups' })).toBeTruthy();
   });
 });
