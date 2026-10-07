@@ -631,27 +631,41 @@ func inList(values []string) (string, []any) {
 	return strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", "), args
 }
 
-func (u *userStore) DisableSSOAccounts(ctx context.Context, providers []string) (int, error) {
-	if len(providers) == 0 {
-		return 0, nil
-	}
-	in, args := inList(providers)
-	tx, err := u.store.beginTx(ctx)
+func (u *userStore) BindSignIn(ctx context.Context, actor Actor, disable []string, settings map[string]string) (int, error) {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	// Rows first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
-	res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET status = 'inactive', updated_at = ? WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), append([]any{time.Now().UTC()}, args...)...)
-	if err != nil {
+	if err := u.checkActor(ctx, tx, actor); err != nil {
 		return 0, err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, err
+	n := int64(0)
+	if len(disable) > 0 {
+		in, args := inList(disable)
+		// Rows first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
+		res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET status = 'inactive', updated_at = ? WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), append([]any{time.Now().UTC()}, args...)...)
+		if err != nil {
+			return 0, err
+		}
+		if n, err = res.RowsAffected(); err != nil {
+			return 0, err
+		}
+		for _, table := range grantTables {
+			if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local' AND sso_provider IN ("+in+"))"), args...); err != nil {
+				return 0, err
+			}
+		}
 	}
-	for _, table := range grantTables {
-		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local' AND sso_provider IN ("+in+"))"), args...); err != nil {
+	now := time.Now().UTC()
+	for key, val := range settings {
+		q := `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+		args := []any{key, val, now}
+		if val == "" {
+			q, args = `DELETE FROM server_settings WHERE key = ?`, []any{key}
+		}
+		if _, err := tx.ExecContext(ctx, u.store.rebind(q), args...); err != nil {
 			return 0, err
 		}
 	}
@@ -685,15 +699,6 @@ func (u *userStore) SetRole(ctx context.Context, actor Actor, userID, role strin
 
 func (u *userStore) SetStatus(ctx context.Context, actor Actor, userID, status string) error {
 	return u.changeAccess(ctx, actor, userID, func(role, _ string) (string, string) { return role, status })
-}
-
-func (u *userStore) CheckActor(ctx context.Context, actor Actor) error {
-	tx, err := u.store.lockedTx(ctx, "local-admins")
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	return u.checkActor(ctx, tx, actor)
 }
 
 // checkActor is ErrActorRevoked unless actor is System or an active administrator whose session
@@ -1235,27 +1240,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 func (s *settingsStore) DeleteSetting(ctx context.Context, key string) error {
 	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM server_settings WHERE key = ?`), key)
 	return err
-}
-
-func (s *settingsStore) SaveSettings(ctx context.Context, values map[string]string) error {
-	tx, err := s.store.beginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	now := time.Now().UTC()
-	for key, val := range values {
-		q := `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
-ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-		args := []any{key, val, now}
-		if val == "" {
-			q, args = `DELETE FROM server_settings WHERE key = ?`, []any{key}
-		}
-		if _, err := tx.ExecContext(ctx, s.store.rebind(q), args...); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
 }
 
 func (s *settingsStore) GetAllSettings(ctx context.Context) (map[string]string, error) {

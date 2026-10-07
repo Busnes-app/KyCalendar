@@ -161,7 +161,8 @@ func TestSignInSaveSealsTheSecretAndSwapsLive(t *testing.T) {
 	cfg.SSO.Enabled = true
 
 	// none closes sign-in and drops the secret.
-	if w := saveSignIn(t, srv, admin, `{"provider":"none","issuer":"http://ignored","client_id":"x"}`); w.Code != http.StatusOK {
+	if w := saveSignIn(t, srv, admin, `{"provider":"none","issuer":"http://ignored","client_id":"x"}`); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"client_secret":{"set":false,"source":"unset"}`) || !strings.Contains(w.Body.String(), `"live":false`) {
 		t.Fatalf("save none: %d %s", w.Code, w.Body.String())
 	}
 	if w := call(t, srv, "GET", "/api/sso/kysignon/login", "", nil); w.Code != http.StatusNotFound {
@@ -235,22 +236,15 @@ func TestSignInProviderChangeNeedsConfirmationAndDisables(t *testing.T) {
 	}
 }
 
-// failSettingsWrite fails the sign-in settings write, after binding has run.
-type failSettingsWrite struct{ store.SettingsStore }
+// failBind fails the one sign-in transaction, as a store error would after its rollback.
+type failBind struct{ store.UserStore }
 
-func (failSettingsWrite) SaveSettings(context.Context, map[string]string) error {
-	return errors.New("disk full")
+func (failBind) BindSignIn(context.Context, store.Actor, []string, map[string]string) (int, error) {
+	return 0, errors.New("disk full")
 }
 
-type settingsFailStore struct {
-	store.Store
-	settings store.SettingsStore
-}
-
-func (s settingsFailStore) Settings() store.SettingsStore { return s.settings }
-
-// A save that fails after binding leaves the accounts disabled and sign-in closed, never the
-// old provider live; a retry finishes it.
+// A save whose transaction fails changes nothing and leaves sign-in closed, never the old
+// provider live; a retry finishes it.
 func TestSignInFailedSaveClosesSignIn(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	ctx := context.Background()
@@ -265,12 +259,12 @@ func TestSignInFailedSaveClosesSignIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	api.SetStoreForTest(srv, settingsFailStore{Store: st, settings: failSettingsWrite{st.Settings()}})
+	api.SetStoreForTest(srv, revokingStore{Store: st, users: failBind{st.Users()}})
 	if w := saveSignIn(t, srv, admin, oidcBody(b.URL, `,"client_secret":"b","confirm_disable":1`)); w.Code != http.StatusInternalServerError {
 		t.Fatalf("failing save: %d %s", w.Code, w.Body.String())
 	}
-	if u, _ := st.Users().GetUserByID(ctx, carol.ID); u.Status != "inactive" {
-		t.Fatalf("binding runs before the save; carol is %s", u.Status)
+	if u, _ := st.Users().GetUserByID(ctx, carol.ID); u.Status != "active" {
+		t.Fatalf("a failed save disabled carol: %s", u.Status)
 	}
 	if w := call(t, srv, "GET", "/api/sso/kysignon/login", "", nil); w.Code != http.StatusNotFound {
 		t.Fatalf("sign-in after a failed save: %d, want closed", w.Code)
@@ -279,24 +273,28 @@ func TestSignInFailedSaveClosesSignIn(t *testing.T) {
 		t.Fatal("a failed save wrote part of the settings")
 	}
 
+	// Nothing was bound, so the retry asks for the same confirmation and then disables.
 	api.SetStoreForTest(srv, st)
-	if w := saveSignIn(t, srv, admin, oidcBody(b.URL, `,"client_secret":"b"`)); w.Code != http.StatusOK {
+	if w := saveSignIn(t, srv, admin, oidcBody(b.URL, `,"client_secret":"b","confirm_disable":1`)); w.Code != http.StatusOK {
 		t.Fatalf("retry: %d %s", w.Code, w.Body.String())
+	}
+	if u, _ := st.Users().GetUserByID(ctx, carol.ID); u.Status != "inactive" {
+		t.Fatalf("after the retry carol is %s", u.Status)
 	}
 	if loc := startLogin(t, srv); loc.Scheme+"://"+loc.Host != b.URL {
 		t.Fatalf("login goes to %s", loc)
 	}
 }
 
-// revokeOnCheck signs the acting admin out between authorisation and the actor recheck.
-type revokeOnCheck struct {
+// revokeOnBind signs the acting admin out between authorisation and the sign-in transaction.
+type revokeOnBind struct {
 	store.UserStore
 	revoke func()
 }
 
-func (u revokeOnCheck) CheckActor(ctx context.Context, a store.Actor) error {
+func (u revokeOnBind) BindSignIn(ctx context.Context, a store.Actor, disable []string, settings map[string]string) (int, error) {
 	u.revoke()
-	return u.UserStore.CheckActor(ctx, a)
+	return u.UserStore.BindSignIn(ctx, a, disable, settings)
 }
 
 func TestSignInSaveRechecksTheActor(t *testing.T) {
@@ -305,7 +303,7 @@ func TestSignInSaveRechecksTheActor(t *testing.T) {
 	admin := loginAs(t, srv, st, "root", "admin")
 	a := tlsIdP(t)
 	trustIdPs(srv, a)
-	api.SetStoreForTest(srv, revokingStore{Store: st, users: revokeOnCheck{UserStore: st.Users(), revoke: func() {
+	api.SetStoreForTest(srv, revokingStore{Store: st, users: revokeOnBind{UserStore: st.Users(), revoke: func() {
 		if err := st.Sessions().DeleteUserSessions(ctx, "usr_root"); err != nil {
 			t.Fatal(err)
 		}
@@ -440,5 +438,75 @@ func TestSignInTestRouteRefusesAndSavesNothing(t *testing.T) {
 	}
 	if n := len(auditDetails(t, st, "admin.signin_test")); n != 3 {
 		t.Errorf("want 3 admin.signin_test rows (two refusals, one success), got %d", n)
+	}
+}
+
+// P42: an environment secret without the environment issuer is ignored, so it can never reach
+// an issuer an admin typed in: the save needs its own secret and the token request carries it.
+func TestSignInEnvSecretNeverReachesAnAdminIssuer(t *testing.T) {
+	for _, kind := range []string{"oidc", "kyidentity"} {
+		t.Run(kind, func(t *testing.T) {
+			srv, st, cfg := setupTestServer(t)
+			admin := loginAs(t, srv, st, "root", "admin")
+			cfg.SSO.KySignOnSecret = "env-secret"
+			var secrets []string
+			var ts *httptest.Server
+			ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/.well-known/openid-configuration":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"issuer": ts.URL, "authorization_endpoint": ts.URL + "/authorize", "token_endpoint": ts.URL + "/token",
+						"jwks_uri": ts.URL + "/keys", "code_challenge_methods_supported": []string{"S256"},
+					})
+				case "/token":
+					if _, pw, ok := r.BasicAuth(); ok {
+						secrets = append(secrets, pw)
+					}
+					if err := r.ParseForm(); err == nil && r.PostForm.Get("client_secret") != "" {
+						secrets = append(secrets, r.PostForm.Get("client_secret"))
+					}
+					http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer ts.Close()
+			trustIdPs(srv, ts)
+
+			if w := call(t, srv, "GET", "/api/admin/signin", "", admin); !strings.Contains(w.Body.String(), `"client_secret":{"set":false,"source":"unset"}`) {
+				t.Fatalf("an ignored env secret is reported: %s", w.Body.String())
+			}
+			body := `{"provider":"` + kind + `","display_name":"Acme","issuer":"` + ts.URL + `","client_id":"kc"`
+			if w := saveSignIn(t, srv, admin, body+`}`); w.Code != http.StatusBadRequest {
+				t.Fatalf("save without a secret: %d %s", w.Code, w.Body.String())
+			}
+			if w := saveSignIn(t, srv, admin, body+`,"client_secret":"submitted"}`); w.Code != http.StatusOK {
+				t.Fatalf("save: %d %s", w.Code, w.Body.String())
+			}
+
+			login := httptest.NewRecorder()
+			srv.ServeHTTP(login, httptest.NewRequest("GET", "/api/sso/kysignon/login", nil))
+			loc, err := url.Parse(login.Header().Get("Location"))
+			if login.Code != http.StatusFound || err != nil {
+				t.Fatalf("login: %d %v", login.Code, err)
+			}
+			req := httptest.NewRequest("GET", "/api/sso/kysignon/callback?code=c&state="+loc.Query().Get("state"), nil)
+			for _, c := range login.Result().Cookies() {
+				req.AddCookie(c)
+			}
+			cb := httptest.NewRecorder()
+			srv.ServeHTTP(cb, req)
+			if cb.Code != http.StatusUnauthorized {
+				t.Fatalf("callback: %d %s", cb.Code, cb.Body.String())
+			}
+			if len(secrets) == 0 {
+				t.Fatal("the token request carried no client secret")
+			}
+			for _, s := range secrets {
+				if s != "submitted" {
+					t.Fatalf("the token request carried %q, want the submitted secret", s)
+				}
+			}
+		})
 	}
 }

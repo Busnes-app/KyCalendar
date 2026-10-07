@@ -64,15 +64,20 @@ type Settings struct {
 	Secret                                  SecretField
 }
 
-// Resolve merges the environment over saved settings. KY_KYSIGNON_ISSUER, _CLIENT_ID and
-// _SECRET each win and lock their field, and any of them fixes the provider to kyidentity.
-// KY_KYSIGNON_HMAC_SECRET only authenticates the directory webhook and leaves the provider
-// alone: it must not turn a generic provider into one whose roles claim grants admin. When the
-// environment fixes kyidentity over a saved row of another kind, every saved field is dropped:
-// kyidentity is never paired with a foreign issuer, nor sent another provider's credentials.
-// A saved secret is reported as set but left sealed: Secret.Value is empty until opened.
+// Resolve merges the environment over saved settings. KY_KYSIGNON_ISSUER fixes the provider to
+// kyidentity and locks the issuer; KY_KYSIGNON_CLIENT_ID and _SECRET then win and lock their
+// fields. Without the environment issuer they are ignored (IgnoredEnv): an environment secret
+// must never reach an issuer an admin typed in. KY_KYSIGNON_HMAC_SECRET only authenticates the
+// directory webhook and leaves the provider alone: it must not turn a generic provider into one
+// whose roles claim grants admin. When the environment fixes kyidentity over a saved row of
+// another kind, every saved field is dropped: kyidentity is never paired with a foreign issuer,
+// nor sent another provider's credentials. A saved secret is reported as set but left sealed:
+// Secret.Value is empty until opened.
 func Resolve(env config.SSOConfig, saved map[string]string) Settings {
-	envKy := env.KySignOnIssuer != "" || env.KySignOnClientID != "" || env.KySignOnSecret != ""
+	envKy := env.KySignOnIssuer != ""
+	if !envKy {
+		env.KySignOnClientID, env.KySignOnSecret = "", ""
+	}
 	if envKy && saved[KeyProvider] != "" && saved[KeyProvider] != KindKyIdentity {
 		saved = nil
 	}
@@ -106,6 +111,22 @@ func Resolve(env config.SSOConfig, saved map[string]string) Settings {
 		st.DisplayName.Value = "KyIdentity"
 	}
 	return st
+}
+
+// IgnoredEnv names the environment variables Resolve ignores because KY_KYSIGNON_ISSUER is
+// not set. Names only, never values.
+func IgnoredEnv(env config.SSOConfig) []string {
+	if env.KySignOnIssuer != "" {
+		return nil
+	}
+	var names []string
+	if env.KySignOnClientID != "" {
+		names = append(names, "KY_KYSIGNON_CLIENT_ID")
+	}
+	if env.KySignOnSecret != "" {
+		names = append(names, "KY_KYSIGNON_SECRET")
+	}
+	return names
 }
 
 // Live reports whether the settings name a provider people can sign in with.

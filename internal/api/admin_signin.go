@@ -223,41 +223,43 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	// These settings decide who signs in and who is an administrator.
-	if err := s.store.Users().CheckActor(ctx, actorOf(ctx)); errors.Is(err, store.ErrActorRevoked) {
-		s.writeActorRevoked(w)
-		return
-	} else if err != nil {
+	values, err := s.signinValues(st, newSecret)
+	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to save sign-in settings")
 		return
 	}
-	prev, disabled, err := s.bindAccounts(ctx, st)
-	if err != nil {
+	// One transaction: the acting admin is rechecked (these settings decide who becomes an
+	// administrator), the previous provider's accounts are disabled and the settings written.
+	prev, disabled, err := s.commitSignIn(ctx, actorOf(ctx), st, values)
+	if errors.Is(err, store.ErrActorRevoked) {
+		// Nothing was written; the live provider still matches the stored settings.
+		s.writeActorRevoked(w)
+		return
+	} else if err != nil {
 		s.signin.Store(nil)
-		log.Printf("[SSO] sign-in save: binding accounts failed: %v", err)
-		s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=failure step=bind")
-		s.writeError(w, http.StatusInternalServerError, "Sign-in is closed: the previous provider's accounts could not be disabled; save again")
+		log.Printf("[SSO] sign-in save failed: %v", err)
+		s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=failure step=commit")
+		s.writeError(w, http.StatusInternalServerError, "Sign-in is closed: the settings could not be saved; nothing changed, save again")
 		return
 	}
 	if prev != "" {
 		s.auditAction(ctx, r, "admin.signin_provider_change", st.Provider.Value, bindDetails(prev, st, disabled))
 	}
-	if err := s.saveSignIn(ctx, st, newSecret); err != nil {
-		s.signin.Store(nil)
-		log.Printf("[SSO] sign-in save: writing settings failed: %v", err)
-		s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=failure step=save")
-		s.writeError(w, http.StatusInternalServerError, "Sign-in is closed: the settings could not be saved; save again")
-		return
-	}
 	s.signin.Store(s.buildProvider(st))
 	s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=success issuer="+strconv.Quote(st.Issuer.Value))
-	s.writeJSON(w, http.StatusOK, s.signinViewOf(st))
+	// The view is what was stored, read back as GET reads it.
+	saved, err = s.store.Settings().GetAllSettings(ctx)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Saved; reload to see the settings")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, s.signinViewOf(sso.Resolve(s.config.SSO, saved)))
 }
 
-// saveSignIn stores every field the environment does not set, in one write, so a failure never
-// pairs one registration's secret with another's issuer. newSecret is sealed over the stored
-// one; "" keeps it, except that provider none drops it.
-func (s *Server) saveSignIn(ctx context.Context, st sso.Settings, newSecret string) error {
+// signinValues is the settings write for st: every field the environment does not set, written
+// together so a failure never pairs one registration's secret with another's issuer. newSecret
+// is sealed over the stored one; "" keeps it, except that provider none drops it.
+func (s *Server) signinValues(st sso.Settings, newSecret string) (map[string]string, error) {
 	values := map[string]string{}
 	for key, f := range map[string]sso.Field{sso.KeyProvider: st.Provider, sso.KeyDisplayName: st.DisplayName, sso.KeyIssuer: st.Issuer, sso.KeyClientID: st.ClientID} {
 		switch {
@@ -277,9 +279,9 @@ func (s *Server) saveSignIn(ctx context.Context, st sso.Settings, newSecret stri
 	case newSecret != "":
 		sealed, err := sso.SealSecret(s.config.Security.EncryptionKey, newSecret)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		values[sso.KeySecretSealed] = sealed
 	}
-	return s.store.Settings().SaveSettings(ctx, values)
+	return values, nil
 }

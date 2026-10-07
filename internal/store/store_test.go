@@ -426,28 +426,3 @@ func TestResetAfterRestore(t *testing.T) {
 		}
 	}
 }
-
-// SaveSettings writes and deletes together; on Postgres an invalid value rolls the whole set back.
-func TestSaveSettingsIsOneWrite(t *testing.T) {
-	ctx := context.Background()
-	st := newTestStore(t)
-	if err := st.Settings().SaveSettings(ctx, map[string]string{"a": "1", "b": "2"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Settings().SaveSettings(ctx, map[string]string{"a": "", "b": "3", "never": ""}); err != nil {
-		t.Fatal(err)
-	}
-	all, err := st.Settings().GetAllSettings(ctx)
-	if err != nil || len(all) != 1 || all["b"] != "3" {
-		t.Fatalf("settings %v %v, want only b=3", all, err)
-	}
-	if testdb.Config(t).Driver != "postgres" {
-		return
-	}
-	if err := st.Settings().SaveSettings(ctx, map[string]string{"b": "4", "c": "\xff"}); err == nil {
-		t.Fatal("invalid UTF-8 was stored")
-	}
-	if v, _ := st.Settings().GetSetting(ctx, "b"); v != "3" {
-		t.Fatalf("a failed set wrote b=%q", v)
-	}
-}

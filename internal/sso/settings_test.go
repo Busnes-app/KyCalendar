@@ -55,15 +55,38 @@ func TestResolveEnvironmentKyIdentityDropsForeignSavedRow(t *testing.T) {
 	}
 }
 
-// Env client credentials must not pair kyidentity with a generic IdP's issuer, whose roles
-// claim would then grant administrator.
-func TestResolveEnvClientWithSavedOIDCIssuerIsNotLive(t *testing.T) {
-	st := sso.Resolve(config.SSOConfig{KySignOnClientID: "env-client", KySignOnSecret: "env-secret"}, savedOIDC)
-	if st.Issuer != (sso.Field{Source: sso.SourceUnset}) || st.Live() {
-		t.Fatalf("kyidentity carries the generic issuer: %+v", st)
+// P42: without the environment issuer, the environment's client ID and secret are ignored: they
+// neither fix the provider nor reach an issuer an admin typed in.
+func TestResolveEnvClientCredentialsNeedTheEnvIssuer(t *testing.T) {
+	for _, env := range []config.SSOConfig{
+		{KySignOnClientID: "env-client", KySignOnSecret: "env-secret"},
+		{KySignOnClientID: "env-client"},
+		{KySignOnSecret: "env-secret"},
+	} {
+		st := sso.Resolve(env, savedOIDC)
+		want := sso.Settings{
+			Provider:    sso.Field{Value: sso.KindOIDC, Source: sso.SourceSaved},
+			DisplayName: sso.Field{Value: "Acme", Source: sso.SourceSaved},
+			Issuer:      sso.Field{Value: "https://saved.example", Source: sso.SourceSaved},
+			ClientID:    sso.Field{Value: "saved-client", Source: sso.SourceSaved},
+			Secret:      sso.SecretField{Source: sso.SourceSaved},
+		}
+		if st != want {
+			t.Errorf("%+v over saved oidc: got %+v", sso.IgnoredEnv(env), st)
+		}
+		if st := sso.Resolve(env, nil); st.Provider != (sso.Field{Value: sso.KindNone, Source: sso.SourceUnset}) || st.Secret.Source != sso.SourceUnset || st.ClientID.Source != sso.SourceUnset {
+			t.Errorf("%+v alone: got %+v", sso.IgnoredEnv(env), st)
+		}
 	}
-	if st.Identity() != "kyidentity " {
-		t.Fatalf("identity %q", st.Identity())
+}
+
+func TestIgnoredEnvNamesOnly(t *testing.T) {
+	got := sso.IgnoredEnv(config.SSOConfig{KySignOnClientID: "c", KySignOnSecret: "plain-env-secret"})
+	if strings.Join(got, ",") != "KY_KYSIGNON_CLIENT_ID,KY_KYSIGNON_SECRET" {
+		t.Fatalf("ignored %v", got)
+	}
+	if got := sso.IgnoredEnv(config.SSOConfig{KySignOnIssuer: "https://id.example", KySignOnSecret: "s"}); got != nil {
+		t.Fatalf("with the issuer: %v", got)
 	}
 }
 
@@ -99,15 +122,17 @@ func TestSecretNeverPrintedOrMarshalled(t *testing.T) {
 
 func TestResolveEachEnvironmentFieldLocksOnlyItself(t *testing.T) {
 	envKy := sso.Field{Value: sso.KindKyIdentity, Source: sso.SourceEnvironment}
+	const issuer = "https://env.example"
 	cases := []struct {
 		name  string
 		env   config.SSOConfig
 		field func(sso.Settings) sso.Field
 		want  sso.Field
+		saved int
 	}{
-		{"issuer", config.SSOConfig{KySignOnIssuer: "https://env.example"}, func(s sso.Settings) sso.Field { return s.Issuer }, sso.Field{Value: "https://env.example", Source: sso.SourceEnvironment}},
-		{"client id", config.SSOConfig{KySignOnClientID: "env-client"}, func(s sso.Settings) sso.Field { return s.ClientID }, sso.Field{Value: "env-client", Source: sso.SourceEnvironment}},
-		{"secret", config.SSOConfig{KySignOnSecret: "env-secret"}, func(s sso.Settings) sso.Field { return sso.Field(s.Secret) }, sso.Field{Value: "env-secret", Source: sso.SourceEnvironment}},
+		{"issuer", config.SSOConfig{KySignOnIssuer: issuer}, func(s sso.Settings) sso.Field { return s.Issuer }, sso.Field{Value: issuer, Source: sso.SourceEnvironment}, 3},
+		{"client id", config.SSOConfig{KySignOnIssuer: issuer, KySignOnClientID: "env-client"}, func(s sso.Settings) sso.Field { return s.ClientID }, sso.Field{Value: "env-client", Source: sso.SourceEnvironment}, 2},
+		{"secret", config.SSOConfig{KySignOnIssuer: issuer, KySignOnSecret: "env-secret"}, func(s sso.Settings) sso.Field { return sso.Field(s.Secret) }, sso.Field{Value: "env-secret", Source: sso.SourceEnvironment}, 2},
 	}
 	for _, c := range cases {
 		st := sso.Resolve(c.env, savedKy)
@@ -117,15 +142,15 @@ func TestResolveEachEnvironmentFieldLocksOnlyItself(t *testing.T) {
 		if st.Provider != envKy {
 			t.Errorf("%s: provider %+v, want kyidentity from the environment", c.name, st.Provider)
 		}
-		// Every other field stays saved.
+		// Every field the environment does not set stays saved.
 		saved := 0
 		for _, f := range []sso.Field{st.DisplayName, st.Issuer, st.ClientID, sso.Field(st.Secret)} {
 			if f.Source == sso.SourceSaved {
 				saved++
 			}
 		}
-		if saved != 3 {
-			t.Errorf("%s: %d saved fields, want 3: %+v", c.name, saved, st)
+		if saved != c.saved {
+			t.Errorf("%s: %d saved fields, want %d: %+v", c.name, saved, c.saved, st)
 		}
 	}
 }

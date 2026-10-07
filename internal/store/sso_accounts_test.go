@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
-func TestDisableSSOAccounts(t *testing.T) {
+func TestBindSignInDisablesSSOAccounts(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	ky := &store.User{ID: "usr_ky", Username: "ky", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}
@@ -31,7 +32,7 @@ func TestDisableSSOAccounts(t *testing.T) {
 	if n, err := st.Users().CountSSOAccounts(ctx, providers); err != nil || n != 2 {
 		t.Fatalf("count: %d %v, want 2", n, err)
 	}
-	if n, err := st.Users().DisableSSOAccounts(ctx, providers); err != nil || n != 2 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, providers, nil); err != nil || n != 2 {
 		t.Fatalf("disable: %d %v, want 2", n, err)
 	}
 	for _, u := range []*store.User{ky, sc, oi, lo, off} {
@@ -46,16 +47,16 @@ func TestDisableSSOAccounts(t *testing.T) {
 	if _, err := st.Calendars().GetCalendarByID(ctx, "cal_ky"); err != nil {
 		t.Errorf("calendar did not survive: %v", err)
 	}
-	if n, err := st.Users().DisableSSOAccounts(ctx, providers); err != nil || n != 0 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, providers, nil); err != nil || n != 0 {
 		t.Fatalf("second run: %d %v, want 0", n, err)
 	}
-	if n, err := st.Users().DisableSSOAccounts(ctx, nil); err != nil || n != 0 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, nil, nil); err != nil || n != 0 {
 		t.Fatalf("empty list: %d %v, want 0", n, err)
 	}
 }
 
 // Local accounts are never SSO accounts, whatever list the caller passes.
-func TestDisableSSOAccountsNeverTouchesLocal(t *testing.T) {
+func TestBindSignInNeverTouchesLocal(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	lo := &store.User{ID: "usr_lo", Username: "lo", Role: "admin", Status: "active", SSOProvider: "local"}
@@ -65,11 +66,39 @@ func TestDisableSSOAccountsNeverTouchesLocal(t *testing.T) {
 	if n, err := st.Users().CountSSOAccounts(ctx, local); err != nil || n != 0 {
 		t.Fatalf("count local: %d %v, want 0", n, err)
 	}
-	if n, err := st.Users().DisableSSOAccounts(ctx, local); err != nil || n != 0 {
+	if n, err := st.Users().BindSignIn(ctx, store.System, local, nil); err != nil || n != 0 {
 		t.Fatalf("disable local: %d %v, want 0", n, err)
 	}
 	got, _ := st.Users().GetUserByID(ctx, lo.ID)
 	if _, err := st.Sessions().GetSession(ctx, "tok_"+lo.ID); got.Status != "active" || err != nil {
 		t.Fatalf("local account: status %s, session %v; want untouched", got.Status, err)
+	}
+}
+
+// The binding and the settings are one write: settings land with it, and on Postgres an invalid
+// value rolls back the disable too.
+func TestBindSignInIsOneWrite(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	ky := &store.User{ID: "usr_ky", Username: "ky", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}
+	seedUsers(t, st, ky)
+	if err := st.Settings().SetSetting(ctx, "a", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if testdb.Config(t).Driver == "postgres" {
+		if _, err := st.Users().BindSignIn(ctx, store.System, []string{"kysignon"}, map[string]string{"b": "\xff"}); err == nil {
+			t.Fatal("invalid UTF-8 was stored")
+		}
+		if u, _ := st.Users().GetUserByID(ctx, ky.ID); u.Status != "active" {
+			t.Fatal("a failed bind kept the disable")
+		}
+	}
+	n, err := st.Users().BindSignIn(ctx, store.System, []string{"kysignon"}, map[string]string{"a": "", "b": "2", "never": ""})
+	if err != nil || n != 1 {
+		t.Fatalf("bind: %d %v", n, err)
+	}
+	all, err := st.Settings().GetAllSettings(ctx)
+	if err != nil || len(all) != 1 || all["b"] != "2" {
+		t.Fatalf("settings %v %v, want only b=2", all, err)
 	}
 }

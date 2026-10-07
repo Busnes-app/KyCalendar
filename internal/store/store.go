@@ -87,15 +87,14 @@ type UserStore interface {
 	// ErrActorRevoked, checked in the same transaction before the write.
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
-	// CheckActor is ErrActorRevoked unless actor is still an active administrator with a live
-	// session, read under the local-admins lock, for writes that are not account rows.
-	CheckActor(ctx context.Context, actor Actor) error
-	// DisableSSOAccounts makes every active account whose sso_provider is in providers inactive
-	// and deletes the sessions, MFA challenges, device pairings and app passwords of every
-	// account of those providers, in one transaction. It returns how many accounts it deactivated.
-	// Local accounts are never touched, whatever the list.
-	DisableSSOAccounts(ctx context.Context, providers []string) (int, error)
-	// CountSSOAccounts counts the active accounts DisableSSOAccounts would deactivate.
+	// BindSignIn is one transaction under the local-admins lock: ErrActorRevoked unless actor is
+	// System or still an active administrator with a live session; then every active account
+	// whose sso_provider is in disable becomes inactive (local accounts never, whatever the list)
+	// and the sessions, MFA challenges, device pairings and app passwords of every account of
+	// those providers are deleted; then settings are written, an empty value deleting its key.
+	// It returns how many accounts it deactivated. Any failure writes nothing.
+	BindSignIn(ctx context.Context, actor Actor, disable []string, settings map[string]string) (int, error)
+	// CountSSOAccounts counts the active accounts BindSignIn would deactivate.
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
@@ -152,8 +151,6 @@ type SettingsStore interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, val string) error
 	DeleteSetting(ctx context.Context, key string) error
-	// SaveSettings writes every key of values in one transaction; an empty value deletes the key.
-	SaveSettings(ctx context.Context, values map[string]string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
 }
 

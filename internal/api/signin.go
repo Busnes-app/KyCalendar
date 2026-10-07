@@ -48,6 +48,9 @@ func (s *Server) signInSettings(ctx context.Context) (sso.Settings, error) {
 // closed. cmd/server calls it once at startup.
 func (s *Server) LoadSignIn(ctx context.Context) error {
 	s.signin.Store(nil)
+	if names := sso.IgnoredEnv(s.config.SSO); names != nil {
+		log.Printf("[SSO] %s ignored: KY_KYSIGNON_ISSUER is not set", strings.Join(names, " and "))
+	}
 	st, err := s.signInSettings(ctx)
 	if err != nil {
 		return err
@@ -120,27 +123,38 @@ func (s *Server) pendingDisable(ctx context.Context, st sso.Settings) (int, erro
 	return s.store.Users().CountSSOAccounts(ctx, disableList(bound, st))
 }
 
-// bindAccounts makes st the provider SSO accounts belong to. On a change of kind or issuer the
-// previous provider's accounts are disabled first, so a colliding sub from the new provider
-// reaches a disabled account (403), never a takeover. The first binding disables nothing, and
-// settings that are not live keep the binding. It returns the previous identity ("" when
-// nothing changed) and how many accounts it disabled. A rerun after a failure between the two
-// writes disables again (a no-op) and records the binding.
+// bindAccounts makes st the provider SSO accounts belong to, as the operator at startup.
 func (s *Server) bindAccounts(ctx context.Context, st sso.Settings) (string, int, error) {
-	if !st.Live() {
-		return "", 0, nil
-	}
+	return s.commitSignIn(ctx, store.System, st, nil)
+}
+
+// commitSignIn binds accounts to st and writes settings in one store transaction under the
+// actor's recheck. On a change of kind or issuer the previous provider's accounts are disabled
+// in it, so a colliding sub from the new provider reaches a disabled account (403), never a
+// takeover; a failure writes nothing. The first binding disables nothing, and settings that are
+// not live keep the binding. It returns the previous identity ("" when the binding did not
+// change) and how many accounts it disabled.
+func (s *Server) commitSignIn(ctx context.Context, actor store.Actor, st sso.Settings, settings map[string]string) (string, int, error) {
 	bound, err := s.boundTo(ctx)
-	if err != nil || unchanged(bound, st) {
+	if err != nil {
 		return "", 0, err
 	}
-	n := 0
-	if bound != "" {
-		if n, err = s.store.Users().DisableSSOAccounts(ctx, disableList(bound, st)); err != nil {
-			return "", 0, err
+	changed := st.Live() && !unchanged(bound, st)
+	if !changed && len(settings) == 0 {
+		return "", 0, nil
+	}
+	var disable []string
+	if changed {
+		if settings == nil {
+			settings = map[string]string{}
+		}
+		settings[sso.KeyBound] = bindingIdentity(st)
+		if bound != "" {
+			disable = disableList(bound, st)
 		}
 	}
-	if err := s.store.Settings().SetSetting(ctx, sso.KeyBound, bindingIdentity(st)); err != nil {
+	n, err := s.store.Users().BindSignIn(ctx, actor, disable, settings)
+	if err != nil || !changed {
 		return "", 0, err
 	}
 	return bound, n, nil
