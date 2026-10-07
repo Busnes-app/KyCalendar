@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/sso"
@@ -240,5 +241,25 @@ func TestOIDCLoginsAreEverydayAndNeverAdoptSCIM(t *testing.T) {
 	u, err = s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-2", PreferredUsername: "oscar"})
 	if err != nil || u.ID == "usr_scim" {
 		t.Fatalf("oidc sub matching a SCIM row: %+v %v, want a separate account", u, err)
+	}
+}
+
+// The test route reaches an environment issuer with a bounded client that never follows a
+// redirect.
+func TestEnvironmentIssuerClientIsBoundedAndRefusesRedirects(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/elsewhere" {
+			t.Error("the redirect was followed")
+		}
+		http.Redirect(w, r, "/elsewhere", http.StatusFound)
+	}))
+	t.Cleanup(target.Close)
+	if envIssuerHTTP.Timeout != 20*time.Second {
+		t.Fatalf("timeout %v, want 20s", envIssuerHTTP.Timeout)
+	}
+	resp, err := envIssuerHTTP.Get(target.URL + "/.well-known/openid-configuration")
+	if err == nil {
+		resp.Body.Close()
+		t.Fatal("redirect not refused")
 	}
 }

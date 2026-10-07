@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Busnes-app/kycalendar/internal/sso"
@@ -112,12 +113,19 @@ func signinProblem(req signinRequest, st sso.Settings) string {
 	return ""
 }
 
-// discover runs discovery for st's issuer the way buildProvider will reach it: through the
-// guarded client unless the environment set the issuer.
+// envIssuerHTTP tests the operator's environment issuer: no address policy (the operator owns
+// it), but bounded and never redirected.
+var envIssuerHTTP = &http.Client{
+	Timeout:       20 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are refused") },
+}
+
+// discover runs discovery for st's issuer: through the guarded client unless the environment
+// set the issuer.
 func (s *Server) discover(ctx context.Context, st sso.Settings) error {
 	client := s.signinHTTP
 	if st.Issuer.Source == sso.SourceEnvironment {
-		client = http.DefaultClient
+		client = envIssuerHTTP
 	}
 	_, err := sso.Discover(ctx, client, st.Issuer.Value)
 	return err
@@ -154,10 +162,12 @@ func (s *Server) handleTestSignIn(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// handleSaveSignIn validates, tests, binds, saves and makes the settings live with no restart,
-// one save at a time so the binding and the live provider agree. A provider or issuer change
-// disables the previous provider's accounts first, after the admin confirms the count; a
-// failure from there on leaves sign-in closed rather than on the old provider.
+// handleSaveSignIn validates, tests, binds, saves and makes the settings live with no restart.
+// It holds signinMu throughout, so saves run one at a time and no callback writes an account
+// between the commit and the swap. A provider or issuer change needs the admin to confirm the
+// count of previous-provider accounts it disables. The commit is one BindSignIn transaction:
+// disable, record the binding and write the settings, or write nothing. A failed commit closes
+// sign-in (nil provider) and a retry asks for the same confirmation.
 func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 	if !s.requireStepUp(w, r, "change sign-in settings") {
 		return
