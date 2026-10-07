@@ -98,10 +98,17 @@ func newWorld(t *testing.T) *world {
 	for _, a := range []actor{reader, editor, manager} {
 		grantRole(t, st, w.group, string(a), "usr_"+string(a))
 	}
-	// victim is the local account the People rows reset, promote, disable and enable; no row
-	// signs in as it.
-	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_victim", Username: "victim", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
-		t.Fatal(err)
+	// Local accounts the People rows change; no row signs in as one. victim takes the reset and
+	// the profile edit, which succeed in any order; each role or status row owns its own.
+	for _, u := range []*store.User{
+		{ID: "usr_victim", Username: "victim", Role: "user", Status: "active", SSOProvider: "local"},
+		{ID: "usr_promotee", Username: "promotee", Role: "user", Status: "active", SSOProvider: "local"},
+		{ID: "usr_disablee", Username: "disablee", Role: "user", Status: "active", SSOProvider: "local"},
+		{ID: "usr_enablee", Username: "enablee", Role: "user", Status: "inactive", SSOProvider: "local"},
+	} {
+		if err := st.Users().CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// grp_extra takes grants; grp_matrix takes members and a rename, so no row's membership
 	// change can grant a caller access another row expects refused; grp_doomed is deleted.
@@ -194,6 +201,9 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/users":                          {method: "POST", path: "/api/admin/users", body: `{"username":"matrix-new","role":"user"}`, want: adminOnly},
 		"POST /api/admin/users/{id}/reset-password":      {method: "POST", path: "/api/admin/users/usr_victim/reset-password", want: adminOnly},
 		"PATCH /api/admin/users/{id}":                    {method: "PATCH", path: "/api/admin/users/usr_victim", body: `{"display_name":"Victim"}`, want: adminOnly},
+		"POST /api/admin/users/{id}/role":                {method: "POST", path: "/api/admin/users/usr_promotee/role", body: `{"role":"admin"}`, want: adminOnly},
+		"POST /api/admin/users/{id}/disable":             {method: "POST", path: "/api/admin/users/usr_disablee/disable", want: adminOnly},
+		"POST /api/admin/users/{id}/enable":              {method: "POST", path: "/api/admin/users/usr_enablee/enable", want: adminOnly},
 		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
 		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},

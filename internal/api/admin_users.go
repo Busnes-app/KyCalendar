@@ -200,6 +200,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
+	r = r.WithContext(context.WithoutCancel(r.Context()))
 	u := s.adminUser(w, r, true)
 	if u == nil {
 		return
@@ -263,4 +264,84 @@ func (s *Server) writeUser(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, userViewOf(u))
+}
+
+// writeAccessError answers a refused SetRole or SetStatus.
+func (s *Server) writeAccessError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrLastAdmin):
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "This is the last active local administrator; make another one first", "code": "last_admin"})
+	case errors.Is(err, store.ErrNotFound):
+		s.writeError(w, http.StatusNotFound, "No such person")
+	default:
+		s.writeError(w, http.StatusInternalServerError, "Failed to change the person")
+	}
+}
+
+func (s *Server) writeSelf(w http.ResponseWriter, what string) {
+	s.writeJSON(w, http.StatusConflict, map[string]string{"error": "You cannot " + what + " yourself; ask another administrator", "code": "self"})
+}
+
+// handleSetUserRole makes a local person an administrator or an everyday user. Sessions and app
+// passwords are revoked with the change, so nothing runs under the old role.
+func (s *Server) handleSetUserRole(w http.ResponseWriter, r *http.Request) {
+	if !s.requireStepUp(w, r, "change a role") {
+		return
+	}
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Role != "user" && body.Role != "admin") {
+		s.writeError(w, http.StatusBadRequest, "Role must be user or admin")
+		return
+	}
+	r = r.WithContext(context.WithoutCancel(r.Context()))
+	u := s.adminUser(w, r, true)
+	if u == nil {
+		return
+	}
+	if u.ID == sessionUser(r.Context()).ID && body.Role != "admin" {
+		s.writeSelf(w, "demote")
+		return
+	}
+	if u.Role != body.Role {
+		if err := s.store.Users().SetRole(r.Context(), u.ID, body.Role); err != nil {
+			s.writeAccessError(w, err)
+			return
+		}
+		s.auditAction(r.Context(), r, "admin.user_role", u.ID, "from="+u.Role+" to="+body.Role)
+	}
+	s.writeUser(w, r, u.ID)
+}
+
+// handleDisableUser deactivates a local person and revokes their sessions and app passwords.
+func (s *Server) handleDisableUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireStepUp(w, r, "disable a person") {
+		return
+	}
+	s.setUserStatus(w, r, "inactive", "admin.user_disable")
+}
+
+func (s *Server) handleEnableUser(w http.ResponseWriter, r *http.Request) {
+	s.setUserStatus(w, r, "active", "admin.user_enable")
+}
+
+func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, action string) {
+	r = r.WithContext(context.WithoutCancel(r.Context()))
+	u := s.adminUser(w, r, true)
+	if u == nil {
+		return
+	}
+	if u.ID == sessionUser(r.Context()).ID && status != "active" {
+		s.writeSelf(w, "disable")
+		return
+	}
+	if u.Status != status {
+		if err := s.store.Users().SetStatus(r.Context(), u.ID, status); err != nil {
+			s.writeAccessError(w, err)
+			return
+		}
+		s.auditAction(r.Context(), r, action, u.ID, "")
+	}
+	s.writeUser(w, r, u.ID)
 }
