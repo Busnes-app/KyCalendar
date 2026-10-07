@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/sso"
@@ -102,5 +103,45 @@ func TestUpsertSSOUserAdoptsSCIMUser(t *testing.T) {
 	s.config.SSO.AutoProvision = false
 	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", Provider: "oidc"}); !errors.Is(err, errNotProvisioned) {
 		t.Fatalf("oidc sub adopted a SCIM user: %v", err)
+	}
+}
+
+type failingUpdates struct{ store.Store }
+type failingUserStore struct{ store.UserStore }
+
+func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
+func (failingUserStore) UpdateUser(context.Context, *store.User) error {
+	return errors.New("update failed")
+}
+
+// Revocation precedes the role write: if storing the promotion fails, the old everyday
+// session is already gone, and the next login still sees a change and revokes again.
+func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	u := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e"}
+	if err := s.store.Users().CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_eve", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_eve", UserID: u.ID, Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	real := s.store
+	s.store = failingUpdates{real}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-e", Provider: "kysignon", Roles: []string{access.AdminAppRole}}); err == nil {
+		t.Fatal("want the update error")
+	}
+	if _, err := real.Sessions().GetSession(ctx, "tok_eve"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("everyday session survived a failed promotion: %v", err)
+	}
+	if list, _ := real.AppPasswords().ListByUser(ctx, u.ID); len(list) != 0 {
+		t.Fatal("app passwords survived a failed promotion")
+	}
+	if got, _ := real.Users().GetUserByID(ctx, u.ID); got.Role != "user" {
+		t.Fatalf("role stored despite the failure: %q", got.Role)
 	}
 }

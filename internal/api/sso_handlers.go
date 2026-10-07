@@ -56,15 +56,17 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 	if user.Role == role {
 		return user, nil
 	}
-	from := user.Role
-	user.Role = role
-	if err := s.store.Users().UpdateUser(ctx, user); err != nil {
-		return nil, err
-	}
+	// Revoke before storing the role: no old session runs under the new one, and a failure
+	// leaves the role unchanged so the next login revokes again.
 	if err := s.store.Sessions().DeleteUserSessions(ctx, user.ID); err != nil {
 		return nil, err
 	}
 	if err := s.store.AppPasswords().DeleteByUser(ctx, user.ID); err != nil {
+		return nil, err
+	}
+	from := user.Role
+	user.Role = role
+	if err := s.store.Users().UpdateUser(ctx, user); err != nil {
 		return nil, err
 	}
 	_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: user.ID, Action: "sso.role_changed", Resource: user.ID, Details: "from=" + from + " to=" + role})
