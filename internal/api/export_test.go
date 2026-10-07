@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"slices"
 	"time"
 
@@ -60,3 +61,7 @@ func SetExpandTimeForTest(d time.Duration) func() {
 	maxExpandTime = d
 	return func() { maxExpandTime = old }
 }
+
+// SetSignInHTTPClientForTest replaces the guarded client that reaches admin-entered providers,
+// so a test can trust httptest's certificate and dial its loopback listener. Test-only.
+func SetSignInHTTPClientForTest(s *Server, c *http.Client) { s.signinHTTP = c }

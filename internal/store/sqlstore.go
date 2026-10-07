@@ -188,10 +188,10 @@ func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) err
 	q := u.store.rebind(`
 INSERT INTO users (
     id, username, email, display_name, password_hash, role, status,
-    sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+    sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
     recovery_codes_hash, push_device_id, must_change_password,
     created_at, updated_at, last_login_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 
 	var lastLogin sql.NullTime
@@ -216,7 +216,7 @@ INSERT INTO users (
 	}
 	if _, err := tx.ExecContext(ctx, q,
 		user.ID, user.Username, user.Email, user.DisplayName, user.PasswordHash,
-		user.Role, user.Status, user.SSOProvider, user.SSOSubject,
+		user.Role, user.Status, user.SSOProvider, user.SSOSubject, user.SSOIssuer,
 		user.TOTPSecretEnc, user.TOTPEnabled, user.RecoveryCodesHash,
 		user.PushDeviceID, user.MustChangePassword,
 		user.CreatedAt, user.UpdatedAt, lastLogin,
@@ -248,7 +248,7 @@ func (u *userStore) scanUser(row interface{ Scan(...any) error }) (*User, error)
 
 	err := row.Scan(
 		&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.PasswordHash,
-		&user.Role, &user.Status, &user.SSOProvider, &user.SSOSubject,
+		&user.Role, &user.Status, &user.SSOProvider, &user.SSOSubject, &user.SSOIssuer,
 		&user.TOTPSecretEnc, &user.TOTPEnabled, &user.RecoveryCodesHash,
 		&user.PushDeviceID, &user.MustChangePassword, &user.TOTPLastCounter,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
@@ -268,7 +268,7 @@ func (u *userStore) scanUser(row interface{ Scan(...any) error }) (*User, error)
 func (u *userStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE id = ?
@@ -279,7 +279,7 @@ FROM users WHERE id = ?
 func (u *userStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE LOWER(username) = LOWER(?)
@@ -294,7 +294,7 @@ LIMIT 1
 func (u *userStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE LOWER(email) = LOWER(?)
@@ -305,7 +305,7 @@ FROM users WHERE LOWER(email) = LOWER(?)
 func (u *userStore) GetUserBySSO(ctx context.Context, provider, subject string) (*User, error) {
 	q := u.store.rebind(`
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users WHERE sso_provider = ? AND sso_subject = ?
@@ -434,7 +434,7 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 
 	listQuery := `
 SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
        totp_last_counter, created_at, updated_at, last_login_at
 FROM users
@@ -622,8 +622,123 @@ func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID
 	return err
 }
 
+// inList is "?, ?, ..." for values, with the values as query arguments.
+func inList(values []string) (string, []any) {
+	args := make([]any, len(values))
+	for i, v := range values {
+		args[i] = v
+	}
+	return strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", "), args
+}
+
+func (u *userStore) BindSignIn(ctx context.Context, actor Actor, b SignInBinding, settings map[string]string) (int, error) {
+	disable := b.Disable
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return 0, err
+	}
+	n := int64(0)
+	if len(disable) > 0 {
+		in, args := inList(disable)
+		// Rows first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
+		res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET status = 'inactive', updated_at = ? WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), append([]any{time.Now().UTC()}, args...)...)
+		if err != nil {
+			return 0, err
+		}
+		if n, err = res.RowsAffected(); err != nil {
+			return 0, err
+		}
+		for _, table := range grantTables {
+			if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local' AND sso_provider IN ("+in+"))"), args...); err != nil {
+				return 0, err
+			}
+		}
+	}
+	now := time.Now().UTC()
+	if b.Stamp != "" && len(b.StampProviders) > 0 {
+		in, args := inList(b.StampProviders)
+		if _, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET sso_issuer = ? WHERE sso_issuer = '' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), append([]any{b.Stamp}, args...)...); err != nil {
+			return 0, err
+		}
+	}
+	for key, val := range settings {
+		q := `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+		args := []any{key, val, now}
+		if val == "" {
+			q, args = `DELETE FROM server_settings WHERE key = ?`, []any{key}
+		}
+		if _, err := tx.ExecContext(ctx, u.store.rebind(q), args...); err != nil {
+			return 0, err
+		}
+	}
+	return int(n), tx.Commit()
+}
+
+func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (int, error) {
+	if len(providers) == 0 {
+		return 0, nil
+	}
+	in, args := inList(providers)
+	var n int
+	err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), args...).Scan(&n)
+	return n, err
+}
+
 func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
 	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), displayName, email, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (u *userStore) RevokeSSOUser(ctx context.Context, userID string, deactivate bool) error {
+	tx, err := u.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	set := "updated_at = ?"
+	if deactivate {
+		set = "status = 'inactive', updated_at = ?"
+	}
+	// Row first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
+	res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET "+set+" WHERE id = ? AND sso_provider <> 'local'"), time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrNotFound
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (u *userStore) UpdateKySignOnProfile(ctx context.Context, userID, displayName, email string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'kysignon'`), displayName, email, time.Now().UTC(), userID)
 	if err != nil {
 		return err
 	}

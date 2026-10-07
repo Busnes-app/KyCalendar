@@ -3,7 +3,7 @@
 KyCalendar is the Busnes.app suite calendar: personal calendars served to the web app and to
 native CalDAV clients (iOS and macOS Calendar, DAVx5, Thunderbird) with per-device app
 passwords. Built on the suite server base: Go backend, embedded React PWA, SQLite or
-PostgreSQL, local and federated sign-in (KySignOn, OIDC, SAML), SCIM provisioning, and
+PostgreSQL, local and federated sign-in (KyIdentity or any OpenID Connect provider), SCIM provisioning, and
 disaster recovery through the suite's KyRecovery.
 
 Published image:
@@ -123,6 +123,19 @@ A member's phone shows every group calendar they can read under the same app pas
 - **Reset password** shows a new temporary password once and signs the person out everywhere; their phones stop syncing until they create new app passwords.
 - **Make admin / Make user** and **Disable** sign the person out everywhere. Administrators never see calendars. You cannot demote or disable yourself, and nobody can demote or disable the last active local administrator: that account is the way back in when single sign-on is down.
 - Adding an administrator, resetting, changing a role, disabling and enabling need a sign-in from the last 10 minutes. There is no delete: disabling keeps the person's calendars.
+
+## Sign-in
+
+KyCalendar always accepts local passwords. **Sign-in** connects one single sign-on provider:
+
+- **KyIdentity**: logins with the `kycalendar.admin` app role are administrators (see above), and SCIM users from KyIdentity sign in as themselves.
+- **Another OpenID Connect provider** (Keycloak, Authentik, Google, Entra ID and others): everyone who signs in is an everyday user, whatever roles the provider sends. Administrators stay local accounts.
+
+Register a client with PKCE (S256) at the provider, with the redirect URI the screen shows (`https://<your host>/api/sso/kysignon/callback`), then enter the issuer URL, client ID, client secret (required; only confidential clients are supported) and the button label. **Test** reads the provider's discovery document without saving; **Save** tests again, needs a sign-in from the last 10 minutes, and takes effect at once. The issuer must use HTTPS and must name itself exactly as typed; redirects, loopback and link-local addresses are refused, private LAN addresses are allowed. The secret is stored encrypted under the instance's data key, with the provider, issuer and client ID it was entered for, and never shown again; leave it blank to keep it. It is used only for that registration: if the issuer or client ID changes, on this screen or through `KY_KYSIGNON_ISSUER`/`KY_KYSIGNON_CLIENT_ID`, single sign-on stays off until you enter the new provider's secret, so one provider's secret is never sent to another. A secret saved by a pre-release build of this screen has no such record and must be entered again. Backups carry the settings and the key, so a restore should restore sign-in (not covered by the restore drill).
+
+Switching provider, or changing the issuer, disables every account of the previous provider (their calendars stay) so that a different provider can never sign in as one of them; the screen states how many before you confirm. Each single sign-on account remembers the provider and issuer it was created under and signs in only through that one, so re-enabling it later (for example from SCIM) does not hand it to the new provider. The issuer is compared exactly: `https://id.example` and `https://id.example/` are different issuers, so adding or removing a trailing slash is a provider change and needs the client secret again. An instance that already ran a pre-release build of this screen with a saved issuer ending in `/` sees its first start of this version as a provider change. On upgrade, accounts that were disabled at that moment are not bound to the current provider and stay refused even if SCIM re-enables them. The login page shows "Continue with <label>" only while a provider is configured.
+
+Environment variables win: `KY_KYSIGNON_ISSUER` fixes the provider to KyIdentity and locks the issuer; `KY_KYSIGNON_CLIENT_ID` and `KY_KYSIGNON_SECRET` lock their fields but apply only beside the issuer variable. KyIdentity configured through the environment also needs `KY_KYSIGNON_SECRET` (only confidential clients are supported); without it, and without a secret saved on this screen for the same issuer and client ID, single sign-on stays off and the startup log says so. Changing `KY_KYSIGNON_ISSUER` between restarts (or the provider kind) counts as a provider change too; a new client ID or secret does not. Start this version once before changing `KY_KYSIGNON_ISSUER`; the first start binds the current issuer and disables nothing. KyIdentity's directory webhook (`KY_KYSIGNON_HMAC_SECRET`) is applied only while sign-in is bound to KyIdentity; otherwise it is ignored and logged. It only takes access away: it creates new directory users and deactivates, deletes or updates the display name and email of known ones, but never re-activates a disabled account, so a stale webhook secret cannot hand a disabled row to a later login. `KY_SSO_ENABLED=false` switches single sign-on off whatever is saved. An issuer set by the environment is not rediscovered on Save and may be loopback or plain HTTP; Test still reads its discovery document without the address guard, with a 20-second limit and no redirects.
 
 ## Groups
 

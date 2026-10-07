@@ -6,13 +6,15 @@ import { ThemeSwitcher } from '../components/ThemeSwitcher';
 interface LoginProps {
   onSuccess: (user: any) => void;
   appName: string;
+  /** The configured provider's button label; no button without one. */
+  signinName?: string;
 }
 
 interface MFAChallenge {
   mfa_token: string;
 }
 
-export const Login: React.FC<LoginProps> = ({ onSuccess, appName }) => {
+export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) => {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
@@ -214,19 +216,18 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName }) => {
                 <span>{loading ? 'Signing in...' : 'Sign In'}</span>
               </button>
 
-              <div style={{ marginTop: '20px', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--ink)', textAlign: 'center', marginBottom: '12px' }}>
-                  Or continue with Single Sign-On
+              {signinName && (
+                <div style={{ marginTop: '20px', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
+                  <a
+                    href="/api/sso/kysignon/login"
+                    className="btn btn-secondary"
+                    style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
+                  >
+                    <Key size={16} style={{ color: 'var(--accent)' }} />
+                    <span>Continue with {signinName}</span>
+                  </a>
                 </div>
-                <a
-                  href="/api/sso/kysignon/login"
-                  className="btn btn-secondary"
-                  style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
-                >
-                  <Key size={16} style={{ color: 'var(--accent)' }} />
-                  <span>KySignOn Identity</span>
-                </a>
-              </div>
+              )}
             </form>
           )}
         </div>

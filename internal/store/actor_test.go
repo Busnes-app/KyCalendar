@@ -31,6 +31,10 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		"restore self": func(a store.Actor) error { return st.Users().SetRole(ctx, a, bob.ID, "admin") },
 		"enable self":  func(a store.Actor) error { return st.Users().SetStatus(ctx, a, bob.ID, "active") },
 		"demote root":  func(a store.Actor) error { return st.Users().SetRole(ctx, a, root.ID, "user") },
+		"bind sign-in": func(a store.Actor) error {
+			_, err := st.Users().BindSignIn(ctx, a, store.SignInBinding{Disable: []string{"kysignon"}}, map[string]string{"signin_provider": "oidc"})
+			return err
+		},
 		"create admin": func(a store.Actor) error {
 			return st.Users().CreateUserAs(ctx, a, &store.User{ID: "usr_new", Username: "new", Role: "admin", Status: "active", SSOProvider: "local"})
 		},
@@ -44,6 +48,9 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 			if u, _ := st.Users().GetUserByID(ctx, want.ID); u.Role != want.Role || u.Status != want.Status || u.PasswordHash != want.PasswordHash {
 				t.Errorf("%s: %s changed to role=%s status=%s hash=%s", why, want.ID, u.Role, u.Status, u.PasswordHash)
 			}
+		}
+		if _, err := st.Settings().GetSetting(ctx, "signin_provider"); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("%s: sign-in settings were written", why)
 		}
 		for _, id := range []string{"usr_new", "usr_new2"} {
 			if _, err := st.Users().GetUserByID(ctx, id); !errors.Is(err, store.ErrNotFound) {
@@ -105,6 +112,9 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedSession(t, st, bob)
+	if _, err := st.Users().BindSignIn(ctx, bobActs, store.SignInBinding{}, map[string]string{"signin_provider": "none"}); err != nil {
+		t.Errorf("a live admin is refused by BindSignIn: %v", err)
+	}
 	if err := st.Users().SetRole(ctx, bobActs, ann.ID, "admin"); err != nil {
 		t.Errorf("a live admin promotes ann: %v", err)
 	}

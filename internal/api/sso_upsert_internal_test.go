@@ -11,6 +11,9 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
+// kyBinding is the live KyIdentity provider these tests sign in through.
+const kyBinding = "kyidentity https://id.example"
+
 // The admin grant follows the `roles` claim at every login. A change revokes app passwords,
 // so a promoted user's phones stop syncing, but the personal calendar stays for migration.
 func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
@@ -18,7 +21,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	ctx := context.Background()
 	claims := &sso.IdentityClaims{Subject: "sub-1", PreferredUsername: "carol", Provider: "kysignon"}
 
-	u, err := s.upsertSSOUser(ctx, claims)
+	u, err := s.upsertSSOUser(ctx, claims, kyBinding)
 	if err != nil || u.Role != "user" {
 		t.Fatalf("first login: %+v %v", u, err)
 	}
@@ -31,7 +34,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	}
 
 	claims.Roles = []string{access.AdminAppRole}
-	if u, err = s.upsertSSOUser(ctx, claims); err != nil || u.Role != "admin" {
+	if u, err = s.upsertSSOUser(ctx, claims, kyBinding); err != nil || u.Role != "admin" {
 		t.Fatalf("promotion: %+v %v", u, err)
 	}
 	if list, _ := s.store.AppPasswords().ListByUser(ctx, u.ID); len(list) != 0 {
@@ -42,7 +45,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	}
 
 	claims.Roles = []string{"admin", "kypost.admin"}
-	if u, err = s.upsertSSOUser(ctx, claims); err != nil || u.Role != "user" {
+	if u, err = s.upsertSSOUser(ctx, claims, kyBinding); err != nil || u.Role != "user" {
 		t.Fatalf("global admin must not keep the grant: %+v %v", u, err)
 	}
 	recs, _, _ := s.store.Audit().ListAuditRecords(ctx, 0, 50)
@@ -60,7 +63,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	if err := s.store.Users().UpdateUser(ctx, u); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.upsertSSOUser(ctx, claims); !errors.Is(err, errAccountInactive) {
+	if _, err := s.upsertSSOUser(ctx, claims, kyBinding); !errors.Is(err, errAccountInactive) {
 		t.Fatalf("inactive login: want errAccountInactive, got %v", err)
 	}
 }
@@ -70,7 +73,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 func TestUpsertSSOUserAdoptsSCIMUser(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
-	alice := &store.User{ID: "usr_alice", Username: "alice", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "sub-x"}
+	alice := &store.User{ID: "usr_alice", Username: "alice", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "sub-x", SSOIssuer: kyBinding}
 	if err := s.store.Users().CreateUser(ctx, alice); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +91,7 @@ func TestUpsertSSOUserAdoptsSCIMUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", PreferredUsername: "alice", Provider: "kysignon"})
+	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", PreferredUsername: "alice", Provider: "kysignon"}, kyBinding)
 	if err != nil || u.ID != alice.ID {
 		t.Fatalf("login: want %s, got %+v %v", alice.ID, u, err)
 	}
@@ -101,7 +104,7 @@ func TestUpsertSSOUserAdoptsSCIMUser(t *testing.T) {
 
 	// Only KySignOn subjects are KyIdentity IDs; a generic OIDC sub must not adopt the row.
 	s.config.SSO.AutoProvision = false
-	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", Provider: "oidc"}); !errors.Is(err, errNotProvisioned) {
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", Provider: "oidc"}, "oidc https://acme.example"); !errors.Is(err, errNotProvisioned) {
 		t.Fatalf("oidc sub adopted a SCIM user: %v", err)
 	}
 }
@@ -110,7 +113,7 @@ type failingUpdates struct{ store.Store }
 type failingUserStore struct{ store.UserStore }
 
 func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
-func (failingUserStore) UpdateUser(context.Context, *store.User) error {
+func (failingUserStore) SetSSORole(context.Context, string, string) error {
 	return errors.New("update failed")
 }
 
@@ -119,7 +122,7 @@ func (failingUserStore) UpdateUser(context.Context, *store.User) error {
 func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
-	u := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e"}
+	u := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e", SSOIssuer: kyBinding}
 	if err := s.store.Users().CreateUser(ctx, u); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +135,7 @@ func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
 	}
 	real := s.store
 	s.store = failingUpdates{real}
-	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-e", Provider: "kysignon", Roles: []string{access.AdminAppRole}}); err == nil {
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-e", Provider: "kysignon", Roles: []string{access.AdminAppRole}}, kyBinding); err == nil {
 		t.Fatal("want the update error")
 	}
 	if _, err := real.Sessions().GetSession(ctx, "tok_eve"); !errors.Is(err, store.ErrNotFound) {
@@ -155,11 +158,45 @@ func TestUpsertSSOUserRefusesTakenUsername(t *testing.T) {
 		t.Fatal(err)
 	}
 	claims := &sso.IdentityClaims{Subject: "sub-admin", PreferredUsername: "admin", Provider: "kysignon", Roles: []string{access.AdminAppRole}}
-	if _, err := s.upsertSSOUser(ctx, claims); !errors.Is(err, errUsernameTaken) {
+	if _, err := s.upsertSSOUser(ctx, claims, kyBinding); !errors.Is(err, errUsernameTaken) {
 		t.Fatalf("want errUsernameTaken, got %v", err)
 	}
 	local, err := s.store.Users().GetUserByUsername(ctx, "admin")
 	if err != nil || local.ID != "usr_local_admin" || local.SSOProvider != "local" {
 		t.Fatalf("local account changed: %+v %v", local, err)
+	}
+}
+
+type deactivateAfterRead struct{ store.Store }
+type deactivateAfterReadUsers struct{ store.UserStore }
+
+func (d deactivateAfterRead) Users() store.UserStore {
+	return deactivateAfterReadUsers{d.Store.Users()}
+}
+func (u deactivateAfterReadUsers) GetUserBySSO(ctx context.Context, provider, subject string) (*store.User, error) {
+	got, err := u.UserStore.GetUserBySSO(ctx, provider, subject)
+	if err == nil {
+		stale := *got
+		stale.Status = "inactive"
+		if err := u.UserStore.UpdateUser(ctx, &stale); err != nil {
+			return nil, err
+		}
+	}
+	return got, err
+}
+
+// A row deactivated (SCIM, the webhook) after the login read it stays inactive: the role write
+// touches the role of an active row only, never writing back the status it read.
+func TestUpsertSSOUserRoleChangeKeepsAConcurrentDeactivation(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	createUsers(t, s, &store.User{ID: "usr_fay", Username: "fay", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-f", SSOIssuer: kyBinding})
+	real := s.store
+	s.store = deactivateAfterRead{real}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-f", Provider: "kysignon", Roles: []string{access.AdminAppRole}}, kyBinding); !errors.Is(err, errAccountInactive) {
+		t.Fatalf("role change on a row deactivated meanwhile: %v, want errAccountInactive", err)
+	}
+	if got, _ := real.Users().GetUserByID(ctx, "usr_fay"); got.Status != "inactive" || got.Role != "user" {
+		t.Fatalf("fay: %s %s, want inactive user", got.Status, got.Role)
 	}
 }

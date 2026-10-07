@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -12,34 +14,14 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// KySignOnClient manages interactions with the central KySignOn identity provider.
+// KySignOnClient receives KyIdentity's signed directory webhooks. Sign-in is Provider's.
 type KySignOnClient struct {
 	config config.SSOConfig
 	store  store.Store
-	flow   *oauthFlow
 }
 
 func NewKySignOnClient(cfg config.SSOConfig, st store.Store) *KySignOnClient {
-	return &KySignOnClient{
-		config: cfg,
-		store:  st,
-		flow:   newOAuthFlow(cfg.KySignOnIssuer, cfg.KySignOnClientID, cfg.KySignOnSecret),
-	}
-}
-
-// BuildAuthURL generates the authorization code URL with PKCE for KySignOn.
-func (k *KySignOnClient) BuildAuthURL(ctx context.Context, redirectURI, state, verifier, nonce string) (string, error) {
-	return k.flow.authCodeURL(ctx, redirectURI, state, verifier, nonce)
-}
-
-// ExchangeCode exchanges the authorization code and verifier for identity claims.
-func (k *KySignOnClient) ExchangeCode(ctx context.Context, code, verifier, redirectURI, expectedNonce string) (*IdentityClaims, error) {
-	claims, err := k.flow.exchange(ctx, code, verifier, redirectURI, expectedNonce)
-	if err != nil {
-		return nil, err
-	}
-	claims.Provider = "kysignon"
-	return claims, nil
+	return &KySignOnClient{config: cfg, store: st}
 }
 
 // KySignOnSyncPayload defines the schema received during automatic directory replication webhooks.
@@ -73,78 +55,66 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 	if payload.ID == "" {
 		return errors.New("webhook user id is missing")
 	}
+	// Only accounts bound to KyIdentity are its directory's: under any other binding a stale
+	// secret would create or re-activate rows another provider's login could adopt.
+	bound, err := Bound(ctx, k.store.Settings())
+	if err != nil {
+		return err
+	}
+	if kind, _, _ := strings.Cut(bound, " "); kind != KindKyIdentity {
+		log.Printf("[SSO] directory webhook %q ignored: sign-in is not bound to KyIdentity", payload.Event)
+		return nil
+	}
 
+	// The webhook only takes access away: it never sets an existing row active, so neither a stale
+	// secret nor a write racing BindSignIn can restore a row the binding disabled. Every write is
+	// column-scoped; the whole-row UpdateUser is never called here.
+	users := k.store.Users()
+	// A row of another binding (or none) is not this directory's: whatever the event, it is left
+	// alone, and a create for its sub makes no second row.
+	existing, err := k.findUser(ctx, payload.ID)
+	if err == nil && existing.SSOIssuer != bound {
+		log.Printf("[SSO] directory webhook %q for user %s ignored: the account belongs to another sign-in binding", payload.Event, existing.ID)
+		return nil
+	}
 	switch payload.Event {
 	case "user.created", "user.updated":
-		existing, err := k.findUser(ctx, payload.ID)
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-
-		status := payload.Status
-		if status == "" {
-			status = "active"
-		}
-
-		// The admin grant comes from the `roles` claim at login and SCIM `roles`, never from
-		// this webhook, whose legacy `role` is KyIdentity's global role. The webhook cannot see
-		// app roles, so an admin re-proves the role at the next sign-in: their sessions end here.
-		// SCIM owns a SCIM-provisioned user: the webhook may take access away, never restore it
-		// or rewrite the profile.
-		if existing != nil && existing.SSOProvider == "scim" {
-			deactivate := status != "active" && existing.Status == "active"
-			if deactivate || existing.Role == "admin" {
-				if err := k.revoke(ctx, existing.ID); err != nil {
-					return err
-				}
-			}
-			if !deactivate {
-				return nil
-			}
-			existing.Status = "inactive"
-			return k.store.Users().UpdateUser(ctx, existing)
-		}
-		if existing != nil {
-			if existing.Status != status || existing.Role == "admin" {
-				if err := k.revoke(ctx, existing.ID); err != nil {
-					return err
-				}
-			}
-			existing.Username = payload.Username
-			existing.Email = payload.Email
-			existing.DisplayName = payload.DisplayName
-			existing.Status = status
-			return k.store.Users().UpdateUser(ctx, existing)
-		}
-
-		newUser := &store.User{
-			ID:          fmt.Sprintf("usr_%s", crypto.RandomHex(12)),
-			Username:    payload.Username,
-			Email:       payload.Email,
-			DisplayName: payload.DisplayName,
-			Role:        "user",
-			Status:      status,
-			SSOProvider: "kysignon",
-			SSOSubject:  payload.ID,
-		}
-		return k.store.Users().CreateUser(ctx, newUser)
-
-	case "user.deactivated":
-		existing, err := k.findUser(ctx, payload.ID)
 		if errors.Is(err, store.ErrNotFound) {
-			return nil
+			status := "active"
+			if payload.Status != "" && payload.Status != "active" {
+				status = "inactive"
+			}
+			return users.CreateUser(ctx, &store.User{
+				ID:          fmt.Sprintf("usr_%s", crypto.RandomHex(12)),
+				Username:    payload.Username,
+				Email:       payload.Email,
+				DisplayName: payload.DisplayName,
+				Role:        "user",
+				Status:      status,
+				SSOProvider: "kysignon",
+				SSOSubject:  payload.ID,
+				SSOIssuer:   bound,
+			})
 		}
 		if err != nil {
 			return err
 		}
-		if err := k.revoke(ctx, existing.ID); err != nil {
-			return err
+		// The admin grant comes from the `roles` claim at login and SCIM `roles`, never from
+		// this webhook. It cannot see app roles, so an admin re-proves the role at the next
+		// sign-in: their grants end here, before the profile write.
+		deactivate := payload.Status != "" && payload.Status != "active"
+		if deactivate || existing.Role == "admin" {
+			if err := users.RevokeSSOUser(ctx, existing.ID, deactivate); err != nil {
+				return err
+			}
 		}
-		existing.Status = "inactive"
-		return k.store.Users().UpdateUser(ctx, existing)
+		// SCIM owns a SCIM-provisioned user's profile.
+		if existing.SSOProvider == "scim" {
+			return nil
+		}
+		return users.UpdateKySignOnProfile(ctx, existing.ID, payload.DisplayName, payload.Email)
 
-	case "user.deleted":
-		existing, err := k.findUser(ctx, payload.ID)
+	case "user.deactivated", "user.deleted":
 		if errors.Is(err, store.ErrNotFound) {
 			return nil
 		}
@@ -153,14 +123,10 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		}
 		// Deleting a user deletes their personal calendars; for a SCIM-owned user that is
 		// SCIM's decision, so the webhook only takes their access away.
-		if existing.SSOProvider == "scim" {
-			if err := k.revoke(ctx, existing.ID); err != nil {
-				return err
-			}
-			existing.Status = "inactive"
-			return k.store.Users().UpdateUser(ctx, existing)
+		if payload.Event == "user.deleted" && existing.SSOProvider != "scim" {
+			return users.DeleteUser(ctx, existing.ID)
 		}
-		return k.store.Users().DeleteUser(ctx, existing.ID)
+		return users.RevokeSSOUser(ctx, existing.ID, true)
 	}
 
 	return nil
@@ -174,13 +140,4 @@ func (k *KySignOnClient) findUser(ctx context.Context, id string) (*store.User, 
 		return k.store.Users().GetUserBySSO(ctx, "scim", id)
 	}
 	return u, err
-}
-
-// revoke ends the user's sessions and app passwords; callers do it before storing the change,
-// so a failed write still leaves the user signed out.
-func (k *KySignOnClient) revoke(ctx context.Context, userID string) error {
-	if err := k.store.Sessions().DeleteUserSessions(ctx, userID); err != nil {
-		return err
-	}
-	return k.store.AppPasswords().DeleteByUser(ctx, userID)
 }

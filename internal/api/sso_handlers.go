@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
@@ -20,13 +21,16 @@ var (
 	errAccountInactive = errors.New("account is not active")
 	// errUsernameTaken: a different account already holds the IdP username. Never linked by name.
 	errUsernameTaken = errors.New("username already used by another account")
+	errOtherIssuer   = errors.New("account belongs to another sign-in provider")
 )
 
-// upsertSSOUser maps a verified login onto a local user. The admin grant follows the token's
-// `roles` claim on every login; a change revokes the user's sessions and app passwords first.
-func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) (*store.User, error) {
+// upsertSSOUser maps a verified login through the provider bound as binding onto a local user,
+// which must carry that binding (new rows are stamped with it). A KyIdentity login's admin grant
+// follows the token's `roles` claim on every login; any other provider's users are everyday. A
+// change revokes the user's sessions and app passwords first.
+func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, binding string) (*store.User, error) {
 	role := "user"
-	if access.IsAdmin(claims.Roles) {
+	if claims.Provider == "kysignon" && access.IsAdmin(claims.Roles) {
 		role = "admin"
 	}
 	user, err := s.store.Users().GetUserBySSO(ctx, claims.Provider, claims.Subject)
@@ -47,6 +51,7 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 			Status:      "active",
 			SSOProvider: claims.Provider,
 			SSOSubject:  claims.Subject,
+			SSOIssuer:   binding,
 		}
 		if err := s.store.Users().CreateUser(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
 			return nil, errUsernameTaken
@@ -61,6 +66,11 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 	if user.Status != "active" {
 		return nil, errAccountInactive
 	}
+	// The row belongs to the binding it was provisioned under. Re-activation (SCIM) does not move
+	// it, so a later issuer's colliding sub never takes it over; an unstamped row is no issuer's.
+	if user.SSOIssuer == "" || user.SSOIssuer != binding {
+		return nil, errOtherIssuer
+	}
 	if user.Role == role {
 		return user, nil
 	}
@@ -72,24 +82,33 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 	if err := s.store.AppPasswords().DeleteByUser(ctx, user.ID); err != nil {
 		return nil, err
 	}
-	from := user.Role
-	user.Role = role
-	if err := s.store.Users().UpdateUser(ctx, user); err != nil {
+	// Role only: a status read above may be stale.
+	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
+		return nil, errAccountInactive
+	} else if err != nil {
 		return nil, err
 	}
+	from := user.Role
+	user.Role = role
 	_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: user.ID, Action: "sso.role_changed", Resource: user.ID, Details: "from=" + from + " to=" + role})
 	return user, nil
 }
 
 func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
+	p := s.signin.Load()
+	if p == nil {
+		s.writeError(w, http.StatusNotFound, "Single sign-on is not configured")
+		return
+	}
 	state := crypto.RandomHex(16)
 	nonce := crypto.RandomHex(16)
 	verifier := oauth2.GenerateVerifier()
 
 	redirectURI := fmt.Sprintf("%s/api/sso/kysignon/callback", s.config.Server.AppURL)
-	authURL, err := s.kysignon.BuildAuthURL(r.Context(), redirectURI, state, verifier, nonce)
+	authURL, err := p.AuthURL(r.Context(), redirectURI, state, verifier, nonce)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
+		log.Printf("sso: %s authorization URL failed: %v", p.Kind, err)
+		s.writeError(w, http.StatusBadGateway, "The sign-in provider could not be reached")
 		return
 	}
 
@@ -103,9 +122,10 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   s.config.Security.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	// The nonce cookie carries the provider's ID: a callback after a provider swap fails.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ky_nonce_" + state,
-		Value:    nonce,
+		Value:    p.ID + "." + nonce,
 		Path:     "/api/sso/kysignon/callback",
 		MaxAge:   300,
 		HttpOnly: true,
@@ -132,20 +152,40 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	p := s.signin.Load()
+	providerID, nonce, _ := strings.Cut(nonceCookie.Value, ".")
+	if p == nil || providerID != p.ID || nonce == "" {
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	redirectURI := fmt.Sprintf("%s/api/sso/kysignon/callback", s.config.Server.AppURL)
-	claims, err := s.kysignon.ExchangeCode(r.Context(), code, verifier, redirectURI, nonceCookie.Value)
+	claims, err := p.Exchange(r.Context(), code, verifier, redirectURI, nonce)
 	if err != nil {
-		s.writeError(w, http.StatusUnauthorized, fmt.Sprintf("SSO exchange failed: %v", err))
+		// The error can carry the token endpoint's response or a refused address: logged only.
+		log.Printf("sso: %s code exchange failed: %v", p.Kind, err)
+		s.writeError(w, http.StatusUnauthorized, "Sign-in failed")
 		return
 	}
 
-	user, err := s.upsertSSOUser(r.Context(), claims)
+	// A save may have rebound sign-in during the exchange. Holding the read lock until the session
+	// is issued keeps the next save out until this login is done.
+	s.signinMu.RLock()
+	defer s.signinMu.RUnlock()
+	if s.signin.Load() != p {
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
+	user, err := s.upsertSSOUser(r.Context(), claims, p.Binding)
 	switch {
 	case errors.Is(err, errNotProvisioned):
 		s.writeError(w, http.StatusForbidden, "User account not provisioned")
 		return
 	case errors.Is(err, errAccountInactive):
 		s.writeError(w, http.StatusForbidden, "Account is not active")
+		return
+	case errors.Is(err, errOtherIssuer):
+		log.Printf("sso: sign-in for subject %s refused: the account belongs to another sign-in provider", claims.Subject)
+		s.writeError(w, http.StatusForbidden, "This account belongs to a previous sign-in provider")
 		return
 	case errors.Is(err, errUsernameTaken):
 		log.Printf("sso: sign-in for subject %s refused: username %q belongs to another account", claims.Subject, claims.PreferredUsername)

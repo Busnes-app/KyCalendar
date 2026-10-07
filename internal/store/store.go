@@ -87,6 +87,26 @@ type UserStore interface {
 	// ErrActorRevoked, checked in the same transaction before the write.
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
+	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
+	// back a status it read before a concurrent deactivation. Inactive, local or missing: ErrNotFound.
+	SetSSORole(ctx context.Context, userID, role string) error
+	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and
+	// app passwords in one transaction, after setting it inactive when deactivate is true (rows
+	// first). It never sets an account active. Local or missing: ErrNotFound.
+	RevokeSSOUser(ctx context.Context, userID string, deactivate bool) error
+	// UpdateKySignOnProfile sets a kysignon account's display name and email and nothing else.
+	// Any other provider or missing: ErrNotFound.
+	UpdateKySignOnProfile(ctx context.Context, userID, displayName, email string) error
+	// BindSignIn is one transaction under the local-admins lock: ErrActorRevoked unless actor is
+	// System or still an active administrator with a live session; then every active account
+	// whose sso_provider is in b.Disable becomes inactive (local accounts never, whatever the list)
+	// and the sessions, MFA challenges, device pairings and app passwords of every account of
+	// those providers are deleted; then b.Stamp, when set, becomes the sso_issuer of every
+	// unstamped account of b.StampProviders; then settings are written, an empty value deleting
+	// its key. It returns how many accounts it deactivated. Any failure writes nothing.
+	BindSignIn(ctx context.Context, actor Actor, b SignInBinding, settings map[string]string) (int, error)
+	// CountSSOAccounts counts the active accounts BindSignIn would deactivate.
+	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
 	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is
@@ -135,6 +155,13 @@ type GroupStore interface {
 type AuditStore interface {
 	LogAudit(ctx context.Context, r *AuditRecord) error
 	ListAuditRecords(ctx context.Context, offset, limit int) ([]*AuditRecord, int, error)
+}
+
+// SignInBinding is what BindSignIn applies to SSO accounts.
+type SignInBinding struct {
+	Disable        []string // providers whose accounts are deactivated
+	Stamp          string   // the binding stamped on unstamped accounts; "" stamps nothing
+	StampProviders []string // providers whose unstamped accounts get Stamp
 }
 
 // SettingsStore handles persistent key-value configuration.

@@ -1,0 +1,304 @@
+package sso_test
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/sso"
+)
+
+var savedOIDC = map[string]string{
+	sso.KeyProvider: sso.KindOIDC, sso.KeyDisplayName: "Acme", sso.KeyIssuer: "https://saved.example",
+	sso.KeyClientID: "saved-client", sso.KeySecretSealed: "sealed-blob",
+	sso.KeySecretRegistration: sso.SecretRegistration(sso.KindOIDC, "https://saved.example", "saved-client"),
+}
+
+var savedKy = map[string]string{
+	sso.KeyProvider: sso.KindKyIdentity, sso.KeyDisplayName: "Acme", sso.KeyIssuer: "https://saved.example",
+	sso.KeyClientID: "saved-client", sso.KeySecretSealed: "sealed-blob",
+	sso.KeySecretRegistration: sso.SecretRegistration(sso.KindKyIdentity, "https://saved.example", "saved-client"),
+}
+
+func TestResolveEnvironmentWinsAndLocks(t *testing.T) {
+	st := sso.Resolve(config.SSOConfig{KySignOnIssuer: "https://id.example/", KySignOnSecret: "env-secret"}, savedKy)
+	want := sso.Settings{
+		Provider:    sso.Field{Value: sso.KindKyIdentity, Source: sso.SourceEnvironment},
+		DisplayName: sso.Field{Value: "Acme", Source: sso.SourceSaved},
+		Issuer:      sso.Field{Value: "https://id.example", Source: sso.SourceEnvironment},
+		ClientID:    sso.Field{Value: "saved-client", Source: sso.SourceSaved},
+		Secret:      sso.SecretField{Value: "env-secret", Source: sso.SourceEnvironment},
+	}
+	if st != want {
+		t.Fatalf("got %+v\nwant %+v", st, want)
+	}
+}
+
+// P27: an environment that fixes kyidentity drops a saved row of another kind entirely.
+func TestResolveEnvironmentKyIdentityDropsForeignSavedRow(t *testing.T) {
+	st := sso.Resolve(config.SSOConfig{KySignOnIssuer: "https://id.example/", KySignOnSecret: "env-secret"}, savedOIDC)
+	want := sso.Settings{
+		Provider:    sso.Field{Value: sso.KindKyIdentity, Source: sso.SourceEnvironment},
+		DisplayName: sso.Field{Value: "KyIdentity", Source: sso.SourceUnset},
+		Issuer:      sso.Field{Value: "https://id.example", Source: sso.SourceEnvironment},
+		ClientID:    sso.Field{Source: sso.SourceUnset},
+		Secret:      sso.SecretField{Value: "env-secret", Source: sso.SourceEnvironment},
+	}
+	if st != want {
+		t.Fatalf("got %+v\nwant %+v", st, want)
+	}
+	if st.Live() {
+		t.Fatal("kyidentity without a client id is live")
+	}
+}
+
+// P42: without the environment issuer, the environment's client ID and secret are ignored: they
+// neither fix the provider nor reach an issuer an admin typed in.
+func TestResolveEnvClientCredentialsNeedTheEnvIssuer(t *testing.T) {
+	for _, env := range []config.SSOConfig{
+		{KySignOnClientID: "env-client", KySignOnSecret: "env-secret"},
+		{KySignOnClientID: "env-client"},
+		{KySignOnSecret: "env-secret"},
+	} {
+		st := sso.Resolve(env, savedOIDC)
+		want := sso.Settings{
+			Provider:    sso.Field{Value: sso.KindOIDC, Source: sso.SourceSaved},
+			DisplayName: sso.Field{Value: "Acme", Source: sso.SourceSaved},
+			Issuer:      sso.Field{Value: "https://saved.example", Source: sso.SourceSaved},
+			ClientID:    sso.Field{Value: "saved-client", Source: sso.SourceSaved},
+			Secret:      sso.SecretField{Source: sso.SourceSaved},
+		}
+		if st != want {
+			t.Errorf("%+v over saved oidc: got %+v", sso.IgnoredEnv(env), st)
+		}
+		if st := sso.Resolve(env, nil); st.Provider != (sso.Field{Value: sso.KindNone, Source: sso.SourceUnset}) || st.Secret.Source != sso.SourceUnset || st.ClientID.Source != sso.SourceUnset {
+			t.Errorf("%+v alone: got %+v", sso.IgnoredEnv(env), st)
+		}
+	}
+}
+
+func TestIgnoredEnvNamesOnly(t *testing.T) {
+	got := sso.IgnoredEnv(config.SSOConfig{KySignOnClientID: "c", KySignOnSecret: "plain-env-secret"})
+	if strings.Join(got, ",") != "KY_KYSIGNON_CLIENT_ID,KY_KYSIGNON_SECRET" {
+		t.Fatalf("ignored %v", got)
+	}
+	if got := sso.IgnoredEnv(config.SSOConfig{KySignOnIssuer: "https://id.example", KySignOnSecret: "s"}); got != nil {
+		t.Fatalf("with the issuer: %v", got)
+	}
+}
+
+// Env issuer must not receive the generic IdP's client credentials.
+func TestResolveEnvIssuerWithSavedOIDCCredentialsIsNotLive(t *testing.T) {
+	st := sso.Resolve(config.SSOConfig{KySignOnIssuer: "https://id.example"}, savedOIDC)
+	if st.ClientID != (sso.Field{Source: sso.SourceUnset}) || st.Secret != (sso.SecretField{Source: sso.SourceUnset}) || st.Live() {
+		t.Fatalf("kyidentity carries the generic credentials: %+v", st)
+	}
+}
+
+func TestSecretNeverPrintedOrMarshalled(t *testing.T) {
+	st := sso.Resolve(config.SSOConfig{KySignOnIssuer: "https://id.example", KySignOnClientID: "c", KySignOnSecret: "plain-env-secret"}, nil)
+	if st.Secret.Value != "plain-env-secret" {
+		t.Fatalf("secret %q", st.Secret.Value)
+	}
+	js, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]string{
+		"json": string(js), "%v": fmt.Sprintf("%v", st), "%+v": fmt.Sprintf("%+v", st),
+		"%#v": fmt.Sprintf("%#v", st), "%s": fmt.Sprintf("%s", st.Secret), "field %+v": fmt.Sprintf("%+v", st.Secret),
+	} {
+		if strings.Contains(out, "plain-env-secret") {
+			t.Errorf("%s carries the secret: %s", name, out)
+		}
+	}
+	if !strings.Contains(string(js), `"Secret":{"source":"environment"}`) {
+		t.Errorf("json %s", js)
+	}
+}
+
+func TestResolveEachEnvironmentFieldLocksOnlyItself(t *testing.T) {
+	envKy := sso.Field{Value: sso.KindKyIdentity, Source: sso.SourceEnvironment}
+	const issuer = "https://env.example"
+	cases := []struct {
+		name  string
+		env   config.SSOConfig
+		field func(sso.Settings) sso.Field
+		want  sso.Field
+		saved int
+	}{
+		{"issuer", config.SSOConfig{KySignOnIssuer: issuer}, func(s sso.Settings) sso.Field { return s.Issuer }, sso.Field{Value: issuer, Source: sso.SourceEnvironment}, 2},
+		{"client id", config.SSOConfig{KySignOnIssuer: issuer, KySignOnClientID: "env-client"}, func(s sso.Settings) sso.Field { return s.ClientID }, sso.Field{Value: "env-client", Source: sso.SourceEnvironment}, 1},
+		{"secret", config.SSOConfig{KySignOnIssuer: issuer, KySignOnSecret: "env-secret"}, func(s sso.Settings) sso.Field { return sso.Field(s.Secret) }, sso.Field{Value: "env-secret", Source: sso.SourceEnvironment}, 2},
+	}
+	for _, c := range cases {
+		st := sso.Resolve(c.env, savedKy)
+		if got := c.field(st); got != c.want {
+			t.Errorf("%s: field %+v, want %+v", c.name, got, c.want)
+		}
+		if st.Provider != envKy {
+			t.Errorf("%s: provider %+v, want kyidentity from the environment", c.name, st.Provider)
+		}
+		// Every field the environment does not set stays saved, except the saved secret, which
+		// belongs to the saved registration and so not to an environment issuer or client ID.
+		saved := 0
+		for _, f := range []sso.Field{st.DisplayName, st.Issuer, st.ClientID, sso.Field(st.Secret)} {
+			if f.Source == sso.SourceSaved {
+				saved++
+			}
+		}
+		if saved != c.saved {
+			t.Errorf("%s: %d saved fields, want %d: %+v", c.name, saved, c.saved, st)
+		}
+	}
+}
+
+// P14: the webhook secret only authenticates the directory webhook. It must not turn a saved
+// generic provider into kyidentity, whose roles claim grants administrator.
+func TestResolveWebhookSecretAloneLeavesProvider(t *testing.T) {
+	st := sso.Resolve(config.SSOConfig{KySignOnHMACSecret: "h"}, savedOIDC)
+	if st.Provider != (sso.Field{Value: sso.KindOIDC, Source: sso.SourceSaved}) {
+		t.Fatalf("HMAC secret only: provider %+v, want saved oidc", st.Provider)
+	}
+	if st.Issuer.Source != sso.SourceSaved || st.ClientID.Source != sso.SourceSaved || st.Secret.Source != sso.SourceSaved {
+		t.Fatalf("HMAC secret only locked a field: %+v", st)
+	}
+	if st := sso.Resolve(config.SSOConfig{KySignOnHMACSecret: "h"}, nil); st.Provider != (sso.Field{Value: sso.KindNone, Source: sso.SourceUnset}) {
+		t.Fatalf("HMAC secret only, nothing saved: provider %+v", st.Provider)
+	}
+}
+
+func TestResolveSavedAndUnset(t *testing.T) {
+	st := sso.Resolve(config.SSOConfig{}, map[string]string{
+		sso.KeyProvider: sso.KindOIDC, sso.KeyIssuer: "https://saved.example", sso.KeyClientID: "c", sso.KeySecretSealed: "sealed-blob",
+		sso.KeySecretRegistration: sso.SecretRegistration(sso.KindOIDC, "https://saved.example", "c"),
+	})
+	if st.Provider.Source != sso.SourceSaved || st.Issuer.Value != "https://saved.example" || !st.Live() {
+		t.Fatalf("saved oidc: %+v", st)
+	}
+	if st.Secret != (sso.SecretField{Source: sso.SourceSaved}) {
+		t.Fatalf("a saved secret must stay sealed until opened: %+v", st.Secret)
+	}
+	if st.Identity() != "oidc https://saved.example" {
+		t.Fatalf("identity %q", st.Identity())
+	}
+	empty := sso.Resolve(config.SSOConfig{}, nil)
+	if empty.Provider != (sso.Field{Value: sso.KindNone, Source: sso.SourceUnset}) || empty.Live() {
+		t.Fatalf("nothing configured: %+v", empty)
+	}
+	if ky := sso.Resolve(config.SSOConfig{}, map[string]string{sso.KeyProvider: sso.KindKyIdentity}); ky.DisplayName.Value != "KyIdentity" {
+		t.Fatalf("kyidentity default label: %+v", ky.DisplayName)
+	}
+}
+
+func TestSealedSecretRoundTripAndLabel(t *testing.T) {
+	master := bytes.Repeat([]byte{7}, 32)
+	sealed, err := sso.SealSecret(master, "s3cret-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sealed, "s3cret") {
+		t.Fatal("the sealed form carries the plain secret")
+	}
+	if got, err := sso.OpenSecret(master, sealed); err != nil || got != "s3cret-value" {
+		t.Fatalf("open: %q %v", got, err)
+	}
+	if _, err := crypto.DecryptAESGCM(sealed, crypto.DeriveKey(master, "kycalendar:setting:other")); err == nil {
+		t.Fatal("the secret opened under another label's key")
+	}
+	if _, err := crypto.DecryptAESGCM(sealed, master); err == nil {
+		t.Fatal("the secret opened under the master key itself")
+	}
+	if _, err := sso.OpenSecret(bytes.Repeat([]byte{8}, 32), sealed); err == nil {
+		t.Fatal("the secret opened under another data-volume key")
+	}
+	if sso.SecretLabel != "kycalendar:setting:signin_client_secret" {
+		t.Fatalf("label %q", sso.SecretLabel)
+	}
+}
+
+func TestSealedSecretTamperFails(t *testing.T) {
+	master := bytes.Repeat([]byte{7}, 32)
+	sealed, err := sso.SealSecret(master, "s3cret-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range raw {
+		flipped := bytes.Clone(raw)
+		flipped[i] ^= 0x01
+		if _, err := sso.OpenSecret(master, base64.RawURLEncoding.EncodeToString(flipped)); err == nil {
+			t.Fatalf("a flipped bit at byte %d still opened", i)
+		}
+	}
+	if _, err := sso.OpenSecret(master, sealed[:len(sealed)-2]); err == nil {
+		t.Fatal("a truncated secret opened")
+	}
+}
+
+func TestAccountProviders(t *testing.T) {
+	if got := sso.AccountProviders(sso.KindKyIdentity); strings.Join(got, ",") != "kysignon,scim" {
+		t.Errorf("kyidentity: %v", got)
+	}
+	if got := sso.AccountProviders(sso.KindOIDC); strings.Join(got, ",") != "oidc" {
+		t.Errorf("oidc: %v", got)
+	}
+	if got := sso.AccountProviders(sso.KindNone); got != nil {
+		t.Errorf("none: %v", got)
+	}
+}
+
+// A saved secret belongs to the registration it was entered for: the effective kind, exact issuer
+// and client ID must equal its record, or it is unset and sign-in is not live. No record is a
+// mismatch. An environment secret is unaffected.
+func TestResolveSavedSecretNeedsItsRegistration(t *testing.T) {
+	with := func(m map[string]string, k, v string) map[string]string {
+		out := map[string]string{}
+		for key, val := range m {
+			out[key] = val
+		}
+		if v == "" {
+			delete(out, k)
+		} else {
+			out[k] = v
+		}
+		return out
+	}
+	if st := sso.Resolve(config.SSOConfig{}, savedKy); st.Secret.Source != sso.SourceSaved || !st.Live() {
+		t.Fatalf("matching registration: %+v", st)
+	}
+	for name, tc := range map[string]struct {
+		env   config.SSOConfig
+		saved map[string]string
+	}{
+		"environment issuer":        {config.SSOConfig{KySignOnIssuer: "https://other.example"}, savedKy},
+		"environment client ID":     {config.SSOConfig{KySignOnIssuer: "https://saved.example", KySignOnClientID: "env-client"}, savedKy},
+		"no registration":           {config.SSOConfig{}, with(savedKy, sso.KeySecretRegistration, "")},
+		"trailing slash":            {config.SSOConfig{}, with(savedKy, sso.KeyIssuer, "https://saved.example/")},
+		"saved client ID changed":   {config.SSOConfig{}, with(savedOIDC, sso.KeyClientID, "other")},
+		"registration of oidc kind": {config.SSOConfig{}, with(savedKy, sso.KeySecretRegistration, sso.SecretRegistration(sso.KindOIDC, "https://saved.example", "saved-client"))},
+	} {
+		st := sso.Resolve(tc.env, tc.saved)
+		if st.Secret != (sso.SecretField{Source: sso.SourceUnset}) || st.Live() {
+			t.Errorf("%s: secret %+v live %v, want unset and closed", name, st.Secret, st.Live())
+		}
+	}
+	env := config.SSOConfig{KySignOnIssuer: "https://other.example", KySignOnClientID: "c", KySignOnSecret: "env-secret"}
+	if st := sso.Resolve(env, savedKy); st.Secret.Source != sso.SourceEnvironment || !st.Live() {
+		t.Fatalf("environment secret: %+v", st)
+	}
+	if sso.SecretRegistration("a b", "c", "d") == sso.SecretRegistration("a", "b c", "d") {
+		t.Fatal("registration records are ambiguous")
+	}
+	if !strings.HasPrefix(sso.KeySecretRegistration, "signin_client_secret") {
+		t.Fatal("the registration key escapes the secret prefix filter")
+	}
+}

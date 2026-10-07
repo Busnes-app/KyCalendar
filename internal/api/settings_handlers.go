@@ -24,6 +24,10 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"captcha_provider": s.config.Captcha.Provider,
 		"sso_enabled":      s.config.SSO.Enabled,
 	}
+	// The login button shows only for a live provider with SSO enabled.
+	if p := s.signin.Load(); p != nil && s.config.SSO.Enabled {
+		out["signin_name"] = p.DisplayName
+	}
 
 	user, _, err := s.sessions.AuthenticateRequest(r)
 	if err != nil {
@@ -44,9 +48,9 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// By prefix, not by literal: the lib owns the token's key name, and a future
-		// spelling must not leak by default.
+		// spelling must not leak by default. The sign-in client secret never leaves either.
 		for k := range settings {
-			if strings.HasPrefix(k, "kyrecovery_token") {
+			if strings.HasPrefix(k, "kyrecovery_token") || strings.HasPrefix(k, "signin_client_secret") {
 				delete(settings, k)
 			}
 		}

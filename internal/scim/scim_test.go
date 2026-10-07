@@ -393,7 +393,7 @@ func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
 	handler := srv.AuthMiddleware(mux)
 
 	id := "usr_yan"
-	if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: "yan", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-y"}); err != nil {
+	if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: "yan", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-y", SSOIssuer: "kyidentity https://a.example"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_yan", UserID: id, Label: "phone", Hash: "h"}); err != nil {
@@ -401,6 +401,27 @@ func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
 	}
 	body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "yan.k", "externalId": "sub-y", "displayName": "Yan K", "active": true,
 		"roles": []any{map[string]any{"value": "kycalendar.admin"}}}
+
+	// Under another binding (or none), yan's row is another issuer's: never adopted, 409.
+	for _, bound := range []string{"kyidentity https://b.example", ""} {
+		if err := st.Settings().SetSetting(ctx, "signin_bound", bound); err != nil {
+			t.Fatal(err)
+		}
+		if w := scimDo(t, handler, token, "POST", "/scim/v2/Users", body); w.Code != http.StatusConflict {
+			t.Fatalf("bound %q: adoption of another issuer's row: %d %s, want 409", bound, w.Code, w.Body.String())
+		}
+		if u, _ := st.Users().GetUserByID(ctx, id); u.Username != "yan" || u.Role != "user" {
+			t.Fatalf("bound %q: a refused adoption changed the row: %+v", bound, u)
+		}
+		if _, total, _ := st.Users().ListUsers(ctx, 0, 10, store.UserFilter{}); total != 1 {
+			t.Fatalf("bound %q: a refused adoption created a row: %d users", bound, total)
+		}
+	}
+
+	// Under yan's own binding the provisioned user is the same person.
+	if err := st.Settings().SetSetting(ctx, "signin_bound", "kyidentity https://a.example"); err != nil {
+		t.Fatal(err)
+	}
 	w := scimDo(t, handler, token, "POST", "/scim/v2/Users", body)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -418,6 +439,21 @@ func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
 	u, err := st.Users().GetUserByID(ctx, id)
 	if err != nil || u.Username != "yan.k" || u.DisplayName != "Yan K" || u.Role != "admin" || u.SSOProvider != "kysignon" {
 		t.Fatalf("SCIM attributes not applied: %+v %v", u, err)
+	}
+	if u.SSOIssuer != "kyidentity https://a.example" {
+		t.Fatalf("adoption restamped the row to %q", u.SSOIssuer)
+	}
+	if err := st.Settings().SetSetting(ctx, "signin_bound", "kyidentity https://b.example"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A new row is stamped with the current binding.
+	w = scimDo(t, handler, token, "POST", "/scim/v2/Users", map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "zed", "externalId": "sub-z", "active": true})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create zed: %d %s", w.Code, w.Body.String())
+	}
+	if z, err := st.Users().GetUserBySSO(ctx, "scim", "sub-z"); err != nil || z.SSOIssuer != "kyidentity https://b.example" {
+		t.Fatalf("new SCIM row: %+v %v, want the current binding", z, err)
 	}
 	if list, _ := st.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
 		t.Fatal("the role change kept the app passwords")
