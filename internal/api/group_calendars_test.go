@@ -219,3 +219,28 @@ func TestReaderCannotGrantManagerCanListAndRemove(t *testing.T) {
 		t.Errorf("grant survived: %s", w.Body.String())
 	}
 }
+
+// A group ID longer than any stored one is refused at the boundary, before the store or the
+// audit log sees it.
+func TestGrantRoutesRejectOversizedGroup(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	admin := loginAs(t, srv, st, "root", "admin")
+	cal := groupCalendar(t, st, "Team")
+	long := "grp_" + string(bytes.Repeat([]byte("a"), 61))
+	for _, calID := range []string{cal.ID, "cal_missing"} {
+		for _, method := range []string{"PUT", "DELETE"} {
+			if w := call(t, srv, method, "/api/calendars/"+calID+"/grants/"+long, `{"role":"reader"}`, admin); w.Code != http.StatusBadRequest {
+				t.Errorf("%s %s: %d, want 400: %s", method, calID, w.Code, w.Body.String())
+			}
+		}
+	}
+	if w := call(t, srv, "DELETE", "/api/calendars/"+cal.ID+"/grants/"+long[:64], "", admin); w.Code != http.StatusOK {
+		t.Errorf("64-byte group: %d, want 200", w.Code)
+	}
+	recs, _, _ := st.Audit().ListAuditRecords(context.Background(), 0, 200)
+	for _, r := range recs {
+		if bytes.Contains([]byte(r.Details), []byte(long)) {
+			t.Fatalf("oversized group reached the audit log: %+v", r)
+		}
+	}
+}

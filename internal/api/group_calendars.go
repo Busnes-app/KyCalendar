@@ -227,7 +227,21 @@ func (s *Server) handleListGrants(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// grantGroup is the {group} path value, refused past the 64-byte ID column before any lookup.
+func (s *Server) grantGroup(w http.ResponseWriter, r *http.Request) (string, bool) {
+	group := r.PathValue("group")
+	if len(group) > 64 {
+		s.writeError(w, http.StatusBadRequest, "Group ID is too long")
+		return "", false
+	}
+	return group, true
+}
+
 func (s *Server) handleSetGrant(w http.ResponseWriter, r *http.Request) {
+	group, ok := s.grantGroup(w, r)
+	if !ok {
+		return
+	}
 	c := s.grantableCalendar(w, r)
 	if c == nil {
 		return
@@ -243,7 +257,6 @@ func (s *Server) handleSetGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Role must be reader, editor or manager")
 		return
 	}
-	group := r.PathValue("group")
 	err := s.store.Calendars().SetGrant(r.Context(), store.CalendarGrant{CalendarID: c.ID, GroupID: group, Role: body.Role})
 	if errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "No such group")
@@ -258,11 +271,14 @@ func (s *Server) handleSetGrant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteGrant(w http.ResponseWriter, r *http.Request) {
+	group, ok := s.grantGroup(w, r)
+	if !ok {
+		return
+	}
 	c := s.grantableCalendar(w, r)
 	if c == nil {
 		return
 	}
-	group := r.PathValue("group")
 	if err := s.store.Calendars().DeleteGrant(r.Context(), c.ID, group); err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to remove access")
 		return

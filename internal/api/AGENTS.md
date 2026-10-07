@@ -10,7 +10,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 - POST `/api/auth/change-password` accepts a restricted local session, current password and a different policy-valid new password. Browser CSRF and per-IP/account limits apply. Success revokes all sessions and requires sign-in again; flagged sessions get `password_change_required` on protected routes and public-only settings.
 - All JSON API endpoints return structured errors `{"error": "message"}` upon failure.
 - Non-API routes fall back to serving `web.Handler()` for client-side SPA routing.
-- Every route is registered through `s.handle`, which records its pattern. `authz_matrix_test.go` holds one row per pattern (public, session, everyday, admin-only, grant-manager, SCIM) and one row per CalDAV operation, each run against anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers. `TestEveryRouteIsInTheMatrix` fails on a route without a row, so adding a route means adding its row.
+- Every route is registered through `s.handle`, which records its pattern. `authz_matrix_test.go` holds one row per pattern (public, session, everyday, admin-only, grant-manager, SCIM) and one row per CalDAV operation, each run against anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers. `TestEveryRouteIsInTheMatrix` fails on a route without a row, so adding a route means adding its row. An `allow` cell fails on 401, 403, 404 and any 5xx.
 - Backup routes and theme writes are admin-only: capsules and settings carry site data and secrets. Group calendar deletion is the one step-up action: the session's credentials must be younger than 10 minutes (`stepUpWindow`, from `Session.CreatedAt`), else 403 `reauth_required`. Other destructive backup routes rely on admin-only plus `TestPrivilegedEndpointsRequireAdmin`. Routes are registered with method patterns, and because the SPA catch-all answers any method, tests pin that a wrong method never reaches a backup handler rather than expecting 405.
 
 | Method | Path | Handler | Response |
@@ -32,8 +32,8 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | GET | `/api/admin/groups` | admin | `{groups:[{id,display_name}],total}`, `offset`/`limit` <= 200 |
 | GET | `/api/admin/audit` | admin | `{records:[...],total}`, `offset`/`limit` <= 200 |
 | GET | `/api/calendars/{id}/grants` | session: admin or manager | `[grant]` |
-| PUT | `/api/calendars/{id}/grants/{group}` | session: admin or manager | `{role}` -> 200 `[grant]`; 400 bad role; 404 no such group |
-| DELETE | `/api/calendars/{id}/grants/{group}` | session: admin or manager | 200 `[grant]` (idempotent) |
+| PUT | `/api/calendars/{id}/grants/{group}` | session: admin or manager | `{role}` -> 200 `[grant]`; 400 bad role or `{group}` over 64 bytes; 404 no such group |
+| DELETE | `/api/calendars/{id}/grants/{group}` | session: admin or manager | 200 `[grant]` (idempotent); 400 `{group}` over 64 bytes |
 
 - `requireSession`, `requireAdmin` and `requireEveryday` share `authenticate` and put the user in context (`sessionUser`). Grant routes are `requireSession`. `grantableCalendar` admits admins and managers (via `access.Resolve`), answers 404 to users who cannot read the calendar and 403 to readers and editors. Audit actions `admin.calendar_create`, `admin.calendar_delete`, `calendar.grant_set`, `calendar.grant_remove` carry the session user ID, the calendar ID and `group=`/`role=` details.
 

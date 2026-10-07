@@ -35,7 +35,8 @@ const (
 
 var actors = []actor{anon, owner, reader, editor, manager, nonmember, admin, deactivated}
 
-// allow means authorization let the request through: any status but 401, 403 or 404.
+// allow means authorization let the request through and the handler did not fail: any status
+// but 401, 403, 404 or 5xx.
 const allow = 0
 
 type expect map[actor]int
@@ -171,8 +172,8 @@ func apiRows(w *world) map[string]apiRow {
 func check(t *testing.T, got, want int) {
 	t.Helper()
 	if want == allow {
-		if got == 401 || got == 403 || got == 404 {
-			t.Errorf("blocked with %d, want it let through", got)
+		if got == 401 || got == 403 || got == 404 || got >= 500 {
+			t.Errorf("got %d, want it let through and handled", got)
 		}
 		return
 	}

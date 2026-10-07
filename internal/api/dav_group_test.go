@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -159,11 +160,48 @@ func TestGroupSegmentNeverReachesPersonalCalendar(t *testing.T) {
 	if r := rawDAV(t, ts, "PROPFIND", "/dav/usr_alice/calendars/", "alice", aliceTok, privBody, map[string]string{"Depth": "1", "Content-Type": "application/xml"}); r.StatusCode != http.StatusMultiStatus {
 		t.Fatalf("alice home: %d", r.StatusCode)
 	}
-	cals, _ := st.Calendars().ListCalendarsByOwner(context.Background(), "user", "usr_alice")
+	cals, err := st.Calendars().ListCalendarsByOwner(context.Background(), "user", "usr_alice")
+	if err != nil || len(cals) == 0 {
+		t.Fatalf("alice's personal calendars: %v %v", cals, err)
+	}
 	for _, who := range []struct{ user, tok string }{{"bob", bobTok}, {"alice", aliceTok}} {
 		p := "/dav/usr_" + who.user + "/calendars/_" + cals[0].ID + "/"
 		if r := rawDAV(t, ts, "PROPFIND", p, who.user, who.tok, privBody, map[string]string{"Depth": "0", "Content-Type": "application/xml"}); r.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s via group segment: %d, want 404", who.user, r.StatusCode)
 		}
+	}
+}
+
+// A multiget on one's own calendar must not fetch an href inside a group calendar one cannot read.
+func TestGroupCalendarMultigetFromPersonalCalendar(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	cal := groupCalendar(t, st, "Team")
+	editorTok := davUser(t, st, "editor", "user")
+	outsiderTok := davUser(t, st, "outsider", "user")
+	grantRole(t, st, cal, "editor", "usr_editor")
+	secret := strings.Replace(eventICS("secret-uid-7"), "SUMMARY:m", "SUMMARY:secret-summary", 1)
+	if r := rawDAV(t, ts, "PUT", "/dav/usr_editor/calendars/_"+cal.ID+"/seed.ics", "editor", editorTok, secret, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("seed: %d %s", r.StatusCode, readAll(r))
+	}
+
+	multiget := func(user, tok string) (*http.Response, string) {
+		href := "/dav/usr_" + user + "/calendars/_" + cal.ID + "/seed.ics"
+		body := `<c:calendar-multiget xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop><d:href>` + href + `</d:href></c:calendar-multiget>`
+		r := rawDAV(t, ts, "REPORT", "/dav/usr_"+user+"/calendars/default/", user, tok, body, map[string]string{"Depth": "1", "Content-Type": "application/xml"})
+		return r, readAll(r)
+	}
+	// Control: the same request from a member does return the object, so the check below bites.
+	if r, got := multiget("editor", editorTok); !strings.Contains(got, "secret-summary") {
+		t.Fatalf("member multiget did not return the object: %d %s", r.StatusCode, got)
+	}
+	r, got := multiget("outsider", outsiderTok)
+	t.Logf("outsider multiget: %d %s", r.StatusCode, got)
+	if strings.Contains(got, "secret-summary") || strings.Contains(got, "secret-uid-7") {
+		t.Fatalf("multiget leaked the group object: %d %s", r.StatusCode, got)
+	}
+	if r.StatusCode == http.StatusMultiStatus && !regexp.MustCompile(`HTTP/1\.1 40[34]`).MatchString(got) {
+		t.Fatalf("multiget answered the href without 403/404: %s", got)
 	}
 }
