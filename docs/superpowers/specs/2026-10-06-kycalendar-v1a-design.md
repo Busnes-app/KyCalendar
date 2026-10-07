@@ -110,8 +110,9 @@ Storage is SQLite through the base's DB layer.
     /api/events/{cal}/{uid}`, with scope `this` or `all` for recurring events. 412 on conflict.
   - Admin routes for group calendars, grants, audit and backup. None touch events.
 - Recurrence: server-side expansion of RRULE, RDATE, EXDATE and RECURRENCE-ID overrides.
-  Working assumption is go-ical's recurrence helper over `rrule-go`. **Unproven:** spike against real
-  Apple, Google and Outlook exports before the plan commits to it.
+  Spiked 2026-10-07: go-ical's recurrence helper is unusable (drops RDATE, fails on EXDATE lists and
+  non-IANA TZIDs); expansion is KyCalendar's own over `rrule-go`, which handles DST, UNTIL and EXDATE
+  correctly. Recorded Apple, Google and Outlook exports remain part of the interop gate.
 - Time zones: TZIDs resolve against Go's embedded IANA data plus the CLDR Windows→IANA map (Outlook
   sends names such as `Eastern Standard Time`). An unknown TZID is stored, shown in UTC and flagged.
   Floating times render in the viewer's local zone.
