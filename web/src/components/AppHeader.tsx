@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays } from 'lucide-react';
+import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 
 interface AppHeaderProps {
@@ -11,15 +11,20 @@ interface AppHeaderProps {
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout }) => {
-  const navItems = [
-    ...(user?.role !== 'admin' ? [{ id: 'calendar', label: 'Calendar', icon: CalendarDays }] : []),
-    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-    { id: 'scim', label: 'Directory & SCIM', icon: Users },
-    { id: 'backup', label: 'KyBackup (Feature 0)', icon: Archive },
-    { id: 'settings', label: 'Settings & DB', icon: SettingsIcon },
-    ...(user?.role === 'admin' ? [{ id: 'group-calendars', label: 'Group calendars', icon: CalendarDays }] : []),
-    ...(user?.role !== 'admin' ? [{ id: 'devices', label: 'Phones & apps', icon: Smartphone }] : []),
-  ];
+  // Administrators run the instance and never see calendars; everyday users see nothing else.
+  const navItems = user?.role === 'admin'
+    ? [
+        { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+        { id: 'groups', label: 'Groups', icon: UsersRound },
+        { id: 'group-calendars', label: 'Group calendars', icon: CalendarDays },
+        { id: 'scim', label: 'Directory & SCIM', icon: Users },
+        { id: 'backup', label: 'KyBackup (Feature 0)', icon: Archive },
+        { id: 'settings', label: 'Settings & DB', icon: SettingsIcon },
+      ]
+    : [
+        { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+        { id: 'devices', label: 'Phones & apps', icon: Smartphone },
+      ];
 
   return (
     <>

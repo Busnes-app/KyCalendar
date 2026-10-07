@@ -23,31 +23,12 @@ func isUniqueViolation(err error) bool {
 // advisory lock also covers an owner with no calendar rows yet, which row locks cannot. SQLite
 // needs nothing: its single connection already serializes transactions.
 func (c *calendarStore) lockOwner(ctx context.Context, tx *sql.Tx, ownerKind, ownerID string) error {
-	return c.lockKey(ctx, tx, "calendar-owner:"+ownerKind+":"+ownerID)
-}
-
-func (c *calendarStore) lockKey(ctx context.Context, tx *sql.Tx, key string) error {
-	if c.store.driver != "postgres" {
-		return nil
-	}
-	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key)
-	return err
-}
-
-// quotaTx begins a transaction for lockOwner callers. Postgres pins READ COMMITTED so each
-// statement after the lock sees writes committed before it; a server default of REPEATABLE READ
-// would freeze the snapshot first. SQLite takes the default.
-func (c *calendarStore) quotaTx(ctx context.Context) (*sql.Tx, error) {
-	var opts *sql.TxOptions
-	if c.store.driver == "postgres" {
-		opts = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
-	}
-	return c.store.db.BeginTx(ctx, opts)
+	return c.store.lockKey(ctx, tx, "calendar-owner:"+ownerKind+":"+ownerID)
 }
 
 func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar, maxPerOwner int) error {
 	cal.CreatedAt = time.Now().UTC()
-	tx, err := c.quotaTx(ctx)
+	tx, err := c.store.beginTx(ctx)
 	if err != nil {
 		return err
 	}
@@ -281,7 +262,7 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	o.ETag = hex.EncodeToString(sum[:])
 	o.ModifiedAt = time.Now().UTC()
 
-	tx, err := c.quotaTx(ctx)
+	tx, err := c.store.beginTx(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -289,7 +270,7 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 
 	if lim.MaxTotalBytes > 0 {
 		// Instance lock before any owner lock: one order for every writer that takes both.
-		if err := c.lockKey(ctx, tx, "calendar-total"); err != nil {
+		if err := c.store.lockKey(ctx, tx, "calendar-total"); err != nil {
 			return false, err
 		}
 	}

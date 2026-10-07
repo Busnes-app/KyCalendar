@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { secureFetch } from "../api";
+import { JSON_HEADERS, send } from "../admin";
 
 interface Grant {
   group_id: string;
@@ -21,10 +21,6 @@ interface Group {
 }
 
 const ROLES = ["reader", "editor", "manager"];
-const JSON_HEADERS = { "Content-Type": "application/json" };
-
-// Resolves to null on a network error so every caller handles one failure path.
-const send = (url: string, init?: RequestInit) => secureFetch(url, init).catch(() => null);
 
 async function errorText(res: Response | null, fallback: string): Promise<string> {
   return (await res?.json().catch(() => null))?.error ?? fallback;

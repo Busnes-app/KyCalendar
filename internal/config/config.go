@@ -69,17 +69,14 @@ type SecurityConfig struct {
 
 // SSOConfig holds identity provider and federation parameters.
 type SSOConfig struct {
-	Enabled             bool   `json:"enabled"`
-	KySignOnIssuer      string `json:"kysignon_issuer"`
-	KySignOnClientID    string `json:"kysignon_client_id"`
-	KySignOnSecret      string `json:"kysignon_secret"`
-	KySignOnHMACSecret  string `json:"kysignon_hmac_secret"`
-	GenericOIDCIssuer   string `json:"generic_oidc_issuer"`
-	GenericOIDCClientID string `json:"generic_oidc_client_id"`
-	GenericOIDCSecret   string `json:"generic_oidc_secret"`
-	SAMLEntityID        string `json:"saml_entity_id"`
-	SAMLMetadataURL     string `json:"saml_metadata_url"`
-	AutoProvision       bool   `json:"auto_provision"`
+	Enabled            bool   `json:"enabled"`
+	KySignOnIssuer     string `json:"kysignon_issuer"`
+	KySignOnClientID   string `json:"kysignon_client_id"`
+	KySignOnSecret     string `json:"kysignon_secret"`
+	KySignOnHMACSecret string `json:"kysignon_hmac_secret"`
+	SAMLEntityID       string `json:"saml_entity_id"`
+	SAMLMetadataURL    string `json:"saml_metadata_url"`
+	AutoProvision      bool   `json:"auto_provision"`
 }
 
 // SCIMConfig holds settings for RFC 7643/7644 inbound user provisioning.
@@ -238,17 +235,14 @@ func LoadFromEnv() (*Config, error) {
 			TrustedProxies: trustedProxies,
 		},
 		SSO: SSOConfig{
-			Enabled:             getEnvBool("KY_SSO_ENABLED", true),
-			KySignOnIssuer:      getEnv("KY_KYSIGNON_ISSUER", ""),
-			KySignOnClientID:    getEnv("KY_KYSIGNON_CLIENT_ID", ""),
-			KySignOnSecret:      getEnv("KY_KYSIGNON_SECRET", ""),
-			KySignOnHMACSecret:  getEnv("KY_KYSIGNON_HMAC_SECRET", ""),
-			GenericOIDCIssuer:   getEnv("KY_OIDC_ISSUER", ""),
-			GenericOIDCClientID: getEnv("KY_OIDC_CLIENT_ID", ""),
-			GenericOIDCSecret:   getEnv("KY_OIDC_SECRET", ""),
-			SAMLEntityID:        getEnv("KY_SAML_ENTITY_ID", ""),
-			SAMLMetadataURL:     getEnv("KY_SAML_METADATA_URL", ""),
-			AutoProvision:       getEnvBool("KY_SSO_AUTO_PROVISION", true),
+			Enabled:            getEnvBool("KY_SSO_ENABLED", true),
+			KySignOnIssuer:     getEnv("KY_KYSIGNON_ISSUER", ""),
+			KySignOnClientID:   getEnv("KY_KYSIGNON_CLIENT_ID", ""),
+			KySignOnSecret:     getEnv("KY_KYSIGNON_SECRET", ""),
+			KySignOnHMACSecret: getEnv("KY_KYSIGNON_HMAC_SECRET", ""),
+			SAMLEntityID:       getEnv("KY_SAML_ENTITY_ID", ""),
+			SAMLMetadataURL:    getEnv("KY_SAML_METADATA_URL", ""),
+			AutoProvision:      getEnvBool("KY_SSO_AUTO_PROVISION", true),
 		},
 		SCIM: SCIMConfig{
 			Enabled:     getEnvBool("KY_SCIM_ENABLED", true),

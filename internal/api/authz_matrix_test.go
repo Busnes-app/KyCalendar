@@ -98,8 +98,12 @@ func newWorld(t *testing.T) *world {
 	for _, a := range []actor{reader, editor, manager} {
 		grantRole(t, st, w.group, string(a), "usr_"+string(a))
 	}
-	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_extra", DisplayName: "Extra"}); err != nil {
-		t.Fatal(err)
+	// grp_extra takes grants; grp_matrix takes members and a rename, so no row's membership
+	// change can grant a caller access another row expects refused; grp_doomed is deleted.
+	for _, g := range []*store.Group{{ID: "grp_extra", DisplayName: "Extra"}, {ID: "grp_matrix", DisplayName: "Matrix"}, {ID: "grp_doomed", DisplayName: "Doomed"}} {
+		if err := st.Groups().CreateGroup(ctx, g); err != nil {
+			t.Fatal(err)
+		}
 	}
 	put := func(name, uid string) {
 		o := &store.CalendarObject{CalendarID: w.group.ID, Name: name, UID: uid, Data: []byte(eventICS(uid))}
@@ -170,20 +174,27 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/app-passwords":         {method: "POST", path: "/api/app-passwords", body: `{"label":"matrix-new"}`, want: everyday},
 		// Each caller deletes its own app password; the anonymous caller names a placeholder so
 		// the path still matches the pattern instead of falling through to the SPA.
-		"DELETE /api/app-passwords/{id}":            {method: "DELETE", pathFor: func(a actor) string { return "/api/app-passwords/" + cmp.Or(w.passIDs[a], "none") }, want: everyday},
-		"GET /api/admin/calendars":                  {method: "GET", path: "/api/admin/calendars", want: adminOnly},
-		"POST /api/admin/calendars":                 {method: "POST", path: "/api/admin/calendars", body: `{"name":"Matrix"}`, want: adminOnly},
-		"DELETE /api/admin/calendars/{id}":          {method: "DELETE", path: "/api/admin/calendars/" + w.doomed.ID, want: adminOnly},
-		"GET /api/admin/groups":                     {method: "GET", path: "/api/admin/groups", want: adminOnly},
-		"GET /api/admin/audit":                      {method: "GET", path: "/api/admin/audit", want: adminOnly},
-		"GET /api/calendars/{id}/grants":            {method: "GET", path: g, want: grantManager},
-		"PUT /api/calendars/{id}/grants/{group}":    {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
-		"DELETE /api/calendars/{id}/grants/{group}": {method: "DELETE", path: g + "/grp_extra", want: grantManager},
-		"GET /api/calendars":                        {method: "GET", path: "/api/calendars", want: everyday},
-		"POST /api/calendars":                       {method: "POST", path: "/api/calendars", body: `{"name":"Matrix"}`, want: everyday},
-		"PATCH /api/calendars/{id}":                 {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
-		"DELETE /api/calendars/{id}":                {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
-		"GET /api/events":                           {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
+		"DELETE /api/app-passwords/{id}":                 {method: "DELETE", pathFor: func(a actor) string { return "/api/app-passwords/" + cmp.Or(w.passIDs[a], "none") }, want: everyday},
+		"GET /api/admin/calendars":                       {method: "GET", path: "/api/admin/calendars", want: adminOnly},
+		"POST /api/admin/calendars":                      {method: "POST", path: "/api/admin/calendars", body: `{"name":"Matrix"}`, want: adminOnly},
+		"DELETE /api/admin/calendars/{id}":               {method: "DELETE", path: "/api/admin/calendars/" + w.doomed.ID, want: adminOnly},
+		"GET /api/admin/groups":                          {method: "GET", path: "/api/admin/groups", want: adminOnly},
+		"POST /api/admin/groups":                         {method: "POST", path: "/api/admin/groups", body: `{"display_name":"Matrix new"}`, want: adminOnly},
+		"GET /api/admin/groups/{id}":                     {method: "GET", path: "/api/admin/groups/grp_matrix", want: adminOnly},
+		"PATCH /api/admin/groups/{id}":                   {method: "PATCH", path: "/api/admin/groups/grp_matrix", body: `{"display_name":"Matrix"}`, want: adminOnly},
+		"DELETE /api/admin/groups/{id}":                  {method: "DELETE", path: "/api/admin/groups/grp_doomed", want: adminOnly},
+		"PUT /api/admin/groups/{id}/members/{userId}":    {method: "PUT", path: "/api/admin/groups/grp_matrix/members/usr_nonmember", want: adminOnly},
+		"DELETE /api/admin/groups/{id}/members/{userId}": {method: "DELETE", path: "/api/admin/groups/grp_matrix/members/usr_nonmember", want: adminOnly},
+		"GET /api/admin/users":                           {method: "GET", path: "/api/admin/users?q=owner", want: adminOnly},
+		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
+		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
+		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
+		"DELETE /api/calendars/{id}/grants/{group}":      {method: "DELETE", path: g + "/grp_extra", want: grantManager},
+		"GET /api/calendars":                             {method: "GET", path: "/api/calendars", want: everyday},
+		"POST /api/calendars":                            {method: "POST", path: "/api/calendars", body: `{"name":"Matrix"}`, want: everyday},
+		"PATCH /api/calendars/{id}":                      {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
+		"DELETE /api/calendars/{id}":                     {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
+		"GET /api/events":                                {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
 		"POST /api/calendars/{id}/events": {method: "POST", path: "/api/calendars/" + w.group.ID + "/events",
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
 		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed-uid",

@@ -8,6 +8,7 @@ Owns local persistence adapters and bearer authentication; the library owns `/sc
 
 ## Local Contracts
 - `POST /Users` with an `externalId` that names an existing `kysignon` user adopts that row (same ID, provider kept) through the Replace path, with its revocation, and audits `scim.user.adopt`. This join assumes the SCIM source is KyIdentity, whose `externalId` is its user ID and the KySignOn `sub`; do not feed SCIM from another IdP while KySignOn is enabled, or unrelated accounts with colliding IDs would be joined.
+- Groups have an owner (`groups.source`). SCIM creates `scim` groups and lists, reads, replaces, patches and deletes only those; a local group is 404 to SCIM, so a reconciling IdP never sees, renames, empties or deletes one. A create whose name a local group holds in any case is a 409 and sets setting `ConflictKey(name)`, which the Groups screen flags until the local group is renamed or deleted.
 - Content-Type for all SCIM endpoints must be `application/scim+json`.
 - Requests must be authenticated with the configured bearer token.
 - User de-provisioning via `PATCH` with `active: false` updates user status to `inactive`. Any status or role change revokes the user's sessions and app passwords before the change is stored (`save`); a failed revocation or write returns an error and stores nothing, so no old session runs under the new role.

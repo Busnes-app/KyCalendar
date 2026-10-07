@@ -1,5 +1,5 @@
 import React from 'react';
-import { Key, Archive, Database, Users, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Key, Archive, Database, Users, CheckCircle2, ArrowRight, UsersRound } from 'lucide-react';
 
 interface DashboardProps {
   settings: any;
@@ -9,6 +9,15 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate }) => {
   const cards = [
+    {
+      title: 'Groups',
+      desc: 'Local groups for group calendars, beside the groups your identity provider syncs.',
+      status: 'Local and synced',
+      statusType: 'accent',
+      icon: UsersRound,
+      action: () => onNavigate('groups'),
+      actionLabel: 'Manage groups',
+    },
     {
       title: 'Feature 0: KyBackup & Recovery',
       desc: 'Encrypted capsule container generation and automated sandboxed restore drills.',
@@ -29,7 +38,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate
     },
     {
       title: 'Single Sign-On & Federation',
-      desc: 'KySignOn OIDC + Signed Directory Webhooks, Generic OIDC, and SAML 2.0 SP.',
+      desc: 'KySignOn OIDC and signed directory webhooks.',
       status: settings?.sso_enabled ? 'Enabled' : 'Disabled',
       statusType: settings?.sso_enabled ? 'success' : 'neutral',
       icon: Key,

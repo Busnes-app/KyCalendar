@@ -33,7 +33,6 @@ type Server struct {
 	store      store.Store
 	sessions   *auth.SessionManager
 	kysignon   *sso.KySignOnClient
-	oidc       *sso.GenericOIDCClient
 	saml       *sso.SAMLServiceProvider
 	scim       *scim.Server
 	recovery   recoveryClient
@@ -136,7 +135,6 @@ const attemptsCap = 10000
 func NewServer(cfg *config.Config, st store.Store) *Server {
 	sessions := auth.NewSessionManager(st, cfg.Security)
 	kysignon := sso.NewKySignOnClient(cfg.SSO, st)
-	oidc := sso.NewGenericOIDCClient(cfg.SSO, st)
 	saml := sso.NewSAMLServiceProvider(cfg.SSO.SAMLEntityID, cfg.Server.AppURL+"/saml/acs")
 	scimSrv := scim.NewServer(st, cfg.SCIM, cfg.Server.AppURL)
 	recovery := recoveryclient.NewClient(recoveryclient.Options{AllowPrivate: cfg.Backup.AllowPrivateRecovery})
@@ -146,7 +144,6 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 		store:    st,
 		sessions: sessions,
 		kysignon: kysignon,
-		oidc:     oidc,
 		saml:     saml,
 		scim:     scimSrv,
 		recovery: recovery,
@@ -281,6 +278,13 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/calendars", s.requireAdmin(s.handleCreateGroupCalendar))
 	s.handle("DELETE /api/admin/calendars/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroupCalendar)))
 	s.handle("GET /api/admin/groups", s.requireAdmin(s.handleListGroups))
+	s.handle("POST /api/admin/groups", s.requireAdmin(s.handleCreateGroup))
+	s.handle("GET /api/admin/groups/{id}", s.requireAdmin(s.handleGetGroup))
+	s.handle("PATCH /api/admin/groups/{id}", s.requireAdmin(s.handleRenameGroup))
+	s.handle("DELETE /api/admin/groups/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroup)))
+	s.handle("PUT /api/admin/groups/{id}/members/{userId}", s.requireAdmin(s.handleAddGroupMember))
+	s.handle("DELETE /api/admin/groups/{id}/members/{userId}", s.requireAdmin(s.handleRemoveGroupMember))
+	s.handle("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))

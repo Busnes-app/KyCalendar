@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	protocol "github.com/elimity-com/scim"
 	protocolErrors "github.com/elimity-com/scim/errors"
@@ -266,9 +267,31 @@ func userResource(user *store.User) protocol.Resource {
 
 type groupResourceHandler struct{ store store.Store }
 
+// ConflictKey names the setting that flags a SCIM group name a local group already holds, so the
+// Groups screen can ask an admin to rename the local group. Hashed: names outgrow the key column.
+func ConflictKey(name string) string {
+	return "scim_group_conflict:" + crypto.SHA256Hex([]byte(strings.ToLower(name)))
+}
+
+// scimGroup loads a group SCIM owns. A local group is not SCIM's to read or change, so it reads
+// as missing: an IdP reconciling its directory must never rename, empty or delete one.
+func (h *groupResourceHandler) scimGroup(r *http.Request, id string) (*store.Group, error) {
+	group, err := h.store.Groups().GetGroupByID(r.Context(), id)
+	if err == nil && group.Source != store.GroupSourceSCIM {
+		err = store.ErrNotFound
+	}
+	if err != nil {
+		return nil, scimStoreError(err, id)
+	}
+	return group, nil
+}
+
 func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	group := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: stringValue(attrs, "displayName", ""), ExternalID: stringValue(attrs, "externalId", "")}
+	group := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: stringValue(attrs, "displayName", ""), ExternalID: stringValue(attrs, "externalId", ""), Source: store.GroupSourceSCIM}
 	if err := h.store.Groups().CreateGroup(r.Context(), group); err != nil {
+		if errors.Is(err, store.ErrAlreadyExists) {
+			h.flagLocalTwin(r, group.DisplayName)
+		}
 		return protocol.Resource{}, scimStoreError(err, group.ID)
 	}
 	if err := h.replaceMembers(r, group.ID, nil, memberValues(attrs["members"])); err != nil {
@@ -277,15 +300,23 @@ func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAt
 	group.Members = memberValues(attrs["members"])
 	return groupResource(group), nil
 }
+
+// flagLocalTwin records that a local group holds name, so SCIM could not create it.
+func (h *groupResourceHandler) flagLocalTwin(r *http.Request, name string) {
+	if g, err := h.store.Groups().GetGroupByName(r.Context(), name); err == nil && g.Source == store.GroupSourceLocal {
+		_ = h.store.Settings().SetSetting(r.Context(), ConflictKey(name), time.Now().UTC().Format(time.RFC3339))
+	}
+}
+
 func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resource, error) {
-	group, err := h.store.Groups().GetGroupByID(r.Context(), id)
+	group, err := h.scimGroup(r, id)
 	if err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
+		return protocol.Resource{}, err
 	}
 	return groupResource(group), nil
 }
 func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
-	groups, total, err := h.store.Groups().ListGroups(r.Context(), params.StartIndex-1, params.Count)
+	groups, total, err := h.store.Groups().ListGroups(r.Context(), params.StartIndex-1, params.Count, store.GroupSourceSCIM)
 	if err != nil {
 		return protocol.Page{}, err
 	}
@@ -296,9 +327,9 @@ func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListReque
 	return protocol.Page{TotalResults: total, Resources: resources}, nil
 }
 func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	group, err := h.store.Groups().GetGroupByID(r.Context(), id)
+	group, err := h.scimGroup(r, id)
 	if err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
+		return protocol.Resource{}, err
 	}
 	old := group.Members
 	group.DisplayName = stringValue(attrs, "displayName", group.DisplayName)
@@ -313,12 +344,15 @@ func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protoco
 	return groupResource(group), nil
 }
 func (h *groupResourceHandler) Delete(r *http.Request, id string) error {
+	if _, err := h.scimGroup(r, id); err != nil {
+		return err
+	}
 	return scimStoreError(h.store.Groups().DeleteGroup(r.Context(), id), id)
 }
 func (h *groupResourceHandler) Patch(r *http.Request, id string, operations []protocol.PatchOperation) (protocol.Resource, error) {
-	group, err := h.store.Groups().GetGroupByID(r.Context(), id)
+	group, err := h.scimGroup(r, id)
 	if err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
+		return protocol.Resource{}, err
 	}
 	attrs := protocol.ResourceAttributes{"displayName": group.DisplayName, "members": memberMaps(group.Members)}
 	for _, op := range operations {

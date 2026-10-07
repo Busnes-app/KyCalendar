@@ -8,6 +8,7 @@ import { SCIMAdmin } from './pages/SCIMAdmin';
 import { Settings } from './pages/Settings';
 import AppPasswords from './pages/AppPasswords';
 import GroupCalendars from './pages/GroupCalendars';
+import Groups from './pages/Groups';
 import './styles/theme.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
@@ -99,7 +100,8 @@ export const App: React.FC = () => {
     }} />;
   }
 
-  const activeTab = chosenTab ?? (user.role === 'admin' ? 'dashboard' : 'calendar');
+  const isAdmin = user.role === 'admin';
+  const activeTab = chosenTab ?? (isAdmin ? 'dashboard' : 'calendar');
 
   return (
     <div className="app-shell">
@@ -112,13 +114,15 @@ export const App: React.FC = () => {
       />
 
       <main className="app-main">
-        {activeTab === 'calendar' && user.role !== 'admin' && <Suspense fallback={<p>Loading calendar…</p>}><CalendarPage /></Suspense>}
-        {activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
-        {activeTab === 'scim' && <SCIMAdmin />}
-        {activeTab === 'backup' && <Backup />}
-        {activeTab === 'settings' && <Settings settings={settings} />}
-        {activeTab === 'group-calendars' && user.role === 'admin' && <GroupCalendars />}
-        {activeTab === 'devices' && user && <AppPasswords username={user.username} />}
+        {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p>Loading calendar…</p>}><CalendarPage /></Suspense>}
+        {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
+        {/* Admin pages: the API refuses everyday users anyway; never render them either. */}
+        {isAdmin && activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
+        {isAdmin && activeTab === 'groups' && <Groups />}
+        {isAdmin && activeTab === 'group-calendars' && <GroupCalendars />}
+        {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
+        {isAdmin && activeTab === 'backup' && <Backup />}
+        {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
       </main>
     </div>
   );

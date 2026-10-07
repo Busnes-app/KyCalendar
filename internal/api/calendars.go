@@ -205,7 +205,7 @@ func (s *Server) handlePatchCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.OwnerKind == "group" {
-		s.auditCalendar(r.Context(), r, "calendar.update", c.ID, "")
+		s.auditAction(r.Context(), r, "calendar.update", c.ID, "")
 	}
 	updated, err := s.store.Calendars().GetCalendarByID(r.Context(), c.ID)
 	if err != nil {
@@ -231,6 +231,6 @@ func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to delete the calendar")
 		return
 	}
-	s.auditCalendar(ctx, r, "calendar.delete", c.ID, "")
+	s.auditAction(ctx, r, "calendar.delete", c.ID, "")
 	w.WriteHeader(http.StatusNoContent)
 }
