@@ -25,8 +25,9 @@ const groups = { groups: [{ id: "grp_1", display_name: "Sales" }], total: 1 };
 
 describe("GroupCalendars", () => {
   it("grants a group a role", async () => {
+    let putBody: unknown;
     const put = vi.fn((init?: RequestInit) => {
-      expect(JSON.parse(String(init?.body))).toEqual({ role: "editor" });
+      putBody = init?.body;
       return [{ group_id: "grp_1", group_name: "Sales", role: "editor" }];
     });
     mockFetch({
@@ -40,6 +41,7 @@ describe("GroupCalendars", () => {
     fireEvent.change(screen.getByLabelText("Role"), { target: { value: "editor" } });
     fireEvent.click(screen.getByRole("button", { name: /add group/i }));
     await waitFor(() => expect(put).toHaveBeenCalled());
+    expect(JSON.parse(String(putBody))).toEqual({ role: "editor" });
   });
 
   it("asks for a fresh sign-in when delete needs step-up", async () => {
