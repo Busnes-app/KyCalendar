@@ -46,10 +46,11 @@ func TestAdminReattach(t *testing.T) {
 	ctx := context.Background()
 	admin := loginAs(t, srv, st, "root", "admin")
 	carol := carolOf(t, st)
-	reattach := func(id string) (int, string) {
-		w := call(t, srv, "POST", "/api/admin/users/"+id+"/reattach", "", admin)
+	reattachAs := func(id, body string) (int, string) {
+		w := call(t, srv, "POST", "/api/admin/users/"+id+"/reattach", body, admin)
 		return w.Code, codeOf(t, w.Body.Bytes())
 	}
+	reattach := func(id string) (int, string) { return reattachAs(id, `{"binding":"`+bindingB+`"}`) }
 
 	if code, c := reattach(carol.ID); code != http.StatusConflict || c != "no_signin" {
 		t.Errorf("no live sign-in: %d %s, want 409 no_signin", code, c)
@@ -67,6 +68,32 @@ func TestAdminReattach(t *testing.T) {
 	if code, _ := reattach("usr_nobody"); code != http.StatusNotFound {
 		t.Errorf("unknown person: %d, want 404", code)
 	}
+	for _, body := range []string{"", `{}`, `{"binding":""}`, `not json`} {
+		if code, _ := reattachAs(carol.ID, body); code != http.StatusBadRequest {
+			t.Errorf("body %q: %d, want 400", body, code)
+		}
+	}
+	// The admin confirmed a binding that is no longer live: nothing is written.
+	if code, c := reattachAs(carol.ID, `{"binding":"`+bindingA+`"}`); code != http.StatusConflict || c != "binding_changed" {
+		t.Errorf("stale binding: %d %s, want 409 binding_changed", code, c)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, carol.ID); u.SSOIssuer != bindingA || u.Status != "inactive" {
+		t.Fatalf("binding_changed wrote: %+v", u)
+	}
+	// Disabled by the IdP under the live binding: the IdP restores it, not reattach.
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "inactive", SSOProvider: "scim", SSOSubject: "d1", SSOIssuer: bindingB}); err != nil {
+		t.Fatal(err)
+	}
+	if code, c := reattach("usr_dan"); code != http.StatusConflict || c != "managed_externally" {
+		t.Errorf("IdP-disabled row: %d %s, want 409 managed_externally", code, c)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, "usr_dan"); u.Status != "inactive" {
+		t.Fatalf("an IdP-disabled row was enabled: %+v", u)
+	}
+	// Active but bound to another issuer: reattachable, and stamped.
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "e1", SSOIssuer: bindingA}); err != nil {
+		t.Fatal(err)
+	}
 
 	// The list tells the screen who needs it and what each is bound to.
 	var list struct {
@@ -82,13 +109,20 @@ func TestAdminReattach(t *testing.T) {
 		t.Errorf("signin_binding %q, want %q", list.SignInBinding, bindingB)
 	}
 	for _, u := range list.Users {
-		want := u.ID == carol.ID
+		want := u.ID == carol.ID || u.ID == "usr_eve"
 		if u.NeedsReattach != want {
 			t.Errorf("%s: needs_reattach %v, want %v", u.ID, u.NeedsReattach, want)
 		}
 		if u.ID == carol.ID && u.BoundTo != bindingA {
 			t.Errorf("carol bound_to %q, want %q", u.BoundTo, bindingA)
 		}
+	}
+
+	if code, c := reattach("usr_eve"); code != http.StatusOK {
+		t.Fatalf("active row of another issuer: %d %s", code, c)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, "usr_eve"); u.SSOIssuer != bindingB || u.Status != "active" {
+		t.Fatalf("eve after reattach: %+v", u)
 	}
 
 	restore := api.SetStepUpWindowForTest(0)
@@ -113,16 +147,21 @@ func TestAdminReattach(t *testing.T) {
 	if list, _ := st.AppPasswords().ListByUser(ctx, carol.ID); len(list) != 0 {
 		t.Error("app passwords survived the reattach")
 	}
-	if rows := auditRows(t, st, "admin.user_reattach"); len(rows) != 1 || rows[0].UserID != "usr_root" || rows[0].Resource != carol.ID ||
-		rows[0].Details != `from="`+bindingA+`" to="`+bindingB+`"` {
+	var rows []*store.AuditRecord
+	for _, r := range auditRows(t, st, "admin.user_reattach") {
+		if r.Resource == carol.ID {
+			rows = append(rows, r)
+		}
+	}
+	if len(rows) != 1 || rows[0].UserID != "usr_root" || rows[0].Details != `from="`+bindingA+`" to="`+bindingB+`"` {
 		t.Fatalf("audit: %+v", rows)
 	}
 	// Already bound and active: nothing to do, nothing audited.
 	if code, _ := reattach(carol.ID); code != http.StatusOK {
 		t.Errorf("no-op: %d, want 200", code)
 	}
-	if rows := auditRows(t, st, "admin.user_reattach"); len(rows) != 1 {
-		t.Errorf("a no-op was audited: %d rows", len(rows))
+	if rows := auditRows(t, st, "admin.user_reattach"); len(rows) != 2 {
+		t.Errorf("a no-op was audited: %d rows, want carol's and eve's", len(rows))
 	}
 }
 
@@ -149,7 +188,7 @@ func TestReattachFailsWhenTheActorIsRevokedMidRequest(t *testing.T) {
 		}
 	}}})
 	liveAt(srv, "https://b.example")
-	w := call(t, srv, "POST", "/api/admin/users/"+carol.ID+"/reattach", "", sessionFor(t, st, bob))
+	w := call(t, srv, "POST", "/api/admin/users/"+carol.ID+"/reattach", `{"binding":"`+bindingB+`"}`, sessionFor(t, st, bob))
 	if w.Code != http.StatusForbidden || codeOf(t, w.Body.Bytes()) != "actor_revoked" {
 		t.Fatalf("%d %s, want 403 actor_revoked", w.Code, w.Body.String())
 	}

@@ -32,8 +32,8 @@ type userView struct {
 	LastLoginAt        *time.Time `json:"last_login_at"`
 	// BoundTo is an SSO account's sign-in binding (`<kind> <issuer>`, "" when unstamped).
 	BoundTo string `json:"bound_to,omitempty"`
-	// NeedsReattach: an SSO account the live sign-in reaches by kind but cannot sign in, because
-	// it is disabled or bound to another issuer.
+	// NeedsReattach: an SSO account the live sign-in reaches by kind but refuses, because it is
+	// bound to another issuer (or none). One disabled under the live binding is the IdP's.
 	NeedsReattach bool `json:"needs_reattach"`
 }
 
@@ -49,8 +49,7 @@ func userViewOf(u *store.User) userView {
 // viewWithSignIn is userViewOf plus whether p, the live provider (nil: none), needs a reattach.
 func viewWithSignIn(u *store.User, p *sso.Provider) userView {
 	v := userViewOf(u)
-	v.NeedsReattach = p != nil && slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider) &&
-		(u.Status != "active" || u.SSOIssuer != p.Binding)
+	v.NeedsReattach = p != nil && slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider) && u.SSOIssuer != p.Binding
 	return v
 }
 
@@ -389,12 +388,20 @@ func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, a
 	s.writeUser(w, r, u.ID)
 }
 
-// handleReattachUser binds an SSO person to the live sign-in and reactivates them, revoking every
-// grant so they sign in fresh: the one admin write on an identity provider's account, for a person
-// a provider or issuer change disabled. The admin vouches it is the same person; the role is
-// re-proven at the next sign-in.
+// handleReattachUser binds an SSO person bound to another issuer to the live sign-in and
+// reactivates them, revoking every grant so they sign in fresh: the one admin write on an identity
+// provider's account. The admin vouches it is the same person and names the binding they
+// confirmed; the role is re-proven at the next sign-in. A person disabled under the live binding
+// was disabled by the IdP, which restores them.
 func (s *Server) handleReattachUser(w http.ResponseWriter, r *http.Request) {
 	if !s.requireStepUp(w, r, "reattach a person") {
+		return
+	}
+	var body struct {
+		Binding string `json:"binding"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Binding == "" {
+		s.writeError(w, http.StatusBadRequest, "Name the sign-in binding you confirmed")
 		return
 	}
 	r = r.WithContext(context.WithoutCancel(r.Context()))
@@ -414,11 +421,19 @@ func (s *Server) handleReattachUser(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "No sign-in provider is live; set one up under Sign-in first", "code": "no_signin"})
 		return
 	}
+	if body.Binding != p.Binding {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "The sign-in provider changed since you confirmed; review the person again", "code": "binding_changed"})
+		return
+	}
 	if !slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider) {
 		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "The current sign-in provider never signs this account in", "code": "other_provider"})
 		return
 	}
-	if u.Status == "active" && u.SSOIssuer == p.Binding {
+	if u.SSOIssuer == p.Binding {
+		if u.Status != "active" {
+			s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Your identity provider disabled this person; restore them there", "code": "managed_externally"})
+			return
+		}
 		s.writeUser(w, r, u.ID)
 		return
 	}

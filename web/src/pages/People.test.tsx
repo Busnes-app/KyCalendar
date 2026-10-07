@@ -102,10 +102,12 @@ describe("People", () => {
   it("names both bindings before reattaching, and reattaches only when confirmed", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     let posts = 0;
+    let sent: unknown;
     mockFetch({
       "GET /api/admin/users": () => users(person({ id: "u2", username: "sam", source: "kysignon", status: "inactive", bound_to: "kyidentity https://a.example", needs_reattach: true })),
-      "POST /api/admin/users/u2/reattach": () => {
+      "POST /api/admin/users/u2/reattach": (init) => {
         posts++;
+        sent = JSON.parse(String(init?.body));
         return person({ id: "u2", username: "sam", source: "kysignon", bound_to: "kyidentity https://b.example" });
       },
     });
@@ -116,9 +118,28 @@ describe("People", () => {
     expect(text).toContain("kyidentity https://a.example");
     expect(text).toContain("kyidentity https://b.example");
     expect(text).toMatch(/same person/);
+    expect(text).toMatch(/signs in with this account's subject gets this account and its calendars/);
     expect(posts).toBe(0);
     fireEvent.click(button);
     await waitFor(() => expect(posts).toBe(1));
+    expect(sent).toEqual({ binding: "kyidentity https://b.example" });
+  });
+
+  it("reloads with an alert when the sign-in changed since the confirm", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    let loads = 0;
+    mockFetch({
+      "GET /api/admin/users": () => {
+        loads++;
+        return users(person({ id: "u2", username: "sam", source: "kysignon", bound_to: "kyidentity https://a.example", needs_reattach: true }));
+      },
+      "POST /api/admin/users/u2/reattach": () =>
+        new Response(JSON.stringify({ error: "The sign-in provider changed since you confirmed; review the person again", code: "binding_changed" }), { status: 409 }),
+    });
+    render(<People me="u0" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reattach sam to current sign-in" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/sign-in provider changed/);
+    await waitFor(() => expect(loads).toBe(2));
   });
 
   it("asks for a fresh sign-in when a reattach needs step-up", async () => {

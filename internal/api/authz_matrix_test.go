@@ -207,7 +207,7 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/users/{id}/role":                {method: "POST", path: "/api/admin/users/usr_promotee/role", body: `{"role":"admin"}`, want: adminOnly},
 		"POST /api/admin/users/{id}/disable":             {method: "POST", path: "/api/admin/users/usr_disablee/disable", want: adminOnly},
 		"POST /api/admin/users/{id}/enable":              {method: "POST", path: "/api/admin/users/usr_enablee/enable", want: adminOnly},
-		"POST /api/admin/users/{id}/reattach":            {method: "POST", path: "/api/admin/users/usr_reattachee/reattach", want: adminOnly},
+		"POST /api/admin/users/{id}/reattach":            {method: "POST", path: "/api/admin/users/usr_reattachee/reattach", body: `{"binding":"kyidentity https://matrix.example"}`, want: adminOnly},
 		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
 		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},

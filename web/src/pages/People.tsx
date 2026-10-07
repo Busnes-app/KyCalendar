@@ -61,7 +61,10 @@ export default function People({ me }: { me: string }) {
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res?.ok) {
-      setError(await refusal(res, "Could not change this person"));
+      const f = await failure(res);
+      setError(f.code === "reauth_required" ? REAUTH : (f.error ?? "Could not change this person"));
+      // The live sign-in moved since the confirm: show the current one before anyone retries.
+      if (f.code === "binding_changed") await load(query);
       return;
     }
     if (action === "reset-password") setHandover({ username: p.username, password: (await res.json()).temporary_password });
@@ -98,11 +101,11 @@ export default function People({ me }: { me: string }) {
     if (
       window.confirm(
         `Reattach ${p.username} to the current sign-in?\n\nNow bound to: ${from}\nWill be bound to: ${binding}\n\n` +
-          `Whoever this provider signs in with ${p.username}'s identity gets their calendars. Be sure it is the same person. ` +
+          `Whoever this provider signs in with this account's subject gets this account and its calendars. Be sure it is the same person. ` +
           `They are enabled and signed out everywhere; their next sign-in decides their role.`,
       )
     ) {
-      void act(p, "reattach");
+      void act(p, "reattach", { binding });
     }
   }
 

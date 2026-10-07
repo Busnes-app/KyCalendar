@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,8 @@ func TestLoginSucceedsAfterReattach(t *testing.T) {
 	if _, _, err := s.bindAccounts(ctx, a); err != nil {
 		t.Fatal(err)
 	}
-	carol, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1", PreferredUsername: "carol"}, a.Identity())
+	// An administrator under a: the role is re-proven at the first login through b.
+	carol, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1", PreferredUsername: "carol", Roles: []string{"kycalendar.admin"}}, a.Identity())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +44,8 @@ func TestLoginSucceedsAfterReattach(t *testing.T) {
 	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-root")), UserID: root.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("POST", "/api/admin/users/"+carol.ID+"/reattach", nil)
+	req := httptest.NewRequest("POST", "/api/admin/users/"+carol.ID+"/reattach", strings.NewReader(`{"binding":"`+b.Identity()+`"}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-root"})
 	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})
 	req.Header.Set(auth.HeaderCSRF, "csrf")
@@ -55,5 +58,8 @@ func TestLoginSucceedsAfterReattach(t *testing.T) {
 	got, err := s.upsertSSOUser(ctx, claims, b.Identity())
 	if err != nil || got.ID != carol.ID {
 		t.Fatalf("login after reattach: %+v %v, want carol's own row", got, err)
+	}
+	if carol.Role != "admin" || got.Role != "user" || issuerOf(t, s, carol.ID).Role != "user" {
+		t.Fatalf("roles: under a %q, after login through b %q, stored %q; want admin, then user", carol.Role, got.Role, issuerOf(t, s, carol.ID).Role)
 	}
 }
