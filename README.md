@@ -185,7 +185,7 @@ The server refuses a non-empty `KY_BACKUP_DIR`, `KY_BACKUP_KEEP`, `KY_BACKUP_DEP
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `KYCALENDAR_BACKUP_DIR` | empty (off) | Directory for sealed local copies, `<escaped app name>.<capsule-id>.kycap` at mode 0600 (`Busnes_2eapp.cap-Busnes.app-<n>.kycap` by default: bytes outside `[A-Za-z0-9-]` in the app name are hex-escaped). Pruning removes only this application's own prefix. |
+| `KYCALENDAR_BACKUP_DIR` | empty (off) | Directory for sealed local copies, `<service>.<capsule-id>.kycap` at mode 0600 (`kycalendar.cap-kycalendar-<n>.kycap`). Pruning removes only this application's own prefix. |
 | `KYCALENDAR_BACKUP_KEEP` | `7` | Local copies to retain; below 1 refuses startup. |
 | `KYCALENDAR_BACKUP_DEPOSIT_INTERVAL` | `24h` | Default schedule only. The admin screen's setting wins; `0` is off; 15 minutes to 366 days otherwise. |
 | `KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY` | `false` | Admit a KyRecovery on an RFC1918 or CGNAT address behind your own TLS proxy. Loopback, link-local and other reserved ranges stay refused; HTTPS stays required. Logged at startup and on the pairing audit row. |

@@ -301,6 +301,16 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - Event text renders as text through `linkify`; "all occurrences" edits send `series_start`/`series_end`; dragging a recurring event asks for the scope first. Detail and the CSP `font-src data:` ruling are in `web/AGENTS.md`.
 - The browser suite (`web/browser/calendar.spec.mjs`) covers the calendar under the production CSP.
 
+#### Plan 4 backup and restore contracts
+
+- The service name, claimed and sealed, is `kycalendar` (`backup.ServiceName`); `KY_APP_NAME` is display only. The capsule database member `data/kycalendar.db` (`backup.DatabaseMember`) equals the file the default DSN opens, so a restored tree starts on restored data.
+- Backup variables are `KYCALENDAR_BACKUP_DIR`, `_KEEP`, `_DEPOSIT_INTERVAL`, `_ALLOW_PRIVATE_RECOVERY` and `KYCALENDAR_DNS`; the retired `KY_BACKUP_*` and `KY_DNS` names are refused at startup when non-empty, compose included.
+- The drill compares the snapshot's calendar and object counts with the restored database and parses up to 50 objects; messages carry IDs only.
+- Unpair requires a sign-in younger than the step-up window (403 `reauth_required`).
+- `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges and app passwords, flags local-password accounts `must_change_password` (SSO untouched), writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it.
+- Recovery codes come back as of the backup; `docs/RESTORE.md` tells operators what users must redo.
+- The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.
+
 #### Server child DOX index
 
 - [internal/config/AGENTS.md](internal/config/AGENTS.md): Configuration management and environment loader.
