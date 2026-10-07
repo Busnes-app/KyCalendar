@@ -12,7 +12,7 @@ const env = {
   KY_APP_URL: 'http://127.0.0.1:5391',
   KY_HOST: '127.0.0.1', KY_PORT: '5391', KY_DB_DRIVER: 'sqlite',
   KY_DATA_DIR: join(dir, 'data'), KYCALENDAR_BACKUP_DIR: join(dir, 'backups'),
-  KY_CAPTCHA_PROVIDER: 'none',
+  KY_CAPTCHA_PROVIDER: 'none', KY_TRUSTED_PROXIES: '127.0.0.1',
 };
 // The server only bootstraps its admin into an empty database, so create the admin first.
 const admin = spawnSync(binary, ['init-admin'], { cwd: dir, env, input: 'BrowserInitial123!\n', stdio: ['pipe', 'inherit', 'inherit'] });
