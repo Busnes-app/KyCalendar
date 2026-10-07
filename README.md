@@ -122,7 +122,9 @@ A member's phone shows every group calendar they can read under the same app pas
 - **Add person**: username, optional display name and email, and Everyday user or Administrator. KyCalendar generates a temporary password and shows it once: give it to the person in person or over another channel you trust, not in the same message as the username. They choose their own password at first sign-in.
 - **Reset password** shows a new temporary password once and signs the person out everywhere; their phones stop syncing until they create new app passwords.
 - **Make admin / Make user** and **Disable** sign the person out everywhere. Administrators never see calendars. You cannot demote or disable yourself, and nobody can demote or disable the last active local administrator: that account is the way back in when single sign-on is down.
-- Adding an administrator, resetting, changing a role, disabling and enabling need a sign-in from the last 10 minutes. There is no delete: disabling keeps the person's calendars.
+- **Reattach to current sign-in** appears on a single sign-on account that the current provider would sign in but cannot: one disabled, or bound to an earlier issuer, by a provider or issuer change. It binds the account to the current provider and issuer, enables it and signs it out everywhere, keeping its calendars; the person's next sign-in through the provider decides their role. Use it only when you are sure the new provider's account is the same person: whoever the new provider signs in with that account's subject gets its calendars. The confirm names the old and the new binding. This is the one change the People screen makes to a synced account.
+- Adding an administrator, resetting, changing a role, disabling, enabling and reattaching need a sign-in from the last 10 minutes. There is no delete: disabling keeps the person's calendars.
+- SCIM never sees local accounts: it cannot list, change, disable or delete them, cannot create a synced account with a local account's username (in any case), and cannot add a local account to a synced group.
 
 ## Sign-in
 

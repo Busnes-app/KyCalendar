@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -65,3 +66,6 @@ func SetExpandTimeForTest(d time.Duration) func() {
 // SetSignInHTTPClientForTest replaces the guarded client that reaches admin-entered providers,
 // so a test can trust httptest's certificate and dial its loopback listener. Test-only.
 func SetSignInHTTPClientForTest(s *Server, c *http.Client) { s.signinHTTP = c }
+
+// SetSignInForTest makes p the live sign-in provider (nil closes sign-in). Test-only.
+func SetSignInForTest(s *Server, p *sso.Provider) { s.signin.Store(p) }

@@ -105,6 +105,12 @@ type UserStore interface {
 	// unstamped account of b.StampProviders; then settings are written, an empty value deleting
 	// its key. It returns how many accounts it deactivated. Any failure writes nothing.
 	BindSignIn(ctx context.Context, actor Actor, b SignInBinding, settings map[string]string) (int, error)
+	// ReattachSSOUser is the admin's one write on an SSO account, under the local-admins lock:
+	// ErrActorRevoked unless actor is still an active administrator with a live session; then the
+	// account's sso_issuer becomes binding and its status active, and its sessions, MFA challenges,
+	// device pairings and app passwords are deleted. The role is untouched. It returns the previous
+	// sso_issuer. Local or missing: ErrNotFound.
+	ReattachSSOUser(ctx context.Context, actor Actor, userID, binding string) (string, error)
 	// CountSSOAccounts counts the active accounts BindSignIn would deactivate.
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error

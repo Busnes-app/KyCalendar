@@ -703,6 +703,32 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 	return int(n), tx.Commit()
 }
 
+func (u *userStore) ReattachSSOUser(ctx context.Context, actor Actor, userID, binding string) (string, error) {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return "", err
+	}
+	var from string
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT sso_issuer FROM users WHERE id = ? AND sso_provider <> 'local'`), userID).Scan(&from)
+	if errorsIs(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	} else if err != nil {
+		return "", err
+	}
+	// Row first, as in changeAccess: no grant is issued between the purge and the change.
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET sso_issuer = ?, status = 'active', updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), binding, time.Now().UTC(), userID); err != nil {
+		return "", err
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return "", err
+	}
+	return from, tx.Commit()
+}
+
 func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (int, error) {
 	if len(providers) == 0 {
 		return 0, nil
