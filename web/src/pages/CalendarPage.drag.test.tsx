@@ -319,15 +319,28 @@ describe('drag', () => {
     expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T05:00:00.000Z' }); // Tue 01:00 New York
   });
 
-  it('measures a series stored in UTC in UTC', async () => {
+  // Without a TZID the series is UTC or floating; a move counts only when both readings agree.
+  const noZone: EventInfo = { ...nyMondays, zone: undefined, start: '2026-10-12T12:00:00Z', end: '2026-10-12T13:00:00Z', series_start: '2026-10-05T12:00:00Z', series_end: '2026-10-05T13:00:00Z' };
+
+  it('rotates weekdays for a series without a zone when UTC and local dates agree', async () => {
     const puts = setup();
     render(<CalendarPage />);
     await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
-    // Monday 23:30 UTC is Tuesday 01:30 in Berlin; 03:00 Berlin is Tuesday in UTC too.
-    const utc: EventInfo = { ...nyMondays, zone: undefined, start: '2026-10-12T23:30:00Z', end: '2026-10-13T00:30:00Z', series_start: '2026-10-05T23:30:00Z', series_end: '2026-10-06T00:30:00Z' };
-    await dragTo(utc, new Date(2026, 9, 13, 3), dayDelta(0, 90 * 60_000));
+    await dragTo(noZone, new Date(2026, 9, 13, 14), dayDelta(1, 0)); // Mon 14:00 to Tue 14:00 Berlin
     await waitFor(() => expect(puts).toHaveLength(1));
-    expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T01:00:00.000Z' });
+    expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T12:00:00.000Z' });
+  });
+
+  it('refuses a series without a zone when UTC and local dates disagree', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    // Monday 23:30 UTC is Tuesday 01:30 in Berlin; 03:00 Berlin is Tuesday in both, so only the UTC date moves.
+    const late: EventInfo = { ...noZone, start: '2026-10-12T23:30:00Z', end: '2026-10-13T00:30:00Z', series_start: '2026-10-05T23:30:00Z', series_end: '2026-10-06T00:30:00Z' };
+    const revert = await dragTo(late, new Date(2026, 9, 13, 3), dayDelta(0, 90 * 60_000));
+    expect((await screen.findByRole('alert')).textContent).toBe('Change the days of a repeating event in the event form.');
+    expect(revert).toHaveBeenCalled();
+    expect(puts).toHaveLength(0);
   });
 
   it('refuses to move a series whose zone the browser cannot resolve', async () => {
