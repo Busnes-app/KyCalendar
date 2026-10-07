@@ -271,7 +271,7 @@ func (s *Server) routes() {
 	// change grants. None of these routes reads or writes events.
 	s.mux.HandleFunc("GET /api/admin/calendars", s.requireAdmin(s.handleListGroupCalendars))
 	s.mux.HandleFunc("POST /api/admin/calendars", s.requireAdmin(s.handleCreateGroupCalendar))
-	s.mux.HandleFunc("DELETE /api/admin/calendars/{id}", s.requireAdmin(s.handleDeleteGroupCalendar))
+	s.mux.HandleFunc("DELETE /api/admin/calendars/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroupCalendar)))
 	s.mux.HandleFunc("GET /api/admin/groups", s.requireAdmin(s.handleListGroups))
 	s.mux.HandleFunc("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
 	s.mux.HandleFunc("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))

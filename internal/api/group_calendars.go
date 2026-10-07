@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -48,12 +49,12 @@ func calendarView(c *store.Calendar, gs []store.CalendarGrant) groupCalendarView
 }
 
 // auditCalendar records an access change by the session user; IDs only.
-func (s *Server) auditCalendar(r *http.Request, action, resource, details string) {
+func (s *Server) auditCalendar(ctx context.Context, r *http.Request, action, resource, details string) {
 	actor := ""
 	if u := sessionUser(r.Context()); u != nil {
 		actor = u.ID
 	}
-	_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: actor, Action: action, Resource: resource, Details: details, IPAddress: s.requestIP(r)})
+	_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: actor, Action: action, Resource: resource, Details: details, IPAddress: s.requestIP(r)})
 }
 
 func listPage(r *http.Request) (offset, limit int) {
@@ -111,7 +112,7 @@ func (s *Server) handleCreateGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusInternalServerError, "Failed to create the calendar")
 		return
 	}
-	s.auditCalendar(r, "admin.calendar_create", c.ID, "")
+	s.auditCalendar(r.Context(), r, "admin.calendar_create", c.ID, "")
 	s.writeJSON(w, http.StatusCreated, calendarView(c, nil))
 }
 
@@ -127,8 +128,10 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in again to delete a calendar", "code": "reauth_required"})
 		return
 	}
+	// Irreversible: a dropped connection must not lose the audit row.
+	ctx := context.WithoutCancel(r.Context())
 	id := r.PathValue("id")
-	c, err := s.store.Calendars().GetCalendarByID(r.Context(), id)
+	c, err := s.store.Calendars().GetCalendarByID(ctx, id)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && c.OwnerKind != "group") {
 		s.writeError(w, http.StatusNotFound, "No such group calendar")
 		return
@@ -137,11 +140,11 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusInternalServerError, "Failed to load the calendar")
 		return
 	}
-	if err := s.store.Calendars().DeleteCalendar(r.Context(), id); err != nil && !errors.Is(err, store.ErrNotFound) {
+	if err := s.store.Calendars().DeleteCalendar(ctx, id); err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to delete the calendar")
 		return
 	}
-	s.auditCalendar(r, "admin.calendar_delete", id, "")
+	s.auditCalendar(ctx, r, "admin.calendar_delete", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -250,7 +253,7 @@ func (s *Server) handleSetGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to change access")
 		return
 	}
-	s.auditCalendar(r, "calendar.grant_set", c.ID, "group="+group+" role="+body.Role)
+	s.auditCalendar(r.Context(), r, "calendar.grant_set", c.ID, "group="+strconv.Quote(group)+" role="+strconv.Quote(body.Role))
 	s.writeGrants(w, r, c.ID)
 }
 
@@ -264,6 +267,6 @@ func (s *Server) handleDeleteGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to remove access")
 		return
 	}
-	s.auditCalendar(r, "calendar.grant_remove", c.ID, "group="+group)
+	s.auditCalendar(r.Context(), r, "calendar.grant_remove", c.ID, "group="+strconv.Quote(group))
 	s.writeGrants(w, r, c.ID)
 }

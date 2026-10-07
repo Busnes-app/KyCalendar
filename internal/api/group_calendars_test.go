@@ -166,3 +166,56 @@ func TestGroupDeletionLeavesCalendarUnassigned(t *testing.T) {
 		t.Fatalf("former member: %d, want 404", r.StatusCode)
 	}
 }
+
+func personalCalendar(t *testing.T, st store.Store, userID string) *store.Calendar {
+	t.Helper()
+	c := &store.Calendar{ID: "cal_" + userID + "_p", OwnerKind: "user", OwnerID: userID, Slug: "mine", Name: "Mine"}
+	if err := st.Calendars().CreateCalendar(context.Background(), c, 0); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestPersonalCalendarsAreNotGroupRoutes(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	admin := loginAs(t, srv, st, "root", "admin")
+	davUser(t, st, "bob", "user")
+	p := personalCalendar(t, st, "usr_bob")
+	if err := st.Groups().CreateGroup(context.Background(), &store.Group{ID: "grp_x", DisplayName: "X"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+p.ID, "", admin); w.Code != http.StatusNotFound {
+		t.Errorf("delete personal: %d, want 404", w.Code)
+	}
+	if _, err := st.Calendars().GetCalendarByID(context.Background(), p.ID); err != nil {
+		t.Errorf("personal calendar removed: %v", err)
+	}
+	if w := call(t, srv, "PUT", "/api/calendars/"+p.ID+"/grants/grp_x", `{"role":"reader"}`, admin); w.Code != http.StatusNotFound {
+		t.Errorf("grant on personal: %d, want 404", w.Code)
+	}
+}
+
+func TestReaderCannotGrantManagerCanListAndRemove(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cal := groupCalendar(t, st, "Team")
+	rita := loginAs(t, srv, st, "rita", "user")
+	carol := loginAs(t, srv, st, "carol", "user")
+	grantRole(t, st, cal, "reader", "usr_rita")
+	grantRole(t, st, cal, "manager", "usr_carol")
+	base := "/api/calendars/" + cal.ID + "/grants"
+	if w := call(t, srv, "PUT", base+"/grp_manager_"+cal.ID, `{"role":"reader"}`, rita); w.Code != http.StatusForbidden {
+		t.Errorf("reader PUT: %d, want 403", w.Code)
+	}
+	w := call(t, srv, "GET", base, "", carol)
+	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"role":"reader"`)) || !bytes.Contains(w.Body.Bytes(), []byte(`"role":"manager"`)) {
+		t.Fatalf("list: %d %s", w.Code, w.Body.String())
+	}
+	for i := 0; i < 2; i++ {
+		if w := call(t, srv, "DELETE", base+"/grp_reader_"+cal.ID, "", carol); w.Code != http.StatusOK {
+			t.Fatalf("delete %d: %d %s", i, w.Code, w.Body.String())
+		}
+	}
+	if w := call(t, srv, "GET", base, "", carol); bytes.Contains(w.Body.Bytes(), []byte(`"role":"reader"`)) {
+		t.Errorf("grant survived: %s", w.Body.String())
+	}
+}
