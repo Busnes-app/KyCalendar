@@ -246,6 +246,8 @@ Inherited from the scaffold; these rules apply to the server code.
 
 - Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges and app passwords. Untouched existing accounts are not retroactively flagged.
 
+- `create-user` makes a local everyday account (password from stdin, forced change at first sign-in); it refuses an existing name.
+
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.
   Preserve existing overlays when updating `COMPOSE_FILE`; the base keeps automatic addressing.
@@ -292,6 +294,12 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - One write path: CalDAV PUT and every JSON event write call `davbackend.Write`, which refuses objects over `calendar.MaxObjectSize` (`ErrTooLarge`) for both. Web edits are `calendar.NewEvent`/`EditAll`/`EditOne`/`DeleteOne`, which mutate the stored object in place so unknown properties survive. Event text with control characters other than newline and tab, and years outside 1900..9000, are refused.
 - `GET /api/events` returns at most 5000 instances over at most 400 days within a 2-second expansion budget (422 `too_many_instances`, 400 for a bad range); event `PUT`/`DELETE` require exactly one strong quoted `If-Match` (428 absent, 400 malformed, 412 on conflict).
 - Plan 3b builds the FullCalendar UI on this API; Plan 4's interop gate records real client exports.
+
+#### Plan 3b web calendar contracts
+
+- The calendar is the landing page for everyday users and is never shown to administrators. FullCalendar is 6.1.21 across every package.
+- Event text renders as text through `linkify`; "all occurrences" edits send `series_start`/`series_end`; dragging a recurring event asks for the scope first. Detail and the CSP `font-src data:` ruling are in `web/AGENTS.md`.
+- The browser suite (`web/browser/calendar.spec.mjs`) covers the calendar under the production CSP.
 
 #### Server child DOX index
 

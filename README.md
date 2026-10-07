@@ -72,6 +72,12 @@ its identity, change the password or sign out; privileged APIs remain blocked. R
 revokes existing sessions, MFA transactions and app passwords atomically. Existing accounts
 are not retroactively flagged, since the server cannot infer whether they still use a bootstrap password.
 
+## Local everyday accounts
+
+`create-user` makes a local everyday account for testing or for instances without KyIdentity.
+The password is read from stdin: `printf '%s\n' "$PW" | kycalendar create-user -username alice`.
+The user must change it at first sign-in. An existing name is refused, never reset.
+
 ## Administrators and group calendars
 
 KyCalendar administrators manage group calendars, access, backups and the audit log. They never see events and cannot use calendars on their devices. Give a dedicated KyIdentity login the admin role, and keep everyday logins for calendar use.

@@ -12,6 +12,7 @@ interface AppHeaderProps {
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout }) => {
   const navItems = [
+    ...(user?.role !== 'admin' ? [{ id: 'calendar', label: 'Calendar', icon: CalendarDays }] : []),
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'scim', label: 'Directory & SCIM', icon: Users },
     { id: 'backup', label: 'KyBackup (Feature 0)', icon: Archive },
