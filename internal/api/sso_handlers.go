@@ -150,7 +150,9 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	redirectURI := fmt.Sprintf("%s/api/sso/kysignon/callback", s.config.Server.AppURL)
 	claims, err := p.Exchange(r.Context(), code, verifier, redirectURI, nonce)
 	if err != nil {
-		s.writeError(w, http.StatusUnauthorized, fmt.Sprintf("SSO exchange failed: %v", err))
+		// The error can carry the token endpoint's response or a refused address: logged only.
+		log.Printf("sso: %s code exchange failed: %v", p.Kind, err)
+		s.writeError(w, http.StatusUnauthorized, "Sign-in failed")
 		return
 	}
 

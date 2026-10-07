@@ -23,6 +23,12 @@ func fakeIdP(t *testing.T) *httptest.Server {
 	t.Helper()
 	var idp *httptest.Server
 	idp = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" && r.FormValue("code") == "leak" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid_grant", "error_description": "leaked-detail-10.9.8.7"})
+			return
+		}
 		if r.URL.Path == "/token" {
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer"})
 			return
@@ -139,6 +145,9 @@ func TestSavedIssuerGoesThroughTheGuardedClient(t *testing.T) {
 	s.signin.Store(s.buildProvider(signinSettings(sso.SourceEnvironment, idp.URL)))
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, startLogin(t, s))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("environment issuer callback: %d %s, want 401", w.Code, w.Body.String())
+	}
 	if len(rt.paths) != 0 {
 		t.Fatalf("environment issuer went through signinHTTP: %v", rt.paths)
 	}
@@ -176,6 +185,44 @@ func TestSavedLoopbackIssuerIsRefused(t *testing.T) {
 		if w.Code != tc.want {
 			t.Fatalf("login against a loopback saved issuer: %d %s, want %d", w.Code, w.Body.String(), tc.want)
 		}
+	}
+}
+
+// A failed code exchange answers a generic 401: the token endpoint's error text and transport
+// errors stay in the log, out of reach of anyone who posts a junk code.
+func TestCallbackExchangeErrorIsGeneric(t *testing.T) {
+	s, _ := davInternalServer(t)
+	idp := fakeIdP(t)
+	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", nil))
+	for _, code := range []string{"leak", "c"} {
+		req := startLogin(t, s)
+		q := req.URL.Query()
+		q.Set("code", code)
+		req.URL.RawQuery = q.Encode()
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		body := w.Body.String()
+		if w.Code != http.StatusUnauthorized || !strings.Contains(body, "Sign-in failed") ||
+			strings.Contains(body, "leaked-detail") || strings.Contains(body, "invalid_grant") || strings.Contains(body, "id_token") {
+			t.Fatalf("code %q: %d %s, want a generic 401", code, w.Code, body)
+		}
+	}
+}
+
+// An oidc account stored as admin (from before the provider rules) is demoted at its next login.
+func TestOIDCLoginDemotesAStoredAdmin(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_olga", Username: "olga", Role: "admin", Status: "active", SSOProvider: "oidc", SSOSubject: "o-9"}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-9", PreferredUsername: "olga", Roles: []string{access.AdminAppRole}})
+	if err != nil || u.ID != "usr_olga" || u.Role != "user" {
+		t.Fatalf("oidc login of a stored admin: %+v %v, want usr_olga demoted to user", u, err)
+	}
+	stored, err := s.store.Users().GetUserByID(ctx, "usr_olga")
+	if err != nil || stored.Role != "user" {
+		t.Fatalf("stored role: %+v %v, want user", stored, err)
 	}
 }
 
