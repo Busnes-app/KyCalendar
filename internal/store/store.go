@@ -90,6 +90,13 @@ type UserStore interface {
 	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
 	// back a status it read before a concurrent deactivation. Inactive, local or missing: ErrNotFound.
 	SetSSORole(ctx context.Context, userID, role string) error
+	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and
+	// app passwords in one transaction, after setting it inactive when deactivate is true (rows
+	// first). It never sets an account active. Local or missing: ErrNotFound.
+	RevokeSSOUser(ctx context.Context, userID string, deactivate bool) error
+	// UpdateKySignOnProfile sets a kysignon account's display name and email and nothing else.
+	// Any other provider or missing: ErrNotFound.
+	UpdateKySignOnProfile(ctx context.Context, userID, displayName, email string) error
 	// BindSignIn is one transaction under the local-admins lock: ErrActorRevoked unless actor is
 	// System or still an active administrator with a live session; then every active account
 	// whose sso_provider is in disable becomes inactive (local accounts never, whatever the list)

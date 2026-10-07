@@ -175,11 +175,15 @@ func TestKySignOnWebhookUpdateRevokesAdminSessionsOnly(t *testing.T) {
 	}
 }
 
+// failingUpdates refuses the webhook's profile write and every whole-row UpdateUser.
 type failingUpdates struct{ store.Store }
 type failingUserStore struct{ store.UserStore }
 
 func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
 func (failingUserStore) UpdateUser(context.Context, *store.User) error {
+	return errors.New("update refused")
+}
+func (failingUserStore) UpdateKySignOnProfile(context.Context, string, string, string) error {
 	return errors.New("update refused")
 }
 
@@ -221,7 +225,7 @@ func TestKySignOnWebhookReachesSCIMUsers(t *testing.T) {
 	}
 }
 
-// Revocation comes before the write: a failed deactivation still signs the user out.
+// Revocation comes before the profile write: a failed write still signs a stored admin out.
 func TestKySignOnWebhookRevokesBeforeStoring(t *testing.T) {
 	ctx := context.Background()
 	real, err := boundStore(t)
@@ -231,21 +235,97 @@ func TestKySignOnWebhookRevokesBeforeStoring(t *testing.T) {
 	defer real.Close()
 	secret := "webhook-secret-999"
 	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, failingUpdates{real})
-	if err := real.Users().CreateUser(ctx, &store.User{ID: "usr_k", Username: "kim", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-k"}); err != nil {
+	if err := real.Users().CreateUser(ctx, &store.User{ID: "usr_k", Username: "kim", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-k"}); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
 	if err := real.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_k", UserID: "usr_k", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
 		t.Fatal(err)
 	}
-	for _, event := range []string{"user.deactivated", "user.updated"} {
-		fields := map[string]any{"event": event, "id": "ext-k", "username": "kim", "status": "inactive"}
-		if err := webhook(t, client, secret, fields); err == nil {
-			t.Fatalf("%s succeeded despite the failing write", event)
-		}
+	if err := webhook(t, client, secret, map[string]any{"event": "user.updated", "id": "ext-k", "display_name": "Kim", "status": "active"}); err == nil {
+		t.Fatal("update succeeded despite the failing write")
 	}
 	if _, err := real.Sessions().GetSession(ctx, "tok_k"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("session survived a failed deactivation: %v", err)
+		t.Fatalf("admin session survived a failed update: %v", err)
+	}
+	// Deactivation never takes the whole-row path, so the refused UpdateUser cannot stop it.
+	if err := webhook(t, client, secret, map[string]any{"event": "user.deactivated", "id": "ext-k"}); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := real.Users().GetUserByID(ctx, "usr_k"); u.Status != "inactive" || u.Role != "admin" {
+		t.Fatalf("want inactive with the stored role kept: %+v", u)
+	}
+}
+
+// After a move from KyIdentity issuer A to issuer B (both bound "kyidentity"), A's webhook still
+// holds the HMAC secret. It must not re-activate the row the binding disabled: a B login with a
+// colliding subject would adopt it. The webhook only takes access away.
+func TestKySignOnWebhookNeverReactivatesAfterIssuerMove(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_a", Username: "ann", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Users().BindSignIn(ctx, store.System, []string{"kysignon"}, map[string]string{sso.KeyBound: sso.KindKyIdentity + " https://issuer-b.example"}); err != nil {
+		t.Fatal(err)
+	}
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, failingUpdates{st})
+	for _, event := range []string{"user.updated", "user.created"} {
+		if err := webhook(t, client, secret, map[string]any{"event": event, "id": "ext-a", "username": "ann", "display_name": "Ann " + event, "status": "active"}); err == nil {
+			t.Fatalf("%s: want the refused profile write reported", event)
+		}
+	}
+	client = sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+	if err := webhook(t, client, secret, map[string]any{"event": "user.updated", "id": "ext-a", "display_name": "Ann A", "status": "active"}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := st.Users().GetUserByID(ctx, "usr_a")
+	if err != nil || u.Status != "inactive" || u.DisplayName != "Ann A" {
+		t.Fatalf("want the profile updated and the row still inactive: %+v %v", u, err)
+	}
+	if n, _ := st.Users().CountUsers(ctx); n != 1 {
+		t.Fatalf("webhook created a second row for a known id: %d users", n)
+	}
+}
+
+// disableAfterRead disables every kysignon account right after the webhook reads its row, the
+// interleaving where a stale whole-row write would put status=active back.
+type disableAfterRead struct{ store.Store }
+type disableAfterReadUsers struct{ store.UserStore }
+
+func (d disableAfterRead) Users() store.UserStore { return disableAfterReadUsers{d.Store.Users()} }
+func (d disableAfterReadUsers) GetUserBySSO(ctx context.Context, provider, subject string) (*store.User, error) {
+	u, err := d.UserStore.GetUserBySSO(ctx, provider, subject)
+	if err == nil {
+		if _, err := d.BindSignIn(ctx, store.System, []string{"kysignon"}, nil); err != nil {
+			return nil, err
+		}
+	}
+	return u, err
+}
+
+func TestKySignOnWebhookCannotUndoAConcurrentDisable(t *testing.T) {
+	ctx := context.Background()
+	st, err := boundStore(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_r", Username: "rex", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-r"}); err != nil {
+		t.Fatal(err)
+	}
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, disableAfterRead{st})
+	if err := webhook(t, client, secret, map[string]any{"event": "user.updated", "id": "ext-r", "display_name": "Rex", "status": "active"}); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, "usr_r"); u.Status != "inactive" {
+		t.Fatalf("webhook wrote back a stale status over a concurrent disable: %+v", u)
 	}
 }
 

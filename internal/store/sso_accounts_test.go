@@ -125,3 +125,56 @@ func TestSetSSORoleTouchesOnlyActiveSSORoles(t *testing.T) {
 		}
 	}
 }
+
+// The directory webhook's writes only take access away: neither sets a row active, and neither
+// reaches a local account; the profile write reaches only kysignon rows.
+func TestWebhookWritesNeverActivate(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	off := &store.User{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s1"}
+	on := &store.User{ID: "usr_on", Username: "on", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "s2"}
+	sc := &store.User{ID: "usr_sc", Username: "sc", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "s3"}
+	lo := &store.User{ID: "usr_lo", Username: "lo", Role: "admin", Status: "active", SSOProvider: "local"}
+	seedUsers(t, st, off, on, sc, lo)
+	for _, u := range []*store.User{on, sc, lo} {
+		seedSession(t, st, u)
+	}
+	for _, deactivate := range []bool{false, true} {
+		if err := st.Users().RevokeSSOUser(ctx, off.ID, deactivate); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.Users().UpdateKySignOnProfile(ctx, off.ID, "Off", "off@example"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Users().GetUserByID(ctx, off.ID); got.Status != "inactive" || got.DisplayName != "Off" {
+		t.Fatalf("inactive row: %+v", got)
+	}
+	if err := st.Users().RevokeSSOUser(ctx, on.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Users().GetUserByID(ctx, on.ID)
+	if _, err := st.Sessions().GetSession(ctx, "tok_"+on.ID); !errors.Is(err, store.ErrNotFound) || got.Status != "active" || got.Role != "admin" {
+		t.Fatalf("revoke without deactivate: %+v session %v", got, err)
+	}
+	if err := st.Users().RevokeSSOUser(ctx, sc.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Users().GetUserByID(ctx, sc.ID); got.Status != "inactive" {
+		t.Fatalf("scim row not deactivated: %+v", got)
+	}
+	if err := st.Users().RevokeSSOUser(ctx, lo.ID, true); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("local revoke: %v, want ErrNotFound", err)
+	}
+	for _, id := range []string{sc.ID, lo.ID, "usr_missing"} {
+		if err := st.Users().UpdateKySignOnProfile(ctx, id, "X", "x@example"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("profile write to %s: %v, want ErrNotFound", id, err)
+		}
+	}
+	if got, _ := st.Users().GetUserByID(ctx, lo.ID); got.Status != "active" || got.DisplayName != "" {
+		t.Fatalf("local account touched: %+v", got)
+	}
+	if _, err := st.Sessions().GetSession(ctx, "tok_"+lo.ID); err != nil {
+		t.Fatalf("local session revoked: %v", err)
+	}
+}

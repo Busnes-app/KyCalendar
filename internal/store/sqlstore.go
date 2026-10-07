@@ -704,6 +704,43 @@ func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
 	return nil
 }
 
+func (u *userStore) RevokeSSOUser(ctx context.Context, userID string, deactivate bool) error {
+	tx, err := u.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	set := "updated_at = ?"
+	if deactivate {
+		set = "status = 'inactive', updated_at = ?"
+	}
+	// Row first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
+	res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET "+set+" WHERE id = ? AND sso_provider <> 'local'"), time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrNotFound
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (u *userStore) UpdateKySignOnProfile(ctx context.Context, userID, displayName, email string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'kysignon'`), displayName, email, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (u *userStore) SetRole(ctx context.Context, actor Actor, userID, role string) error {
 	return u.changeAccess(ctx, actor, userID, func(_, status string) (string, string) { return role, status })
 }
