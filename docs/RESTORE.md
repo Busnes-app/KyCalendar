@@ -45,6 +45,10 @@ everything above, and copy `data/encryption.key` and `data/recovery.pub` separat
 recovery key pin, the pairing and the schedule are rows in the database and come back with the
 dump, but nothing in it can be decrypted without `encryption.key`.
 
+Backups require the default database path, `<KY_DATA_DIR>/kycalendar.db`: the capsule restores
+the database there, so a backup refuses while `KY_DB_DSN` opens another file. Unset
+`KY_DB_DSN` on the restored server, or point it at `<KY_DATA_DIR>/kycalendar.db`.
+
 ## Before you start
 
 - **Pick the capsule.** In the KyRecovery dashboard, open Capsules, find the newest one for

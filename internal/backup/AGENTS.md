@@ -24,7 +24,7 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
   never sealed. It also carries the encryption key (`data/encryption.key`, required — restores
   a database whose MFA secrets are gone otherwise) and the pinned recovery public key
   (`data/recovery.pub`, only when paired).
-- `ServiceName` (`kycalendar`) is what is claimed, sealed and used for local copies; `KY_APP_NAME` is display only. `DatabaseMember` (`data/kycalendar.db`) must equal the file the default DSN opens, so a restored tree starts on restored data.
+- `ServiceName` (`kycalendar`) is what is claimed, sealed and used for local copies; `KY_APP_NAME` is display only. `DatabaseMember` (`data/kycalendar.db`) must equal the file the default DSN opens, so a restored tree starts on restored data; `Collect` refuses (`ErrNoDatabaseSnapshot`) a DSN whose file is not `<DataDir>/kycalendar.db`.
 - `Checks(dir, opened)` reads the opened capsule's manifest, normalizes JSON lists and
   fails malformed or incomplete recipes. Required files include all capsule members and
   the database, settings and encryption key; SQLite integrity and required environment

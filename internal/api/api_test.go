@@ -39,6 +39,10 @@ func setupTestServer(t *testing.T) (*api.Server, store.Store, *config.Config) {
 	cfg, _ := config.LoadFromEnv()
 	db := testdb.Config(t)
 	db.DataDir = cfg.Database.DataDir // testdb only picks the backend; keep the temp data dir
+	if db.Driver == "sqlite" {
+		// Backups refuse a database outside <DataDir>/kycalendar.db.
+		db.DSN = config.SQLiteDSN(filepath.Join(db.DataDir, "kycalendar.db"))
+	}
 	cfg.Database = db
 	cfg.Captcha.Provider = "none" // disable captcha for unit test speed
 
@@ -406,19 +410,16 @@ func TestExportCapsuleRejectsAnOversizedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A real database one blob past the per-member cap: the collector snapshots with VACUUM
-	// INTO, so the file has to be a database, and zeroblob makes a large one instantly.
-	big := filepath.Join(t.TempDir(), "oversized.db")
-	db, err := sql.Open("sqlite", big)
+	// The live database one blob past the per-member cap: the collector snapshots it with
+	// VACUUM INTO, and zeroblob makes a large one instantly.
+	db, err := sql.Open("sqlite", cfg.Database.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("CREATE TABLE calendars(id); CREATE TABLE calendar_objects(id); CREATE TABLE big(b BLOB); INSERT INTO big VALUES (zeroblob(%d))", recoveryclient.MaxCapsuleFileBytes+1)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("CREATE TABLE big(b BLOB); INSERT INTO big VALUES (zeroblob(%d))", recoveryclient.MaxCapsuleFileBytes+1)); err != nil {
 		t.Fatal(err)
 	}
 	_ = db.Close()
-	cfg.Database.Driver = "sqlite"
-	cfg.Database.DSN = big
 
 	w := adminPost(t, srv, loginAs(t, srv, st, "alice", "admin"), "/api/backup/export-capsule")
 

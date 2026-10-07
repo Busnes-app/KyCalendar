@@ -156,6 +156,10 @@ the database and so ride in the `pg_dump`; `data/encryption.key` and `data/recov
 not, and you must copy them separately. Without `encryption.key` no TOTP secret and no
 KyRecovery token in that dump can be decrypted.
 
+Backups also require the default database path: a capsule restores the database as
+`<KY_DATA_DIR>/kycalendar.db`, so a backup refuses while `KY_DB_DSN` opens any other file.
+Unset `KY_DB_DSN` or point it at `<KY_DATA_DIR>/kycalendar.db`.
+
 The admin screen **Backup & recovery** shows four facts (recovery key, KyRecovery, local
 copies, schedule) and the actions: Back up now, Download capsule, Run restore drill, the
 schedule, pairing with Unpair, and pinning the key by hand.

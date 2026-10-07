@@ -159,6 +159,16 @@ func TestCollectRefusesADriverItCannotSnapshot(t *testing.T) {
 	}
 }
 
+// A KY_DB_DSN elsewhere would seal a file the restored server never opens: it would start empty.
+func TestCollectRefusesADatabaseOutsideTheDefaultPath(t *testing.T) {
+	cfg, _ := payloadConfig(t)
+	cfg.Database.DSN = config.SQLiteDSN(filepath.Join(t.TempDir(), "kycalendar.db"))
+	_, err := backup.Collect(context.Background(), cfg, "1.0.0")
+	if !errors.Is(err, backup.ErrNoDatabaseSnapshot) || !strings.Contains(err.Error(), "KY_DB_DSN") {
+		t.Fatalf("got %v, want ErrNoDatabaseSnapshot naming KY_DB_DSN", err)
+	}
+}
+
 func TestCapsuleCarriesTheDatabaseTheServerOpens(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("KY_DATA_DIR", dir)

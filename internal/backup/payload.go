@@ -44,6 +44,12 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	if strings.ToLower(cfg.Database.Driver) != "sqlite" {
 		return recoveryclient.Payload{}, fmt.Errorf("%w: %s", ErrNoDatabaseSnapshot, cfg.Database.Driver)
 	}
+	// The capsule restores the database as <DataDir>/kycalendar.db; a DSN elsewhere would seal
+	// a file a restored server never opens.
+	dsnFile, _, _ := strings.Cut(cfg.Database.DSN, "?")
+	if want := filepath.Join(cfg.Database.DataDir, filepath.Base(DatabaseMember)); filepath.Clean(dsnFile) != filepath.Clean(want) {
+		return recoveryclient.Payload{}, fmt.Errorf("%w: KY_DB_DSN opens %s, backups require the default %s; unset KY_DB_DSN or point it there", ErrNoDatabaseSnapshot, dsnFile, want)
+	}
 	dbBytes, counts, err := snapshotSQLite(ctx, cfg.Database.DSN, cfg.Database.DataDir)
 	if err != nil {
 		return recoveryclient.Payload{}, err
