@@ -83,4 +83,63 @@ describe('EventDialog', () => {
     expect(container.querySelector('img')).toBeNull();
     expect([...container.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://example.com']);
   });
+
+  it('focuses Title when editing, Close when read-only, and Escape closes', () => {
+    const onClose = vi.fn();
+    const { unmount } = render(<EventDialog calendars={cals} initial={emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p')} onDone={vi.fn()} onClose={onClose} />);
+    expect(document.activeElement).toBe(screen.getByLabelText('Title'));
+    fireEvent(document.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    unmount();
+    const ro = { ...recurring, editable: false };
+    render(<EventDialog calendars={cals} event={ro} initial={formFromEvent(ro, 'this')} onDone={vi.fn()} onClose={onClose} />);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
+  });
+
+  it('restores focus to the opener on unmount', () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = render(<EventDialog calendars={cals} initial={emptyForm(new Date(), new Date(), false, 'cal_p')} onDone={vi.fn()} onClose={vi.fn()} />);
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it('toggles all-day values', () => {
+    render(<EventDialog calendars={cals} initial={emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p')} onDone={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('All day'));
+    const start = screen.getByLabelText('Start') as HTMLInputElement;
+    expect(start.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    fireEvent.click(screen.getByLabelText('All day'));
+    expect(start.value).toMatch(/T09:00$/);
+    expect((screen.getByLabelText('End') as HTMLInputElement).value).toMatch(/T10:00$/);
+  });
+
+  it('sends scope all without recurrence_id for a non-recurring edit', async () => {
+    const calls = capture();
+    const one = { ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' as const } };
+    render(<EventDialog calendars={cals} event={one} initial={formFromEvent(one, 'this')} onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText('All events')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].body).toMatchObject({ scope: 'all' });
+    expect(calls[0].body).not.toHaveProperty('recurrence_id');
+  });
+
+  it('keeps typed text when the scope changes', () => {
+    render(<EventDialog calendars={cals} event={recurring} initial={formFromEvent(recurring, 'this')} onDone={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Typed' } });
+    fireEvent.click(screen.getByLabelText('All events'));
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Typed');
+  });
+
+  it('shows the new event when the dialog is reopened with a new key', () => {
+    const b = { ...recurring, uid: 'u2', title: 'Other' };
+    const el = (ev: EventInfo, key: number) => <EventDialog key={key} calendars={cals} event={ev} initial={formFromEvent(ev, 'this')} onDone={vi.fn()} onClose={vi.fn()} />;
+    const { rerender } = render(el(recurring, 1));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'edited A' } });
+    rerender(el(b, 2));
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Other');
+  });
 });

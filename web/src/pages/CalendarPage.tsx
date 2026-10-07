@@ -52,7 +52,8 @@ export function CalendarPage() {
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ event?: EventInfo; initial: FormState } | null>(null);
+  const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState } | null>(null);
+  const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
 
   const loadCalendars = useCallback(async () => {
@@ -105,9 +106,9 @@ export function CalendarPage() {
   const openCreate = (start: Date, end: Date, allDay: boolean) => {
     if (writable.length === 0) return;
     const target = writable.find((c) => !hidden.has(c.id)) ?? writable[0];
-    setDialog({ initial: emptyForm(start, end, allDay, target.id) });
+    setDialog({ key: ++opens.current, initial: emptyForm(start, end, allDay, target.id) });
   };
-  const openEvent = (ev: EventInfo) => setDialog({ event: ev, initial: formFromEvent(ev, 'this') });
+  const openEvent = (ev: EventInfo) => setDialog({ key: ++opens.current, event: ev, initial: formFromEvent(ev, 'this') });
   const onMove = (arg: EventDropArg | EventResizeDoneArg) => arg.revert();
 
   return (
@@ -138,6 +139,7 @@ export function CalendarPage() {
         />
         {dialog && (
           <EventDialog
+            key={dialog.key}
             calendars={calendars}
             event={dialog.event}
             initial={dialog.initial}

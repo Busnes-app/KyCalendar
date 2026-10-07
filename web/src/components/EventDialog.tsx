@@ -25,22 +25,37 @@ function message(e: unknown, fallback: string): string {
 }
 
 export function EventDialog({ calendars, event, initial, onDone, onClose }: Props) {
-  const [form, setForm] = useState<FormState>(initial);
-  const [scope, setScope] = useState<'this' | 'all'>('this');
+  // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
+  const choose = !!event?.recurring && !!event.recurrence_id;
+  const [scope, setScope] = useState<'this' | 'all'>(choose || !event ? 'this' : 'all');
+  const [form, setForm] = useState<FormState>(() => (event && !choose ? formFromEvent(event, 'all') : initial));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
   const first = useRef<HTMLInputElement>(null);
-  useEffect(() => first.current?.focus(), []);
+  const closeBtn = useRef<HTMLButtonElement>(null);
+  const readOnly = event !== undefined && !event.editable;
+
+  useEffect(() => {
+    const d = dialog.current!;
+    const prev = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    d.showModal();
+    (readOnly ? closeBtn : first).current?.focus();
+    return () => {
+      d.close();
+      prev?.focus();
+    };
+  }, [readOnly]);
 
   const writable = calendars.filter((c) => c.role !== 'reader');
-  const readOnly = event !== undefined && !event.editable;
-  const recurring = event?.recurring ?? false;
   const zone = validZone(event?.zone) ? event!.zone! : browserZone();
   const set = (patch: Partial<FormState>) => setForm({ ...form, ...patch });
 
   function chooseScope(next: 'this' | 'all') {
     setScope(next);
-    if (event) setForm(formFromEvent(event, next));
+    if (!event) return;
+    const { start, end, allDay, freq, weekdays } = formFromEvent(event, next);
+    setForm({ ...form, start, end, allDay, freq, weekdays });
   }
 
   async function act(fn: () => Promise<unknown>, fallback: string) {
@@ -58,7 +73,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
 
   function save(e: React.FormEvent) {
     e.preventDefault();
-    const body = bodyFromForm(form, zone, event ? (recurring ? scope : 'all') : undefined, event?.recurrence_id);
+    const body = bodyFromForm(form, zone, event ? scope : undefined, event?.recurrence_id);
     if (typeof body === 'string') {
       setError(body);
       return;
@@ -68,13 +83,12 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
 
   function remove() {
     if (!event) return;
-    const s = recurring ? scope : 'all';
-    if (!window.confirm(s === 'this' ? 'Delete this occurrence?' : 'Delete this event?')) return;
-    void act(() => deleteEvent(event, s), 'Could not delete the event');
+    if (!window.confirm(scope === 'this' ? 'Delete this occurrence?' : 'Delete this event?')) return;
+    void act(() => deleteEvent(event, scope), 'Could not delete the event');
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="kc-event-title" className="kc-dialog" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+    <dialog ref={dialog} aria-labelledby="kc-event-title" className="kc-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
       <h2 id="kc-event-title">{event ? (readOnly ? form.title || '(no title)' : 'Edit event') : 'New event'}</h2>
       {error && <p role="alert">{error}</p>}
       {readOnly ? (
@@ -82,11 +96,11 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
           <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
-          <button type="button" onClick={onClose}>Close</button>
+          <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
         </div>
       ) : (
         <form onSubmit={save}>
-          {recurring && (
+          {choose && (
             <fieldset>
               <legend>Change</legend>
               <label><input type="radio" name="scope" checked={scope === 'this'} onChange={() => chooseScope('this')} /> This event</label>
@@ -112,7 +126,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
               </select>
             </>
           )}
-          {(!recurring || scope === 'all') && (
+          {scope === 'all' && (
             form.freq === 'custom' ? (
               <p>Repeats: <span>Custom (edit on your device)</span></p>
             ) : (
@@ -134,12 +148,12 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
               </>
             )
           )}
-          {recurring && scope === 'this' && form.freq === 'custom' && <p>Repeats: <span>Custom (edit on your device)</span></p>}
+          {scope === 'this' && event && form.freq === 'custom' && <p>Repeats: <span>Custom (edit on your device)</span></p>}
           <button type="submit" disabled={busy}>Save</button>
           {event && <button type="button" disabled={busy} onClick={remove}>Delete</button>}
           <button type="button" onClick={onClose}>Cancel</button>
         </form>
       )}
-    </div>
+    </dialog>
   );
 }
