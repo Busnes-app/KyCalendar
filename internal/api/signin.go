@@ -54,6 +54,9 @@ func (s *Server) LoadSignIn(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if s.config.SSO.KySignOnIssuer != "" && st.Secret.Source == sso.SourceUnset {
+		log.Printf("[SSO] single sign-on is off: KY_KYSIGNON_ISSUER is set but KY_KYSIGNON_SECRET is not, and no saved secret was entered for this issuer and client ID (only confidential clients are supported)")
+	}
 	prev, n, err := s.bindAccounts(ctx, st)
 	if err != nil {
 		return err

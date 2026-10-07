@@ -1,10 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -88,6 +91,29 @@ func TestStartupNeverSendsASavedSecretToAnotherRegistration(t *testing.T) {
 		}
 		if idp.saw("s1-previous") {
 			t.Fatalf("%s: the previous registration's secret reached the new provider", name)
+		}
+	}
+}
+
+// An environment issuer with no usable secret leaves sign-in closed and says why at startup,
+// naming the variable and never a value.
+func TestStartupLogsAnEnvironmentIssuerWithoutASecret(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	for _, secret := range []string{"", "env-secret-value"} {
+		buf.Reset()
+		s, _ := davInternalServer(t)
+		s.config.SSO.KySignOnIssuer, s.config.SSO.KySignOnClientID, s.config.SSO.KySignOnSecret = "https://id.example", "kc", secret
+		if err := s.LoadSignIn(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		warned := strings.Contains(buf.String(), "KY_KYSIGNON_SECRET")
+		if live := s.signin.Load() != nil; live == (secret == "") || warned != (secret == "") {
+			t.Fatalf("secret %v: live %v, warned %v: %q", secret != "", live, warned, buf.String())
+		}
+		if strings.Contains(buf.String(), "env-secret-value") || strings.Contains(buf.String(), "https://id.example") {
+			t.Fatalf("startup log carries a value: %q", buf.String())
 		}
 	}
 }
