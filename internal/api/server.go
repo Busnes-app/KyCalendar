@@ -289,6 +289,9 @@ func (s *Server) routes() {
 	// Calendars and events for everyday users. Roles come from access.Resolve; a calendar the
 	// caller cannot read is 404.
 	s.handle("GET /api/calendars", s.requireEveryday(s.handleListCalendars))
+	s.handle("POST /api/calendars", s.requireEveryday(s.handleCreateCalendar))
+	s.handle("PATCH /api/calendars/{id}", s.requireEveryday(s.handlePatchCalendar))
+	s.handle("DELETE /api/calendars/{id}", s.tracked(s.requireEveryday(s.handleDeleteCalendar)))
 	s.handle("GET /api/events", s.requireEveryday(s.handleListEvents))
 
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.

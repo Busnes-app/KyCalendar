@@ -2,13 +2,18 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
+	"github.com/Busnes-app/kycalendar/internal/calendar"
+	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/google/uuid"
 )
 
 type calendarView struct {
@@ -125,4 +130,107 @@ func (s *Server) handleListCalendars(w http.ResponseWriter, r *http.Request) {
 		out = append(out, s.viewOf(user, c, access.Resolve(user, c, grants)))
 	}
 	s.writeJSON(w, http.StatusOK, out)
+}
+
+type calendarBody struct {
+	Name        *string `json:"name"`
+	Color       *string `json:"color"`
+	Description *string `json:"description"`
+}
+
+// decodeCalendarBody validates a create or patch at the boundary; a present name must not be blank.
+func decodeCalendarBody(r *http.Request) (calendarBody, error) {
+	var b calendarBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		return b, errors.New("Invalid JSON body")
+	}
+	if b.Name != nil {
+		trimmed := strings.TrimSpace(*b.Name)
+		if trimmed == "" {
+			return b, errors.New("Name must not be blank")
+		}
+		b.Name = &trimmed
+	}
+	if err := calendar.CheckProps(b.Name, b.Description, b.Color); err != nil {
+		return b, err
+	}
+	return b, nil
+}
+
+func (s *Server) handleCreateCalendar(w http.ResponseWriter, r *http.Request) {
+	user := sessionUser(r.Context())
+	b, err := decodeCalendarBody(r)
+	if err == nil && b.Name == nil {
+		err = errors.New("Name is required")
+	}
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	c := &store.Calendar{ID: "cal_" + uuid.NewString(), OwnerKind: "user", OwnerID: user.ID, Slug: "c-" + crypto.RandomHex(4), Name: *b.Name}
+	if b.Color != nil {
+		c.Color = *b.Color
+	}
+	if b.Description != nil {
+		c.Description = *b.Description
+	}
+	err = s.store.Calendars().CreateCalendar(r.Context(), c, s.config.Calendar.MaxCalendarsPerUser)
+	switch {
+	case errors.Is(err, store.ErrQuotaExceeded):
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "You have reached the calendar limit", "code": "quota"})
+		return
+	case err != nil:
+		s.writeError(w, http.StatusInternalServerError, "Failed to create the calendar")
+		return
+	}
+	s.writeJSON(w, http.StatusCreated, s.viewOf(user, c, access.Owner))
+}
+
+func (s *Server) handlePatchCalendar(w http.ResponseWriter, r *http.Request) {
+	c, role := s.calendarFor(w, r, r.PathValue("id"))
+	if c == nil {
+		return
+	}
+	if !role.CanManage() {
+		s.writeError(w, http.StatusForbidden, "Only the owner or a manager can change this calendar")
+		return
+	}
+	b, err := decodeCalendarBody(r)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.store.Calendars().UpdateCalendar(r.Context(), c.ID, b.Name, b.Description, b.Color); err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to update the calendar")
+		return
+	}
+	if c.OwnerKind == "group" {
+		s.auditCalendar(r.Context(), r, "calendar.update", c.ID, "")
+	}
+	updated, err := s.store.Calendars().GetCalendarByID(r.Context(), c.ID)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to load the calendar")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, s.viewOf(sessionUser(r.Context()), updated, role))
+}
+
+// handleDeleteCalendar deletes a personal calendar with its events. It runs detached, like the
+// group calendar delete, so a dropped connection cannot leave it half-reported.
+func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
+	c, role := s.calendarFor(w, r, r.PathValue("id"))
+	if c == nil {
+		return
+	}
+	if role != access.Owner {
+		s.writeError(w, http.StatusForbidden, "Group calendars are deleted by an administrator")
+		return
+	}
+	ctx := context.WithoutCancel(r.Context())
+	if err := s.store.Calendars().DeleteCalendar(ctx, c.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, http.StatusInternalServerError, "Failed to delete the calendar")
+		return
+	}
+	s.auditCalendar(ctx, r, "calendar.delete", c.ID, "")
+	w.WriteHeader(http.StatusNoContent)
 }

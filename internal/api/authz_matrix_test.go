@@ -14,6 +14,7 @@ import (
 
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/apppass"
+	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -46,6 +47,8 @@ var (
 	everyday     = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: allow, editor: allow, manager: allow, nonmember: allow}
 	anySession   = expect{anon: 401, deactivated: 401, admin: allow, owner: allow, reader: allow, editor: allow, manager: allow, nonmember: allow}
 	grantManager = expect{anon: 401, deactivated: 401, admin: allow, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
+	groupManage  = expect{anon: 401, deactivated: 401, admin: 403, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
+	ownerOnly    = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// SCIM takes only its bearer token: a session cookie is never enough.
 	scimOnly = expect{anon: 401, deactivated: 401, admin: 401, owner: 401, reader: 401, editor: 401, manager: 401, nonmember: 401}
 )
@@ -66,6 +69,7 @@ type world struct {
 	passIDs map[actor]string
 	group   *store.Calendar // reader, editor and manager each hold their role on it
 	doomed  *store.Calendar // the group calendar the admin row deletes
+	spare   *store.Calendar // a personal calendar of the owner, deleted by the owner row
 }
 
 func newWorld(t *testing.T) *world {
@@ -114,6 +118,14 @@ func newWorld(t *testing.T) *world {
 	}
 	u.Status = "inactive"
 	if err := st.Users().UpdateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	// The spare would otherwise count as the owner's only calendar and suppress the lazily created default.
+	if err := davbackend.EnsureDefault(ctx, st, "usr_owner", 0); err != nil {
+		t.Fatal(err)
+	}
+	w.spare = &store.Calendar{ID: "cal_spare_owner", OwnerKind: "user", OwnerID: "usr_owner", Slug: "spare", Name: "Spare"}
+	if err := st.Calendars().CreateCalendar(ctx, w.spare, 0); err != nil {
 		t.Fatal(err)
 	}
 	return w
@@ -167,6 +179,9 @@ func apiRows(w *world) map[string]apiRow {
 		"PUT /api/calendars/{id}/grants/{group}":    {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
 		"DELETE /api/calendars/{id}/grants/{group}": {method: "DELETE", path: g + "/grp_extra", want: grantManager},
 		"GET /api/calendars":                        {method: "GET", path: "/api/calendars", want: everyday},
+		"POST /api/calendars":                       {method: "POST", path: "/api/calendars", body: `{"name":"Matrix"}`, want: everyday},
+		"PATCH /api/calendars/{id}":                 {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
+		"DELETE /api/calendars/{id}":                {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
 		"GET /api/events":                           {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
 	}
 }
