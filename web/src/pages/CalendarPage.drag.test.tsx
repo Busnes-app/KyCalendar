@@ -11,7 +11,7 @@ vi.mock('@fullcalendar/react', () => ({
   },
 }));
 
-import { CalendarPage } from './CalendarPage';
+import { CalendarPage, shiftRepeat } from './CalendarPage';
 import type { EventInfo } from '../calendarApi';
 
 afterEach(() => {
@@ -219,6 +219,55 @@ describe('drag', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('event form');
     expect(revert).toHaveBeenCalled();
     expect(puts).toHaveLength(0);
+  });
+
+  // 2026-10-05 and 2026-10-12 are Mondays.
+  const mondays: EventInfo = { ...series, start: '2026-10-12T07:00:00Z', end: '2026-10-12T08:00:00Z', series_start: '2026-10-05T07:00:00Z', series_end: '2026-10-05T08:00:00Z', recurrence_id: '20261012T070000Z' };
+  const dragDays = (ev: EventInfo, days: number, revert = vi.fn()) => {
+    fire('eventDrop', {
+      event: { start: new Date(2026, 9, 12 + days, 9), end: new Date(2026, 9, 12 + days, 10), allDay: false, extendedProps: { info: ev } },
+      oldEvent: { start: new Date(2026, 9, 12, 9), end: new Date(2026, 9, 12, 10), allDay: false },
+      delta: dayDelta(days),
+      revert,
+    });
+    return revert;
+  };
+
+  it('rotates weekly weekdays when All events moves to another day', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    dragDays({ ...mondays, repeat: { freq: 'weekly', weekdays: ['MO'] } }, 1);
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toMatchObject({ scope: 'all', repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T07:00:00.000Z' });
+  });
+
+  it('wraps weekdays backwards past Monday', () => {
+    expect(shiftRepeat({ freq: 'weekly', weekdays: ['MO', 'WE'] }, -1)).toEqual({ freq: 'weekly', weekdays: ['SU', 'TU'] });
+    expect(shiftRepeat({ freq: 'monthly', weekdays: [] }, 3)).toEqual({ freq: 'custom', weekdays: [] });
+    expect(shiftRepeat({ freq: 'custom', weekdays: [] }, null)).toEqual({ freq: 'custom', weekdays: [] });
+  });
+
+  it('refuses to move a custom rule to another day', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const revert = dragDays({ ...mondays, repeat: { freq: 'custom' } }, 1);
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Change the days of a repeating event in the event form.');
+    expect(revert).toHaveBeenCalled();
+    expect(puts).toHaveLength(0);
+  });
+
+  it('keeps a custom rule on a time-only move', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    drag({ ...mondays, repeat: { freq: 'custom' } }, 1);
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toMatchObject({ repeat: { freq: 'custom' }, start: '2026-10-05T08:00:00.000Z' });
   });
 
   it('keeps a zero-length timed event zero-length when dragged', async () => {

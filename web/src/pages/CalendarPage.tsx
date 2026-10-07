@@ -10,7 +10,7 @@ import { ApiError, browserZone, listCalendars, listEvents, updateEvent, type Cal
 import { CalendarSidebar } from '../components/CalendarSidebar';
 import { EventDialog } from '../components/EventDialog';
 import { ScopeDialog } from '../components/ScopeDialog';
-import { addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, validZone, type FormState } from '../eventForm';
+import { WEEKDAYS, addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, validZone, type FormState } from '../eventForm';
 import '../styles/calendar.css';
 
 type MoveArg = EventDropArg | EventResizeDoneArg;
@@ -19,6 +19,17 @@ const HOUR = 3_600_000;
 // shiftBy applies a FullCalendar delta: years, months and days on the local calendar, then milliseconds.
 export function shiftBy(d: Date, delta: { years: number; months: number; days: number; milliseconds: number }): Date {
   return new Date(d.getFullYear() + delta.years, d.getMonth() + delta.months, d.getDate() + delta.days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds() + delta.milliseconds);
+}
+
+// shiftRepeat is the rule for a series whose start moves `shift` weekdays (null: same date).
+// The stored rule is kept ('custom') unless the date moves: weekly weekdays then rotate, a
+// rule derived from DTSTART follows it, and a custom rule cannot move (null).
+export function shiftRepeat(f: Pick<FormState, 'freq' | 'weekdays'>, shift: number | null): Pick<FormState, 'freq' | 'weekdays'> | null {
+  if (shift === null) return { freq: 'custom', weekdays: f.weekdays };
+  if (f.freq === 'custom') return null;
+  if (f.freq !== 'weekly' || f.weekdays.length === 0) return { freq: 'custom', weekdays: f.weekdays };
+  const n = ((shift % 7) + 7) % 7;
+  return { freq: 'weekly', weekdays: f.weekdays.map((d) => WEEKDAYS[(WEEKDAYS.indexOf(d) + n) % 7]) };
 }
 
 export const HIDDEN_KEY = 'kycalendar.hiddenCalendars';
@@ -139,16 +150,26 @@ export function CalendarPage() {
     const base = formFromEvent(ev, scope);
     let start = newStart;
     let end = newEnd;
+    let repeat = { freq: base.freq, weekdays: base.weekdays };
     if (scope === 'all' && allDay === ev.all_day) {
       // Apply FullCalendar's calendar deltas to the series' wall-clock times (DST-safe).
       const [ds, de] = 'delta' in arg ? [arg.delta, arg.delta] : [arg.startDelta, arg.endDelta];
-      start = shiftBy(parseLocal(base.start), ds);
+      const seriesStart = parseLocal(base.start);
+      start = shiftBy(seriesStart, ds);
       end = shiftBy(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), de);
+      if (ev.recurring) {
+        const r = shiftRepeat(base, localDate(start) === localDate(seriesStart) ? null : start.getDay() - seriesStart.getDay());
+        if (!r) {
+          fail('Change the days of a repeating event in the event form.');
+          return;
+        }
+        repeat = r;
+      }
     }
     const form = {
       ...base,
+      ...repeat,
       allDay,
-      freq: ev.recurring && scope === 'all' ? ('custom' as const) : base.freq,
       start: allDay ? localDate(start) : localDateTime(start),
       end: allDay ? localDate(addDays(end, -1)) : localDateTime(end),
     };
