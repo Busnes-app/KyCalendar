@@ -9,14 +9,15 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
-// Migration 11 stamps every existing SSO row of the stored binding's kind with that binding, so
-// rows keep the issuer they were provisioned under; other kinds, local rows and an instance with
-// no binding stay unstamped (the first binding stamps those).
+// Migration 11 stamps every existing active SSO row of the stored binding's kind with that
+// binding, so rows keep the issuer they were provisioned under. Inactive rows may be a previous
+// issuer's, disabled by an earlier change, so they stay unstamped (refused at login), as do other
+// kinds, local rows and every row of an instance with no binding (the first binding stamps those).
 func TestMigration11StampsTheBoundKind(t *testing.T) {
 	for bound, want := range map[string]map[string]string{
-		"kyidentity https://a.example": {"usr_k": "kyidentity https://a.example", "usr_s": "kyidentity https://a.example", "usr_o": "", "usr_l": ""},
-		"oidc https://a.example":       {"usr_k": "", "usr_s": "", "usr_o": "oidc https://a.example", "usr_l": ""},
-		"":                             {"usr_k": "", "usr_s": "", "usr_o": "", "usr_l": ""},
+		"kyidentity https://a.example": {"usr_k": "kyidentity https://a.example", "usr_s": "kyidentity https://a.example", "usr_x": "", "usr_o": "", "usr_l": ""},
+		"oidc https://a.example":       {"usr_k": "", "usr_s": "", "usr_x": "", "usr_o": "oidc https://a.example", "usr_l": ""},
+		"":                             {"usr_k": "", "usr_s": "", "usr_x": "", "usr_o": "", "usr_l": ""},
 	} {
 		ctx := context.Background()
 		cfg := testdb.Config(t)
@@ -26,7 +27,9 @@ func TestMigration11StampsTheBoundKind(t *testing.T) {
 		}
 		for _, u := range []*store.User{
 			{ID: "usr_k", Username: "k", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"},
-			{ID: "usr_s", Username: "s", Role: "user", Status: "inactive", SSOProvider: "scim", SSOSubject: "s2"},
+			{ID: "usr_s", Username: "s", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "s2"},
+			// Inactive: possibly a previous issuer's row an earlier change disabled.
+			{ID: "usr_x", Username: "x", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s4"},
 			{ID: "usr_o", Username: "o", Role: "user", Status: "active", SSOProvider: "oidc", SSOSubject: "s3"},
 			{ID: "usr_l", Username: "l", Role: "admin", Status: "active", SSOProvider: "local"},
 		} {

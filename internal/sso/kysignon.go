@@ -70,9 +70,15 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 	// secret nor a write racing BindSignIn can restore a row the binding disabled. Every write is
 	// column-scoped; the whole-row UpdateUser is never called here.
 	users := k.store.Users()
+	// A row of another binding (or none) is not this directory's: whatever the event, it is left
+	// alone, and a create for its sub makes no second row.
+	existing, err := k.findUser(ctx, payload.ID)
+	if err == nil && existing.SSOIssuer != bound {
+		log.Printf("[SSO] directory webhook %q for user %s ignored: the account belongs to another sign-in binding", payload.Event, existing.ID)
+		return nil
+	}
 	switch payload.Event {
 	case "user.created", "user.updated":
-		existing, err := k.findUser(ctx, payload.ID)
 		if errors.Is(err, store.ErrNotFound) {
 			status := "active"
 			if payload.Status != "" && payload.Status != "active" {
@@ -109,7 +115,6 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		return users.UpdateKySignOnProfile(ctx, existing.ID, payload.DisplayName, payload.Email)
 
 	case "user.deactivated", "user.deleted":
-		existing, err := k.findUser(ctx, payload.ID)
 		if errors.Is(err, store.ErrNotFound) {
 			return nil
 		}

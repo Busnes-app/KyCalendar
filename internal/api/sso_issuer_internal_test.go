@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -39,7 +40,7 @@ func issuerOf(t *testing.T, s *Server, id string) *store.User {
 }
 
 // An issuer change disables the old issuer's accounts; SCIM, still the old directory, then
-// re-activates them (replace, and create adopting by sub). The new issuer's colliding subs stay
+// re-activates them by replace (create never adopts across issuers: 409). The new issuer's colliding subs stay
 // refused, on the kysignon row and through the kysignon-to-scim adoption, and no row is restamped.
 func TestSCIMReactivationAfterIssuerChangeStaysRefused(t *testing.T) {
 	s, _ := davInternalServer(t)
@@ -70,8 +71,12 @@ func TestSCIMReactivationAfterIssuerChangeStaysRefused(t *testing.T) {
 	if w := scimCall(t, s, "PUT", "/scim/v2/Users/"+dave.ID, scimUser("dave", "s2")); w.Code != http.StatusOK {
 		t.Fatalf("scim replace: %d %s", w.Code, w.Body.String())
 	}
-	if w := scimCall(t, s, "POST", "/scim/v2/Users", scimUser("carol", "s1")); w.Code != http.StatusCreated {
-		t.Fatalf("scim adopt: %d %s", w.Code, w.Body.String())
+	// SCIM never adopts the old issuer's kysignon row by sub; a replace by ID re-activates it.
+	if w := scimCall(t, s, "POST", "/scim/v2/Users", scimUser("carol", "s1")); w.Code != http.StatusConflict {
+		t.Fatalf("scim adopt across issuers: %d %s, want 409", w.Code, w.Body.String())
+	}
+	if w := scimCall(t, s, "PUT", "/scim/v2/Users/"+carol.ID, scimUser("carol", "s1")); w.Code != http.StatusOK {
+		t.Fatalf("scim replace carol: %d %s", w.Code, w.Body.String())
 	}
 	for _, id := range []string{carol.ID, dave.ID} {
 		if u := issuerOf(t, s, id); u.Status != "active" {
@@ -192,5 +197,48 @@ func TestTrailingSlashIsAProviderChange(t *testing.T) {
 	}
 	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1"}, slash.Identity()); !errors.Is(err, errOtherIssuer) {
 		t.Fatalf("s1 through the slashed issuer: %v, want errOtherIssuer", err)
+	}
+}
+
+// On an install bound before migration 11, an inactive row stays unstamped: SCIM re-activating
+// it does not let the bound provider sign in as it. The active row keeps signing in.
+func TestMigration11InactiveRowStaysRefused(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	identity := "kyidentity https://a.example"
+	if err := s.store.Settings().SetSetting(ctx, sso.KeyBound, identity); err != nil {
+		t.Fatal(err)
+	}
+	createUsers(t, s,
+		&store.User{ID: "usr_on", Username: "on", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"},
+		&store.User{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s2"},
+	)
+	// Pretend the database predates migration 11, then run it from a second handle.
+	cfg := s.config.Database
+	driver := map[string]string{"sqlite": "sqlite", "postgres": "pgx"}[cfg.Driver]
+	raw, err := sql.Open(driver, cfg.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"ALTER TABLE users DROP COLUMN sso_issuer", "DELETE FROM schema_migrations WHERE version = 11"} {
+		if _, err := raw.ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = raw.Close()
+	migrated, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = migrated.Close()
+
+	if w := scimCall(t, s, "PUT", "/scim/v2/Users/usr_off", scimUser("off", "s2")); w.Code != http.StatusOK {
+		t.Fatalf("scim replace: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s2"}, identity); !errors.Is(err, errOtherIssuer) {
+		t.Fatalf("re-activated unstamped row: %v, want errOtherIssuer", err)
+	}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1"}, identity); err != nil {
+		t.Fatalf("active row after the migration: %v", err)
 	}
 }
