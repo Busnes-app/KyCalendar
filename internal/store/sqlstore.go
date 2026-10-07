@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -118,6 +119,40 @@ func (s *SQLStore) rebind(query string) string {
 		}
 	}
 	return b.String()
+}
+
+// beginTx begins a transaction. Postgres pins READ COMMITTED so each statement after an advisory
+// lock sees writes committed before it; a server default of REPEATABLE READ would freeze the
+// snapshot first. SQLite takes the default.
+func (s *SQLStore) beginTx(ctx context.Context) (*sql.Tx, error) {
+	var opts *sql.TxOptions
+	if s.driver == "postgres" {
+		opts = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+	}
+	return s.db.BeginTx(ctx, opts)
+}
+
+// lockKey holds a Postgres advisory lock on key until tx ends. SQLite needs nothing: its single
+// connection already serializes transactions.
+func (s *SQLStore) lockKey(ctx context.Context, tx *sql.Tx, key string) error {
+	if s.driver != "postgres" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key)
+	return err
+}
+
+// lockedTx begins a transaction already holding the advisory lock on key.
+func (s *SQLStore) lockedTx(ctx context.Context, key string) (*sql.Tx, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.lockKey(ctx, tx, key); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+	return tx, nil
 }
 
 // ---------------------------------------------------------------------
@@ -709,6 +744,19 @@ func scanGroup(row interface{ Scan(...any) error }) (*Group, error) {
 	return &grp, nil
 }
 
+// refuseTwin is ErrAlreadyExists when a group other than id holds name in any case. The unique
+// index is case-sensitive; this is what keeps "Team" and "team" from both existing.
+func (g *groupStore) refuseTwin(ctx context.Context, tx *sql.Tx, id, name string) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, g.store.rebind("SELECT COUNT(1) FROM groups WHERE LOWER(display_name) = LOWER(?) AND id <> ?"), name, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrAlreadyExists
+	}
+	return nil
+}
+
 func (g *groupStore) CreateGroup(ctx context.Context, group *Group) error {
 	now := time.Now().UTC()
 	if group.CreatedAt.IsZero() {
@@ -720,14 +768,22 @@ func (g *groupStore) CreateGroup(ctx context.Context, group *Group) error {
 	if group.Source == "" {
 		group.Source = GroupSourceLocal
 	}
+	tx, err := g.store.lockedTx(ctx, "group-names")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := g.refuseTwin(ctx, tx, group.ID, group.DisplayName); err != nil {
+		return err
+	}
 	q := g.store.rebind("INSERT INTO groups (" + groupColumns + ") VALUES (?, ?, ?, ?, ?, ?)")
-	if _, err := g.store.db.ExecContext(ctx, q, group.ID, group.DisplayName, group.ExternalID, group.Source, group.CreatedAt, group.UpdatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, q, group.ID, group.DisplayName, group.ExternalID, group.Source, group.CreatedAt, group.UpdatedAt); err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
 		return err
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (g *groupStore) GetGroupByID(ctx context.Context, id string) (*Group, error) {
@@ -770,18 +826,35 @@ func (g *groupStore) getMembers(ctx context.Context, groupID string) ([]string, 
 	return members, rows.Err()
 }
 
+// UpdateGroup writes the name and external ID. The source never changes. The case-twin check
+// runs only when the name changes ignoring case, so a legacy group that already shares a folded
+// name with another stays updatable.
 func (g *groupStore) UpdateGroup(ctx context.Context, group *Group) error {
 	group.UpdatedAt = time.Now().UTC()
-	q := g.store.rebind("UPDATE groups SET display_name = ?, external_id = ?, updated_at = ? WHERE id = ?")
-	res, err := g.store.db.ExecContext(ctx, q, group.DisplayName, group.ExternalID, group.UpdatedAt, group.ID)
+	tx, err := g.store.lockedTx(ctx, "group-names")
 	if err != nil {
 		return err
 	}
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		return ErrNotFound
+	defer tx.Rollback()
+	var old string
+	if err := tx.QueryRowContext(ctx, g.store.rebind("SELECT display_name FROM groups WHERE id = ?"), group.ID).Scan(&old); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
 	}
-	return nil
+	if strings.ToLower(old) != strings.ToLower(group.DisplayName) {
+		if err := g.refuseTwin(ctx, tx, group.ID, group.DisplayName); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, g.store.rebind("UPDATE groups SET display_name = ?, external_id = ?, updated_at = ? WHERE id = ?"), group.DisplayName, group.ExternalID, group.UpdatedAt, group.ID); err != nil {
+		if isUniqueViolation(err) {
+			return ErrAlreadyExists
+		}
+		return err
+	}
+	return tx.Commit()
 }
 
 func (g *groupStore) DeleteGroup(ctx context.Context, id string) error {

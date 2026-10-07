@@ -84,6 +84,7 @@ type DeviceStore interface {
 
 // GroupStore defines repository operations for SCIM and RBAC groups.
 type GroupStore interface {
+	// CreateGroup and UpdateGroup refuse (ErrAlreadyExists) a name another group holds in any case.
 	CreateGroup(ctx context.Context, g *Group) error
 	GetGroupByID(ctx context.Context, id string) (*Group, error)
 	GetGroupByName(ctx context.Context, name string) (*Group, error)
