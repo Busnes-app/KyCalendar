@@ -40,3 +40,11 @@ func RegisterDetachedForTest(s *Server) func() {
 	s.detached.add()
 	return s.detached.done
 }
+
+// SetStepUpWindowForTest changes how recent a sign-in must be for step-up actions and returns
+// the restore func. Test-only.
+func SetStepUpWindowForTest(d time.Duration) func() {
+	old := stepUpWindow
+	stepUpWindow = d
+	return func() { stepUpWindow = old }
+}

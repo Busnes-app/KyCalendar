@@ -11,7 +11,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 - All JSON API endpoints return structured errors `{"error": "message"}` upon failure.
 - Non-API routes fall back to serving `web.Handler()` for client-side SPA routing.
 - New routes are unauthenticated only by deliberate choice; privileged ones are registered wrapped in `s.requireAdmin` in `routes()`, so the trust level of every route is readable in one place.
-- Backup routes and theme writes are admin-only: capsules and settings carry site data and secrets. The scaffold has no step-up; admin-only plus `TestPrivilegedEndpointsRequireAdmin` is its equivalent for every destructive backup route. Routes are registered with method patterns, and because the SPA catch-all answers any method, tests pin that a wrong method never reaches a backup handler rather than expecting 405.
+- Backup routes and theme writes are admin-only: capsules and settings carry site data and secrets. Group calendar deletion is the one step-up action: the session's credentials must be younger than 10 minutes (`stepUpWindow`, from `Session.CreatedAt`), else 403 `reauth_required`. Other destructive backup routes rely on admin-only plus `TestPrivilegedEndpointsRequireAdmin`. Routes are registered with method patterns, and because the SPA catch-all answers any method, tests pin that a wrong method never reaches a backup handler rather than expecting 405.
 
 | Method | Path | Handler | Response |
 |---|---|---|---|
@@ -23,6 +23,19 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | POST | `/api/backup/pin-key` | `handlePinKey` | write-once; 409 on a different key |
 | PUT | `/api/backup/schedule` | `handleSetSchedule` | `{interval_sec}` read back from the store |
 | GET | `/api/backup/status` | `handleBackupStatus` | pairing, key, local copies, schedule, members, `database_driver`, `last_run`; never the token |
+
+| Method | Path | Guard | Response |
+|---|---|---|---|
+| GET | `/api/admin/calendars` | admin | `[{id,name,color,description,created_at,grants:[{group_id,group_name,role}]}]` |
+| POST | `/api/admin/calendars` | admin | `{name,color?,description?}` -> 201 the calendar |
+| DELETE | `/api/admin/calendars/{id}` | admin + step-up | 204; 403 `reauth_required`; 404 not a group calendar |
+| GET | `/api/admin/groups` | admin | `{groups:[{id,display_name}],total}`, `offset`/`limit` <= 200 |
+| GET | `/api/admin/audit` | admin | `{records:[...],total}`, `offset`/`limit` <= 200 |
+| GET | `/api/calendars/{id}/grants` | session: admin or manager | `[grant]` |
+| PUT | `/api/calendars/{id}/grants/{group}` | session: admin or manager | `{role}` -> 200 `[grant]`; 400 bad role; 404 no such group |
+| DELETE | `/api/calendars/{id}/grants/{group}` | session: admin or manager | 200 `[grant]` (idempotent) |
+
+- `requireSession`, `requireAdmin` and `requireEveryday` share `authenticate` and put the user in context (`sessionUser`). Grant routes are `requireSession`. `grantableCalendar` admits admins and managers (via `access.Resolve`), answers 404 to users who cannot read the calendar and 403 to readers and editors. Audit actions `admin.calendar_create`, `admin.calendar_delete`, `calendar.grant_set`, `calendar.grant_remove` carry the session user ID, the calendar ID and `group=`/`role=` details.
 
 - `POST /api/backup/deposit` is one `recoveryclient.Run`: seal once, deliver to the local directory and to KyRecovery when paired. 412 no key, key pin missing, no destination, no database snapshot, or a private destination with `KY_BACKUP_ALLOW_PRIVATE_RECOVERY` off; 409 key mismatch or a run in flight; 413 over the capsule caps; 502 when KyRecovery refused (`recoveryclient.ErrRemote`, naming a local copy that was written, so the `ErrPrivateDestination` arm must stay above it: the lib wraps both on the dial path); 500 for a failure before a byte left; 200 with `receipt_unrecorded` when the store holds the capsule but the receipt was not written. It runs on a context detached from the request with a 16-minute write deadline; the acting admin is resolved before the upload and the audit row is written on that same detached context.
 - `RecordLastRun` stores every run's outcome (`{at, outcome, error}` in setting `backup_last_run`) from the deposit route (except `ErrInProgress`), the scheduler and the CLI; the lib keeps only the attempt time and the last success, so without it a failing schedule never reaches the screen.

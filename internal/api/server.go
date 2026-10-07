@@ -267,6 +267,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/app-passwords", s.requireEveryday(s.handleCreateAppPassword))
 	s.mux.HandleFunc("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
 
+	// Group calendars: administrators create and delete them; administrators and managers
+	// change grants. None of these routes reads or writes events.
+	s.mux.HandleFunc("GET /api/admin/calendars", s.requireAdmin(s.handleListGroupCalendars))
+	s.mux.HandleFunc("POST /api/admin/calendars", s.requireAdmin(s.handleCreateGroupCalendar))
+	s.mux.HandleFunc("DELETE /api/admin/calendars/{id}", s.requireAdmin(s.handleDeleteGroupCalendar))
+	s.mux.HandleFunc("GET /api/admin/groups", s.requireAdmin(s.handleListGroups))
+	s.mux.HandleFunc("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
+	s.mux.HandleFunc("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
+	s.mux.HandleFunc("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
+	s.mux.HandleFunc("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))
+
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.
 	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))
 	s.mux.Handle("/dav/", dav)
@@ -276,23 +287,54 @@ func (s *Server) routes() {
 	s.mux.Handle("/", web.Handler())
 }
 
+type sessionUserKey struct{}
+
+// authenticate resolves the session, or writes the 401 (or password-change 403) answer and
+// returns nil.
+func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) *store.User {
+	user, _, err := s.sessions.AuthenticateRequest(r)
+	if err == nil {
+		return user
+	}
+	if errors.Is(err, auth.ErrPasswordChangeRequired) {
+		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
+	} else {
+		s.writeError(w, http.StatusUnauthorized, "Authentication required")
+	}
+	return nil
+}
+
+func withSessionUser(r *http.Request, u *store.User) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), sessionUserKey{}, u))
+}
+
+// sessionUser is the user requireSession, requireAdmin or requireEveryday authenticated.
+func sessionUser(ctx context.Context) *store.User {
+	u, _ := ctx.Value(sessionUserKey{}).(*store.User)
+	return u
+}
+
+// requireSession admits any signed-in user; the handler decides by role.
+func (s *Server) requireSession(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if user := s.authenticate(w, r); user != nil {
+			h(w, withSessionUser(r, user))
+		}
+	}
+}
+
 // requireAdmin rejects requests without a valid session, or with a non-admin one.
 func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, _, err := s.sessions.AuthenticateRequest(r)
-		if err != nil {
-			if errors.Is(err, auth.ErrPasswordChangeRequired) {
-				s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
-			} else {
-				s.writeError(w, http.StatusUnauthorized, "Authentication required")
-			}
+		user := s.authenticate(w, r)
+		if user == nil {
 			return
 		}
 		if user.Role != "admin" {
 			s.writeError(w, http.StatusForbidden, "Administrator role required")
 			return
 		}
-		h(w, r)
+		h(w, withSessionUser(r, user))
 	}
 }
 

@@ -11,6 +11,7 @@ Pure iCalendar rules: what a calendar object must contain and how it is indexed;
 - At most 10 RRULE-bearing VEVENTs per object are evaluated (the 11th and later index unbounded, no further expansion); FREQ=SECONDLY and FREQ=MINUTELY are never expanded (unbounded). RDATE parsing stops when the budget is spent (unbounded, FirstStart = epoch).
 - A rule whose BYHOUR x BYMINUTE x BYSECOND exceeds 96 indexes unbounded without expansion: rrule-go builds every day of a period times that set before the first occurrence, so the budget cannot cap it.
 - An RRULE on a component with an unknown or floating DTSTART zone, or more than one RRULE on a component, indexes unbounded without expansion.
+- `CheckProps` bounds calendar name (255 bytes), description (4096 bytes) and colour (`#RRGGBB[AA]` or empty) for CalDAV and the JSON API alike.
 - Sync tokens are `urn:kycalendar:sync:<epoch>:<seq>`.
 
 ## Verification
