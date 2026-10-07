@@ -192,23 +192,25 @@ func calendarOf(vevents ...string) string {
 }
 
 func TestExpandNeverMatchingRuleIsBounded(t *testing.T) {
-	var evs []string
-	for i := range 10 {
-		dt := "201" + strconv.Itoa(i) + "0101T000000Z"
-		evs = append(evs, event("UID:never\nDTSTART:"+dt+"\nDTEND:"+dt+"\nRRULE:FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30"))
-	}
-	start := time.Now()
-	got, err := Expand(parse(t, calendarOf(evs...)), day(2026, 10, 1), day(2026, 10, 8), time.UTC, 5000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, in := range got {
-		if !in.Partial {
-			t.Fatalf("instance of a never-matching rule: %+v", in)
+	for _, rule := range []string{"FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30", "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2"} {
+		var evs []string
+		for i := range 10 {
+			dt := "201" + strconv.Itoa(i) + "0101T000000Z"
+			evs = append(evs, event("UID:never\nDTSTART:"+dt+"\nDTEND:"+dt+"\nRRULE:"+rule))
 		}
-	}
-	if d := time.Since(start); d > 300*time.Millisecond {
-		t.Fatalf("took %v", d)
+		start := time.Now()
+		got, err := Expand(parse(t, calendarOf(evs...)), day(2026, 10, 1), day(2026, 10, 8), time.UTC, 5000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, in := range got {
+			if !in.Partial {
+				t.Fatalf("%s: instance of a never-matching rule: %+v", rule, in)
+			}
+		}
+		if d := time.Since(start); d > 300*time.Millisecond {
+			t.Fatalf("%s: took %v", rule, d)
+		}
 	}
 }
 
@@ -335,6 +337,40 @@ func TestExpandHugeIntervalDoesNotPanic(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+func TestExpandHourlySkipAheadKeepsWallPhase(t *testing.T) {
+	cal := parse(t, calendarOf(event("UID:h\nDTSTART;TZID=America/New_York:20140101T000000\nDTEND;TZID=America/New_York:20140101T003000\nRRULE:FREQ=HOURLY;INTERVAL=2")))
+	got, err := Expand(cal, day(2026, 10, 7), day(2026, 10, 8), time.UTC, 5000)
+	if err != nil || len(got) != 12 {
+		t.Fatalf("%d instances, %v", len(got), err)
+	}
+	for _, in := range got {
+		if in.Start.UTC().Hour()%2 != 0 {
+			t.Fatalf("phase flipped: %v", in.Start.UTC())
+		}
+	}
+}
+
+func TestExpandSetposAndWeekno(t *testing.T) {
+	for _, tc := range []struct {
+		rule    string
+		partial bool
+	}{
+		{"FREQ=MONTHLY;BYDAY=MO;BYSETPOS=6", true},
+		{"FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", false},
+		{"FREQ=YEARLY;BYWEEKNO=53;BYDAY=MO", false},
+		{"FREQ=YEARLY;BYWEEKNO=1;BYMONTH=7", true},
+	} {
+		cal := parse(t, calendarOf(event("UID:s\nDTSTART:20261001T090000Z\nDTEND:20261001T100000Z\nRRULE:"+tc.rule)))
+		got, err := Expand(cal, day(2026, 10, 1), day(2030, 1, 1), time.UTC, 5000)
+		if err != nil || len(got) == 0 {
+			t.Fatalf("%s: %v %v", tc.rule, got, err)
+		}
+		if tc.partial != got[0].Partial || tc.partial && len(got) != 1 || !tc.partial && len(got) < 2 {
+			t.Errorf("%s: partial=%v, %d instances", tc.rule, got[0].Partial, len(got))
 		}
 	}
 }

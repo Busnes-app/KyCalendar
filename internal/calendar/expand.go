@@ -170,7 +170,10 @@ func skipAhead(opt *rrule.ROption, from time.Time) {
 	case rrule.WEEKLY:
 		opt.Dtstart = opt.Dtstart.AddDate(0, 0, 7*k*n)
 	case rrule.HOURLY:
-		opt.Dtstart = opt.Dtstart.Add(time.Duration(k*n) * time.Hour)
+		// wall hours, as rrule-go steps them: absolute hours flip the phase across a DST change
+		y, mo, d := opt.Dtstart.Date()
+		h, mi, sec := opt.Dtstart.Clock()
+		opt.Dtstart = time.Date(y, mo, d, h+k*n, mi, sec, 0, opt.Dtstart.Location())
 	}
 }
 
@@ -180,7 +183,7 @@ func boundedRule(rule ical.Prop, comp *ical.Component, s span, from, to time.Tim
 	if err != nil || opt == nil || wideTimeSet(opt) {
 		return nil
 	}
-	if !ordinalsInRange(opt) || !satisfiable(opt) {
+	if !ordinalsInRange(opt) || !satisfiable(opt) || !yields(opt, s.start) {
 		return nil
 	}
 	opt.Dtstart = s.start

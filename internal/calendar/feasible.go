@@ -7,42 +7,33 @@ import (
 	"github.com/teambition/rrule-go"
 )
 
-// satisfiable reports whether any day in one 400-year Gregorian cycle (which repeats exactly)
-// passes the rule's day-level filters: BYMONTH, BYMONTHDAY, BYYEARDAY and BYDAY weekdays
-// (ordinals ignored, which only widens the set). A false answer means the rule never yields.
-// Only rules with BYMONTHDAY or BYYEARDAY are scanned; the others are taken as satisfiable.
+// satisfiable reports whether any date passes the rule's BYMONTH, BYMONTHDAY and BYYEARDAY
+// filters, over a non-leap and a leap year template. BYDAY weekdays are ignored: every calendar
+// date falls on every weekday within the 400-year Gregorian cycle. A false answer means the rule
+// never yields. Only rules with BYMONTHDAY or BYYEARDAY are checked; the rest are taken as
+// satisfiable.
 func satisfiable(opt *rrule.ROption) bool {
 	if len(opt.Bymonthday) == 0 && len(opt.Byyearday) == 0 {
 		return true
 	}
-	var weekdays []int
-	for _, w := range opt.Byweekday {
-		weekdays = append(weekdays, w.Day())
-	}
-	d := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	for range 146097 {
-		if dayPasses(d, opt, weekdays) {
-			return true
+	for _, year := range []int{2001, 2000} {
+		yearDays := time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC).YearDay()
+		for d := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC); d.Year() == year; d = d.AddDate(0, 0, 1) {
+			if dayPasses(d, opt, yearDays) {
+				return true
+			}
 		}
-		d = d.AddDate(0, 0, 1)
 	}
 	return false
 }
 
-func dayPasses(d time.Time, opt *rrule.ROption, weekdays []int) bool {
+func dayPasses(d time.Time, opt *rrule.ROption, yearDays int) bool {
 	if len(opt.Bymonth) > 0 && !slices.Contains(opt.Bymonth, int(d.Month())) {
-		return false
-	}
-	if len(weekdays) > 0 && !slices.Contains(weekdays, (int(d.Weekday())+6)%7) {
 		return false
 	}
 	monthDays := time.Date(d.Year(), d.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
 	if len(opt.Bymonthday) > 0 && !matchesDay(opt.Bymonthday, d.Day(), monthDays) {
 		return false
-	}
-	yearDays := 365
-	if d.Year()%4 == 0 && (d.Year()%100 != 0 || d.Year()%400 == 0) {
-		yearDays = 366
 	}
 	return len(opt.Byyearday) == 0 || matchesDay(opt.Byyearday, d.YearDay(), yearDays)
 }
@@ -64,4 +55,35 @@ func ordinalsInRange(opt *rrule.ROption) bool {
 		}
 	}
 	return true
+}
+
+// probeYears is how many years before rrule-go's MAXYEAR (9999, util.go) a probe starts. Coarse
+// periods get the full 400-year cycle; DAILY and HOURLY sets do not depend on the date beyond the
+// day filters, and a longer scan costs too much (HOURLY: ~0.27 s per 400 years).
+func probeYears(f rrule.Frequency) int {
+	switch f {
+	case rrule.HOURLY:
+		return 8
+	case rrule.DAILY:
+		return 40
+	}
+	return 400
+}
+
+// yields probes a BYSETPOS or BYWEEKNO rule with rrule-go itself: it must produce an occurrence
+// before rrule-go stops at year 9999.
+func yields(opt *rrule.ROption, start time.Time) bool {
+	if len(opt.Bysetpos) == 0 && len(opt.Byweekno) == 0 {
+		return true
+	}
+	probe := *opt
+	probe.Count, probe.Until = 0, time.Time{}
+	h, m, s := start.Clock()
+	probe.Dtstart = time.Date(10000-probeYears(opt.Freq), 1, 1, h, m, s, 0, start.Location())
+	r, err := rrule.NewRRule(probe)
+	if err != nil {
+		return false
+	}
+	_, ok := r.Iterator()()
+	return ok
 }
