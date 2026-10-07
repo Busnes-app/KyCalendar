@@ -10,6 +10,7 @@ import AppPasswords from './pages/AppPasswords';
 import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
 import People from './pages/People';
+import SignIn from './pages/SignIn';
 import './styles/theme.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
@@ -123,6 +124,7 @@ export const App: React.FC = () => {
         {isAdmin && activeTab === 'people' && <People me={user.id} />}
         {isAdmin && activeTab === 'groups' && <Groups />}
         {isAdmin && activeTab === 'group-calendars' && <GroupCalendars />}
+        {isAdmin && activeTab === 'signin' && <SignIn />}
         {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
         {isAdmin && activeTab === 'backup' && <Backup />}
         {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
