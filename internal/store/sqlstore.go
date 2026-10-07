@@ -418,13 +418,16 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 		offset = 0
 	}
 
-	where, args := "", []any{}
+	where, args := "WHERE 1 = 1", []any{}
 	if col, ok := userFilterColumns[filter.Field]; ok {
-		where, args = "WHERE LOWER("+col+") = LOWER(?)", []any{filter.Value}
+		where, args = where+" AND LOWER("+col+") = LOWER(?)", []any{filter.Value}
 	} else if filter.Field == UserFieldSearch {
 		p := "%" + likeEscaper.Replace(filter.Value) + "%"
-		where = `WHERE LOWER(username) LIKE LOWER(?) ESCAPE '\' OR LOWER(email) LIKE LOWER(?) ESCAPE '\' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '\'`
+		where += ` AND (LOWER(username) LIKE LOWER(?) ESCAPE '\' OR LOWER(email) LIKE LOWER(?) ESCAPE '\' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '\')`
 		args = []any{p, p, p}
+	}
+	if filter.SSOOnly {
+		where += " AND sso_provider <> 'local'"
 	}
 
 	var total int
@@ -456,6 +459,27 @@ ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	}
 
 	return users, total, rows.Err()
+}
+
+func (u *userStore) SSOUserIDs(ctx context.Context, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	in, args := inList(ids)
+	rows, err := u.store.db.QueryContext(ctx, u.store.rebind("SELECT id FROM users WHERE sso_provider <> 'local' AND id IN ("+in+")"), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 func (u *userStore) CountUsers(ctx context.Context) (int, error) {

@@ -136,9 +136,11 @@ const (
 
 // UserFilter is an exact, case-insensitive match on one field, except UserFieldSearch, which is a
 // substring match across username, email and display name; UserFieldNone lists everyone.
+// SSOOnly leaves local accounts out of the rows and the total.
 type UserFilter struct {
-	Field UserField
-	Value string
+	Field   UserField
+	Value   string
+	SSOOnly bool
 }
 
 // OwnerLimits caps one owner's calendar objects, and MaxTotalBytes every owner's together;

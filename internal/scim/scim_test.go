@@ -154,7 +154,7 @@ func TestSCIMDeactivationRevokesAppPasswords(t *testing.T) {
 	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
-	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_ap", Username: "ap_user", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_ap", Username: "ap_user", Role: "user", Status: "active", SSOProvider: "scim"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw1", UserID: "usr_ap", Label: "phone", Hash: "h"}); err != nil {
@@ -231,7 +231,7 @@ func TestSCIMRemovingRolesDemotesAdmin(t *testing.T) {
 	for name, req := range cases {
 		t.Run(name, func(t *testing.T) {
 			id := "usr_" + strings.ReplaceAll(name, " ", "_")
-			if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: id, Role: "admin", Status: "active", SSOProvider: "local"}); err != nil {
+			if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: id, Role: "admin", Status: "active", SSOProvider: "scim"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "x", Hash: "h"}); err != nil {
@@ -267,8 +267,8 @@ func TestSCIMEqFilterIsExact(t *testing.T) {
 	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 	for _, u := range []*store.User{
-		{ID: "usr_devops", Username: "devops", DisplayName: "ops", Email: "ops@example.com", Role: "user", Status: "active", SSOProvider: "local"},
-		{ID: "usr_ops", Username: "Ops", DisplayName: "Operations", Role: "user", Status: "active", SSOProvider: "local"},
+		{ID: "usr_devops", Username: "devops", DisplayName: "ops", Email: "ops@example.com", Role: "user", Status: "active", SSOProvider: "scim"},
+		{ID: "usr_ops", Username: "Ops", DisplayName: "Operations", Role: "user", Status: "active", SSOProvider: "scim"},
 	} {
 		if err := st.Users().CreateUser(ctx, u); err != nil {
 			t.Fatal(err)

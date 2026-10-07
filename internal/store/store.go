@@ -114,6 +114,8 @@ type UserStore interface {
 	SpendTOTPCounter(ctx context.Context, userID string, counter int64) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
+	// SSOUserIDs returns those of ids that name an existing non-local account, in any order.
+	SSOUserIDs(ctx context.Context, ids []string) ([]string, error)
 	CountUsers(ctx context.Context) (int, error)
 }
 
