@@ -113,8 +113,8 @@ type CaptchaConfig struct {
 // and uploads it, and KyRecovery admits 60 deposits per token per 15 minutes.
 const MinDepositInterval = 15 * time.Minute
 
-// DefaultAppName is the service name an unconfigured instance runs under. Capsules are sealed
-// under it, so the restore CLI has to agree with it without loading a whole Config.
+// DefaultAppName is the display name an unconfigured instance runs under. Capsules are sealed
+// under backup.ServiceName, not this.
 const DefaultAppName = "Busnes.app"
 
 // LoadFromEnv initializes a Config struct populated from environment variables with sensible defaults.

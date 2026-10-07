@@ -193,7 +193,7 @@ func TestDrillRejectsMalformedRecipes(t *testing.T) {
 		"mixed env":            func(r map[string]any) { r["expected_env"] = []any{"KY_PORT", 1} },
 		"omitted env":          func(r map[string]any) { r["expected_env"] = []string{"KY_PORT"} },
 	}
-	for _, path := range []string{"", ".", "../outside", "/etc/passwd", "data/../data/ky_server.db", "data//ky_server.db", "data\\ky_server.db", "data/not-in-manifest", "data/\x00db"} {
+	for _, path := range []string{"", ".", "../outside", "/etc/passwd", "data/../" + backup.DatabaseMember, "data//kycalendar.db", "data\\kycalendar.db", "data/not-in-manifest", "data/\x00db"} {
 		cases["unsafe path "+path] = func(r map[string]any) {
 			r["required_files"] = append(append([]string{}, r["required_files"].([]string)...), path)
 		}

@@ -24,7 +24,7 @@ const PAIRED = {
   threshold: 2,
   total_shares: 3,
   database_driver: 'sqlite',
-  members: ['data/ky_server.db'],
+  members: ['data/kycalendar.db'],
 };
 
 afterEach(() => {
@@ -51,12 +51,12 @@ describe('Backup', () => {
       threshold: 2,
       total_shares: 3,
       database_driver: 'sqlite',
-      members: ['data/ky_server.db'],
+      members: ['data/kycalendar.db'],
     });
     const { container } = render(<Backup />);
     expect(await screen.findByText('https://recovery.example')).toBeTruthy();
     expect(container.textContent).not.toMatch(/token/i);
-    expect(screen.getByText('data/ky_server.db')).toBeTruthy();
+    expect(screen.getByText('data/kycalendar.db')).toBeTruthy();
     expect(screen.getByRole('button', { name: /unpair/i })).toBeTruthy();
   });
 

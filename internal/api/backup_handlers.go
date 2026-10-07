@@ -222,7 +222,7 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 	target := recoveryclient.AuditSafe(req.RecoveryURL)
 
 	// The service name sent here is what kyrecovery pins for the token and what every
-	// capsule's manifest is checked against, so it is the same AppName the collector seals under.
+	// capsule's manifest is checked against, so it is the same ServiceName the collector seals under.
 	result, err := s.recovery.ClaimPairing(ctx, req.RecoveryURL, req.PairingCode, backup.ServiceName, s.config.Server.AppName)
 	if err != nil {
 		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error="+err.Error())
