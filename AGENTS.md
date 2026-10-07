@@ -309,7 +309,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - The drill compares the snapshot's calendar and object counts with the restored database and parses up to 50 objects; messages carry IDs only.
 - Unpair requires a sign-in younger than the step-up window (403 `reauth_required`).
 - `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it.
-- Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset local passwords rotated after the capsule.
+- Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
 - The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.
 
 #### Server child DOX index

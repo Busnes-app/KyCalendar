@@ -148,7 +148,7 @@ Restored 4 files from capsule cap-kycalendar-1788605720094118543
 
 Then it resets the restored database in one transaction, with no further input: sessions,
 MFA challenges and app passwords are deleted, a new sync epoch is written and
-`system.restore_reset` is audited. Password hashes are left as the backup had them; Step 5
+`system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
 deals with them. It ends with:
 
 ```
@@ -200,8 +200,8 @@ ls -A data | wc -l
 
 That must print `0`. If it does not, the old directory still holds data, and you keep a copy
 of it before anything else: it holds every change made after the capsule was sealed, and it
-is the only record Step 5 can walk. The container runs as root, so the files are root-owned;
-copy as root into a directory you create at mode 700:
+is the only record Steps 3 and 5 can walk. The container runs as root, so the files are
+root-owned; copy as root into a directory you create at mode 700:
 
 ```bash
 mkdir -m 700 old-data
@@ -210,7 +210,8 @@ sudo cp -a data/. old-data/ && sudo ls -A old-data | wc -l
 
 The count must equal the count above and the command must exit 0. `old-data/` is now the
 old live directory in the clear, with the same key the capsule holds; it is removed in
-"Afterwards", not before Step 5 is done.
+"Afterwards", not before Step 5 is done. If `data/` was already empty (a new machine, or the
+old disk is gone), there is no old audit log; the password step below says what to do.
 
 Only with the copy confirmed, empty the directory. This is irreversible:
 
@@ -219,10 +220,53 @@ sudo rm -rf data/* data/.[!.]*
 ls -A data | wc -l
 ```
 
-With `0` confirmed, copy the restored files in and start:
+With `0` confirmed, copy the restored files in. Do not start the server yet:
 
 ```bash
 sudo cp -a restored/data/. data/ && sudo chmod 600 data/*
+```
+
+**Reset rotated local passwords before the server starts.** A restore brings back every local
+password hash as it was at the backup, so a password that leaked and was rotated after the
+capsule works again the moment the service listens. Find the accounts first, with the stack
+still down.
+
+If you kept `old-data/`, its audit log names every local password changed after the capsule:
+the `auth.password_changed` rows newer than `created_at`. The log stores UTC times as
+`2026-09-05 12:15:20...`, so write the capsule's `created` with a space, not a `T`, and
+without the `Z`:
+
+```bash
+sudo sqlite3 old-data/kycalendar.db "SELECT u.username, u.role, a.created_at FROM audit_records a JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.password_changed' AND a.created_at > '2026-09-05 12:15:20' ORDER BY a.created_at;"
+```
+
+If the old audit log is unavailable, you cannot know which passwords changed: reset every
+local account, administrators first. List them from the restored database:
+
+```bash
+sudo sqlite3 data/kycalendar.db "SELECT username, role FROM users WHERE sso_provider = 'local' ORDER BY role = 'admin' DESC, username;"
+```
+
+For every account in the list, set a temporary password. `reset-password` reads it from
+stdin, keeps the account's role and status, revokes its sessions, MFA challenges and app
+passwords, and forces a change at the next sign-in. `run --rm -T` starts a one-off container
+on the same `./data` with no published port, so nothing is reachable while you do this; `-T`
+lets the pipe reach stdin:
+
+```bash
+read -rs TEMP_PW   # typed, not echoed, not in history
+printf '%s\n' "$TEMP_PW" | docker compose run --rm --no-deps -T app reset-password -username <name>
+unset TEMP_PW
+```
+
+Hand each temporary password to the account owner out of band. Use `init-admin` only when no
+administrator account exists at all: it makes the named account an administrator and takes
+its password on the command line. SSO accounts sign in through KyIdentity and need nothing
+here.
+
+Then start:
+
+```bash
 docker compose up -d
 ```
 
@@ -238,8 +282,9 @@ one on a command line: it lands in scrollback, session recordings and shell hist
 must produce the hex form, write it straight into the compose project's `.env` with
 `umask 077` and nothing else on stdout.
 
-**Bare binary.** Point `KY_DATA_DIR` at `restored/data`, set `KY_APP_URL` as before, and
-start.
+**Bare binary.** Point `KY_DATA_DIR` at `restored/data`, set `KY_APP_URL` as before, run
+the password resets above with the bare binary (`printf '%s\n' "$TEMP_PW" | kycalendar
+reset-password -username <name>`), and only then start.
 
 ## Step 4: prove it
 
@@ -262,45 +307,23 @@ SCIM state, calendars and events. Anything you revoked or changed after that mom
 `restore` has already revoked every session, MFA challenge and app password and started a
 new sync epoch. It does not touch passwords: **a restore brings back every local password
 hash as it was at the backup**, so a password that leaked and was rotated after the capsule
-works again on the restored server.
+would work again; Step 3 reset those before the service opened.
 
 1. Tell users what changes:
    - Everyone signs in again; every user creates new app passwords under Phones & apps, and
      CalDAV clients resync from scratch (the epoch changes the calendar CTag).
-   - Local passwords changed after the backup revert to the old ones until step 2 resets them.
-     SSO accounts sign in through KyIdentity and are unaffected.
+   - Local passwords changed after the backup were reset in Step 3; their owners sign in with
+     the temporary password and choose a new one. SSO accounts are unaffected.
    - Recovery codes come back as they were at backup time. A user who used or regenerated
      recovery codes after the backup should regenerate them.
    - Events created after the backup are gone unless a client still holds them; the old audit
-     log in steps 2 and 3 shows what happened since.
+     log in step 2 shows what happened since.
    - The interop and real-device client checks remain an operator step: reconnect one
      iPhone, Android and Thunderbird client and confirm the calendars sync.
-2. Before reopening the service, reset every local password that changed after the capsule.
-   In the old audit log (`old-data/kycalendar.db`), find the `auth.password_changed` rows
-   newer than `created_at`. The log stores UTC times as `2026-09-05 12:15:20...`, so write
-   the capsule's `created` with a space, not a `T`, and without the `Z`:
-
-   ```bash
-   sudo sqlite3 old-data/kycalendar.db "SELECT u.username, u.role, a.created_at FROM audit_records a JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.password_changed' AND a.created_at > '2026-09-05 12:15:20' ORDER BY a.created_at;"
-   ```
-
-   For every account in that list, set a temporary password. `reset-password` reads it from
-   stdin, keeps the account's role and status, revokes its sessions, MFA challenges and app
-   passwords, and forces a change at the next sign-in:
-
-   ```bash
-   read -rs TEMP_PW   # typed, not echoed, not in history
-   printf '%s\n' "$TEMP_PW" | docker compose run --rm -T app reset-password -username <name>
-   unset TEMP_PW
-   ```
-
-   Hand the temporary password to the account owner out of band. Use `init-admin` only when
-   no administrator account exists at all: it makes the named account an administrator and
-   takes its password on the command line.
-3. Walk the same audit log from `created_at` to the moment the old server was lost (the
-   restored server's log stops at `created_at`), and re-apply what else happened after the
-   capsule: disabled accounts, reset MFA, SCIM changes.
-4. If the reason for the restore was a suspected compromise rather than hardware loss, treat
+2. Walk the old audit log (`old-data/kycalendar.db`, when you kept it) from `created_at` to
+   the moment the old server was lost (the restored server's log stops at `created_at`), and
+   re-apply what else happened after the capsule: disabled accounts, reset MFA, SCIM changes.
+3. If the reason for the restore was a suspected compromise rather than hardware loss, treat
    the restored secrets as exposed and rotate the ones that can be rotated. A restore from
    before a compromise brings the attacker's access back with the service unless you do this.
 
