@@ -401,13 +401,13 @@ func (s *Server) editError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
+	c, o, cal, etag, ok := s.loadEvent(w, r)
+	if !ok {
+		return
+	}
 	var b eventBody
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
-		return
-	}
-	c, o, cal, etag, ok := s.loadEvent(w, r)
-	if !ok {
 		return
 	}
 	in, err := eventInput(b, true)

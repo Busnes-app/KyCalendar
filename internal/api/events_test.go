@@ -424,3 +424,14 @@ func TestEventEditErrorsAndOwnerFlow(t *testing.T) {
 		t.Fatalf("cross-calendar PUT %d", w.Code)
 	}
 }
+
+// Authorization comes before body parsing: a non-member learns nothing from a malformed body.
+func TestEventPutAuthorizesBeforeDecoding(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	group := groupCalendar(t, st, "Team")
+	putObject(t, st, group, "weekly.ics", "weekly", recurringICS, 1791183600)
+	stranger := loginAs(t, srv, st, "nora", "user")
+	if w := withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/weekly", "{not json", "x", stranger); w.Code != http.StatusNotFound {
+		t.Fatalf("non-member malformed PUT: %d %s, want 404", w.Code, w.Body.String())
+	}
+}

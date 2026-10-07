@@ -101,15 +101,15 @@ func newWorld(t *testing.T) *world {
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_extra", DisplayName: "Extra"}); err != nil {
 		t.Fatal(err)
 	}
-	put := func(name string) {
-		o := &store.CalendarObject{CalendarID: w.group.ID, Name: name, UID: name, Data: []byte(eventICS(name))}
+	put := func(name, uid string) {
+		o := &store.CalendarObject{CalendarID: w.group.ID, Name: name, UID: uid, Data: []byte(eventICS(uid))}
 		if _, err := st.Calendars().PutObject(ctx, o, "", false, store.OwnerLimits{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	put("seed.ics")
+	put("seed.ics", "seed-uid")
 	for _, a := range actors[1:] {
-		put(string(a) + "-del.ics")
+		put(string(a)+"-del.ics", string(a)+"-del")
 	}
 	// Only the status changes: the session and app password stay, so this proves the status
 	// check rather than the revocation (which the SCIM and webhook tests pin).
@@ -186,9 +186,9 @@ func apiRows(w *world) map[string]apiRow {
 		"GET /api/events":                           {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
 		"POST /api/calendars/{id}/events": {method: "POST", path: "/api/calendars/" + w.group.ID + "/events",
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
-		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed.ics",
+		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed-uid",
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
-		"DELETE /api/events/{cal}/{uid}": {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed.ics?scope=all", want: groupWrite},
+		"DELETE /api/events/{cal}/{uid}": {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
 	}
 }
 
