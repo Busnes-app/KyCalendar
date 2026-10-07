@@ -13,6 +13,7 @@ import (
 	"github.com/elimity-com/scim/optional"
 	"github.com/elimity-com/scim/schema"
 
+	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -85,7 +86,7 @@ type userResourceHandler struct{ store store.Store }
 
 func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
 	username, _ := attrs["userName"].(string)
-	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleOrUser(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", "")}
+	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", "")}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
@@ -141,7 +142,7 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	user.Username, _ = attrs["userName"].(string)
 	user.Email = primaryValue(attrs["emails"])
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
-	user.Role = roleOrUser(attrs["roles"]) // PUT replaces: no roles means no admin grant
+	user.Role = roleFromSCIM(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
 	if err := h.store.Users().UpdateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
@@ -193,10 +194,11 @@ func (h *userResourceHandler) revokeIfPrivilegesChanged(r *http.Request, user *s
 	}
 }
 
-// roleOrUser is the stated role, or "user" when the IdP states none.
-func roleOrUser(value interface{}) string {
-	if v := primaryValue(value); v != "" {
-		return v
+// roleFromSCIM is "admin" only when the IdP sends the KyCalendar app role; any other value,
+// including KyIdentity's global "admin", is an everyday user.
+func roleFromSCIM(value interface{}) string {
+	if access.IsAdmin(access.RoleValues(value)) {
+		return "admin"
 	}
 	return "user"
 }
@@ -225,7 +227,7 @@ func applyUserValue(user *store.User, path string, value interface{}) {
 			user.Username = v
 		}
 	case "roles", "role":
-		user.Role = roleOrUser(value)
+		user.Role = roleFromSCIM(value)
 	case "emails":
 		user.Email = primaryValue(value)
 	}
@@ -236,8 +238,8 @@ func userResource(user *store.User) protocol.Resource {
 	if user.Email != "" {
 		attrs["emails"] = []interface{}{map[string]interface{}{"value": user.Email, "type": "work", "primary": true}}
 	}
-	if user.Role != "" {
-		attrs["roles"] = []interface{}{map[string]interface{}{"value": user.Role, "primary": true}}
+	if user.Role == "admin" {
+		attrs["roles"] = []interface{}{map[string]interface{}{"value": access.AdminAppRole, "primary": true}}
 	}
 	return protocol.Resource{ID: user.ID, ExternalID: optional.NewString(user.SSOSubject), Attributes: attrs, Meta: protocol.Meta{Created: &user.CreatedAt, LastModified: &user.UpdatedAt}}
 }

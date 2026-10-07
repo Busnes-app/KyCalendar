@@ -1,14 +1,71 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
+	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 	"golang.org/x/oauth2"
 )
+
+var (
+	errNotProvisioned  = errors.New("user account not provisioned")
+	errAccountInactive = errors.New("account is not active")
+)
+
+// upsertSSOUser maps a verified login onto a local user. The admin grant follows the token's
+// `roles` claim on every login; a change revokes the user's sessions and app passwords first.
+func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) (*store.User, error) {
+	role := "user"
+	if access.IsAdmin(claims.Roles) {
+		role = "admin"
+	}
+	user, err := s.store.Users().GetUserBySSO(ctx, claims.Provider, claims.Subject)
+	if errors.Is(err, store.ErrNotFound) {
+		if !s.config.SSO.AutoProvision {
+			return nil, errNotProvisioned
+		}
+		user = &store.User{
+			ID:          fmt.Sprintf("usr_%s", crypto.RandomHex(12)),
+			Username:    claims.PreferredUsername,
+			Email:       claims.Email,
+			DisplayName: claims.Name,
+			Role:        role,
+			Status:      "active",
+			SSOProvider: claims.Provider,
+			SSOSubject:  claims.Subject,
+		}
+		return user, s.store.Users().CreateUser(ctx, user)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if user.Status != "active" {
+		return nil, errAccountInactive
+	}
+	if user.Role == role {
+		return user, nil
+	}
+	from := user.Role
+	user.Role = role
+	if err := s.store.Users().UpdateUser(ctx, user); err != nil {
+		return nil, err
+	}
+	if err := s.store.Sessions().DeleteUserSessions(ctx, user.ID); err != nil {
+		return nil, err
+	}
+	if err := s.store.AppPasswords().DeleteByUser(ctx, user.ID); err != nil {
+		return nil, err
+	}
+	_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: user.ID, Action: "sso.role_changed", Resource: user.ID, Details: "from=" + from + " to=" + role})
+	return user, nil
+}
 
 func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 	state := crypto.RandomHex(16)
@@ -68,28 +125,17 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Upsert user
-	user, err := s.store.Users().GetUserBySSO(r.Context(), "kysignon", claims.Subject)
-	if err != nil {
-		if s.config.SSO.AutoProvision {
-			user = &store.User{
-				ID:          fmt.Sprintf("usr_%s", crypto.RandomHex(12)),
-				Username:    claims.PreferredUsername,
-				Email:       claims.Email,
-				DisplayName: claims.Name,
-				Role:        "user",
-				Status:      "active",
-				SSOProvider: "kysignon",
-				SSOSubject:  claims.Subject,
-			}
-			if err := s.store.Users().CreateUser(r.Context(), user); err != nil {
-				s.writeError(w, http.StatusInternalServerError, "Failed to provision SSO user")
-				return
-			}
-		} else {
-			s.writeError(w, http.StatusForbidden, "User account not provisioned")
-			return
-		}
+	user, err := s.upsertSSOUser(r.Context(), claims)
+	switch {
+	case errors.Is(err, errNotProvisioned):
+		s.writeError(w, http.StatusForbidden, "User account not provisioned")
+		return
+	case errors.Is(err, errAccountInactive):
+		s.writeError(w, http.StatusForbidden, "Account is not active")
+		return
+	case err != nil:
+		s.writeError(w, http.StatusInternalServerError, "Failed to provision SSO user")
+		return
 	}
 
 	_, _, err = s.sessions.IssueSession(r.Context(), w, r, user)

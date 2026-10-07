@@ -64,7 +64,6 @@ func TestKySignOnWebhookSync(t *testing.T) {
 		Username:    "bob",
 		Email:       "bob@busnes.app",
 		DisplayName: "Bob Engineer",
-		Role:        "user",
 		Status:      "active",
 		Timestamp:   time.Now().Unix(),
 	}
@@ -109,4 +108,26 @@ func TestSAMLServiceProvider(t *testing.T) {
 		}
 	}
 
+}
+
+// The webhook's legacy role is the global KyIdentity role: it never grants admin.
+func TestKySignOnWebhookIgnoresGlobalRole(t *testing.T) {
+	st, err := store.Open(context.Background(), testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+	body, _ := json.Marshal(map[string]any{
+		"event": "user.created", "id": "ext-admin", "username": "root", "role": "admin",
+		"status": "active", "timestamp": time.Now().Unix(),
+	})
+	if err := client.HandleSyncWebhook(context.Background(), body, crypto.ComputeHMACSHA256(body, secret)); err != nil {
+		t.Fatal(err)
+	}
+	u, err := st.Users().GetUserBySSO(context.Background(), "kysignon", "ext-admin")
+	if err != nil || u.Role != "user" {
+		t.Fatalf("webhook role leaked: %+v %v", u, err)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
@@ -81,7 +82,7 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 		Email             string `json:"email"`
 		Name              string `json:"name"`
 		PreferredUsername string `json:"preferred_username"`
-		Role              string `json:"role"`
+		Roles             any    `json:"roles"`
 	}
 	if err := idToken.Claims(&raw); err != nil || raw.Sub == "" {
 		return nil, ErrInvalidIDToken
@@ -93,5 +94,6 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 	if username == "" {
 		username = raw.Sub
 	}
-	return &IdentityClaims{Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Role: raw.Role}, nil
+	// The global `role` claim is deliberately not read: it is never a KyCalendar admin.
+	return &IdentityClaims{Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles)}, nil
 }
