@@ -120,3 +120,51 @@ func TestEventsTimeBudget(t *testing.T) {
 		t.Fatalf("restored budget: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestEventsDuplicateCalendarIDs(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "dee", "user")
+	group := groupCalendar(t, st, "Dup")
+	grantRole(t, st, group, "reader", "usr_dee")
+	putObject(t, st, group, "weekly.ics", "weekly", recurringICS, 1791183600)
+	var evs []eventJSON
+	w := call(t, srv, "GET", "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-20T00:00:00Z&calendar="+group.ID+","+group.ID, "", cookie)
+	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil || w.Code != http.StatusOK || len(evs) != 3 {
+		t.Fatalf("duplicate ids: %d %d events %s", w.Code, len(evs), w.Body.String())
+	}
+}
+
+func TestEventsTimeBudgetCoversEmptyCalendars(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "eve", "user")
+	defer api.SetExpandTimeForTest(0)()
+	if w := call(t, srv, "GET", "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-20T00:00:00Z", "", cookie); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty calendars with zero budget: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEventsHideUnreadableCalendars(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	owner := loginAs(t, srv, st, "olga", "user")
+	group := groupCalendar(t, st, "Private")
+	putObject(t, st, group, "weekly.ics", "weekly", recurringICS, 1791183600)
+	const q = "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-20T00:00:00Z"
+	// olga's own default calendar holds an event; a stranger must not see it either.
+	call(t, srv, "GET", "/api/calendars", "", owner)
+	cals, err := st.Calendars().ListCalendarsByOwner(context.Background(), "user", "usr_olga")
+	if err != nil || len(cals) == 0 {
+		t.Fatalf("olga calendars %v %v", cals, err)
+	}
+	putObject(t, st, cals[0], "mine.ics", "mine", recurringICS, 1791183600)
+	var mine []eventJSON
+	w := call(t, srv, "GET", q, "", owner)
+	if err := json.Unmarshal(w.Body.Bytes(), &mine); err != nil || w.Code != http.StatusOK || len(mine) != 3 {
+		t.Fatalf("owner should see her own 3 instances: %d %s", w.Code, w.Body.String())
+	}
+	stranger := loginAs(t, srv, st, "nate", "user")
+	w = call(t, srv, "GET", q, "", stranger)
+	var evs []eventJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil || w.Code != http.StatusOK || len(evs) != 0 {
+		t.Fatalf("non-member sees %d events: %s", len(evs), w.Body.String())
+	}
+}

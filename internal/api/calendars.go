@@ -81,7 +81,9 @@ func (s *Server) visibleCalendars(ctx context.Context, user *store.User) ([]*sto
 			groups = append(groups, c)
 		}
 	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].Name < groups[j].Name || groups[i].Name == groups[j].Name && groups[i].ID < groups[j].ID
+	})
 	return append(cals, groups...), grants, nil
 }
 

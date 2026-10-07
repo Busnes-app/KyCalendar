@@ -72,18 +72,12 @@ func viewerZone(r *http.Request) (*time.Location, bool) {
 	return loc, err == nil
 }
 
-func instanceView(c *store.Calendar, o *store.CalendarObject, master *ical.Component, in calendar.Instance, viewer *time.Location, role access.Role) eventView {
+func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView, zone string, in calendar.Instance, viewer *time.Location, role access.Role) eventView {
 	text := func(name string) string { v, _ := in.Event.Props.Text(name); return v }
 	v := eventView{CalendarID: c.ID, UID: in.UID, RecurrenceID: in.RecurrenceID, ETag: o.ETag,
 		Title: text(ical.PropSummary), Location: text(ical.PropLocation), Description: text(ical.PropDescription),
 		AllDay: in.AllDay, Recurring: in.Recurring, Override: in.Override, Floating: in.Floating,
-		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: role.CanWrite()}
-	if master != nil {
-		v.Repeat = repeatViewOf(calendar.RepeatOf(master))
-		if p := master.Props.Get(ical.PropDateTimeStart); p != nil {
-			v.Zone = p.Params.Get(ical.ParamTimezoneID)
-		}
-	}
+		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: role.CanWrite(), Repeat: repeat, Zone: zone}
 	if in.AllDay {
 		v.Start, v.End = in.Start.In(viewer).Format(time.DateOnly), in.End.In(viewer).Format(time.DateOnly)
 	} else {
@@ -117,7 +111,12 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 			byID[c.ID] = c
 		}
 		cals = cals[:0]
+		seen := map[string]bool{}
 		for _, id := range strings.Split(want, ",") {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
 			c, ok := byID[id]
 			if !ok {
 				s.writeError(w, http.StatusNotFound, "No such calendar")
@@ -128,7 +127,17 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	begun := time.Now()
 	out := []eventView{}
+	tooSlow := func() bool {
+		if time.Since(begun) <= maxExpandTime {
+			return false
+		}
+		s.writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "This range takes too long to show; choose a shorter range", "code": "too_many_instances"})
+		return true
+	}
 	for _, c := range cals {
+		if tooSlow() {
+			return
+		}
 		role := access.Resolve(user, c, grants)
 		objs, err := s.store.Calendars().ListObjectsInRange(r.Context(), c.ID, start.Unix(), end.Unix())
 		if err != nil {
@@ -150,13 +159,19 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 				s.writeError(w, http.StatusInternalServerError, "A stored event does not expand")
 				return
 			}
-			if time.Since(begun) > maxExpandTime {
-				s.writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "This range takes too long to show; choose a shorter range", "code": "too_many_instances"})
+			if tooSlow() {
 				return
 			}
-			master, _ := calendar.Master(cal)
+			var repeat repeatView
+			var zone string
+			if master, _ := calendar.Master(cal); master != nil {
+				repeat = repeatViewOf(calendar.RepeatOf(master))
+				if p := master.Props.Get(ical.PropDateTimeStart); p != nil {
+					zone = p.Params.Get(ical.ParamTimezoneID)
+				}
+			}
 			for _, in := range insts {
-				out = append(out, instanceView(c, o, master, in, viewer, role))
+				out = append(out, instanceView(c, o, repeat, zone, in, viewer, role))
 			}
 		}
 	}
