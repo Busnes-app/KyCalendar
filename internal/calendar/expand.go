@@ -140,12 +140,21 @@ func periods(opt *rrule.ROption, d time.Duration) int {
 }
 
 // zonedUntil re-reads a date or floating UNTIL as wall time in loc; go-ical parses it as UTC.
-func zonedUntil(rule ical.Prop, loc *time.Location) (time.Time, bool) {
+// On an all-day series a UTC UNTIL counts by its UTC date, so every viewer gets the same days.
+func zonedUntil(rule ical.Prop, loc *time.Location, allDay bool) (time.Time, bool) {
 	for _, part := range strings.Split(rule.Value, ";") {
 		k, v, _ := strings.Cut(part, "=")
-		if strings.EqualFold(k, "UNTIL") && !strings.HasSuffix(v, "Z") {
+		if !strings.EqualFold(k, "UNTIL") {
+			continue
+		}
+		if !strings.HasSuffix(v, "Z") {
 			t, err := parseWall(v, loc)
 			return t, err == nil
+		}
+		if allDay {
+			t, err := parseWall(v, time.UTC)
+			y, m, d := t.Date()
+			return time.Date(y, m, d, 0, 0, 0, 0, loc), err == nil
 		}
 	}
 	return time.Time{}, false
@@ -157,11 +166,16 @@ func tooLong(opt *rrule.ROption, to time.Time) bool {
 }
 
 // skipAhead moves DTSTART of a COUNT-less DAILY, WEEKLY or HOURLY rule by whole intervals to just
-// before from, so an old series does not spend its budget on the past. MONTHLY and YEARLY stay put.
-// A landing in a DST gap would shift the wall clock rrule-go takes as the phase, so up to two
-// earlier intervals are tried before giving up and keeping DTSTART.
-func skipAhead(opt *rrule.ROption, from time.Time) {
-	k := periods(opt, from.Sub(opt.Dtstart)) - 1
+// before from less the event's length, so an old series does not spend its budget on the past but
+// keeps occurrences still running at from. MONTHLY and YEARLY stay put. A landing in a DST gap
+// would shift the wall clock rrule-go takes as the phase, so up to two earlier intervals are tried
+// before giving up and keeping DTSTART.
+func skipAhead(opt *rrule.ROption, from time.Time, length time.Duration) {
+	d := from.Sub(opt.Dtstart)
+	if d <= 0 {
+		return
+	}
+	k := periods(opt, d-length) - 1
 	for i := 0; i < 3 && k > 0; i, k = i+1, k-1 {
 		if t, ok := shifted(opt, k); ok {
 			opt.Dtstart = t
@@ -199,7 +213,7 @@ func boundedRule(rule ical.Prop, comp *ical.Component, s span, from, to time.Tim
 		return nil
 	}
 	opt.Dtstart = s.start
-	if u, ok := zonedUntil(rule, s.start.Location()); ok {
+	if u, ok := zonedUntil(rule, s.start.Location(), s.allDay); ok {
 		opt.Until = u
 	}
 	if opt.Until.IsZero() || opt.Until.After(to) {
@@ -210,7 +224,11 @@ func boundedRule(rule ical.Prop, comp *ical.Component, s span, from, to time.Tim
 			return nil
 		}
 	} else if opt.Freq == rrule.DAILY || opt.Freq == rrule.WEEKLY || opt.Freq == rrule.HOURLY {
-		skipAhead(opt, from)
+		length := s.dur
+		if s.allDay {
+			length = time.Duration(s.days) * 24 * time.Hour
+		}
+		skipAhead(opt, from, length)
 	}
 	return opt
 }
@@ -286,9 +304,9 @@ func overrideKey(rid *ical.Prop, viewer *time.Location, form *span) (string, boo
 }
 
 // Expand returns cal's instances overlapping [from, to), sorted by start. More than limit
-// instances, or an object that spends the shared maxIndexOccurrences iteration budget before
-// reaching to, is ErrTooManyInstances. At most maxRecurringComponents masters are expanded; the
-// rest show only DTSTART, flagged Partial.
+// instances is ErrTooManyInstances. A master that would spend the rest of the object's shared
+// maxIndexOccurrences iteration budget before reaching to, and masters past
+// maxRecurringComponents, show only DTSTART, flagged Partial.
 func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit int) ([]Instance, error) {
 	var masters, ridComps []*ical.Component
 	for _, c := range cal.Children {
@@ -338,24 +356,29 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 				set, partial = ruleSet(m, s, viewer, from, to)
 			}
 		}
-		if set == nil {
+		first := func(partial bool) error {
 			in := base
 			in.Start, in.End = s.start, s.endAt(s.start)
 			if partial {
 				in.Recurring, in.Partial = true, true
 				in.RecurrenceID = occurrenceKey(s.start, s.allDay, s.floating)
 				if _, moved := overrides[in.RecurrenceID]; moved {
-					continue
+					return nil
 				}
 			}
 			if overlaps(in.Start, in.End, from, to) {
-				if err := add(in); err != nil {
-					return nil, err
-				}
+				return add(in)
+			}
+			return nil
+		}
+		if set == nil {
+			if err := first(partial); err != nil {
+				return nil, err
 			}
 			continue
 		}
 		base.Recurring = true
+		mark := len(out)
 		next := set.Iterator()
 		done := false
 		for budget > 0 {
@@ -379,8 +402,11 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 				return nil, err
 			}
 		}
-		if !done {
-			return nil, fmt.Errorf("%w: recurrence expansion budget spent", ErrTooManyInstances)
+		if !done { // budget spent: drop this master's instances and show DTSTART only
+			out = out[:mark]
+			if err := first(true); err != nil {
+				return nil, err
+			}
 		}
 	}
 	for key, o := range overrides {

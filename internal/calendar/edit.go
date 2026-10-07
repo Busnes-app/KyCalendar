@@ -375,7 +375,7 @@ func seriesOf(cal *ical.Calendar, name, key string) (m *ical.Component, p *ical.
 	if p, at, err = occurrenceProp(m, name, key); err != nil {
 		return
 	}
-	if name == ical.PropExceptionDates && hasExdate(m, p) {
+	if name == ical.PropExceptionDates && hasExdate(m, key) {
 		o, err = overrideFor(cal, m, key) // already deleted: only a leftover override remains
 		return
 	}
@@ -410,7 +410,7 @@ func DeleteOne(cal *ical.Calendar, recurrenceID string, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	had := hasExdate(m, ex)
+	had := hasExdate(m, recurrenceID)
 	if had && o == nil {
 		return nil
 	}
@@ -424,10 +424,22 @@ func DeleteOne(cal *ical.Calendar, recurrenceID string, now time.Time) error {
 	return nil
 }
 
-func hasExdate(m *ical.Component, ex *ical.Prop) bool {
+// hasExdate reports an EXDATE naming key, compared as occurrence keys in the master's form so a
+// value written in another form (UTC on a TZID master) still counts.
+func hasExdate(m *ical.Component, key string) bool {
+	form, err := spanOf(m, time.UTC)
+	if err != nil {
+		return false
+	}
 	for _, p := range m.Props[ical.PropExceptionDates] {
-		if p.Params.Get(ical.ParamTimezoneID) == ex.Params.Get(ical.ParamTimezoneID) && slices.Contains(strings.Split(p.Value, ","), ex.Value) {
-			return true
+		ts, err := dateList(&p, time.UTC)
+		if err != nil {
+			continue
+		}
+		for _, t := range ts {
+			if occurrenceKey(t, form.allDay, form.floating) == key {
+				return true
+			}
 		}
 	}
 	return false

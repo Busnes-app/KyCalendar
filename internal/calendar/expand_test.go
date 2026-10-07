@@ -298,11 +298,11 @@ func TestExpandHugeCountIsPartial(t *testing.T) {
 	}
 }
 
-func TestExpandSharedBudgetExhaustedIsAnError(t *testing.T) {
+func TestExpandSharedBudgetExhaustedShowsOnlyDTSTART(t *testing.T) {
 	cal := parse(t, calendarOf(event("UID:b\nDTSTART:20140101T000000Z\nDTEND:20140101T000100Z\nRRULE:FREQ=YEARLY;BYHOUR=1,2,3,4,5,6,7,8,9,10,11,12;BYMINUTE=0,1,2,3,4,5,6,7;BYMONTH=1,2,3,4,5,6,7,8,9,10,11,12;BYMONTHDAY=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28")))
-	_, err := Expand(cal, day(2014, 1, 1), day(9000, 1, 1), time.UTC, 10000000)
-	if !errors.Is(err, ErrTooManyInstances) {
-		t.Fatalf("want ErrTooManyInstances, got %v", err)
+	got, err := Expand(cal, day(2014, 1, 1), day(9000, 1, 1), time.UTC, 10000000)
+	if err != nil || len(got) != 1 || !got[0].Partial || !got[0].Start.Equal(day(2014, 1, 1)) {
+		t.Fatalf("want only DTSTART, partial: %d instances, %v", len(got), err)
 	}
 }
 
@@ -429,6 +429,57 @@ func TestExpandOrdinalBydayWithDayFilter(t *testing.T) {
 		}
 		if tc.partial != got[0].Partial || tc.partial && len(got) != 1 || !tc.partial && len(got) < 3 {
 			t.Errorf("%s: partial=%v, %d instances", tc.rule, got[0].Partial, len(got))
+		}
+	}
+}
+
+// A rule that spends the shared budget before reaching the range shows only DTSTART, Partial,
+// instead of failing the whole view.
+func TestExpandBudgetExhaustionIsPartial(t *testing.T) {
+	cal := parse(t, calendarOf(event("UID:old\nDTSTART:17000101T090000Z\nDTEND:17000101T100000Z\nRRULE:FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR,SA,SU")))
+	got, err := Expand(cal, day(2026, 10, 5), day(2026, 10, 12), time.UTC, 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range got {
+		if !in.Partial {
+			t.Fatalf("non-partial instance from an exhausted rule: %+v", in)
+		}
+	}
+}
+
+// An occurrence that began before the range but still runs at its start must survive skip-ahead.
+func TestExpandSkipAheadKeepsRunningOccurrences(t *testing.T) {
+	from, to := day(2026, 10, 10), day(2026, 10, 11)
+	var want []string
+	for i, rule := range []string{"FREQ=DAILY;COUNT=1000", "FREQ=DAILY"} {
+		cal := parse(t, calendarOf(event("UID:long\nDTSTART:20260101T090000Z\nDTEND:20260104T090000Z\nRRULE:"+rule)))
+		got, err := Expand(cal, from, to, time.UTC, 5000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var desc []string
+		for _, in := range got {
+			desc = append(desc, describe(in))
+		}
+		if i == 0 {
+			want = desc
+			if len(want) != 4 {
+				t.Fatalf("COUNT rule: %v", want)
+			}
+		} else if !reflect.DeepEqual(desc, want) {
+			t.Fatalf("skip-ahead lost running occurrences: got %v want %v", desc, want)
+		}
+	}
+}
+
+// A UTC UNTIL on an all-day series is read by its UTC calendar date, whatever the viewer's zone.
+func TestExpandAllDayUTCUntilSameForEveryViewer(t *testing.T) {
+	cal := parse(t, calendarOf(event("UID:until\nDTSTART;VALUE=DATE:20261010\nDTEND;VALUE=DATE:20261011\nRRULE:FREQ=DAILY;UNTIL=20261012T000000Z")))
+	for _, v := range []string{"UTC", "Pacific/Auckland", "Pacific/Honolulu"} {
+		got, err := Expand(cal, day(2026, 9, 1), day(2026, 12, 1), zone(t, v), 5000)
+		if err != nil || len(got) != 3 {
+			t.Errorf("%s: %d instances, %v", v, len(got), err)
 		}
 	}
 }

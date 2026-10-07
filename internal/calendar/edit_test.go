@@ -451,3 +451,27 @@ END:VCALENDAR
 		t.Fatalf("override or EXDATE count wrong:\n%s", encode(t, cal))
 	}
 }
+
+// An EXDATE written in UTC on a TZID master is the same occurrence; deleting it again is a no-op.
+func TestDeleteOneRecognisesUTCExdateOnTZIDMaster(t *testing.T) {
+	cal := decodeString(t, `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//t//EN
+BEGIN:VEVENT
+UID:x
+DTSTAMP:20261001T000000Z
+DTSTART;TZID=Europe/Berlin:20261005T090000
+DTEND;TZID=Europe/Berlin:20261005T100000
+RRULE:FREQ=DAILY;COUNT=5
+EXDATE:20261007T070000Z
+END:VEVENT
+END:VCALENDAR
+`)
+	before := encode(t, cal)
+	if err := DeleteOne(cal, "20261007T070000Z", now); err != nil {
+		t.Fatal(err)
+	}
+	if after := encode(t, cal); after != before {
+		t.Fatalf("a repeated delete changed the object:\n%s", after)
+	}
+}
