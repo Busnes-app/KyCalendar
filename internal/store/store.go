@@ -50,9 +50,9 @@ type UserStore interface {
 	// ResetPassword is the operator reset for any local account: new hash, forced change,
 	// grants revoked. Role and status are untouched. Not local or missing: ErrNotFound.
 	ResetPassword(ctx context.Context, userID, newHash string) error
-	// RenameUser changes only a local account's username and audits it in one transaction.
-	// Not local or missing: ErrNotFound; name taken: ErrAlreadyExists.
-	RenameUser(ctx context.Context, userID, newName string) error
+	// RenameUser changes only a local account's username and audits it as actor in one
+	// transaction. Not local or missing: ErrNotFound; name taken: ErrAlreadyExists.
+	RenameUser(ctx context.Context, actor, userID, newName string) error
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
 	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is

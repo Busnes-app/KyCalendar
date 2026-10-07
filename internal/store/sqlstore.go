@@ -494,7 +494,7 @@ func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) e
 	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
-func (u *userStore) RenameUser(ctx context.Context, userID, newName string) error {
+func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName string) error {
 	tx, err := u.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -515,7 +515,7 @@ func (u *userStore) RenameUser(ctx context.Context, userID, newName string) erro
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "user.renamed", userID, "from="+from+" to="+newName, "", now); err != nil {
+		actor, "user.renamed", userID, "from="+from+" to="+newName, "", now); err != nil {
 		return err
 	}
 	return tx.Commit()

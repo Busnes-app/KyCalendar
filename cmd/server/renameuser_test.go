@@ -34,7 +34,7 @@ func TestRenameUser(t *testing.T) {
 		t.Fatalf("old name still resolves: %v", err)
 	}
 	recs, _, _ := st.Audit().ListAuditRecords(ctx, 0, 10)
-	if len(recs) == 0 || recs[0].Action != "user.renamed" || recs[0].Resource != before.ID {
+	if len(recs) == 0 || recs[0].Action != "user.renamed" || recs[0].Resource != before.ID || recs[0].UserID != "system" {
 		t.Fatalf("rename not audited: %+v", recs)
 	}
 
