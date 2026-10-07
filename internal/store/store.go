@@ -115,6 +115,17 @@ type CalendarStore interface {
 	CreateCalendar(ctx context.Context, c *Calendar, maxPerOwner int) error
 	GetCalendarBySlug(ctx context.Context, ownerKind, ownerID, slug string) (*Calendar, error)
 	ListCalendarsByOwner(ctx context.Context, ownerKind, ownerID string) ([]*Calendar, error)
+	GetCalendarByID(ctx context.Context, id string) (*Calendar, error)
+	ListCalendarsByKind(ctx context.Context, ownerKind string) ([]*Calendar, error)
+	// DeleteCalendar removes a calendar with its objects, changes and grants.
+	DeleteCalendar(ctx context.Context, id string) error
+	ListGrants(ctx context.Context, calendarID string) ([]CalendarGrant, error)
+	// SetGrant creates or replaces one group's role; ErrNotFound unless the calendar is a
+	// group calendar and the group exists.
+	SetGrant(ctx context.Context, g CalendarGrant) error
+	DeleteGrant(ctx context.Context, calendarID, groupID string) error // absent is not an error
+	// UserGrants lists every grant that reaches userID through group membership.
+	UserGrants(ctx context.Context, userID string) ([]CalendarGrant, error)
 	UpdateCalendar(ctx context.Context, id string, name, description, color *string) error
 	GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error)
 	ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error)

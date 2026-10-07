@@ -17,6 +17,7 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 
+	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -25,7 +26,18 @@ const Prefix = "/dav"
 
 const (
 	ownerUser   = "user"
+	ownerGroup  = "group"
 	defaultSlug = "default"
+	// groupPrefix marks a group calendar in every member's home: "_" + calendar ID. Personal
+	// slugs start with a letter or digit, so the two never collide.
+	groupPrefix = "_"
+)
+
+var groupSegment = regexp.MustCompile(`^_cal_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+var (
+	errNoCalendar = webdav.NewHTTPError(http.StatusNotFound, errors.New("no such calendar"))
+	errReadOnly   = webdav.NewHTTPError(http.StatusForbidden, errors.New("this calendar is read-only for you"))
 )
 
 var slugPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
@@ -43,32 +55,14 @@ func validName(name string) bool {
 	return true
 }
 
-var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$`)
-
-const (
-	maxCalendarName        = 255
-	maxCalendarDescription = 4096
-)
-
-// checkCalendarProps bounds client-set calendar properties; nil means unchanged.
-func checkCalendarProps(name, description, color *string) error {
-	switch {
-	case name != nil && len(*name) > maxCalendarName:
-		return fmt.Errorf("displayname over %d bytes", maxCalendarName)
-	case description != nil && len(*description) > maxCalendarDescription:
-		return fmt.Errorf("calendar-description over %d bytes", maxCalendarDescription)
-	case color != nil && *color != "" && !colorPattern.MatchString(*color):
-		return errors.New("calendar-color must be #RRGGBB or #RRGGBBAA")
-	}
-	return nil
-}
-
 var errQuota = webdav.NewHTTPError(http.StatusInsufficientStorage, errors.New("calendar quota reached"))
 
-// Backend is built per request; User is the authenticated, active, non-admin user.
+// Backend is built per request; User is the authenticated, active, non-admin user and Grants
+// are every grant reaching User through group membership, loaded for this request.
 type Backend struct {
 	Store               store.Store
 	User                *store.User
+	Grants              []store.CalendarGrant
 	MaxObjectsPerUser   int
 	MaxCalendarsPerUser int
 	MaxBytesPerUser     int64
@@ -109,7 +103,7 @@ func (b *Backend) split(p string) (slug, name string, err error) {
 		return "", "", webdav.NewHTTPError(http.StatusForbidden, errors.New("path outside the user's calendars"))
 	}
 	slug, name, _ = strings.Cut(rest, "/")
-	if !slugPattern.MatchString(slug) {
+	if !slugPattern.MatchString(slug) && !groupSegment.MatchString(slug) {
 		return "", "", webdav.NewHTTPError(http.StatusNotFound, errors.New("no such calendar"))
 	}
 	if name != "" && !validName(name) {
@@ -133,13 +127,20 @@ func (b *Backend) ensureDefault(ctx context.Context) error {
 	return err
 }
 
-func (b *Backend) toDAV(ctx context.Context, c *store.Calendar) (caldav.Calendar, error) {
+func (b *Backend) segment(c *store.Calendar) string {
+	if c.OwnerKind == ownerGroup {
+		return groupPrefix + c.ID
+	}
+	return c.Slug
+}
+
+func (b *Backend) toDAV(ctx context.Context, c *store.Calendar, role access.Role) (caldav.Calendar, error) {
 	epoch, err := b.Store.Calendars().SyncEpoch(ctx)
 	if err != nil {
 		return caldav.Calendar{}, err
 	}
 	return caldav.Calendar{
-		Path:                  b.home() + c.Slug + "/",
+		Path:                  b.home() + b.segment(c) + "/",
 		Name:                  c.Name,
 		Description:           c.Description,
 		Color:                 c.Color,
@@ -147,22 +148,42 @@ func (b *Backend) toDAV(ctx context.Context, c *store.Calendar) (caldav.Calendar
 		SyncToken:             calendar.FormatSyncToken(epoch, c.Seq),
 		MaxResourceSize:       calendar.MaxObjectSize,
 		SupportedComponentSet: []string{ical.CompEvent},
+		ReadOnly:              !role.CanWrite(),
 	}, nil
 }
 
-func (b *Backend) calendar(ctx context.Context, slug string) (*store.Calendar, error) {
-	c, err := b.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, b.User.ID, slug)
-	if errors.Is(err, store.ErrNotFound) && slug == defaultSlug {
+// calendar resolves a home segment to a calendar and the user's role on it. A group calendar
+// the user cannot read answers 404, exactly like one that does not exist.
+func (b *Backend) calendar(ctx context.Context, seg string) (*store.Calendar, access.Role, error) {
+	if id, ok := strings.CutPrefix(seg, groupPrefix); ok {
+		c, err := b.Store.Calendars().GetCalendarByID(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, access.None, errNoCalendar
+		}
+		if err != nil {
+			return nil, access.None, err
+		}
+		role := access.Resolve(b.User, c, b.Grants)
+		if c.OwnerKind != ownerGroup || !role.CanRead() {
+			return nil, access.None, errNoCalendar
+		}
+		return c, role, nil
+	}
+	c, err := b.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, b.User.ID, seg)
+	if errors.Is(err, store.ErrNotFound) && seg == defaultSlug {
 		// A client may write to the default calendar before it ever lists calendars.
 		if err := b.ensureDefault(ctx); err != nil {
-			return nil, err
+			return nil, access.None, err
 		}
-		c, err = b.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, b.User.ID, slug)
+		c, err = b.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, b.User.ID, seg)
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, webdav.NewHTTPError(http.StatusNotFound, err)
+		return nil, access.None, webdav.NewHTTPError(http.StatusNotFound, err)
 	}
-	return c, err
+	if err != nil {
+		return nil, access.None, err
+	}
+	return c, access.Owner, nil
 }
 
 func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
@@ -173,9 +194,28 @@ func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]caldav.Calendar, 0, len(cals))
+	out := make([]caldav.Calendar, 0, len(cals)+len(b.Grants))
 	for _, c := range cals {
-		dc, err := b.toDAV(ctx, c)
+		dc, err := b.toDAV(ctx, c, access.Owner)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, dc)
+	}
+	seen := map[string]bool{}
+	for _, g := range b.Grants {
+		if seen[g.CalendarID] {
+			continue
+		}
+		seen[g.CalendarID] = true
+		c, role, err := b.calendar(ctx, groupPrefix+g.CalendarID)
+		if errors.Is(err, errNoCalendar) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		dc, err := b.toDAV(ctx, c, role)
 		if err != nil {
 			return nil, err
 		}
@@ -189,11 +229,11 @@ func (b *Backend) GetCalendar(ctx context.Context, p string) (*caldav.Calendar, 
 	if err != nil {
 		return nil, err
 	}
-	c, err := b.calendar(ctx, slug)
+	c, role, err := b.calendar(ctx, slug)
 	if err != nil {
 		return nil, err
 	}
-	dc, err := b.toDAV(ctx, c)
+	dc, err := b.toDAV(ctx, c, role)
 	return &dc, err
 }
 
@@ -202,7 +242,10 @@ func (b *Backend) CreateCalendar(ctx context.Context, cal *caldav.Calendar) erro
 	if err != nil || name != "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars live directly under the home set"))
 	}
-	if err := checkCalendarProps(&cal.Name, &cal.Description, &cal.Color); err != nil {
+	if strings.HasPrefix(slug, groupPrefix) {
+		return webdav.NewHTTPError(http.StatusForbidden, errors.New("group calendars are created by an administrator"))
+	}
+	if err := calendar.CheckProps(&cal.Name, &cal.Description, &cal.Color); err != nil {
 		return webdav.NewHTTPError(http.StatusBadRequest, err)
 	}
 	display := cal.Name
@@ -227,12 +270,15 @@ func (b *Backend) UpdateCalendar(ctx context.Context, p string, u *caldav.Calend
 	if err != nil {
 		return err
 	}
-	c, err := b.calendar(ctx, slug)
+	c, role, err := b.calendar(ctx, slug)
 	if err != nil {
 		return err
 	}
+	if !role.CanManage() {
+		return webdav.NewHTTPError(http.StatusForbidden, errors.New("only a manager can change this calendar"))
+	}
 	// PROPPATCH is atomic: one bad property refuses the whole request.
-	if err := checkCalendarProps(u.Name, u.Description, u.Color); err != nil {
+	if err := calendar.CheckProps(u.Name, u.Description, u.Color); err != nil {
 		return webdav.NewHTTPError(http.StatusForbidden, err)
 	}
 	return b.Store.Calendars().UpdateCalendar(ctx, c.ID, u.Name, u.Description, u.Color)
@@ -246,17 +292,17 @@ func (b *Backend) toObject(slug string, o *store.CalendarObject) caldav.Calendar
 	}
 }
 
-func (b *Backend) objectAt(ctx context.Context, p string) (string, *store.Calendar, string, error) {
-	slug, name, err := b.split(p)
+func (b *Backend) objectAt(ctx context.Context, p string) (string, *store.Calendar, access.Role, string, error) {
+	seg, name, err := b.split(p)
 	if err != nil {
-		return "", nil, "", err
+		return "", nil, access.None, "", err
 	}
-	c, err := b.calendar(ctx, slug)
-	return slug, c, name, err
+	c, role, err := b.calendar(ctx, seg)
+	return seg, c, role, name, err
 }
 
 func (b *Backend) GetCalendarObject(ctx context.Context, p string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	slug, c, name, err := b.objectAt(ctx, p)
+	slug, c, _, name, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +326,7 @@ func (b *Backend) convert(slug string, list []*store.CalendarObject) []caldav.Ca
 }
 
 func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	slug, c, _, err := b.objectAt(ctx, p)
+	slug, c, _, _, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +338,7 @@ func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav
 }
 
 func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
-	slug, c, _, err := b.objectAt(ctx, p)
+	slug, c, _, _, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -341,12 +387,15 @@ func eventRange(q *caldav.CalendarQuery) ([2]int64, bool) {
 }
 
 func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
-	slug, c, name, err := b.objectAt(ctx, p)
+	slug, c, role, name, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 	if name == "" {
 		return nil, webdav.NewHTTPError(http.StatusMethodNotAllowed, errors.New("PUT needs an object name"))
+	}
+	if !role.CanWrite() {
+		return nil, errReadOnly
 	}
 	if _, _, err := caldav.ValidateCalendarObject(cal); err != nil {
 		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
@@ -364,6 +413,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	o := &store.CalendarObject{CalendarID: c.ID, Name: name, UID: info.UID, Data: opts.Raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}
+	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
 	_, err = b.Store.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, store.OwnerLimits{MaxObjects: b.MaxObjectsPerUser, MaxBytes: b.MaxBytesPerUser, MaxTotalBytes: b.MaxBytesTotal})
 	switch {
 	case errors.Is(err, store.ErrQuotaExceeded):
@@ -379,12 +429,15 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 }
 
 func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
-	_, c, name, err := b.objectAt(ctx, p)
+	_, c, role, name, err := b.objectAt(ctx, p)
 	if err != nil {
 		return err
 	}
 	if name == "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars cannot be deleted over CalDAV"))
+	}
+	if !role.CanWrite() {
+		return errReadOnly
 	}
 	m, _ := ctx.Value(ifMatchKey{}).(webdav.ConditionalMatch)
 	ifMatch, err := ifMatchETag(m)
@@ -404,7 +457,7 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 }
 
 func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.SyncResult, error) {
-	slug, c, _, err := b.objectAt(ctx, p)
+	slug, c, _, _, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
 	}

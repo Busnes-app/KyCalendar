@@ -179,5 +179,4 @@ Follows the root `AGENTS.md` KyRecovery contract via `ky-primitives/recoveryclie
 
 - Spike: go-ical recurrence over the fixture corpus (section 3).
 - Fork setup: repository under `Busnes-app`, pinned in `go.mod` via `replace`, patch list above.
-- KyIdentity: register the `kycalendar` OIDC client and admin role; confirm the SCIM connector
-  delivers groups as it does for KyDrive.
+- KyIdentity: register the `kycalendar` OIDC client, create the app role `kycalendar.admin` (Plan 2 grants admin on that exact value), and confirm the SCIM connector delivers groups as it does for KyDrive. This is an operator step; Plan 2 does not automate it.

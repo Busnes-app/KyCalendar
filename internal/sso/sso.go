@@ -17,8 +17,9 @@ type IdentityClaims struct {
 	Email             string `json:"email"`
 	Name              string `json:"name"`
 	PreferredUsername string `json:"preferred_username"`
-	Role              string `json:"role,omitempty"`
-	Provider          string `json:"provider"` // "kysignon", "oidc", "saml"
+	// Roles are the token's `roles` claim: KyIdentity app roles for this client only.
+	Roles    []string `json:"roles,omitempty"`
+	Provider string   `json:"provider"` // "kysignon", "oidc", "saml"
 }
 
 // SSOState represents ephemeral state held during OAuth/OIDC authorization flow.

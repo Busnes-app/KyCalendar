@@ -38,9 +38,14 @@ func (s *Server) handleDAV(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	grants, err := s.store.Calendars().UserGrants(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	limits := s.config.Calendar
 	backend := &davbackend.Backend{
-		Store: s.store, User: user,
+		Store: s.store, User: user, Grants: grants,
 		MaxObjectsPerUser: limits.MaxObjectsPerUser, MaxCalendarsPerUser: limits.MaxCalendarsPerUser, MaxBytesPerUser: limits.MaxBytesPerUser,
 		MaxBytesTotal: limits.MaxBytesTotal,
 	}

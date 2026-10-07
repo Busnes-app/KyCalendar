@@ -72,6 +72,26 @@ its identity, change the password or sign out; privileged APIs remain blocked. R
 revokes existing sessions, MFA transactions and app passwords atomically. Existing accounts
 are not retroactively flagged, since the server cannot infer whether they still use a bootstrap password.
 
+## Administrators and group calendars
+
+KyCalendar administrators manage group calendars, access, backups and the audit log. They never see events and cannot use calendars on their devices. Give a dedicated KyIdentity login the admin role, and keep everyday logins for calendar use.
+
+In KyIdentity, on the KyCalendar app:
+
+1. Create the app role `kycalendar.admin`. Creating an app's first role also stops KyIdentity from sending its global admin role to KyCalendar; until then, a global admin is still not a KyCalendar admin.
+2. Assign `kycalendar.admin` to the dedicated administrator login, directly or through a group.
+3. For group calendars, enable group delivery on the KyCalendar SCIM connector so groups and their members reach KyCalendar.
+
+A role change takes effect at that user's next sign-in, or at once through SCIM, and signs them out of KyCalendar everywhere. After upgrading, SSO administrators sign in again once, so the app role decides who stays an administrator.
+
+In KyCalendar, **Group calendars** lists every group calendar. Create one, then add groups:
+
+- **reader** sees events;
+- **editor** creates, changes and deletes events;
+- **manager** also renames and recolours the calendar and changes who has access.
+
+A member's phone shows every group calendar they can read under the same app password, read-only below editor. Removing someone from a group cuts their access on their next sync. Deleting a KyIdentity group removes its access and leaves the calendar for you to re-grant or delete. Deleting a calendar needs a sign-in from the last 10 minutes.
+
 ## Calendar limits
 
 Native clients sync over CalDAV at `/dav/` with an app password. Each user is capped, and so is

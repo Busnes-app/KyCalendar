@@ -31,7 +31,7 @@ func setupSCIMServer(t *testing.T) (*scim.Server, *http.ServeMux, string) {
 	}, "http://localhost:8080")
 
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	return srv, mux, token
 }
 
@@ -149,7 +149,7 @@ func TestSCIMDeactivationRevokesAppPasswords(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
 	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_ap", Username: "ap_user", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
@@ -203,7 +203,7 @@ func TestSCIMRemovingRolesDemotesAdmin(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
 	cases := map[string]func(id string) (string, any){
@@ -262,7 +262,7 @@ func TestSCIMEqFilterIsExact(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 	for _, u := range []*store.User{
 		{ID: "usr_devops", Username: "devops", DisplayName: "ops", Email: "ops@example.com", Role: "user", Status: "active", SSOProvider: "local"},
@@ -302,5 +302,122 @@ func TestSCIMEqFilterIsExact(t *testing.T) {
 		if got != want {
 			t.Errorf("%s: got %q want %q", filter, got, want)
 		}
+	}
+}
+
+func TestSCIMAdminNeedsTheAppRole(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux.Handle)
+	handler := srv.AuthMiddleware(mux)
+
+	for value, want := range map[string]string{"kycalendar.admin": "admin", "admin": "user", "kypost.admin": "user"} {
+		name := "u_" + strings.NewReplacer(".", "_").Replace(value)
+		body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": name, "active": true,
+			"roles": []any{map[string]any{"value": value, "primary": true}}}
+		if w := scimDo(t, handler, token, "POST", "/scim/v2/Users", body); w.Code != http.StatusCreated {
+			t.Fatalf("%s: %d %s", value, w.Code, w.Body.String())
+		}
+		u, err := st.Users().GetUserByUsername(ctx, name)
+		if err != nil || u.Role != want {
+			t.Fatalf("roles %q: role %q, want %q (%v)", value, u.Role, want, err)
+		}
+	}
+}
+
+// Deactivation revokes app passwords and keeps the personal calendar; reactivation finds it.
+func TestSCIMDeactivationKeepsCalendars(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux.Handle)
+	handler := srv.AuthMiddleware(mux)
+
+	id := "usr_dana"
+	if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: "dana", Role: "user", Status: "active", SSOProvider: "scim"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_dana", OwnerKind: "user", OwnerID: id, Slug: "default", Name: "Calendar"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_dana", UserID: id, Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	patch := func(active bool) {
+		body := map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "replace", "path": "active", "value": active}}}
+		if w := scimDo(t, handler, token, "PATCH", "/scim/v2/Users/"+id, body); w.Code != http.StatusOK {
+			t.Fatalf("PATCH active=%v: %d %s", active, w.Code, w.Body.String())
+		}
+	}
+	patch(false)
+	if u, _ := st.Users().GetUserByID(ctx, id); u.Status != "inactive" {
+		t.Fatalf("status %q after deactivation", u.Status)
+	}
+	if list, _ := st.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
+		t.Fatal("deactivation kept the app passwords")
+	}
+	patch(true)
+	if _, err := st.Calendars().GetCalendarBySlug(ctx, "user", id, "default"); err != nil {
+		t.Fatalf("the personal calendar did not survive deactivation: %v", err)
+	}
+}
+
+// A user who signed in through KySignOn first is the same person SCIM provisions later:
+// KyIdentity's externalId is the ID token's sub. Create adopts the row instead of failing.
+func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux.Handle)
+	handler := srv.AuthMiddleware(mux)
+
+	id := "usr_yan"
+	if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: "yan", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-y"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_yan", UserID: id, Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "yan.k", "externalId": "sub-y", "displayName": "Yan K", "active": true,
+		"roles": []any{map[string]any{"value": "kycalendar.admin"}}}
+	w := scimDo(t, handler, token, "POST", "/scim/v2/Users", body)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	if created.ID != id {
+		t.Fatalf("created %q, want the existing %q", created.ID, id)
+	}
+	if _, total, _ := st.Users().ListUsers(ctx, 0, 10, store.UserFilter{}); total != 1 {
+		t.Fatalf("a second user exists: %d users", total)
+	}
+	u, err := st.Users().GetUserByID(ctx, id)
+	if err != nil || u.Username != "yan.k" || u.DisplayName != "Yan K" || u.Role != "admin" || u.SSOProvider != "kysignon" {
+		t.Fatalf("SCIM attributes not applied: %+v %v", u, err)
+	}
+	if list, _ := st.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
+		t.Fatal("the role change kept the app passwords")
 	}
 }

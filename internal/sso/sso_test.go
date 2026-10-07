@@ -64,7 +64,6 @@ func TestKySignOnWebhookSync(t *testing.T) {
 		Username:    "bob",
 		Email:       "bob@busnes.app",
 		DisplayName: "Bob Engineer",
-		Role:        "user",
 		Status:      "active",
 		Timestamp:   time.Now().Unix(),
 	}
@@ -109,4 +108,68 @@ func TestSAMLServiceProvider(t *testing.T) {
 		}
 	}
 
+}
+
+// The webhook's legacy role is the global KyIdentity role: it never grants admin.
+func TestKySignOnWebhookIgnoresGlobalRole(t *testing.T) {
+	st, err := store.Open(context.Background(), testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+	body, _ := json.Marshal(map[string]any{
+		"event": "user.created", "id": "ext-admin", "username": "root", "role": "admin",
+		"status": "active", "timestamp": time.Now().Unix(),
+	})
+	if err := client.HandleSyncWebhook(context.Background(), body, crypto.ComputeHMACSHA256(body, secret)); err != nil {
+		t.Fatal(err)
+	}
+	u, err := st.Users().GetUserBySSO(context.Background(), "kysignon", "ext-admin")
+	if err != nil || u.Role != "user" {
+		t.Fatalf("webhook role leaked: %+v %v", u, err)
+	}
+}
+
+// The webhook cannot see app roles: an update for a stored admin ends their sessions so the
+// role is re-proved at the next sign-in; an everyday user's session survives.
+func TestKySignOnWebhookUpdateRevokesAdminSessionsOnly(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+
+	for _, tc := range []struct {
+		role        string
+		wantSession bool
+	}{{"admin", false}, {"user", true}} {
+		id := "usr_" + tc.role
+		if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: tc.role, Role: tc.role, Status: "active", SSOProvider: "kysignon", SSOSubject: "ext-" + tc.role}); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + tc.role, UserID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+			t.Fatal(err)
+		}
+		body, _ := json.Marshal(map[string]any{
+			"event": "user.updated", "id": "ext-" + tc.role, "username": tc.role,
+			"status": "active", "timestamp": time.Now().Unix(),
+		})
+		if err := client.HandleSyncWebhook(ctx, body, crypto.ComputeHMACSHA256(body, secret)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := st.Sessions().GetSession(ctx, "tok_"+tc.role)
+		if (err == nil) != tc.wantSession {
+			t.Fatalf("%s: session survived=%v, want %v (%v)", tc.role, err == nil, tc.wantSession, err)
+		}
+		u, err := st.Users().GetUserByID(ctx, id)
+		if err != nil || u.Role != tc.role {
+			t.Fatalf("%s: stored role changed: %+v %v", tc.role, u, err)
+		}
+	}
 }

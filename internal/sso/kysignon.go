@@ -49,7 +49,6 @@ type KySignOnSyncPayload struct {
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
 	Status      string `json:"status"`
 	Timestamp   int64  `json:"timestamp"`
 }
@@ -79,26 +78,24 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 			return err
 		}
 
-		role := payload.Role
-		if role == "" {
-			role = "user"
-		}
 		status := payload.Status
 		if status == "" {
 			status = "active"
 		}
 
+		// The admin grant comes from the `roles` claim at login and SCIM `roles`, never from
+		// this webhook, whose legacy `role` is KyIdentity's global role. The webhook cannot see
+		// app roles, so an admin re-proves the role at the next sign-in: their sessions end here.
 		if existing != nil {
-			privilegesChanged := existing.Role != role || existing.Status != status
+			revoke := existing.Status != status || existing.Role == "admin"
 			existing.Username = payload.Username
 			existing.Email = payload.Email
 			existing.DisplayName = payload.DisplayName
-			existing.Role = role
 			existing.Status = status
 			if err := k.store.Users().UpdateUser(ctx, existing); err != nil {
 				return err
 			}
-			if privilegesChanged {
+			if revoke {
 				if err := k.store.Sessions().DeleteUserSessions(ctx, existing.ID); err != nil {
 					return err
 				}
@@ -112,7 +109,7 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 			Username:    payload.Username,
 			Email:       payload.Email,
 			DisplayName: payload.DisplayName,
-			Role:        role,
+			Role:        "user",
 			Status:      status,
 			SSOProvider: "kysignon",
 			SSOSubject:  payload.ID,

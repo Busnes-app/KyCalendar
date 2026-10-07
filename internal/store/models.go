@@ -137,3 +137,9 @@ type CalendarChange struct {
 	Name    string
 	Deleted bool
 }
+
+// CalendarGrant gives one group a role ("reader", "editor" or "manager") on one group
+// calendar. GroupName is filled on reads and ignored on writes.
+type CalendarGrant struct {
+	CalendarID, GroupID, GroupName, Role string
+}

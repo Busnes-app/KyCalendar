@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/apppass"
-	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -17,20 +16,15 @@ const maxAppPasswordsPerUser = 20
 // requireEveryday admits signed-in non-admin users; admin identities never use calendars.
 func (s *Server) requireEveryday(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, _, err := s.sessions.AuthenticateRequest(r)
-		if err != nil {
-			if errors.Is(err, auth.ErrPasswordChangeRequired) {
-				s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
-			} else {
-				s.writeError(w, http.StatusUnauthorized, "Authentication required")
-			}
+		user := s.authenticate(w, r)
+		if user == nil {
 			return
 		}
 		if user.Role == "admin" {
 			s.writeError(w, http.StatusForbidden, "Administrator accounts cannot use calendars")
 			return
 		}
-		h(w, r)
+		h(w, withSessionUser(r, user))
 	}
 }
 

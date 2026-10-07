@@ -257,6 +257,7 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `go test -race` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17
 - Frontend vitest suite, then typecheck/build plus a check that committed `web/dist` matches source (it is embedded in the binary)
 - `govulncheck` and `npm audit --audit-level=high`
+- The authorization matrix (`internal/api/authz_matrix_test.go`) runs inside `go test` and fails when a registered route has no row.
 - `scripts/smoke-test.sh`: runs the built binary and asserts CLI, auth, session, and SPA behavior
 - Docker image build and container HTTP check
 - Chromium regressions against the built server: production CSP/worker, themes, responsive layout and keyboard navigation; the browser job gates publishing.
@@ -270,10 +271,19 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
 - DAV login failures: 10 per IP per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
 - Inherited QR device pairing (`/api/devices/pair/*`, `internal/devices`, header Pair Device) is removed (R27): it minted full sessions and no KyCalendar client uses it. The `device_pairings` table and migrations stay; never edit existing migrations.
-- Administrators are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
+- Administrators (`kycalendar.admin`, see Plan 2) are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
 - VEVENT only. PUT bodies are stored and served as the raw bytes received; the parsed form is used only for validation, indexing and filter matching.
 - Change rows older than 90 days are pruned daily by `cmd/server`; a sync token older than the prune horizon gets `ErrSyncTokenExpired` and the client resyncs.
 - Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
+
+#### Plan 2 access contracts
+
+- Administrator = the KyIdentity app role `kycalendar.admin`, exact match, read from the ID token's `roles` at every KySignOn login and from SCIM `roles`. The global `role` claim and the webhook's `role` never grant it. A change revokes the user's sessions and app passwords. The webhook cannot see app roles, so it revokes a stored admin's sessions on every directory update and the role is re-proven at the next sign-in. Local `init-admin` accounts are break-glass and keep their stored role.
+- Roles are decided only by `internal/access.Resolve`: owner on personal calendars; the highest of `reader`/`editor`/`manager` across the user's groups on group calendars; `None` for administrators everywhere.
+- A group calendar is `owner_kind = 'group'` with `owner_id` = its own ID, so it survives the deletion of any KyIdentity group. Its grants cascade with the group. Its CalDAV segment in each member's home is `_<calendar-id>`.
+- A caller who cannot read a calendar gets 404 on every API and CalDAV route; one who can read but lacks the role gets 403.
+- Deleting a group calendar requires a sign-in younger than 10 minutes (403 `reauth_required` otherwise). The delete runs on a detached context and is tracked for shutdown.
+- `internal/api/authz_matrix_test.go` covers every registered route and every CalDAV operation for anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers, and fails when a route has no row.
 
 #### Server child DOX index
 
@@ -285,6 +295,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - [internal/scim/AGENTS.md](internal/scim/AGENTS.md): SCIM 2.0 user and group provisioning engine.
 - [internal/backup/AGENTS.md](internal/backup/AGENTS.md): Product-side adapters over `ky-primitives/recoveryclient`: payload collection, drill checks, settings and sealer glue.
 - [internal/testdb/AGENTS.md](internal/testdb/AGENTS.md): Test-only isolated database provisioning (SQLite or PostgreSQL).
+- [internal/access/AGENTS.md](internal/access/AGENTS.md): Pure calendar authorization: the admin app role and the role resolver.
 - [internal/api/AGENTS.md](internal/api/AGENTS.md): HTTP REST API endpoints, routing, and middleware.
 - [internal/calendar/AGENTS.md](internal/calendar/AGENTS.md): Pure iCalendar validation, indexing bounds and sync tokens.
 - [internal/davbackend/AGENTS.md](internal/davbackend/AGENTS.md): CalDAV backend mapping one user's requests onto the calendar store.

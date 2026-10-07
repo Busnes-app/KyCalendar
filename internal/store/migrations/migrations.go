@@ -358,8 +358,37 @@ CREATE TABLE app_passwords (
     last_used_at TIMESTAMPTZ
 );
 CREATE INDEX idx_app_passwords_user ON app_passwords(user_id);`,
+	}, {
+		// Grants cascade with their calendar and their group: deleting a KyIdentity group
+		// removes its access and leaves the calendar for an admin to re-grant or delete.
+		Version: 8,
+		Name:    "calendar_grants",
+		SQLite: `
+CREATE TABLE calendar_grants (
+    calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('reader', 'editor', 'manager')),
+    PRIMARY KEY (calendar_id, group_id)
+);
+CREATE INDEX idx_calendar_grants_group ON calendar_grants(group_id);`,
+		Postgres: `
+CREATE TABLE calendar_grants (
+    calendar_id VARCHAR(64) NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    group_id VARCHAR(64) NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    role VARCHAR(16) NOT NULL CHECK (role IN ('reader', 'editor', 'manager')),
+    PRIMARY KEY (calendar_id, group_id)
+);
+CREATE INDEX idx_calendar_grants_group ON calendar_grants(group_id);`,
+	}, {
+		// The retired webhook copied KyIdentity's global role; its admins re-prove the app role.
+		Version:  9,
+		Name:     "revoke_sso_admin_sessions",
+		SQLite:   revokeSSOAdminSessions,
+		Postgres: revokeSSOAdminSessions,
 	},
 }
+
+const revokeSSOAdminSessions = `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role = 'admin' AND sso_provider IN ('kysignon', 'scim'));`
 
 // Run executes all pending migrations for the specified database driver.
 func Run(ctx context.Context, db *sql.DB, driver string) error {
