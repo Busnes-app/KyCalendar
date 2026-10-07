@@ -220,4 +220,20 @@ describe('drag', () => {
     expect(revert).toHaveBeenCalled();
     expect(puts).toHaveLength(0);
   });
+
+  it('keeps a zero-length timed event zero-length when dragged', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const ev: EventInfo = { ...single, end: single.start, series_end: single.start };
+    fire('eventDrop', {
+      event: { start: new Date('2026-10-07T11:00:00Z'), end: null, allDay: false, extendedProps: { info: ev } },
+      oldEvent: { start: new Date(ev.start), end: null, allDay: false },
+      delta: dayDelta(0, 2 * 3600_000),
+      revert: vi.fn(),
+    });
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body.start).toBe('2026-10-07T11:00:00.000Z');
+    expect(puts[0].body.end).toBe('2026-10-07T11:00:00.000Z');
+  });
 });

@@ -133,9 +133,9 @@ export function CalendarPage() {
       fail('Change all-day for a repeating event in the event form.');
       return;
     }
-    // Ends here are exclusive. FullCalendar leaves end null for a default-length event.
+    // Ends here are exclusive. FullCalendar nulls end for all-day and zero-length events; an all-day event made timed gets an hour.
     const newStart = arg.event.start!;
-    const newEnd = arg.event.end ?? (allDay ? addDays(newStart, 1) : new Date(newStart.getTime() + HOUR));
+    const newEnd = arg.event.end ?? (allDay ? addDays(newStart, 1) : arg.oldEvent.allDay ? new Date(newStart.getTime() + HOUR) : newStart);
     const base = formFromEvent(ev, scope);
     let start = newStart;
     let end = newEnd;
