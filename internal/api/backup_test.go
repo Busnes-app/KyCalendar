@@ -23,6 +23,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/recoverykey"
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/auth"
+	"github.com/Busnes-app/kycalendar/internal/backup"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -353,7 +354,7 @@ func TestDrillReportsBusyAndRunsDecodedChecks(t *testing.T) {
 	if !result.Passed {
 		t.Fatalf("drill failed: %+v", result)
 	}
-	for _, name := range []string{"Required Files", "SQLite Integrity: data/ky_server.db", "Environment: KY_PORT", "Environment: KY_DB_DRIVER"} {
+	for _, name := range []string{"Required Files", "SQLite Integrity: " + backup.DatabaseMember, "Environment: KY_PORT", "Environment: KY_DB_DRIVER"} {
 		found := false
 		for _, check := range result.Checks {
 			if check.Name == name && check.Passed {

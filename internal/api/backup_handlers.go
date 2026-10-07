@@ -223,7 +223,7 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 
 	// The service name sent here is what kyrecovery pins for the token and what every
 	// capsule's manifest is checked against, so it is the same AppName the collector seals under.
-	result, err := s.recovery.ClaimPairing(ctx, req.RecoveryURL, req.PairingCode, s.config.Server.AppName, s.config.Server.AppName)
+	result, err := s.recovery.ClaimPairing(ctx, req.RecoveryURL, req.PairingCode, backup.ServiceName, s.config.Server.AppName)
 	if err != nil {
 		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error="+err.Error())
 		s.writeError(w, http.StatusBadRequest, "Recovery pairing failed")
@@ -529,7 +529,7 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	if s.config.Backup.Dir != "" {
 		out["local_dir"] = s.config.Backup.Dir
 		out["local_keep"] = s.config.Backup.Keep
-		if copies, err := recoveryclient.ListLocalCopies(s.config.Backup.Dir, s.config.Server.AppName); err == nil {
+		if copies, err := recoveryclient.ListLocalCopies(s.config.Backup.Dir, backup.ServiceName); err == nil {
 			out["local_copies"] = copies
 		} else {
 			out["local_error"] = recoveryclient.AuditSafe(err.Error())

@@ -28,6 +28,14 @@ const recoveryPubPath = "data/recovery.pub"
 // database, so a capsule without one is never sealed as if it were a backup.
 var ErrNoDatabaseSnapshot = errors.New("backup: no consistent database snapshot for this driver")
 
+// ServiceName is what KyRecovery pins for this product's token and every capsule's manifest.
+// KY_APP_NAME is the display name only.
+const ServiceName = "kycalendar"
+
+// DatabaseMember is the capsule path of the SQLite database: the file the default DSN opens
+// under <DataDir>, so a restored tree starts on the restored data.
+const DatabaseMember = "data/kycalendar.db"
+
 // Collect assembles the payload every sealing caller uses: the local application files
 // (SQLite database, configuration) plus the members that may only ever travel inside a
 // sealed capsule (the encryption key, the pinned recovery public key). Nothing that returns
@@ -40,7 +48,7 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	if err != nil {
 		return recoveryclient.Payload{}, err
 	}
-	const dbPath = "data/ky_server.db"
+	dbPath := DatabaseMember
 	files := []recoveryclient.File{{Path: dbPath, Data: dbBytes, Mode: 0600}}
 	sqlitePaths := []string{dbPath}
 
@@ -64,7 +72,7 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	}
 
 	payload := recoveryclient.Payload{
-		ServiceName: cfg.Server.AppName,
+		ServiceName: ServiceName,
 		AppVersion:  appVersion,
 		Files:       files,
 		Dependencies: map[string]any{
@@ -98,7 +106,7 @@ func snapshotSQLite(ctx context.Context, dsn, dataDir string) ([]byte, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "ky_server.db")
+	path := filepath.Join(dir, "kycalendar.db")
 	if err := recoveryclient.SQLiteSnapshot(ctx, db, path); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNoDatabaseSnapshot, err)
 	}
@@ -107,7 +115,7 @@ func snapshotSQLite(ctx context.Context, dsn, dataDir string) ([]byte, error) {
 
 // Members names what a capsule carries, for the screen; it is what Collect would seal now.
 func Members(cfg *config.Config) []string {
-	m := []string{"data/ky_server.db", "config/settings.json", encryptionKeyPath}
+	m := []string{DatabaseMember, "config/settings.json", encryptionKeyPath}
 	if _, err := os.Stat(recoveryclient.RecoveryKeyPath(cfg.Database.DataDir)); err == nil {
 		m = append(m, recoveryPubPath)
 	}

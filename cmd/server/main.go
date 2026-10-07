@@ -432,7 +432,7 @@ func runRestore(args []string) {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	capsulePath := fs.String("capsule", "", "path to the .kycap file")
 	target := fs.String("to", "", "empty directory to restore into")
-	service := fs.String("service", "", "expected service name (default: $KY_APP_NAME)")
+	service := fs.String("service", "", "expected service name (default: kycalendar)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "Usage: kycalendar restore -capsule <file.kycap> -to <dir> [-service <name>]\n\n"+
 			"Custodian shares are read from stdin, one ky2-... share per line, and never from\n"+
@@ -445,15 +445,7 @@ func runRestore(args []string) {
 		os.Exit(2)
 	}
 	if *service == "" {
-		// Not config.LoadFromEnv: it mints <DataDir>/encryption.key as a side effect, and a
-		// recovery host has no business growing a key of its own mid-ceremony.
-		*service = os.Getenv("KY_APP_NAME")
-	}
-	if *service == "" {
-		*service = config.DefaultAppName
-	}
-	if *service == "" {
-		log.Fatal("Error: -service is required when KY_APP_NAME is not set")
+		*service = backup.ServiceName
 	}
 
 	if stdinIsTerminal() {

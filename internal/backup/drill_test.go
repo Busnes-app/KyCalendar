@@ -24,7 +24,7 @@ func TestChecksFailsOnAScratchDirMissingTheDatabase(t *testing.T) {
 	// Recreate every required file except the database, so the missing member is the only
 	// difference from a real drill's scratch directory.
 	for _, f := range payload.Files {
-		if f.Path == "data/ky_server.db" {
+		if f.Path == backup.DatabaseMember {
 			continue
 		}
 		full := filepath.Join(scratch, f.Path)
@@ -39,7 +39,7 @@ func TestChecksFailsOnAScratchDirMissingTheDatabase(t *testing.T) {
 	checks := backup.Checks(scratch, manifestFor(payload))
 	var sawMissing bool
 	for _, c := range checks {
-		if c.Name == "Required File: data/ky_server.db" {
+		if c.Name == "Required File: "+backup.DatabaseMember {
 			sawMissing = true
 			if c.Passed {
 				t.Error("missing database reported as passed")
@@ -50,11 +50,11 @@ func TestChecksFailsOnAScratchDirMissingTheDatabase(t *testing.T) {
 		}
 	}
 	for _, check := range checks {
-		if check.Name == "SQLite Integrity: data/ky_server.db" && check.Passed {
+		if check.Name == "SQLite Integrity: "+backup.DatabaseMember && check.Passed {
 			t.Error("missing SQLite database passed integrity checking")
 		}
 	}
-	if _, err := os.Stat(filepath.Join(scratch, "data/ky_server.db")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(scratch, backup.DatabaseMember)); !os.IsNotExist(err) {
 		t.Fatalf("integrity check created the missing database: %v", err)
 	}
 	if !sawMissing {
@@ -147,7 +147,7 @@ func TestDrillChecksDecodedManifest(t *testing.T) {
 	if !result.Passed {
 		t.Fatalf("drill failed: %+v", result)
 	}
-	for _, name := range []string{"Required Files", "SQLite Integrity: data/ky_server.db", "Environment: KY_PORT", "Environment: KY_DB_DRIVER"} {
+	for _, name := range []string{"Required Files", "SQLite Integrity: " + backup.DatabaseMember, "Environment: KY_PORT", "Environment: KY_DB_DRIVER"} {
 		found := false
 		for _, c := range result.Checks {
 			if c.Name == name && c.Passed {
@@ -175,16 +175,16 @@ func TestDrillRejectsMalformedRecipes(t *testing.T) {
 		"missing required":     func(r map[string]any) { delete(r, "required_files") },
 		"null required":        func(r map[string]any) { r["required_files"] = nil },
 		"empty required":       func(r map[string]any) { r["required_files"] = []string{} },
-		"wrong required type":  func(r map[string]any) { r["required_files"] = "data/ky_server.db" },
-		"mixed required":       func(r map[string]any) { r["required_files"] = []any{"data/ky_server.db", 42} },
-		"omitted key":          func(r map[string]any) { r["required_files"] = []string{"data/ky_server.db", "config/settings.json"} },
+		"wrong required type":  func(r map[string]any) { r["required_files"] = backup.DatabaseMember },
+		"mixed required":       func(r map[string]any) { r["required_files"] = []any{backup.DatabaseMember, 42} },
+		"omitted key":          func(r map[string]any) { r["required_files"] = []string{backup.DatabaseMember, "config/settings.json"} },
 		"missing sqlite flag":  func(r map[string]any) { delete(r, "check_sqlite_integrity") },
 		"false sqlite flag":    func(r map[string]any) { r["check_sqlite_integrity"] = false },
 		"wrong sqlite flag":    func(r map[string]any) { r["check_sqlite_integrity"] = "true" },
 		"missing sqlite paths": func(r map[string]any) { delete(r, "sqlite_paths") },
 		"empty sqlite paths":   func(r map[string]any) { r["sqlite_paths"] = []string{} },
 		"null sqlite paths":    func(r map[string]any) { r["sqlite_paths"] = nil },
-		"mixed sqlite paths":   func(r map[string]any) { r["sqlite_paths"] = []any{"data/ky_server.db", false} },
+		"mixed sqlite paths":   func(r map[string]any) { r["sqlite_paths"] = []any{backup.DatabaseMember, false} },
 		"sqlite omits db":      func(r map[string]any) { r["sqlite_paths"] = []string{"config/settings.json"} },
 		"missing env":          func(r map[string]any) { delete(r, "expected_env") },
 		"empty env":            func(r map[string]any) { r["expected_env"] = []string{} },
@@ -254,7 +254,7 @@ func TestDrillRejectsDamagedPayload(t *testing.T) {
 				os.Unsetenv("KY_DRILL_TEST_MISSING")
 			}
 			for i, f := range payload.Files {
-				if f.Path == "data/ky_server.db" {
+				if f.Path == backup.DatabaseMember {
 					switch kind {
 					case "missing database":
 						payload.Files = append(payload.Files[:i:i], payload.Files[i+1:]...)
@@ -288,7 +288,7 @@ func TestChecksSQLiteFilenameIsNotADSN(t *testing.T) {
 	const name = "data/extra?mode=rw#database.db"
 	payload.Files = append(payload.Files, recoveryclient.File{Path: name, Data: payload.Files[0].Data, Mode: 0600})
 	payload.VerificationRecipe["required_files"] = append(payload.VerificationRecipe["required_files"].([]string), name)
-	payload.VerificationRecipe["sqlite_paths"] = []string{"data/ky_server.db", name}
+	payload.VerificationRecipe["sqlite_paths"] = []string{backup.DatabaseMember, name}
 	result, err := backup.RunDrill(context.Background(), cfg, payload)
 	if err != nil {
 		t.Fatal(err)

@@ -242,9 +242,13 @@ func TestMFATOTPRefusesReplay(t *testing.T) {
 // so there is no way to exercise the pairing handler against a test server.
 type fakePairer struct {
 	result recoveryclient.PairingResult
+	claim  *[2]string // service_name, app_name of the last claim
 }
 
 func (f fakePairer) ClaimPairing(ctx context.Context, serverURL, pairingCode, serviceName, appName string) (recoveryclient.PairingResult, error) {
+	if f.claim != nil {
+		*f.claim = [2]string{serviceName, appName}
+	}
 	return f.result, nil
 }
 
@@ -259,7 +263,8 @@ func TestPairRemoteStoresTheRecoveryKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	pub := priv.Public()
-	api.SetRecoveryClientForTest(srv, fakePairer{result: recoveryclient.PairingResult{
+	var claim [2]string
+	api.SetRecoveryClientForTest(srv, fakePairer{claim: &claim, result: recoveryclient.PairingResult{
 		APIToken: "tok_pair",
 		Key:      recoveryclient.RecoveryKey{Public: pub, Threshold: 2, TotalShares: 3},
 	}})
@@ -285,6 +290,9 @@ func TestPairRemoteStoresTheRecoveryKey(t *testing.T) {
 	var out map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
+	}
+	if claim[0] != "kycalendar" || claim[1] != cfg.Server.AppName {
+		t.Errorf("claim service/app = %q, want kycalendar/%q", claim, cfg.Server.AppName)
 	}
 	if out["recovery_key_id"] != pub.ID() {
 		t.Errorf("recovery_key_id: got %v, want %s", out["recovery_key_id"], pub.ID())

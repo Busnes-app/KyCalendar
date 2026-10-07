@@ -11,6 +11,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/capsule"
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/ky-primitives/recoverykey"
+	"github.com/Busnes-app/kycalendar/internal/backup"
 )
 
 func sealFixture(t *testing.T, service string) (string, []string) {
@@ -39,41 +40,41 @@ func sealFixture(t *testing.T, service string) (string, []string) {
 }
 
 func TestRestoreExtractsWithTwoShares(t *testing.T) {
-	path, shares := sealFixture(t, "busnes_app")
+	path, shares := sealFixture(t, backup.ServiceName)
 	target := t.TempDir()
 	var out bytes.Buffer
-	if err := restore(path, target, "busnes_app", shares, &out); err != nil {
+	if err := restore(path, target, backup.ServiceName, shares, &out); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(filepath.Join(target, "data", "x.db"))
 	if err != nil || string(got) != "payload" {
 		t.Fatalf("restored file: %q %v", got, err)
 	}
-	if !strings.Contains(out.String(), "busnes_app") {
+	if !strings.Contains(out.String(), backup.ServiceName) {
 		t.Fatalf("manifest not printed: %s", out.String())
 	}
 }
 
 func TestRestoreRefusesAnotherService(t *testing.T) {
 	path, shares := sealFixture(t, "someone_else")
-	err := restore(path, t.TempDir(), "busnes_app", shares, &bytes.Buffer{})
+	err := restore(path, t.TempDir(), backup.ServiceName, shares, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "someone_else") {
 		t.Fatalf("got %v, want a service-name refusal naming the capsule's service", err)
 	}
 }
 
 func TestRestoreRefusesTheWrongKit(t *testing.T) {
-	path, _ := sealFixture(t, "busnes_app")
-	_, otherShares := sealFixture(t, "busnes_app")
-	err := restore(path, t.TempDir(), "busnes_app", otherShares, &bytes.Buffer{})
+	path, _ := sealFixture(t, backup.ServiceName)
+	_, otherShares := sealFixture(t, backup.ServiceName)
+	err := restore(path, t.TempDir(), backup.ServiceName, otherShares, &bytes.Buffer{})
 	if !errors.Is(err, capsule.ErrWrongRecoveryKey) {
 		t.Fatalf("got %v, want ErrWrongRecoveryKey", err)
 	}
 }
 
 func TestRestoreRefusesOneShare(t *testing.T) {
-	path, shares := sealFixture(t, "busnes_app")
-	if err := restore(path, t.TempDir(), "busnes_app", shares[:1], &bytes.Buffer{}); err == nil {
+	path, shares := sealFixture(t, backup.ServiceName)
+	if err := restore(path, t.TempDir(), backup.ServiceName, shares[:1], &bytes.Buffer{}); err == nil {
 		t.Fatal("one share of a 2-of-3 kit was accepted")
 	}
 }

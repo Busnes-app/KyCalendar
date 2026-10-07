@@ -37,12 +37,12 @@ func Checks(dir string, opened capsule.Manifest) []recoveryclient.Check {
 	if enabled, ok := recipe["check_sqlite_integrity"].(bool); !ok || !enabled {
 		return recipeFailure("check_sqlite_integrity must be true")
 	}
-	for _, name := range []string{"data/ky_server.db", "config/settings.json", encryptionKeyPath} {
+	for _, name := range []string{DatabaseMember, "config/settings.json", encryptionKeyPath} {
 		if !slices.Contains(required, name) {
 			return recipeFailure("required_files omits " + name)
 		}
 	}
-	if !slices.Contains(sqlitePaths, "data/ky_server.db") {
+	if !slices.Contains(sqlitePaths, DatabaseMember) {
 		return recipeFailure("sqlite_paths omits the database")
 	}
 	for _, name := range []string{"KY_PORT", "KY_DB_DRIVER"} {
