@@ -284,6 +284,62 @@ describe('drag', () => {
     expect(puts[0].body).toMatchObject({ repeat: { freq: 'custom' }, start: '2026-10-05T08:00:00.000Z' });
   });
 
+  // Day shifts are measured where the server reads BYDAY: the series' zone, not Berlin.
+  // 2026-10-05 20:00 New York (Monday) is Tuesday 02:00 in Berlin.
+  const nyMondays: EventInfo = {
+    ...series, zone: 'America/New_York', repeat: { freq: 'weekly', weekdays: ['MO'] }, recurrence_id: '20261013T000000Z',
+    start: '2026-10-13T00:00:00Z', end: '2026-10-13T01:00:00Z', series_start: '2026-10-06T00:00:00Z', series_end: '2026-10-06T01:00:00Z',
+  };
+  const dragTo = async (ev: EventInfo, start: Date, delta: ReturnType<typeof dayDelta>, revert = vi.fn()) => {
+    fire('eventDrop', {
+      event: { start, end: new Date(start.getTime() + 3600_000), allDay: false, extendedProps: { info: ev } },
+      oldEvent: { start: new Date(ev.start), end: new Date(ev.end), allDay: false },
+      delta,
+      revert,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    return revert;
+  };
+
+  it('keeps the rule when the Berlin date changes but the New York date does not', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    await dragTo(nyMondays, new Date(2026, 9, 12, 23), dayDelta(-1, 21 * 3600_000)); // Tue 02:00 to Mon 23:00 Berlin
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toMatchObject({ repeat: { freq: 'custom' }, start: '2026-10-05T21:00:00.000Z' }); // Mon 17:00 New York
+  });
+
+  it('rotates weekdays when the New York date changes but the Berlin date does not', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    await dragTo(nyMondays, new Date(2026, 9, 13, 7), dayDelta(0, 5 * 3600_000)); // Tue 02:00 to 07:00 Berlin
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T05:00:00.000Z' }); // Tue 01:00 New York
+  });
+
+  it('measures a series stored in UTC in UTC', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    // Monday 23:30 UTC is Tuesday 01:30 in Berlin; 03:00 Berlin is Tuesday in UTC too.
+    const utc: EventInfo = { ...nyMondays, zone: undefined, start: '2026-10-12T23:30:00Z', end: '2026-10-13T00:30:00Z', series_start: '2026-10-05T23:30:00Z', series_end: '2026-10-06T00:30:00Z' };
+    await dragTo(utc, new Date(2026, 9, 13, 3), dayDelta(0, 90 * 60_000));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T01:00:00.000Z' });
+  });
+
+  it('refuses to move a series whose zone the browser cannot resolve', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const revert = await dragTo({ ...nyMondays, zone: 'W. Europe Standard Time' }, new Date(2026, 9, 13, 3), dayDelta(0, 3600_000));
+    expect((await screen.findByRole('alert')).textContent).toBe('Change the days of a repeating event in the event form.');
+    expect(revert).toHaveBeenCalled();
+    expect(puts).toHaveLength(0);
+  });
+
   it('keeps a zero-length timed event zero-length when dragged', async () => {
     const puts = setup();
     render(<CalendarPage />);

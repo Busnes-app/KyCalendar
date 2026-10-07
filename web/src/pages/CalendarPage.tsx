@@ -32,6 +32,24 @@ export function shiftRepeat(f: Pick<FormState, 'freq' | 'weekdays'>, shift: numb
   return { freq: 'weekly', weekdays: f.weekdays.map((d) => WEEKDAYS[(WEEKDAYS.indexOf(d) + n) % 7]) };
 }
 
+// seriesZone is where the server reads a timed series: its TZID, or UTC when it has none.
+// null when Intl cannot resolve the TZID (such as a Windows name).
+export function seriesZone(ev: EventInfo): string | null {
+  if (!ev.zone) return 'UTC';
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: ev.zone });
+    return ev.zone;
+  } catch {
+    return null;
+  }
+}
+
+// dayNumber is d's calendar date in zone (browser-local when undefined) as consecutive days.
+export function dayNumber(d: Date, zone?: string): number {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(d).map((x) => [x.type, x.value]));
+  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)) / 86_400_000;
+}
+
 export const HIDDEN_KEY = 'kycalendar.hiddenCalendars';
 
 export function loadHidden(): Set<string> {
@@ -163,7 +181,10 @@ export function CalendarPage() {
       start = shiftBy(seriesStart, ds);
       end = shiftBy(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), de);
       if (ev.recurring) {
-        const r = shiftRepeat(base, localDate(start) === localDate(seriesStart) ? null : start.getDay() - seriesStart.getDay());
+        // The server reads DTSTART and BYDAY in the series' zone; all-day dates are local.
+        const zone = allDay ? undefined : seriesZone(ev);
+        const unknown = zone === null && start.getTime() !== seriesStart.getTime();
+        const r = unknown ? null : shiftRepeat(base, zone === null ? null : dayNumber(start, zone) - dayNumber(seriesStart, zone) || null);
         if (!r) {
           fail('Change the days of a repeating event in the event form.');
           return;
