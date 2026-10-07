@@ -7,6 +7,7 @@ Adapts the `elimity-com/scim` RFC 7643/7644 server to the local user and group s
 Owns local persistence adapters and bearer authentication; the library owns `/scim/v2/Users`, `/scim/v2/Groups`, discovery endpoints, schema validation, filter/PATCH parsing, pagination, and SCIM error serialization.
 
 ## Local Contracts
+- `POST /Users` with an `externalId` that names an existing `kysignon` user adopts that row (same ID, provider kept) through the Replace path, with its revocation, and audits `scim.user.adopt`.
 - Content-Type for all SCIM endpoints must be `application/scim+json`.
 - Requests must be authenticated with the configured bearer token.
 - User de-provisioning via `PATCH` with `active: false` updates user status to `inactive`; any status or role change also revokes the user's sessions and app passwords.

@@ -374,3 +374,50 @@ func TestSCIMDeactivationKeepsCalendars(t *testing.T) {
 		t.Fatalf("the personal calendar did not survive deactivation: %v", err)
 	}
 }
+
+// A user who signed in through KySignOn first is the same person SCIM provisions later:
+// KyIdentity's externalId is the ID token's sub. Create adopts the row instead of failing.
+func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	token := "scim-secret-bearer-token"
+	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux.Handle)
+	handler := srv.AuthMiddleware(mux)
+
+	id := "usr_yan"
+	if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: "yan", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-y"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_yan", UserID: id, Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "yan.k", "externalId": "sub-y", "displayName": "Yan K", "active": true,
+		"roles": []any{map[string]any{"value": "kycalendar.admin"}}}
+	w := scimDo(t, handler, token, "POST", "/scim/v2/Users", body)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	if created.ID != id {
+		t.Fatalf("created %q, want the existing %q", created.ID, id)
+	}
+	if _, total, _ := st.Users().ListUsers(ctx, 0, 10, store.UserFilter{}); total != 1 {
+		t.Fatalf("a second user exists: %d users", total)
+	}
+	u, err := st.Users().GetUserByID(ctx, id)
+	if err != nil || u.Username != "yan.k" || u.DisplayName != "Yan K" || u.Role != "admin" || u.SSOProvider != "kysignon" {
+		t.Fatalf("SCIM attributes not applied: %+v %v", u, err)
+	}
+	if list, _ := st.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
+		t.Fatal("the role change kept the app passwords")
+	}
+}

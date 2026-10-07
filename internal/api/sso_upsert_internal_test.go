@@ -63,3 +63,44 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 		t.Fatalf("inactive login: want errAccountInactive, got %v", err)
 	}
 }
+
+// KyIdentity's SCIM externalId is the ID token's sub: a provisioned user who signs in is the
+// same row, so the group calendars SCIM membership grants reach them.
+func TestUpsertSSOUserAdoptsSCIMUser(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	alice := &store.User{ID: "usr_alice", Username: "alice", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "sub-x"}
+	if err := s.store.Users().CreateUser(ctx, alice); err != nil {
+		t.Fatal(err)
+	}
+	cal := &store.Calendar{ID: "cal_team", OwnerKind: "group", OwnerID: "cal_team", Slug: "group", Name: "Team"}
+	if err := s.store.Calendars().CreateCalendar(ctx, cal, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Groups().CreateGroup(ctx, &store.Group{ID: "grp_team", DisplayName: "Team"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Groups().AddGroupMember(ctx, "grp_team", alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_team", Role: "reader"}); err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", PreferredUsername: "alice", Provider: "kysignon"})
+	if err != nil || u.ID != alice.ID {
+		t.Fatalf("login: want %s, got %+v %v", alice.ID, u, err)
+	}
+	if _, total, _ := s.store.Users().ListUsers(ctx, 0, 10, store.UserFilter{}); total != 1 {
+		t.Fatalf("login created a second user: %d users", total)
+	}
+	if grants, err := s.store.Calendars().UserGrants(ctx, u.ID); err != nil || len(grants) == 0 {
+		t.Fatalf("group grant does not reach the signed-in user: %v %v", grants, err)
+	}
+
+	// Only KySignOn subjects are KyIdentity IDs; a generic OIDC sub must not adopt the row.
+	s.config.SSO.AutoProvision = false
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-x", Provider: "oidc"}); !errors.Is(err, errNotProvisioned) {
+		t.Fatalf("oidc sub adopted a SCIM user: %v", err)
+	}
+}

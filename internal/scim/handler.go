@@ -87,6 +87,20 @@ type userResourceHandler struct{ store store.Store }
 
 func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
 	username, _ := attrs["userName"].(string)
+	// KyIdentity's externalId is the KySignOn sub: a user who signed in first is this user.
+	if ext := stringValue(attrs, "externalId", ""); ext != "" {
+		existing, err := h.store.Users().GetUserBySSO(r.Context(), "kysignon", ext)
+		if err == nil {
+			res, err := h.Replace(r, existing.ID, attrs)
+			if err == nil {
+				_ = h.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: existing.ID, Action: "scim.user.adopt", Resource: username})
+			}
+			return res, err
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return protocol.Resource{}, err
+		}
+	}
 	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", "")}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, user.ID)

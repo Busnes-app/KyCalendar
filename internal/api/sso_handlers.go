@@ -27,6 +27,10 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 		role = "admin"
 	}
 	user, err := s.store.Users().GetUserBySSO(ctx, claims.Provider, claims.Subject)
+	if errors.Is(err, store.ErrNotFound) && claims.Provider == "kysignon" {
+		// KyIdentity's SCIM externalId is this sub: a provisioned user is the same person.
+		user, err = s.store.Users().GetUserBySSO(ctx, "scim", claims.Subject)
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		if !s.config.SSO.AutoProvision {
 			return nil, errNotProvisioned
