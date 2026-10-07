@@ -1,0 +1,27 @@
+.kc-layout { display: grid; grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 720px) { .kc-layout { grid-template-columns: minmax(0, 1fr); } }
+.kc-sidebar ul { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.5rem; }
+.kc-swatch { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; margin: 0 0.4rem; vertical-align: middle; }
+.kc-calendar {
+  min-width: 0;
+  color: var(--ky-ink);
+  --fc-border-color: var(--ky-line);
+  --fc-page-bg-color: var(--ky-bg);
+  --fc-neutral-bg-color: var(--ky-panel);
+  --fc-neutral-text-color: var(--ky-ink-muted);
+  --fc-list-event-hover-bg-color: var(--ky-panel-hover);
+  --fc-today-bg-color: var(--ky-accent-soft);
+  --fc-event-bg-color: var(--ky-accent);
+  --fc-event-border-color: var(--ky-accent);
+  --fc-event-text-color: var(--ky-button-text);
+  --fc-button-bg-color: var(--ky-panel);
+  --fc-button-border-color: var(--ky-line-strong);
+  --fc-button-text-color: var(--ky-ink);
+  --fc-button-hover-bg-color: var(--ky-panel-hover);
+  --fc-button-hover-border-color: var(--ky-line-strong);
+  --fc-button-active-bg-color: var(--ky-accent);
+  --fc-button-active-border-color: var(--ky-accent);
+  --fc-now-indicator-color: var(--ky-danger);
+}
+.kc-calendar .fc .fc-toolbar { flex-wrap: wrap; gap: 0.5rem; }
+.kc-calendar .fc .fc-toolbar-title { font-size: 1.1rem; }

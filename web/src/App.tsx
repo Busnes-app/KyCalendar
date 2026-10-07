@@ -8,6 +8,7 @@ import { SCIMAdmin } from './pages/SCIMAdmin';
 import { Settings } from './pages/Settings';
 import AppPasswords from './pages/AppPasswords';
 import GroupCalendars from './pages/GroupCalendars';
+import { CalendarPage } from './pages/CalendarPage';
 import './styles/theme.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
@@ -48,6 +49,10 @@ export const App: React.FC = () => {
 
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (user && user.role !== 'admin') setActiveTab('calendar');
+  }, [user?.id]);
 
   // /api/settings returns more fields once authenticated, so re-read it after login.
   const loadSettings = async () => {
@@ -105,6 +110,7 @@ export const App: React.FC = () => {
       />
 
       <main className="app-main">
+        {activeTab === 'calendar' && user.role !== 'admin' && <CalendarPage />}
         {activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
         {activeTab === 'scim' && <SCIMAdmin />}
         {activeTab === 'backup' && <Backup />}
