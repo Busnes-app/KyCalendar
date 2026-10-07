@@ -18,6 +18,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/password"
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/backup"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
@@ -296,14 +297,21 @@ func runDeposit() {
 	}
 }
 
+// runInitAdmin creates or resets a break-glass local admin. The password is read from stdin.
 func runInitAdmin(args []string) {
 	fs := flag.NewFlagSet("init-admin", flag.ExitOnError)
 	username := fs.String("username", "admin", "Admin username")
-	passwordFlag := fs.String("password", "", "Admin password (minimum 12 characters)")
 	_ = fs.Parse(args)
-
-	if *passwordFlag == "" || len(*passwordFlag) < 12 {
-		log.Fatal("Error: -password is required and must be at least 12 characters")
+	if fs.NArg() > 0 {
+		fmt.Fprintln(os.Stderr, "Usage: kycalendar init-admin [-username <name>] (password on stdin)")
+		os.Exit(2)
+	}
+	pw, err := readPasswordLine(os.Stdin)
+	if err != nil {
+		log.Fatal("Error: write the admin password to stdin")
+	}
+	if err := auth.ValidatePassword(pw); err != nil {
+		log.Fatalf("Error: %v", err)
 	}
 
 	cfg, err := config.LoadFromEnv()
@@ -317,7 +325,7 @@ func runInitAdmin(args []string) {
 	}
 	defer st.Close()
 
-	hash, err := password.Hash(*passwordFlag)
+	hash, err := password.Hash(pw)
 	if err != nil {
 		log.Fatalf("Password hashing error: %v", err)
 	}
