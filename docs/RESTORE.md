@@ -234,13 +234,18 @@ capsule works again the moment the service listens. Find the accounts first, wit
 still down.
 
 If you kept `old-data/`, its audit log names every local password changed after the capsule:
-the `auth.password_changed` rows newer than `created_at`. The log stores UTC times as
-`2026-09-05 12:15:20...`, so write the capsule's `created` with a space, not a `T`, and
+the `auth.password_changed` rows newer than `created_at`. Match them to the restored users by
+ID, and add every restored local account the old server no longer had: it was deleted after
+the capsule, and the restore brought it back with its old password. The log stores UTC times
+as `2026-09-05 12:15:20...`, so write the capsule's `created` with a space, not a `T`, and
 without the `Z`:
 
 ```bash
-sudo sqlite3 old-data/kycalendar.db "SELECT u.username, u.role, a.created_at FROM audit_records a JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.password_changed' AND a.created_at > '2026-09-05 12:15:20' ORDER BY a.created_at;"
+sudo sqlite3 data/kycalendar.db "ATTACH 'old-data/kycalendar.db' AS old; SELECT u.username, u.role FROM users u WHERE u.sso_provider = 'local' AND (u.id IN (SELECT user_id FROM old.audit_records WHERE action = 'auth.password_changed' AND created_at > '2026-09-05 12:15:20') OR u.id NOT IN (SELECT id FROM old.users)) ORDER BY u.role = 'admin' DESC, u.username;"
 ```
+
+Reset every account in the list; an account deleted after the capsule should then be deleted
+or disabled again (step 5 re-applies what happened since).
 
 If the old audit log is unavailable, you cannot know which passwords changed: reset every
 local account, administrators first. List them from the restored database:
