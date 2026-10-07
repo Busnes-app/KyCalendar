@@ -1,7 +1,7 @@
 # SSO
 
 ## Purpose
-Provides unified Single Sign-On federation for KySignOn, Generic OpenID Connect (Google, Microsoft Entra ID, Okta, Keycloak), and SAML 2.0 Service Provider (SP).
+Provides Single Sign-On for KySignOn (OIDC with PKCE), KySignOn's signed directory webhook, and SAML 2.0 Service Provider metadata.
 
 ## Ownership
 Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 signed directory sync webhooks, and SAML metadata publication.

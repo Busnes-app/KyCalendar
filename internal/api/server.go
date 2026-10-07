@@ -33,7 +33,6 @@ type Server struct {
 	store      store.Store
 	sessions   *auth.SessionManager
 	kysignon   *sso.KySignOnClient
-	oidc       *sso.GenericOIDCClient
 	saml       *sso.SAMLServiceProvider
 	scim       *scim.Server
 	recovery   recoveryClient
@@ -136,7 +135,6 @@ const attemptsCap = 10000
 func NewServer(cfg *config.Config, st store.Store) *Server {
 	sessions := auth.NewSessionManager(st, cfg.Security)
 	kysignon := sso.NewKySignOnClient(cfg.SSO, st)
-	oidc := sso.NewGenericOIDCClient(cfg.SSO, st)
 	saml := sso.NewSAMLServiceProvider(cfg.SSO.SAMLEntityID, cfg.Server.AppURL+"/saml/acs")
 	scimSrv := scim.NewServer(st, cfg.SCIM, cfg.Server.AppURL)
 	recovery := recoveryclient.NewClient(recoveryclient.Options{AllowPrivate: cfg.Backup.AllowPrivateRecovery})
@@ -146,7 +144,6 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 		store:    st,
 		sessions: sessions,
 		kysignon: kysignon,
-		oidc:     oidc,
 		saml:     saml,
 		scim:     scimSrv,
 		recovery: recovery,
