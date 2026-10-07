@@ -370,6 +370,9 @@ var userFilterColumns = map[UserField]string{
 	UserFieldDisplayName: "display_name",
 }
 
+// likeEscaper escapes LIKE wildcards, so a search for "a_b" matches only that text.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
 func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error) {
 	if limit <= 0 {
 		limit = 50
@@ -378,15 +381,21 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 		offset = 0
 	}
 
-	var countQuery, listQuery string
-	var countArgs, listArgs []any
-
+	where, args := "", []any{}
 	if col, ok := userFilterColumns[filter.Field]; ok {
-		where := "WHERE LOWER(" + col + ") = LOWER(?)"
-		countQuery = "SELECT COUNT(1) FROM users " + where
-		countArgs = []any{filter.Value}
+		where, args = "WHERE LOWER("+col+") = LOWER(?)", []any{filter.Value}
+	} else if filter.Field == UserFieldSearch {
+		p := "%" + likeEscaper.Replace(filter.Value) + "%"
+		where = `WHERE LOWER(username) LIKE LOWER(?) ESCAPE '\' OR LOWER(email) LIKE LOWER(?) ESCAPE '\' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '\'`
+		args = []any{p, p, p}
+	}
 
-		listQuery = `
+	var total int
+	if err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users "+where), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	listQuery := `
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
@@ -394,26 +403,7 @@ SELECT id, username, email, display_name, password_hash, role, status,
 FROM users
 ` + where + `
 ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		listArgs = []any{filter.Value, limit, offset}
-	} else {
-		countQuery = "SELECT COUNT(1) FROM users"
-		listQuery = `
-SELECT id, username, email, display_name, password_hash, role, status,
-       sso_provider, sso_subject, totp_secret_enc, totp_enabled,
-       recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at
-FROM users
-ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		listArgs = []any{limit, offset}
-	}
-
-	var total int
-	err := u.store.db.QueryRowContext(ctx, u.store.rebind(countQuery), countArgs...).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(listQuery), listArgs...)
+	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(listQuery), append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}

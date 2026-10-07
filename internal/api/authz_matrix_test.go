@@ -175,6 +175,7 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/calendars":                 {method: "POST", path: "/api/admin/calendars", body: `{"name":"Matrix"}`, want: adminOnly},
 		"DELETE /api/admin/calendars/{id}":          {method: "DELETE", path: "/api/admin/calendars/" + w.doomed.ID, want: adminOnly},
 		"GET /api/admin/groups":                     {method: "GET", path: "/api/admin/groups", want: adminOnly},
+		"GET /api/admin/users":                      {method: "GET", path: "/api/admin/users?q=owner", want: adminOnly},
 		"GET /api/admin/audit":                      {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":            {method: "GET", path: g, want: grantManager},
 		"PUT /api/calendars/{id}/grants/{group}":    {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},

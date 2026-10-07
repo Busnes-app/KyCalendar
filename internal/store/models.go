@@ -125,9 +125,13 @@ const (
 	UserFieldUsername
 	UserFieldEmail
 	UserFieldDisplayName
+	// UserFieldSearch is a case-insensitive substring of username, email or display name, for
+	// the admin People list. SCIM filters never map to it.
+	UserFieldSearch
 )
 
-// UserFilter is an exact, case-insensitive match on one field; UserFieldNone lists everyone.
+// UserFilter is an exact, case-insensitive match on one field, except UserFieldSearch, which is a
+// substring match across username, email and display name; UserFieldNone lists everyone.
 type UserFilter struct {
 	Field UserField
 	Value string
