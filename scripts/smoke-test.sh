@@ -191,11 +191,15 @@ PERSON_BODY="$(curl -s -b "$WORK/cookies" -H "X-CSRF-Token: $CSRF" -H 'Content-T
   -d '{"username":"smoke-person","display_name":"Smoke Person","role":"user"}' -X POST "$BASE/api/admin/users")"
 contains "admin adds a person" "$PERSON_BODY" '"temporary_password"'
 TEMP_PASS="$(printf '%s' "$PERSON_BODY" | sed -n 's/.*"temporary_password":"\([^"]*\)".*/\1/p')"
+check "the temporary password was extracted" "$(if [ -n "$TEMP_PASS" ]; then echo present; else echo empty; fi)" "present"
 contains "the temporary password signs in, flagged for replacement" \
   "$(curl -s -H 'Content-Type: application/json' -d '{"username":"smoke-person","password":"'"$TEMP_PASS"'"}' "$BASE/api/auth/login")" '"must_change_password":true'
 PEOPLE_JSON="$(curl -s -b "$WORK/cookies" "$BASE/api/admin/users?q=smoke-person")"
 contains "people list finds the new person" "$PEOPLE_JSON" '"username":"smoke-person"'
-check "people list carries no hashes" "$(if printf '%s' "$PEOPLE_JSON" | grep -q 'argon2'; then echo leaked; else echo clean; fi)" "clean"
+check "people list carries no hashes or secrets" \
+  "$(if printf '%s' "$PEOPLE_JSON" | grep -q -e argon2 -e password_hash -e totp_secret -e recovery_codes; then echo leaked; else echo clean; fi)" "clean"
+check "people list never carries the temporary password" \
+  "$(if [ -n "$TEMP_PASS" ] && printf '%s' "$PEOPLE_JSON" | grep -qF -e "$TEMP_PASS"; then echo leaked; else echo clean; fi)" "clean"
 check "anonymous cannot list people" "$(status "$BASE/api/admin/users")" "401"
 check "cookie write rejects missing CSRF" "$(status -b "$WORK/cookies" -H 'Content-Type: application/json' -d '{"interval_sec":0}' -X PUT "$BASE/api/backup/schedule")" "403"
 # Device pairing was removed (R27): no route may hand out a pairing secret.
