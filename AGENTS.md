@@ -331,4 +331,4 @@ in the shipped deployment instead of assuming a supervisor grace period;
 `TestComposeGracePeriodCoversTheShutdownBudget` keeps the three in step. Past the deadline the
 work is abandoned with a log line rather than killed silently.
 
-The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spec.md` (v2.0.0, sealed-capsule deposit); the product half is `ky-primitives/recoveryclient`, wired through `internal/backup` and `internal/api` so every server built on this base inherits it. Operator documents: `README.md` (disaster recovery, every `KY_BACKUP_*` variable, the LAN DNS override) and `docs/RESTORE.md` (the restore runbook, proven against a scratch 2-of-3 kit).
+The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spec.md` (v2.0.0, sealed-capsule deposit); the product half is `ky-primitives/recoveryclient`, wired through `internal/backup` and `internal/api` so every server built on this base inherits it. Operator documents: `README.md` (disaster recovery, every `KYCALENDAR_BACKUP_*` variable, the LAN DNS override) and `docs/RESTORE.md` (the restore runbook, proven against a scratch 2-of-3 kit).

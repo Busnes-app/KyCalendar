@@ -119,6 +119,13 @@ const DefaultAppName = "Busnes.app"
 
 // LoadFromEnv initializes a Config struct populated from environment variables with sensible defaults.
 func LoadFromEnv() (*Config, error) {
+	// The backup variables carry the product prefix (root AGENTS.md); a retired name left in
+	// .env would otherwise switch backups off without a word.
+	for _, old := range []string{"KY_BACKUP_DIR", "KY_BACKUP_KEEP", "KY_BACKUP_DEPOSIT_INTERVAL", "KY_BACKUP_ALLOW_PRIVATE_RECOVERY"} {
+		if _, set := os.LookupEnv(old); set {
+			return nil, fmt.Errorf("%s was renamed to KYCALENDAR_%s", old, strings.TrimPrefix(old, "KY_"))
+		}
+	}
 	port := getEnvInt("KY_PORT", getEnvInt("PORT", 8080))
 	host := getEnv("KY_HOST", "0.0.0.0")
 	appURL := getEnv("KY_APP_URL", fmt.Sprintf("http://localhost:%d", port))
@@ -153,17 +160,17 @@ func LoadFromEnv() (*Config, error) {
 		}
 	}
 
-	depositInterval, err := getEnvDuration("KY_BACKUP_DEPOSIT_INTERVAL", 24*time.Hour)
+	depositInterval, err := getEnvDuration("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL", 24*time.Hour)
 	if err != nil {
-		return nil, fmt.Errorf("KY_BACKUP_DEPOSIT_INTERVAL: %w", err)
+		return nil, fmt.Errorf("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL: %w", err)
 	}
 	if depositInterval != 0 && depositInterval < MinDepositInterval {
-		return nil, fmt.Errorf("KY_BACKUP_DEPOSIT_INTERVAL: %s is below the %s minimum (0 disables)", depositInterval, MinDepositInterval)
+		return nil, fmt.Errorf("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL: %s is below the %s minimum (0 disables)", depositInterval, MinDepositInterval)
 	}
 
-	backupKeep := getEnvInt("KY_BACKUP_KEEP", 7)
+	backupKeep := getEnvInt("KYCALENDAR_BACKUP_KEEP", 7)
 	if backupKeep < 1 {
-		return nil, fmt.Errorf("KY_BACKUP_KEEP: must be at least 1, got %d", backupKeep)
+		return nil, fmt.Errorf("KYCALENDAR_BACKUP_KEEP: must be at least 1, got %d", backupKeep)
 	}
 
 	calCfg := CalendarConfig{
@@ -243,10 +250,10 @@ func LoadFromEnv() (*Config, error) {
 			BearerToken: getEnv("KY_SCIM_TOKEN", generateRandomHex(24)),
 		},
 		Backup: BackupConfig{
-			Dir:                  getEnv("KY_BACKUP_DIR", ""),
+			Dir:                  getEnv("KYCALENDAR_BACKUP_DIR", ""),
 			Keep:                 backupKeep,
 			DepositInterval:      depositInterval,
-			AllowPrivateRecovery: getEnvBool("KY_BACKUP_ALLOW_PRIVATE_RECOVERY", false),
+			AllowPrivateRecovery: getEnvBool("KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY", false),
 		},
 		Captcha: CaptchaConfig{
 			Provider:      getEnv("KY_CAPTCHA_PROVIDER", "pow"),

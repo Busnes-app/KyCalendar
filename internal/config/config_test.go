@@ -100,7 +100,7 @@ func TestDepositIntervalFromEnv(t *testing.T) {
 		{"-1h", 0, false},
 		{"daily", 0, false},
 	} {
-		t.Setenv("KY_BACKUP_DEPOSIT_INTERVAL", tc.in)
+		t.Setenv("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL", tc.in)
 		cfg, err := config.LoadFromEnv()
 		if (err == nil) != tc.ok {
 			t.Errorf("%q: err=%v, want ok=%v", tc.in, err, tc.ok)
@@ -114,9 +114,9 @@ func TestDepositIntervalFromEnv(t *testing.T) {
 
 func TestBackupConfigFromEnv(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
-	t.Setenv("KY_BACKUP_DIR", "/tmp/x")
-	t.Setenv("KY_BACKUP_KEEP", "3")
-	t.Setenv("KY_BACKUP_ALLOW_PRIVATE_RECOVERY", "true")
+	t.Setenv("KYCALENDAR_BACKUP_DIR", "/tmp/x")
+	t.Setenv("KYCALENDAR_BACKUP_KEEP", "3")
+	t.Setenv("KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY", "true")
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		t.Fatal(err)
@@ -128,9 +128,9 @@ func TestBackupConfigFromEnv(t *testing.T) {
 
 func TestBackupKeepBelowOneIsRefused(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
-	t.Setenv("KY_BACKUP_KEEP", "0")
-	if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_BACKUP_KEEP") {
-		t.Fatalf("want KY_BACKUP_KEEP error, got %v", err)
+	t.Setenv("KYCALENDAR_BACKUP_KEEP", "0")
+	if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KYCALENDAR_BACKUP_KEEP") {
+		t.Fatalf("want KYCALENDAR_BACKUP_KEEP error, got %v", err)
 	}
 }
 
@@ -201,5 +201,35 @@ func TestUnverifiedCaptchaProviderFailsStartup(t *testing.T) {
 		if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_CAPTCHA_PROVIDER") {
 			t.Errorf("%q: want KY_CAPTCHA_PROVIDER error, got %v", p, err)
 		}
+	}
+}
+
+func TestBackupEnvUsesProductPrefix(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	t.Setenv("KYCALENDAR_BACKUP_DIR", "/backups")
+	t.Setenv("KYCALENDAR_BACKUP_KEEP", "3")
+	t.Setenv("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL", "1h")
+	t.Setenv("KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY", "true")
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := cfg.Backup
+	if b.Dir != "/backups" || b.Keep != 3 || b.DepositInterval != time.Hour || !b.AllowPrivateRecovery {
+		t.Fatalf("backup config = %+v", b)
+	}
+}
+
+func TestRetiredBackupEnvIsRefused(t *testing.T) {
+	for _, name := range []string{"KY_BACKUP_DIR", "KY_BACKUP_KEEP", "KY_BACKUP_DEPOSIT_INTERVAL", "KY_BACKUP_ALLOW_PRIVATE_RECOVERY"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			t.Setenv(name, "1")
+			_, err := config.LoadFromEnv()
+			want := "KYCALENDAR_" + strings.TrimPrefix(name, "KY_")
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("err = %v, want it to name %s", err, want)
+			}
+		})
 	}
 }

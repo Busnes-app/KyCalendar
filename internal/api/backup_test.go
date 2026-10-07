@@ -134,7 +134,7 @@ func TestRunWithPinnedKeyAndNoDestination(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	w := adminPost(t, srv, session, "/api/backup/deposit")
-	if w.Code != http.StatusPreconditionFailed || !strings.Contains(w.Body.String(), "pair with KyRecovery or set KY_BACKUP_DIR") {
+	if w.Code != http.StatusPreconditionFailed || !strings.Contains(w.Body.String(), "pair with KyRecovery or set KYCALENDAR_BACKUP_DIR") {
 		t.Fatalf("no destination: got %d: %s", w.Code, w.Body.String())
 	}
 	if fake.got != nil {
@@ -390,7 +390,7 @@ func TestRunRefusesAPrivateDestination(t *testing.T) {
 	if w.Code != http.StatusPreconditionFailed {
 		t.Fatalf("private destination: got %d, want 412: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "KY_BACKUP_ALLOW_PRIVATE_RECOVERY") {
+	if !strings.Contains(w.Body.String(), "KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY") {
 		t.Errorf("body does not name the switch: %s", w.Body.String())
 	}
 }

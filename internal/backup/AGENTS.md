@@ -45,7 +45,7 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
 - Pairing, the write-once key pin, `Run` (one seal, every destination), the schedule, local
   copies and their pruning, drill mechanics, restore and the decrypt guard are the lib's;
   their contracts are in the `recoveryclient` README. `client_test.go` pins only what this
-  package's wiring buys: `KY_BACKUP_ALLOW_PRIVATE_RECOVERY` admits RFC1918 and CGNAT and
+  package's wiring buys: `KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY` admits RFC1918 and CGNAT and
   nothing else.
 
 ## Verification

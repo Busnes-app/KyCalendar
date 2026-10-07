@@ -11,7 +11,7 @@ const env = {
   PATH: process.env.PATH,
   KY_APP_URL: 'http://127.0.0.1:5391',
   KY_HOST: '127.0.0.1', KY_PORT: '5391', KY_DB_DRIVER: 'sqlite',
-  KY_DATA_DIR: join(dir, 'data'), KY_BACKUP_DIR: join(dir, 'backups'),
+  KY_DATA_DIR: join(dir, 'data'), KYCALENDAR_BACKUP_DIR: join(dir, 'backups'),
   KY_CAPTCHA_PROVIDER: 'none',
 };
 // The server only bootstraps its admin into an empty database, so create the admin first.

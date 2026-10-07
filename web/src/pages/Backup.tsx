@@ -360,7 +360,7 @@ export const Backup: React.FC = () => {
       )}
       {status && !keyPinned && <Alert kind="warn">No backups are being made. Pair with KyRecovery or pin the suite recovery key below.</Alert>}
       {status && keyPinned && !paired && !hasLocal && (
-        <Alert kind="warn">A key is pinned but capsules have nowhere to go. Pair with KyRecovery, or set KY_BACKUP_DIR to keep copies on this host.</Alert>
+        <Alert kind="warn">A key is pinned but capsules have nowhere to go. Pair with KyRecovery, or set KYCALENDAR_BACKUP_DIR to keep copies on this host.</Alert>
       )}
       {status && keyPinned && !scheduleOn && <Alert kind="warn">Automatic backups are off. Only the button below makes one.</Alert>}
 
@@ -390,7 +390,7 @@ export const Backup: React.FC = () => {
             <span>Local copies</span>
             <Badge tone={hasLocal ? 'success' : 'muted'}>{hasLocal ? `${copies.length} of ${status?.local_keep}` : 'Off'}</Badge>
           </div>
-          <div className="dr-fact-value dr-mono">{status?.local_dir ?? 'KY_BACKUP_DIR not set'}</div>
+          <div className="dr-fact-value dr-mono">{status?.local_dir ?? 'KYCALENDAR_BACKUP_DIR not set'}</div>
           <div className="dr-fact-note">{status?.local_error ?? (newestLocal ? `Newest ${when(newestLocal.created_at)}` : hasLocal ? 'Nothing written yet' : '')}</div>
         </div>
         <div className="dr-fact">
@@ -490,7 +490,7 @@ export const Backup: React.FC = () => {
         </form>
         <p className="dr-hint">
           Each run snapshots the whole database, so the floor is {Math.round((status?.min_interval_sec ?? 900) / 60)} minutes. The schedule does
-          nothing until a key is pinned and there is somewhere to send the capsule. KY_BACKUP_DEPOSIT_INTERVAL is only the default.
+          nothing until a key is pinned and there is somewhere to send the capsule. KYCALENDAR_BACKUP_DEPOSIT_INTERVAL is only the default.
         </p>
         {scheduleMessage && <Alert kind="success">{scheduleMessage}</Alert>}
         {scheduleError && <Alert kind="error">{scheduleError}</Alert>}

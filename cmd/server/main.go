@@ -73,7 +73,7 @@ func runServer() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 	if cfg.Backup.AllowPrivateRecovery {
-		log.Printf("[BACKUP] KY_BACKUP_ALLOW_PRIVATE_RECOVERY is on: RFC1918 and CGNAT destinations admitted; loopback, link-local and other reserved addresses remain refused (HTTPS still required)")
+		log.Printf("[BACKUP] KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY is on: RFC1918 and CGNAT destinations admitted; loopback, link-local and other reserved addresses remain refused (HTTPS still required)")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

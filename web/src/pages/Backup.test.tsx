@@ -38,7 +38,7 @@ describe('Backup', () => {
     render(<Backup />);
     expect(await screen.findByText(/nowhere to go/i)).toBeTruthy();
     expect(screen.getByText(/automatic backups are off/i)).toBeTruthy();
-    expect(screen.getByText(/KY_BACKUP_DIR not set/)).toBeTruthy();
+    expect(screen.getByText(/KYCALENDAR_BACKUP_DIR not set/)).toBeTruthy();
   });
 
   it('never renders the token', async () => {
