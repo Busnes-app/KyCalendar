@@ -16,9 +16,6 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// stepUpWindow is how recently an admin must have signed in to delete a group calendar or unpair.
-var stepUpWindow = 10 * time.Minute
-
 const maxListPage = 200
 
 type grantView struct {
@@ -48,8 +45,8 @@ func groupCalendarViewOf(c *store.Calendar, gs []store.CalendarGrant) groupCalen
 	return groupCalendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, CreatedAt: c.CreatedAt, Grants: grantViews(gs)}
 }
 
-// auditCalendar records an access change by the session user; IDs only.
-func (s *Server) auditCalendar(ctx context.Context, r *http.Request, action, resource, details string) {
+// auditAction records an admin or access change by the session user; IDs and names only.
+func (s *Server) auditAction(ctx context.Context, r *http.Request, action, resource, details string) {
 	actor := ""
 	if u := sessionUser(r.Context()); u != nil {
 		actor = u.ID
@@ -112,20 +109,14 @@ func (s *Server) handleCreateGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusInternalServerError, "Failed to create the calendar")
 		return
 	}
-	s.auditCalendar(r.Context(), r, "admin.calendar_create", c.ID, "")
+	s.auditAction(r.Context(), r, "admin.calendar_create", c.ID, "")
 	s.writeJSON(w, http.StatusCreated, groupCalendarViewOf(c, nil))
 }
 
 // handleDeleteGroupCalendar deletes a group calendar with every event in it. It is a step-up
 // action: the session's credentials must be younger than stepUpWindow.
 func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Request) {
-	_, sess, err := s.sessions.AuthenticateRequest(r)
-	if err != nil {
-		s.writeError(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
-	if time.Since(sess.CreatedAt) > stepUpWindow {
-		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in again to delete a calendar", "code": "reauth_required"})
+	if !s.requireStepUp(w, r, "delete a calendar") {
 		return
 	}
 	// Irreversible: a dropped connection must not lose the audit row.
@@ -144,7 +135,7 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusInternalServerError, "Failed to delete the calendar")
 		return
 	}
-	s.auditCalendar(ctx, r, "admin.calendar_delete", id, "")
+	s.auditAction(ctx, r, "admin.calendar_delete", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -266,7 +257,7 @@ func (s *Server) handleSetGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to change access")
 		return
 	}
-	s.auditCalendar(r.Context(), r, "calendar.grant_set", c.ID, "group="+strconv.Quote(group)+" role="+strconv.Quote(body.Role))
+	s.auditAction(r.Context(), r, "calendar.grant_set", c.ID, "group="+strconv.Quote(group)+" role="+strconv.Quote(body.Role))
 	s.writeGrants(w, r, c.ID)
 }
 
@@ -283,6 +274,6 @@ func (s *Server) handleDeleteGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to remove access")
 		return
 	}
-	s.auditCalendar(r.Context(), r, "calendar.grant_remove", c.ID, "group="+strconv.Quote(group))
+	s.auditAction(r.Context(), r, "calendar.grant_remove", c.ID, "group="+strconv.Quote(group))
 	s.writeGrants(w, r, c.ID)
 }

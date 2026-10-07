@@ -362,13 +362,7 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	_, sess, err := s.sessions.AuthenticateRequest(r)
-	if err != nil {
-		s.writeError(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
-	if time.Since(sess.CreatedAt) > stepUpWindow {
-		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in again to unpair", "code": "reauth_required"})
+	if !s.requireStepUp(w, r, "unpair") {
 		return
 	}
 	ctx := r.Context()
