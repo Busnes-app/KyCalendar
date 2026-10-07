@@ -71,6 +71,21 @@ func TestComposeGracePeriodCoversTheShutdownBudget(t *testing.T) {
 	}
 }
 
+// config.LoadFromEnv refuses the retired KY_BACKUP_* names, but compose only forwards what its
+// environment lists: a dropped pass-through would let a stale .env line switch backups off silently.
+func TestComposePassesRetiredBackupNamesThrough(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"KY_BACKUP_DIR", "KY_BACKUP_KEEP", "KY_BACKUP_DEPOSIT_INTERVAL", "KY_BACKUP_ALLOW_PRIVATE_RECOVERY"} {
+		want := regexp.MustCompile(`(?m)^\s*- ` + name + `=\$\{` + name + `:-\}\s*$`)
+		if !want.Match(raw) {
+			t.Errorf("docker-compose.yml does not pass %s through as %s=${%s:-}", name, name, name)
+		}
+	}
+}
+
 // Both wait phases share one context, not one timer channel: a timer channel delivers its value
 // once, so a scheduler wait that consumed it would leave the handler wait unbounded -- the stuck
 // deposit this whole path exists to bound. Neither channel here ever closes, so the only way out

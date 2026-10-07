@@ -122,7 +122,7 @@ func LoadFromEnv() (*Config, error) {
 	// The backup variables carry the product prefix (root AGENTS.md); a retired name left in
 	// .env would otherwise switch backups off without a word.
 	for _, old := range []string{"KY_BACKUP_DIR", "KY_BACKUP_KEEP", "KY_BACKUP_DEPOSIT_INTERVAL", "KY_BACKUP_ALLOW_PRIVATE_RECOVERY"} {
-		if _, set := os.LookupEnv(old); set {
+		if os.Getenv(old) != "" {
 			return nil, fmt.Errorf("%s was renamed to KYCALENDAR_%s", old, strings.TrimPrefix(old, "KY_"))
 		}
 	}

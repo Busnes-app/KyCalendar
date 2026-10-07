@@ -181,7 +181,7 @@ refused deposit does not remove the local copy.
 
 ### Environment
 
-The retired names `KY_BACKUP_DIR`, `KY_BACKUP_KEEP`, `KY_BACKUP_DEPOSIT_INTERVAL` and `KY_BACKUP_ALLOW_PRIVATE_RECOVERY` are refused at startup; use the `KYCALENDAR_BACKUP_*` names below, and `KYCALENDAR_DNS` in place of `KY_DNS`.
+The server refuses a non-empty `KY_BACKUP_DIR`, `KY_BACKUP_KEEP`, `KY_BACKUP_DEPOSIT_INTERVAL` or `KY_BACKUP_ALLOW_PRIVATE_RECOVERY` at startup, compose included; the replacements are the `KYCALENDAR_BACKUP_*` names below, and `KYCALENDAR_DNS` replaces `KY_DNS`. Re-running the LAN-DNS block below migrates its own old `.env` lines; rename any other `KY_BACKUP_*` lines in `.env` by hand.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -206,7 +206,7 @@ already in `.env`; there is no default, the block refuses to guess. An exported 
   && dns=${KYCALENDAR_DNS:-$({ grep '^KYCALENDAR_DNS=' .env || [ $? -eq 1 ]; } | tail -n1 | cut -d= -f2-)} \
   && : "${dns:?no resolver chosen: export KYCALENDAR_DNS=<your LAN resolver> (fish: set -x KYCALENDAR_DNS <addr>), then re-run this block}" \
   && case ":$cf:" in *:docker-compose.lan-dns.yml:*) ;; *) cf="$cf:docker-compose.lan-dns.yml";; esac \
-  && t=$(mktemp ./.env.XXXXXX) && { grep -v -e '^COMPOSE_FILE=' -e '^KYCALENDAR_DNS=' -e '^KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=' .env || [ $? -eq 1 ]; } > "$t" \
+  && t=$(mktemp ./.env.XXXXXX) && { grep -v -e '^COMPOSE_FILE=' -e '^KYCALENDAR_DNS=' -e '^KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=' -e '^KY_DNS=' -e '^KY_BACKUP_ALLOW_PRIVATE_RECOVERY=' .env || [ $? -eq 1 ]; } > "$t" \
   && printf 'COMPOSE_FILE=%s\nKYCALENDAR_DNS=%s\nKYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=true\n' "$cf" "$dns" >> "$t" && mv "$t" .env)
 docker compose up -d --force-recreate
 docker inspect kycalendar --format '{{.HostConfig.Dns}}'   # must print the resolver you chose
@@ -218,7 +218,7 @@ Turning it off: remove the resolver and the flag, strip only `docker-compose.lan
 ```bash
 (umask 077; t=$(mktemp ./.env.XXXXXX) && touch .env \
   && cf=$({ grep '^COMPOSE_FILE=' .env || [ $? -eq 1 ]; } | tail -n1 | cut -d= -f2- | tr ':' '\n' | grep -vx docker-compose.lan-dns.yml | paste -sd: -) \
-  && { grep -v -e '^COMPOSE_FILE=' -e '^KYCALENDAR_DNS=' -e '^KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=' .env || [ $? -eq 1 ]; } > "$t" \
+  && { grep -v -e '^COMPOSE_FILE=' -e '^KYCALENDAR_DNS=' -e '^KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=' -e '^KY_DNS=' -e '^KY_BACKUP_ALLOW_PRIVATE_RECOVERY=' .env || [ $? -eq 1 ]; } > "$t" \
   && { [ -z "$cf" ] || [ "$cf" = docker-compose.yml ] || printf 'COMPOSE_FILE=%s\n' "$cf" >> "$t"; } && mv "$t" .env)
 docker compose up -d --force-recreate
 ```

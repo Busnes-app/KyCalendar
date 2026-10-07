@@ -233,3 +233,11 @@ func TestRetiredBackupEnvIsRefused(t *testing.T) {
 		})
 	}
 }
+
+func TestEmptyRetiredBackupEnvIsAccepted(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	t.Setenv("KY_BACKUP_DIR", "")
+	if _, err := config.LoadFromEnv(); err != nil {
+		t.Fatalf("empty retired name refused: %v", err)
+	}
+}

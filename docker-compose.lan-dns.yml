@@ -14,7 +14,7 @@
 #     && dns=${KYCALENDAR_DNS:-$({ grep '^KYCALENDAR_DNS=' .env || [ $? -eq 1 ]; } | tail -n1 | cut -d= -f2-)} \
 #     && : "${dns:?no resolver chosen: export KYCALENDAR_DNS=<your LAN resolver> (fish: set -x KYCALENDAR_DNS <addr>), then re-run this block}" \
 #     && case ":$cf:" in *:docker-compose.lan-dns.yml:*) ;; *) cf="$cf:docker-compose.lan-dns.yml";; esac \
-#     && t=$(mktemp ./.env.XXXXXX) && { grep -v -e '^COMPOSE_FILE=' -e '^KYCALENDAR_DNS=' -e '^KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=' .env || [ $? -eq 1 ]; } > "$t" \
+#     && t=$(mktemp ./.env.XXXXXX) && { grep -v -e '^COMPOSE_FILE=' -e '^KYCALENDAR_DNS=' -e '^KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=' -e '^KY_DNS=' -e '^KY_BACKUP_ALLOW_PRIVATE_RECOVERY=' .env || [ $? -eq 1 ]; } > "$t" \
 #     && printf 'COMPOSE_FILE=%s\nKYCALENDAR_DNS=%s\nKYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=true\n' "$cf" "$dns" >> "$t" && mv "$t" .env)
 #   docker compose up -d --force-recreate
 services:

@@ -48,6 +48,11 @@ services:
       - KYCALENDAR_BACKUP_KEEP=${KYCALENDAR_BACKUP_KEEP:-7}
       - KYCALENDAR_BACKUP_DEPOSIT_INTERVAL=${KYCALENDAR_BACKUP_DEPOSIT_INTERVAL:-24h}
       - KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=${KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY:-false}
+      # Retired names, passed through only so the server can refuse them when set in .env.
+      - KY_BACKUP_DIR=${KY_BACKUP_DIR:-}
+      - KY_BACKUP_KEEP=${KY_BACKUP_KEEP:-}
+      - KY_BACKUP_DEPOSIT_INTERVAL=${KY_BACKUP_DEPOSIT_INTERVAL:-}
+      - KY_BACKUP_ALLOW_PRIVATE_RECOVERY=${KY_BACKUP_ALLOW_PRIVATE_RECOVERY:-}
       # Set to the reverse proxy container's own address when one fronts this service, e.g.
       # its address on the Docker network below (never a whole bridge range like 172.16.0.0/12,
       # which trusts every other container). 0.0.0.0/0 and ::/0 are refused at startup.
