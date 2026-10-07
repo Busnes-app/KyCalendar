@@ -693,6 +693,17 @@ func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, emai
 	return nil
 }
 
+func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (u *userStore) SetRole(ctx context.Context, actor Actor, userID, role string) error {
 	return u.changeAccess(ctx, actor, userID, func(_, status string) (string, string) { return role, status })
 }

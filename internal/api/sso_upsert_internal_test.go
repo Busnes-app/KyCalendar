@@ -110,7 +110,7 @@ type failingUpdates struct{ store.Store }
 type failingUserStore struct{ store.UserStore }
 
 func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
-func (failingUserStore) UpdateUser(context.Context, *store.User) error {
+func (failingUserStore) SetSSORole(context.Context, string, string) error {
 	return errors.New("update failed")
 }
 
@@ -161,5 +161,39 @@ func TestUpsertSSOUserRefusesTakenUsername(t *testing.T) {
 	local, err := s.store.Users().GetUserByUsername(ctx, "admin")
 	if err != nil || local.ID != "usr_local_admin" || local.SSOProvider != "local" {
 		t.Fatalf("local account changed: %+v %v", local, err)
+	}
+}
+
+type deactivateAfterRead struct{ store.Store }
+type deactivateAfterReadUsers struct{ store.UserStore }
+
+func (d deactivateAfterRead) Users() store.UserStore {
+	return deactivateAfterReadUsers{d.Store.Users()}
+}
+func (u deactivateAfterReadUsers) GetUserBySSO(ctx context.Context, provider, subject string) (*store.User, error) {
+	got, err := u.UserStore.GetUserBySSO(ctx, provider, subject)
+	if err == nil {
+		stale := *got
+		stale.Status = "inactive"
+		if err := u.UserStore.UpdateUser(ctx, &stale); err != nil {
+			return nil, err
+		}
+	}
+	return got, err
+}
+
+// A row deactivated (SCIM, the webhook) after the login read it stays inactive: the role write
+// touches the role of an active row only, never writing back the status it read.
+func TestUpsertSSOUserRoleChangeKeepsAConcurrentDeactivation(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	createUsers(t, s, &store.User{ID: "usr_fay", Username: "fay", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-f"})
+	real := s.store
+	s.store = deactivateAfterRead{real}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-f", Provider: "kysignon", Roles: []string{access.AdminAppRole}}); !errors.Is(err, errAccountInactive) {
+		t.Fatalf("role change on a row deactivated meanwhile: %v, want errAccountInactive", err)
+	}
+	if got, _ := real.Users().GetUserByID(ctx, "usr_fay"); got.Status != "inactive" || got.Role != "user" {
+		t.Fatalf("fay: %s %s, want inactive user", got.Status, got.Role)
 	}
 }

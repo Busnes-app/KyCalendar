@@ -102,3 +102,26 @@ func TestBindSignInIsOneWrite(t *testing.T) {
 		t.Fatalf("settings %v %v, want only b=2", all, err)
 	}
 }
+
+// SetSSORole writes only the role, and only on an active SSO account.
+func TestSetSSORoleTouchesOnlyActiveSSORoles(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	ky := &store.User{ID: "usr_ky", Username: "ky", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}
+	off := &store.User{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s2"}
+	lo := &store.User{ID: "usr_lo", Username: "lo", Role: "user", Status: "active", SSOProvider: "local"}
+	seedUsers(t, st, ky, off, lo)
+	if err := st.Users().SetSSORole(ctx, ky.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{off.ID, lo.ID, "usr_missing"} {
+		if err := st.Users().SetSSORole(ctx, id, "admin"); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("%s: %v, want ErrNotFound", id, err)
+		}
+	}
+	for id, want := range map[string]string{ky.ID: "admin active", off.ID: "user inactive", lo.ID: "user active"} {
+		if got, _ := st.Users().GetUserByID(ctx, id); got.Role+" "+got.Status != want {
+			t.Errorf("%s: %s %s, want %s", id, got.Role, got.Status, want)
+		}
+	}
+}

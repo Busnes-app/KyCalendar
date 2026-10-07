@@ -74,11 +74,14 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 	if err := s.store.AppPasswords().DeleteByUser(ctx, user.ID); err != nil {
 		return nil, err
 	}
-	from := user.Role
-	user.Role = role
-	if err := s.store.Users().UpdateUser(ctx, user); err != nil {
+	// Role only: a status read above may be stale.
+	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
+		return nil, errAccountInactive
+	} else if err != nil {
 		return nil, err
 	}
+	from := user.Role
+	user.Role = role
 	_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: user.ID, Action: "sso.role_changed", Resource: user.ID, Details: "from=" + from + " to=" + role})
 	return user, nil
 }
@@ -156,6 +159,14 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// A save may have rebound sign-in during the exchange. Holding the read lock until the session
+	// is issued keeps the next save out until this login is done.
+	s.signinMu.RLock()
+	defer s.signinMu.RUnlock()
+	if s.signin.Load() != p {
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	user, err := s.upsertSSOUser(r.Context(), claims)
 	switch {
 	case errors.Is(err, errNotProvisioned):

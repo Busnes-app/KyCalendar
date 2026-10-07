@@ -87,6 +87,9 @@ type UserStore interface {
 	// ErrActorRevoked, checked in the same transaction before the write.
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
+	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
+	// back a status it read before a concurrent deactivation. Inactive, local or missing: ErrNotFound.
+	SetSSORole(ctx context.Context, userID, role string) error
 	// BindSignIn is one transaction under the local-admins lock: ErrActorRevoked unless actor is
 	// System or still an active administrator with a live session; then every active account
 	// whose sso_provider is in disable becomes inactive (local accounts never, whatever the list)

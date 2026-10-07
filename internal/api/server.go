@@ -37,8 +37,10 @@ type Server struct {
 	saml     *sso.SAMLServiceProvider
 	// signin is the live sign-in provider, nil until LoadSignIn binds accounts to one; saving
 	// sign-in settings swaps it.
-	signin   atomic.Pointer[sso.Provider]
-	signinMu sync.Mutex // one sign-in save at a time: binding and the live provider move together
+	signin atomic.Pointer[sso.Provider]
+	// signinMu: a save holds it through the binding commit and the provider swap; a callback holds
+	// it for reading from its provider recheck to its session, so no save lands in between.
+	signinMu sync.RWMutex
 	// signinHTTP reaches admin-entered providers: HTTPS only, no redirects, no loopback,
 	// link-local or cloud metadata targets.
 	signinHTTP *http.Client
