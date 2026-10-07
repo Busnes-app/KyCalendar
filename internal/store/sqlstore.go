@@ -74,8 +74,7 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	// The same grants revokePasswordGrants clears, for every user.
-	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
+	for _, table := range grantTables {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -546,14 +545,79 @@ func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash s
 	return tx.Commit()
 }
 
-func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID, details, ip string, now time.Time) error {
-	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
+// grantTables hold everything a credential or a role has handed out.
+var grantTables = []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"}
+
+// revokeGrants deletes every session, MFA challenge, device pairing and app password of userID.
+func (u *userStore) revokeGrants(ctx context.Context, tx *sql.Tx, userID string) error {
+	for _, table := range grantTables {
 		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id = ?"), userID); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID, details, ip string, now time.Time) error {
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`), userID, "auth.password_changed", "user", details, ip, now)
 	return err
+}
+
+func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), displayName, email, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (u *userStore) SetRole(ctx context.Context, userID, role string) error {
+	return u.changeAccess(ctx, userID, func(_, status string) (string, string) { return role, status })
+}
+
+func (u *userStore) SetStatus(ctx context.Context, userID, status string) error {
+	return u.changeAccess(ctx, userID, func(role, _ string) (string, string) { return role, status })
+}
+
+// changeAccess applies change to a local account's role and status under the local-admins lock,
+// so two admins demoting each other cannot both pass the last-admin check.
+func (u *userStore) changeAccess(ctx context.Context, userID string, change func(role, status string) (string, string)) error {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var role, status string
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ? AND sso_provider = 'local'`), userID).Scan(&role, &status)
+	if errorsIs(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	wasAdmin := role == "admin" && status == "active"
+	role, status = change(role, status)
+	if wasAdmin && (role != "admin" || status != "active") {
+		var others int
+		if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT COUNT(1) FROM users WHERE role = 'admin' AND status = 'active' AND sso_provider = 'local' AND id <> ?`), userID).Scan(&others); err != nil {
+			return err
+		}
+		if others == 0 {
+			return ErrLastAdmin
+		}
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ?, updated_at = ? WHERE id = ?`), role, status, time.Now().UTC(), userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *sessionStore) GetSession(ctx context.Context, tokenHash string) (*Session, error) {

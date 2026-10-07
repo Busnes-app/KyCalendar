@@ -16,6 +16,8 @@ var (
 	ErrUIDConflict        = errors.New("uid already used in calendar")
 	ErrSyncTokenExpired   = errors.New("sync token expired")
 	ErrQuotaExceeded      = errors.New("owner quota exceeded")
+	// ErrLastAdmin refuses a change that would leave no active local administrator.
+	ErrLastAdmin = errors.New("last active local administrator")
 )
 
 // Store defines the unified storage contract implemented across SQLite, PostgreSQL, and MySQL.
@@ -53,6 +55,15 @@ type UserStore interface {
 	// RenameUser changes only a local account's username and audits it as actor in one
 	// transaction. Not local or missing: ErrNotFound; name taken: ErrAlreadyExists.
 	RenameUser(ctx context.Context, actor, userID, newName string) error
+	// UpdateProfile sets a local account's display name and email and nothing else. Not local
+	// or missing: ErrNotFound.
+	UpdateProfile(ctx context.Context, userID, displayName, email string) error
+	// SetRole and SetStatus change a local account's role or status and, in the same
+	// transaction, delete its sessions, MFA challenges, device pairings and app passwords. A
+	// change that would leave no active local administrator is ErrLastAdmin. Not local or
+	// missing: ErrNotFound.
+	SetRole(ctx context.Context, userID, role string) error
+	SetStatus(ctx context.Context, userID, status string) error
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
 	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is
