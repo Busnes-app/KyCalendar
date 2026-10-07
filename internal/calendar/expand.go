@@ -114,11 +114,89 @@ func dateList(p *ical.Prop, viewer *time.Location) ([]time.Time, error) {
 	return out, nil
 }
 
+// freqUnit is the nominal length of one period, short enough that estimates err on the high side.
+func freqUnit(f rrule.Frequency) time.Duration {
+	switch f {
+	case rrule.YEARLY:
+		return 365 * 24 * time.Hour
+	case rrule.MONTHLY:
+		return 28 * 24 * time.Hour
+	case rrule.WEEKLY:
+		return 7 * 24 * time.Hour
+	case rrule.DAILY:
+		return 24 * time.Hour
+	}
+	return time.Hour
+}
+
+// rulePeriod is one interval of the rule: unit x INTERVAL.
+func rulePeriod(opt *rrule.ROption) time.Duration {
+	return freqUnit(opt.Freq) * time.Duration(max(opt.Interval, 1))
+}
+
+// zonedUntil re-reads a date or floating UNTIL as wall time in loc; go-ical parses it as UTC.
+func zonedUntil(rule ical.Prop, loc *time.Location) (time.Time, bool) {
+	for _, part := range strings.Split(rule.Value, ";") {
+		k, v, _ := strings.Cut(part, "=")
+		if strings.EqualFold(k, "UNTIL") && !strings.HasSuffix(v, "Z") {
+			t, err := parseWall(v, loc)
+			return t, err == nil
+		}
+	}
+	return time.Time{}, false
+}
+
+// tooLong reports a COUNT rule that cannot be enumerated within the iteration budget.
+func tooLong(opt *rrule.ROption, to time.Time) bool {
+	return opt.Count > maxIndexOccurrences || int64(to.Sub(opt.Dtstart)/rulePeriod(opt)) > maxIndexOccurrences
+}
+
+// skipAhead moves DTSTART of a COUNT-less DAILY, WEEKLY or HOURLY rule by whole intervals to just
+// before from, so an old series does not spend its budget on the past. MONTHLY and YEARLY stay put.
+func skipAhead(opt *rrule.ROption, from time.Time) {
+	k := int(from.Sub(opt.Dtstart)/rulePeriod(opt)) - 1
+	if k <= 0 {
+		return
+	}
+	n := max(opt.Interval, 1)
+	switch opt.Freq {
+	case rrule.DAILY:
+		opt.Dtstart = opt.Dtstart.AddDate(0, 0, k*n)
+	case rrule.WEEKLY:
+		opt.Dtstart = opt.Dtstart.AddDate(0, 0, 7*k*n)
+	case rrule.HOURLY:
+		opt.Dtstart = opt.Dtstart.Add(time.Duration(k*n) * time.Hour)
+	}
+}
+
+// boundedRule parses comp's single RRULE for expansion over [from, to): nil when it is not safe.
+func boundedRule(rule ical.Prop, comp *ical.Component, s span, from, to time.Time) *rrule.ROption {
+	opt, err := comp.Props.RecurrenceRule()
+	if err != nil || opt == nil || wideTimeSet(opt) {
+		return nil
+	}
+	opt.Dtstart = s.start
+	if u, ok := zonedUntil(rule, s.start.Location()); ok {
+		opt.Until = u
+	}
+	if opt.Until.IsZero() || opt.Until.After(to) {
+		opt.Until = to
+	}
+	if opt.Count > 0 {
+		if tooLong(opt, to) {
+			return nil
+		}
+	} else if opt.Freq == rrule.DAILY || opt.Freq == rrule.WEEKLY || opt.Freq == rrule.HOURLY {
+		skipAhead(opt, from)
+	}
+	return opt
+}
+
 // ruleSet builds a master's recurrence set: nil for a non-recurring event, partial=true for a
-// rule Inspect also refuses to expand (several RRULEs, SECONDLY/MINUTELY, an oversized time set,
-// an unparseable rule or RDATE). DTSTART is always an instance (RFC 5545), so it is added as an
-// RDATE; the set de-duplicates it when the rule yields it too.
-func ruleSet(comp *ical.Component, s span, viewer *time.Location) (set *rrule.Set, partial bool) {
+// rule that is not expanded safely (several RRULEs, SECONDLY/MINUTELY, an oversized time set, an
+// unparseable rule or RDATE, a COUNT too long for the budget). DTSTART is always an instance
+// (RFC 5545), so the original start is added as an RDATE; the set de-duplicates it.
+func ruleSet(comp *ical.Component, s span, viewer *time.Location, from, to time.Time) (set *rrule.Set, partial bool) {
 	rules, rdates := comp.Props[ical.PropRecurrenceRule], comp.Props[ical.PropRecurrenceDates]
 	if len(rules) == 0 && len(rdates) == 0 {
 		return nil, false
@@ -130,11 +208,11 @@ func ruleSet(comp *ical.Component, s span, viewer *time.Location) (set *rrule.Se
 	set.DTStart(s.start)
 	set.RDate(s.start)
 	if len(rules) == 1 {
-		opt, err := comp.Props.RecurrenceRule()
-		if err != nil || opt == nil || wideTimeSet(opt) {
+		opt := boundedRule(rules[0], comp, s, from, to)
+		if opt == nil {
 			return nil, true
 		}
-		opt.Dtstart = s.start
+		set.DTStart(opt.Dtstart)
 		r, err := rrule.NewRRule(*opt)
 		if err != nil {
 			return nil, true
@@ -169,27 +247,47 @@ func overlaps(start, end, from, to time.Time) bool {
 	return start.Before(to) && end.After(from)
 }
 
+// overrideKey keys a RECURRENCE-ID in the master's form (date, floating wall time or instant),
+// whatever form the RECURRENCE-ID itself is written in.
+func overrideKey(rid *ical.Prop, viewer *time.Location, form *span) (string, bool) {
+	loc, floating, _ := zoneOf(rid, viewer)
+	allDay := isDate(rid)
+	if form != nil && (form.allDay || form.floating) {
+		loc, allDay, floating = viewer, form.allDay, form.floating
+	}
+	t, err := parseWall(rid.Value, loc)
+	if err != nil {
+		return "", false
+	}
+	return occurrenceKey(t, allDay, floating), true
+}
+
 // Expand returns cal's instances overlapping [from, to), sorted by start. More than limit
-// instances is ErrTooManyInstances. Each recurring master spends at most maxIndexOccurrences
-// rule iterations, so a rule that yields nothing in range still stops.
+// instances, or an object that spends the shared maxIndexOccurrences iteration budget before
+// reaching to, is ErrTooManyInstances. At most maxRecurringComponents masters are expanded; the
+// rest show only DTSTART, flagged Partial.
 func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit int) ([]Instance, error) {
-	var masters []*ical.Component
-	overrides := map[string]*ical.Component{}
+	var masters, ridComps []*ical.Component
 	for _, c := range cal.Children {
-		if c.Name != ical.CompEvent {
-			continue
-		}
-		rid := c.Props.Get(ical.PropRecurrenceID)
-		if rid == nil {
+		switch {
+		case c.Name != ical.CompEvent:
+		case c.Props.Get(ical.PropRecurrenceID) == nil:
 			masters = append(masters, c)
-			continue
+		default:
+			ridComps = append(ridComps, c)
 		}
-		loc, floating, _ := zoneOf(rid, viewer)
-		t, err := parseWall(rid.Value, loc)
-		if err != nil {
-			continue
+	}
+	var form *span
+	if len(masters) > 0 {
+		if s, err := spanOf(masters[0], viewer); err == nil {
+			form = &s
 		}
-		overrides[occurrenceKey(t, isDate(rid), floating)] = c
+	}
+	overrides := map[string]*ical.Component{}
+	for _, c := range ridComps {
+		if key, ok := overrideKey(c.Props.Get(ical.PropRecurrenceID), viewer, form); ok {
+			overrides[key] = c
+		}
 	}
 
 	var out []Instance
@@ -200,6 +298,7 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 		out = append(out, in)
 		return nil
 	}
+	budget, recurring := maxIndexOccurrences, 0
 	for _, m := range masters {
 		s, err := spanOf(m, viewer)
 		if err != nil {
@@ -207,13 +306,24 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 		}
 		uid, _ := m.Props.Text(ical.PropUID)
 		base := Instance{UID: uid, AllDay: s.allDay, Floating: s.floating, UnknownZone: s.unknown, Event: m}
-		set, partial := ruleSet(m, s, viewer)
+		var set *rrule.Set
+		partial := false
+		if len(m.Props[ical.PropRecurrenceRule])+len(m.Props[ical.PropRecurrenceDates]) > 0 {
+			if recurring++; recurring > maxRecurringComponents {
+				partial = true
+			} else {
+				set, partial = ruleSet(m, s, viewer, from, to)
+			}
+		}
 		if set == nil {
 			in := base
 			in.Start, in.End = s.start, s.endAt(s.start)
 			if partial {
 				in.Recurring, in.Partial = true, true
 				in.RecurrenceID = occurrenceKey(s.start, s.allDay, s.floating)
+				if _, moved := overrides[in.RecurrenceID]; moved {
+					continue
+				}
 			}
 			if overlaps(in.Start, in.End, from, to) {
 				if err := add(in); err != nil {
@@ -224,9 +334,12 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 		}
 		base.Recurring = true
 		next := set.Iterator()
-		for budget := maxIndexOccurrences; budget > 0; budget-- {
+		done := false
+		for budget > 0 {
+			budget--
 			occ, ok := next()
 			if !ok || !occ.Before(to) {
+				done = true
 				break
 			}
 			end := s.endAt(occ)
@@ -242,6 +355,9 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 			if err := add(in); err != nil {
 				return nil, err
 			}
+		}
+		if !done {
+			return nil, fmt.Errorf("%w: recurrence expansion budget spent", ErrTooManyInstances)
 		}
 	}
 	for key, o := range overrides {
