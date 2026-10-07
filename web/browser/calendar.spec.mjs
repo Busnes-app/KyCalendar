@@ -17,13 +17,14 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   await page.getByRole('button', { name: 'New event' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByLabel('Title').fill(title);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.locator('.fc-listWeek-button').click();
   // The week starts on Sunday: from Saturday 23:xx the next whole hour is in next week.
   const now = new Date();
-  if (now.getDay() === 6 && new Date(now.getTime() + 3600_000).getDay() === 0) await page.locator('.fc-next-button').click();
+  const rolled = now.getDay() === 6 && new Date(now.getTime() + 3600_000).getDay() === 0;
+  if (rolled) await page.locator('.fc-next-button').click();
   const item = page.locator('.fc-list-event', { hasText: title });
   await expect(item).toBeVisible();
 
@@ -41,6 +42,19 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   await expect(page.getByRole('dialog')).toBeVisible();
   page.once('dialog', (d) => d.accept());
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.locator('.fc-list-event', { hasText: title })).toHaveCount(0);
+
+  // The delete reached the server: a fresh load does not show the event either.
+  const events = () => page.waitForResponse((r) => new URL(r.url()).pathname === '/api/events' && r.ok());
+  const loaded = events();
+  await page.reload();
+  await loaded;
+  await page.locator('.fc-listWeek-button').click();
+  if (rolled) {
+    const next = events();
+    await page.locator('.fc-next-button').click();
+    await next;
+  }
   await expect(page.locator('.fc-list-event', { hasText: title })).toHaveCount(0);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

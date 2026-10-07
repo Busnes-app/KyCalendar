@@ -54,6 +54,12 @@ describe('eventForm', () => {
     expect(b.scope).toBe('all');
   });
 
+  it('reads years 0-99 as themselves, not 19xx', () => {
+    const d = parseLocal('0099-03-04T10:30');
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()]).toEqual([99, 2, 4, 10, 30]);
+    expect(parseLocal('0005-01-02').getFullYear()).toBe(5);
+  });
+
   it('asks for a start and end when either is empty or invalid', () => {
     const timed = { ...emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_1'), start: '' };
     expect(bodyFromForm(timed, 'UTC')).toBe('Enter a start and end');

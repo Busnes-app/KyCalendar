@@ -17,7 +17,9 @@ export function parseLocal(s: string): Date {
   const [date, time = '00:00'] = s.split('T');
   const [y, m, d] = date.split('-').map(Number);
   const [h, mi] = time.split(':').map(Number);
-  return new Date(y, m - 1, d, h, mi);
+  const t = new Date(y, m - 1, d, h, mi);
+  t.setFullYear(y, m - 1, d); // the constructor maps years 0-99 to 1900-1999
+  return t;
 }
 
 export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);

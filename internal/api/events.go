@@ -187,7 +187,7 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 					if sAllDay {
 						layout = time.DateOnly
 					}
-					series = seriesTimes{ss.In(viewer).Format(layout), se.In(viewer).Format(layout)}
+					series = seriesTimes{ss.Format(layout), se.Format(layout)}
 				}
 			}
 			for _, in := range insts {
