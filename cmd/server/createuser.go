@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -25,8 +26,8 @@ func runCreateUser(args []string) {
 	fs := flag.NewFlagSet("create-user", flag.ExitOnError)
 	username := fs.String("username", "", "username (required)")
 	_ = fs.Parse(args)
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil && line == "" {
+	pw, err := readPasswordLine(os.Stdin)
+	if err != nil {
 		log.Fatal("Error: write the initial password to stdin")
 	}
 	cfg, err := config.LoadFromEnv()
@@ -39,10 +40,19 @@ func runCreateUser(args []string) {
 		log.Fatalf("DB error: %v", err)
 	}
 	defer st.Close()
-	if err := createUser(ctx, st, *username, strings.TrimRight(line, "\r\n")); err != nil {
+	if err := createUser(ctx, st, *username, pw); err != nil {
 		log.Fatalf("Failed to create user: %v", err)
 	}
 	log.Printf("✓ User %q created; they must change the password at first sign-in", *username)
+}
+
+// readPasswordLine reads one password line from r: never argv, which ps and shell history see.
+func readPasswordLine(r io.Reader) (string, error) {
+	line, err := bufio.NewReader(r).ReadString('\n')
+	if err != nil && line == "" {
+		return "", errors.New("no password on stdin")
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 func createUser(ctx context.Context, st store.Store, username, pw string) error {

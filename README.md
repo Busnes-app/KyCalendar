@@ -78,6 +78,11 @@ are not retroactively flagged, since the server cannot infer whether they still 
 The password is read from stdin: `printf '%s\n' "$PW" | kycalendar create-user -username alice`.
 The user must change it at first sign-in. An existing name is refused, never reset.
 
+`reset-password` sets a temporary password on any local account, read from stdin the same way:
+`printf '%s\n' "$PW" | kycalendar reset-password -username alice`. The role and status stay;
+sessions, MFA challenges and app passwords are revoked, and the user must change it at the next
+sign-in. SSO accounts are refused: their password lives in KyIdentity.
+
 ## Administrators and group calendars
 
 KyCalendar administrators manage group calendars, access, backups and the audit log. They never see events and cannot use calendars on their devices. Give a dedicated KyIdentity login the admin role, and keep everyday logins for calendar use.

@@ -461,13 +461,22 @@ func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash,
 
 // ResetAdminPassword is the operator recovery path, including disabled local accounts.
 func (u *userStore) ResetAdminPassword(ctx context.Context, userID, newHash string) error {
+	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+}
+
+func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) error {
+	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+}
+
+// operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one transaction.
+func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash string) error {
 	tx, err := u.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
-	result, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`), newHash, true, now, userID)
+	result, err := tx.ExecContext(ctx, u.store.rebind(update), newHash, true, now, userID)
 	if err != nil {
 		return err
 	}

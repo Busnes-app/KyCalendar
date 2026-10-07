@@ -36,6 +36,9 @@ func main() {
 		case "create-user":
 			runCreateUser(os.Args[2:])
 			return
+		case "reset-password":
+			runResetPassword(os.Args[2:])
+			return
 		case "backup-drill":
 			runBackupDrill(os.Args[2:])
 			return

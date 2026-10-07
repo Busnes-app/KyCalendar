@@ -279,18 +279,19 @@ works again on the restored server.
    sudo sqlite3 old-data/kycalendar.db "SELECT u.username, u.role, a.created_at FROM audit_records a JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.password_changed' AND a.created_at > '2026-09-05 12:15:20' ORDER BY a.created_at;"
    ```
 
-   For each **administrator** in that list, set a temporary password, which forces a change at
-   the next sign-in and revokes that account's sessions and app passwords:
+   For every account in that list, set a temporary password. `reset-password` reads it from
+   stdin, keeps the account's role and status, revokes its sessions, MFA challenges and app
+   passwords, and forces a change at the next sign-in:
 
    ```bash
-   docker compose run --rm -T app init-admin -username <name> -password <temporary>
+   read -rs TEMP_PW   # typed, not echoed, not in history
+   printf '%s\n' "$TEMP_PW" | docker compose run --rm -T app reset-password -username <name>
+   unset TEMP_PW
    ```
 
-   It also reactivates the account if it was disabled. Hand the temporary password to the
-   account owner out of band. Do not use `init-admin` on an **everyday** account (`role` is
-   `user`): it makes the account an administrator. No command resets an everyday local account's password yet. Until one exists,
-   the restored password works for anyone who knows it: tell the owner to change it the moment
-   the service reopens.
+   Hand the temporary password to the account owner out of band. Use `init-admin` only when
+   no administrator account exists at all: it makes the named account an administrator and
+   takes its password on the command line.
 3. Walk the same audit log from `created_at` to the moment the old server was lost (the
    restored server's log stops at `created_at`), and re-apply what else happened after the
    capsule: disabled accounts, reset MFA, SCIM changes.

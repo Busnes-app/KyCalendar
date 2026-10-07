@@ -247,6 +247,7 @@ Inherited from the scaffold; these rules apply to the server code.
 - Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges and app passwords. Untouched existing accounts are not retroactively flagged.
 
 - `create-user` makes a local everyday account (password from stdin, forced change at first sign-in); it refuses an existing name.
+- `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
 
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.
