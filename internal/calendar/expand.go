@@ -129,9 +129,14 @@ func freqUnit(f rrule.Frequency) time.Duration {
 	return time.Hour
 }
 
-// rulePeriod is one interval of the rule: unit x INTERVAL.
-func rulePeriod(opt *rrule.ROption) time.Duration {
-	return freqUnit(opt.Freq) * time.Duration(max(opt.Interval, 1))
+// periods counts whole intervals of the rule in d without overflowing: a client INTERVAL can be
+// any int, so unit x interval is never formed before it is known to fit in d.
+func periods(opt *rrule.ROption, d time.Duration) int {
+	unit, n := freqUnit(opt.Freq), max(opt.Interval, 1)
+	if d <= 0 || n > int(d/unit) {
+		return 0
+	}
+	return int(d / (unit * time.Duration(n)))
 }
 
 // zonedUntil re-reads a date or floating UNTIL as wall time in loc; go-ical parses it as UTC.
@@ -148,13 +153,13 @@ func zonedUntil(rule ical.Prop, loc *time.Location) (time.Time, bool) {
 
 // tooLong reports a COUNT rule that cannot be enumerated within the iteration budget.
 func tooLong(opt *rrule.ROption, to time.Time) bool {
-	return opt.Count > maxIndexOccurrences || int64(to.Sub(opt.Dtstart)/rulePeriod(opt)) > maxIndexOccurrences
+	return opt.Count > maxIndexOccurrences || periods(opt, to.Sub(opt.Dtstart)) > maxIndexOccurrences
 }
 
 // skipAhead moves DTSTART of a COUNT-less DAILY, WEEKLY or HOURLY rule by whole intervals to just
 // before from, so an old series does not spend its budget on the past. MONTHLY and YEARLY stay put.
 func skipAhead(opt *rrule.ROption, from time.Time) {
-	k := int(from.Sub(opt.Dtstart)/rulePeriod(opt)) - 1
+	k := periods(opt, from.Sub(opt.Dtstart)) - 1
 	if k <= 0 {
 		return
 	}
@@ -173,6 +178,9 @@ func skipAhead(opt *rrule.ROption, from time.Time) {
 func boundedRule(rule ical.Prop, comp *ical.Component, s span, from, to time.Time) *rrule.ROption {
 	opt, err := comp.Props.RecurrenceRule()
 	if err != nil || opt == nil || wideTimeSet(opt) {
+		return nil
+	}
+	if !ordinalsInRange(opt) || !satisfiable(opt) {
 		return nil
 	}
 	opt.Dtstart = s.start

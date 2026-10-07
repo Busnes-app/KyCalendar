@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
+	"github.com/teambition/rrule-go"
 )
 
 func fixture(t *testing.T, name string) *ical.Calendar {
@@ -191,14 +192,52 @@ func calendarOf(vevents ...string) string {
 }
 
 func TestExpandNeverMatchingRuleIsBounded(t *testing.T) {
-	cal := parse(t, calendarOf(event("UID:never\nDTSTART:20140101T000000Z\nDTEND:20140101T010000Z\nRRULE:FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30")))
-	start := time.Now()
-	got, err := Expand(cal, day(2026, 10, 1), day(2026, 10, 8), time.UTC, 5000)
-	if err != nil || len(got) != 0 {
-		t.Fatalf("%v %v", got, err)
+	var evs []string
+	for i := range 10 {
+		dt := "201" + strconv.Itoa(i) + "0101T000000Z"
+		evs = append(evs, event("UID:never\nDTSTART:"+dt+"\nDTEND:"+dt+"\nRRULE:FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30"))
 	}
-	if d := time.Since(start); d > 2*time.Second {
+	start := time.Now()
+	got, err := Expand(parse(t, calendarOf(evs...)), day(2026, 10, 1), day(2026, 10, 8), time.UTC, 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range got {
+		if !in.Partial {
+			t.Fatalf("instance of a never-matching rule: %+v", in)
+		}
+	}
+	if d := time.Since(start); d > 300*time.Millisecond {
 		t.Fatalf("took %v", d)
+	}
+}
+
+func TestSatisfiable(t *testing.T) {
+	for rule, want := range map[string]bool{
+		"FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30":          false,
+		"FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29":          true,
+		"FREQ=YEARLY;BYMONTH=4;BYMONTHDAY=31":          false,
+		"FREQ=YEARLY;BYMONTHDAY=-31;BYMONTH=6":         false,
+		"FREQ=YEARLY;BYYEARDAY=366":                    true,
+		"FREQ=YEARLY;BYYEARDAY=1;BYMONTH=6":            false,
+		"FREQ=MONTHLY;BYMONTHDAY=13;BYDAY=FR":          true,
+		"FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29;BYDAY=MO": true,
+	} {
+		opt, err := rrule.StrToROption(rule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := satisfiable(opt); got != want {
+			t.Errorf("%s: got %v want %v", rule, got, want)
+		}
+	}
+}
+
+func TestExpandOutOfRangeOrdinalIsPartial(t *testing.T) {
+	cal := parse(t, calendarOf(event("UID:o\nDTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=MONTHLY;BYDAY=6MO")))
+	got, err := Expand(cal, day(2026, 10, 1), day(2026, 12, 1), time.UTC, 5000)
+	if err != nil || len(got) != 1 || !got[0].Partial {
+		t.Fatalf("%v %v", got, err)
 	}
 }
 
@@ -277,5 +316,25 @@ func TestExpandRecurrenceIDKeyedInMasterForm(t *testing.T) {
 	}
 	if err != nil || !reflect.DeepEqual(desc, []string{"2026-10-05", "2026-10-07", "2026-10-10 override"}) {
 		t.Fatalf("%v %v", desc, err)
+	}
+}
+
+func TestExpandHugeIntervalDoesNotPanic(t *testing.T) {
+	for _, freq := range []string{"HOURLY", "DAILY", "WEEKLY"} {
+		for _, extra := range []string{"", ";COUNT=3"} {
+			for _, interval := range []string{"9223372036854775807", "2251799813685248"} { // 2^51 wraps unit x interval to 0
+				rule := "FREQ=" + freq + ";INTERVAL=" + interval + extra
+				cal := parse(t, calendarOf(event("UID:i\nDTSTART:20140101T000000Z\nDTEND:20140101T010000Z\nRRULE:"+rule)))
+				got, err := Expand(cal, day(2026, 10, 1), day(2026, 10, 8), time.UTC, 5000)
+				if err != nil {
+					t.Fatalf("%s: %v", rule, err)
+				}
+				for _, in := range got {
+					if !in.Partial {
+						t.Fatalf("%s: unexpected instance %+v", rule, in)
+					}
+				}
+			}
+		}
 	}
 }
