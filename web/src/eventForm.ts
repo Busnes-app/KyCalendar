@@ -60,6 +60,7 @@ export function formFromEvent(ev: EventInfo, scope: 'this' | 'all'): FormState {
 export function bodyFromForm(f: FormState, zone: string, scope?: 'all' | 'this', recurrenceId?: string): EventBody | string {
   const start = parseLocal(f.start);
   const end = parseLocal(f.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Enter a start and end';
   if (end < start) return 'End must not be before start';
   const repeat = f.freq === 'weekly' && f.weekdays.length ? { freq: f.freq, weekdays: f.weekdays } : { freq: f.freq };
   const body: EventBody = { title: f.title, location: f.location, description: f.description, all_day: f.allDay, repeat, start: '', end: '' };

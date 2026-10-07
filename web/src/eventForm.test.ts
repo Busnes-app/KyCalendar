@@ -54,6 +54,13 @@ describe('eventForm', () => {
     expect(b.scope).toBe('all');
   });
 
+  it('asks for a start and end when either is empty or invalid', () => {
+    const timed = { ...emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_1'), start: '' };
+    expect(bodyFromForm(timed, 'UTC')).toBe('Enter a start and end');
+    const allDay = { ...emptyForm(new Date(2026, 9, 7), new Date(2026, 9, 9), true, 'cal_1'), end: '' };
+    expect(bodyFromForm(allDay, 'UTC')).toBe('Enter a start and end');
+  });
+
   it('accepts only IANA zones the browser knows', () => {
     expect(validZone('Europe/Berlin')).toBe(true);
     expect(validZone('Eastern Standard Time')).toBe(false);
