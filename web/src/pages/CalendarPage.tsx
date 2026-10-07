@@ -14,7 +14,12 @@ import { addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTi
 import '../styles/calendar.css';
 
 type MoveArg = EventDropArg | EventResizeDoneArg;
-const DAY = 86_400_000;
+const HOUR = 3_600_000;
+
+// shiftBy applies a FullCalendar delta: years, months and days on the local calendar, then milliseconds.
+export function shiftBy(d: Date, delta: { years: number; months: number; days: number; milliseconds: number }): Date {
+  return new Date(d.getFullYear() + delta.years, d.getMonth() + delta.months, d.getDate() + delta.days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds() + delta.milliseconds);
+}
 
 export const HIDDEN_KEY = 'kycalendar.hiddenCalendars';
 
@@ -58,6 +63,7 @@ export function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState } | null>(null);
   const [pending, setPending] = useState<MoveArg | null>(null);
+  const dragError = useRef<string | null>(null);
   const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
 
@@ -118,20 +124,26 @@ export function CalendarPage() {
     const ev = arg.event.extendedProps.info as EventInfo;
     const zone = validZone(ev.zone) ? ev.zone! : browserZone();
     const allDay = arg.event.allDay;
-    // FullCalendar leaves end null for a one-day all-day event; ends here are exclusive.
-    const exclEnd = (start: Date, end: Date | null) => end ?? (allDay ? addDays(start, 1) : start);
-    const oldStart = arg.oldEvent.start!;
-    const oldEnd = exclEnd(oldStart, arg.oldEvent.end);
+    const fail = (msg: string) => {
+      arg.revert();
+      dragError.current = msg;
+      setError(msg);
+    };
+    if (scope === 'all' && ev.recurring && allDay !== ev.all_day) {
+      fail('Change all-day for a repeating event in the event form.');
+      return;
+    }
+    // Ends here are exclusive. FullCalendar leaves end null for a default-length event.
     const newStart = arg.event.start!;
-    const newEnd = exclEnd(newStart, arg.event.end);
+    const newEnd = arg.event.end ?? (allDay ? addDays(newStart, 1) : new Date(newStart.getTime() + HOUR));
     const base = formFromEvent(ev, scope);
     let start = newStart;
     let end = newEnd;
     if (scope === 'all' && allDay === ev.all_day) {
-      // Shift the series by the drag delta; all-day deltas are whole days (DST-safe).
-      const shift = (d: Date, delta: number) => (allDay ? addDays(d, Math.round(delta / DAY)) : new Date(d.getTime() + delta));
-      start = shift(parseLocal(base.start), newStart.getTime() - oldStart.getTime());
-      end = shift(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), newEnd.getTime() - oldEnd.getTime());
+      // Apply FullCalendar's calendar deltas to the series' wall-clock times (DST-safe).
+      const [ds, de] = 'delta' in arg ? [arg.delta, arg.delta] : [arg.startDelta, arg.endDelta];
+      start = shiftBy(parseLocal(base.start), ds);
+      end = shiftBy(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), de);
     }
     const form = {
       ...base,
@@ -142,17 +154,17 @@ export function CalendarPage() {
     };
     const body = bodyFromForm(form, zone, ev.recurring ? scope : 'all', ev.recurrence_id);
     if (typeof body === 'string') {
-      arg.revert();
-      setError(body);
+      fail(body);
       return;
     }
     try {
       await updateEvent(ev, body);
-      setError(null);
+      const mine = dragError.current;
+      dragError.current = null;
+      if (mine) setError((cur) => (cur === mine ? null : cur));
       refetch();
     } catch (e) {
-      arg.revert();
-      setError(e instanceof ApiError && e.status === 412 ? 'This event changed elsewhere; the calendar has been reloaded.' : (e as Error).message || 'Could not move the event');
+      fail(e instanceof ApiError && e.status === 412 ? 'This event changed elsewhere; the calendar has been reloaded.' : (e as Error).message || 'Could not move the event');
       refetch();
     }
   }
