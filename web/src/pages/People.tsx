@@ -13,6 +13,8 @@ interface Person {
   mfa: boolean;
   must_change_password: boolean;
   last_login_at: string | null;
+  bound_to?: string;
+  needs_reattach: boolean;
 }
 
 interface Handover {
@@ -20,7 +22,7 @@ interface Handover {
   password: string;
 }
 
-type Action = "reset-password" | "role" | "disable" | "enable";
+type Action = "reset-password" | "role" | "disable" | "enable" | "reattach";
 
 async function refusal(res: Response | null, fallback: string): Promise<string> {
   const f = await failure(res);
@@ -29,6 +31,7 @@ async function refusal(res: Response | null, fallback: string): Promise<string> 
 
 export default function People({ me }: { me: string }) {
   const [people, setPeople] = useState<Person[]>([]);
+  const [binding, setBinding] = useState("");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -41,7 +44,9 @@ export default function People({ me }: { me: string }) {
       setError("Could not load people. Reload the page to try again.");
       return;
     }
-    setPeople((await res.json()).users);
+    const body = await res.json();
+    setPeople(body.users);
+    setBinding(body.signin_binding ?? "");
   }, []);
 
   useEffect(() => {
@@ -88,11 +93,24 @@ export default function People({ me }: { me: string }) {
     }
   }
 
+  function reattach(p: Person) {
+    const from = p.bound_to || "no recorded sign-in provider";
+    if (
+      window.confirm(
+        `Reattach ${p.username} to the current sign-in?\n\nNow bound to: ${from}\nWill be bound to: ${binding}\n\n` +
+          `Whoever this provider signs in with ${p.username}'s identity gets their calendars. Be sure it is the same person. ` +
+          `They are enabled and signed out everywhere; their next sign-in decides their role.`,
+      )
+    ) {
+      void act(p, "reattach");
+    }
+  }
+
   return (
     <section className="page">
       <h1>People</h1>
       <p>
-        Add people who sign in with a password here. People from your identity provider are read-only; change them there.
+        Add people who sign in with a password here. People from your identity provider are read-only; change them there. After a sign-in provider change, you can reattach one to the current provider.
         Administrators manage this instance and never see calendars.
       </p>
       <form
@@ -139,6 +157,11 @@ export default function People({ me }: { me: string }) {
               </td>
               <td>{p.last_login_at ? new Date(p.last_login_at).toLocaleString() : "Never"}</td>
               <td>
+                {p.source !== "local" && p.needs_reattach && (
+                  <button type="button" aria-label={`Reattach ${p.username} to current sign-in`} onClick={() => reattach(p)}>
+                    Reattach to current sign-in
+                  </button>
+                )}
                 {p.source === "local" && (
                   <>
                     <button type="button" aria-label={`Edit ${p.username}`} onClick={() => setEditing(p)}>
