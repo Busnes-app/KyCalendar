@@ -89,6 +89,21 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		// The admin grant comes from the `roles` claim at login and SCIM `roles`, never from
 		// this webhook, whose legacy `role` is KyIdentity's global role. The webhook cannot see
 		// app roles, so an admin re-proves the role at the next sign-in: their sessions end here.
+		// SCIM owns a SCIM-provisioned user: the webhook may take access away, never restore it
+		// or rewrite the profile.
+		if existing != nil && existing.SSOProvider == "scim" {
+			deactivate := status != "active" && existing.Status == "active"
+			if deactivate || existing.Role == "admin" {
+				if err := k.revoke(ctx, existing.ID); err != nil {
+					return err
+				}
+			}
+			if !deactivate {
+				return nil
+			}
+			existing.Status = "inactive"
+			return k.store.Users().UpdateUser(ctx, existing)
+		}
 		if existing != nil {
 			if existing.Status != status || existing.Role == "admin" {
 				if err := k.revoke(ctx, existing.ID); err != nil {
@@ -135,6 +150,15 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		}
 		if err != nil {
 			return err
+		}
+		// Deleting a user deletes their personal calendars; for a SCIM-owned user that is
+		// SCIM's decision, so the webhook only takes their access away.
+		if existing.SSOProvider == "scim" {
+			if err := k.revoke(ctx, existing.ID); err != nil {
+				return err
+			}
+			existing.Status = "inactive"
+			return k.store.Users().UpdateUser(ctx, existing)
 		}
 		return k.store.Users().DeleteUser(ctx, existing.ID)
 	}

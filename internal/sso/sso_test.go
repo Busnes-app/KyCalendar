@@ -191,7 +191,7 @@ func webhook(t *testing.T, client *sso.KySignOnClient, secret string, fields map
 }
 
 // KyIdentity's SCIM externalId is its user ID, the webhook's id: a SCIM-provisioned user is
-// the same user, so the webhook updates and deactivates it instead of colliding or ignoring it.
+// the same user, so the webhook reaches it (deactivating it) instead of colliding or ignoring it.
 func TestKySignOnWebhookReachesSCIMUsers(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(ctx, testdb.Config(t))
@@ -207,8 +207,8 @@ func TestKySignOnWebhookReachesSCIMUsers(t *testing.T) {
 	if err := webhook(t, client, secret, map[string]any{"event": "user.updated", "id": "ext-s", "username": "sam", "display_name": "Sam S", "status": "active"}); err != nil {
 		t.Fatalf("update of a SCIM user: %v", err)
 	}
-	if u, _ := st.Users().GetUserByID(ctx, "usr_s"); u.DisplayName != "Sam S" {
-		t.Fatalf("SCIM user not updated: %+v", u)
+	if u, _ := st.Users().GetUserByID(ctx, "usr_s"); u.DisplayName != "" {
+		t.Fatalf("webhook rewrote a SCIM-owned profile: %+v", u)
 	}
 	if n, _ := st.Users().CountUsers(ctx); n != 1 {
 		t.Fatalf("webhook created a second user: %d users", n)
@@ -268,5 +268,50 @@ func TestKySignOnWebhookRefusesEmptyID(t *testing.T) {
 	}
 	if _, err := st.Users().GetUserByID(ctx, "usr_n"); err != nil {
 		t.Fatalf("empty id reached a SCIM user without a subject: %v", err)
+	}
+}
+
+// SCIM owns a SCIM-provisioned user: the webhook may take access away, never give it back.
+func TestKySignOnWebhookCannotRestoreSCIMUsers(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_o", Username: "olga", DisplayName: "Olga", Role: "user", Status: "inactive", SSOProvider: "scim", SSOSubject: "ext-o"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := webhook(t, client, secret, map[string]any{"event": "user.updated", "id": "ext-o", "username": "root", "display_name": "Root", "status": "active"}); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := st.Users().GetUserByID(ctx, "usr_o")
+	if u.Status != "inactive" || u.Username != "olga" || u.DisplayName != "Olga" {
+		t.Fatalf("webhook overrode a SCIM-owned user: %+v", u)
+	}
+}
+
+// Deleting a user deletes their personal calendars; for a SCIM-owned user that is SCIM's call.
+// The webhook's delete only deactivates them.
+func TestKySignOnWebhookDeleteOnlyDeactivatesSCIMUsers(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	secret := "webhook-secret-999"
+	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_d", Username: "dora", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "ext-d"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := webhook(t, client, secret, map[string]any{"event": "user.deleted", "id": "ext-d"}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := st.Users().GetUserByID(ctx, "usr_d")
+	if err != nil || u.Status != "inactive" {
+		t.Fatalf("want the SCIM user kept and inactive: %+v %v", u, err)
 	}
 }
