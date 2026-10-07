@@ -193,6 +193,7 @@ func apiRows(w *world) map[string]apiRow {
 		"GET /api/admin/users":                           {method: "GET", path: "/api/admin/users?q=owner", want: adminOnly},
 		"POST /api/admin/users":                          {method: "POST", path: "/api/admin/users", body: `{"username":"matrix-new","role":"user"}`, want: adminOnly},
 		"POST /api/admin/users/{id}/reset-password":      {method: "POST", path: "/api/admin/users/usr_victim/reset-password", want: adminOnly},
+		"PATCH /api/admin/users/{id}":                    {method: "PATCH", path: "/api/admin/users/usr_victim", body: `{"display_name":"Victim"}`, want: adminOnly},
 		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
 		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},

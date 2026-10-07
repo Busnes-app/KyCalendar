@@ -287,6 +287,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
 	s.handle("POST /api/admin/users", s.tracked(s.requireAdmin(s.handleCreateUser)))
 	s.handle("POST /api/admin/users/{id}/reset-password", s.tracked(s.requireAdmin(s.handleResetUserPassword)))
+	s.handle("PATCH /api/admin/users/{id}", s.requireAdmin(s.handleUpdateUser))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))

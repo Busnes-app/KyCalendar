@@ -127,11 +127,22 @@ func TestDAVAuthWrongSecretCountsPerUser(t *testing.T) {
 	}
 }
 
-// Usernames differing only in case resolve through the token's owner, not a LOWER() lookup.
+// Legacy usernames differing only in case resolve through the token's owner, not a LOWER()
+// lookup. CreateUser now refuses a case twin, so the twin is made through UpdateUser.
 func TestDAVAuthCaseVariantUsernames(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
-	lower := davUser(t, st, "alice", "user")
+	ctx := context.Background()
 	upper := davUser(t, st, "Alice", "user")
+	u, _ := st.Users().GetUserByID(ctx, "usr_Alice")
+	u.Username = "alice-tmp"
+	if err := st.Users().UpdateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	lower := davUser(t, st, "alice", "user")
+	u.Username = "Alice"
+	if err := st.Users().UpdateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct{ name, token, home string }{
 		{"alice", lower, "/dav/usr_alice/"},
 		{"Alice", upper, "/dav/usr_Alice/"},

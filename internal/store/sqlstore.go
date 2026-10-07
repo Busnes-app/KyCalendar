@@ -188,18 +188,38 @@ INSERT INTO users (
 		lastLogin = sql.NullTime{Time: *user.LastLoginAt, Valid: true}
 	}
 
-	_, err := u.store.db.ExecContext(ctx, q,
+	tx, err := u.store.lockedTx(ctx, "user-names")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := u.refuseTwin(ctx, tx, user.ID, user.Username); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, q,
 		user.ID, user.Username, user.Email, user.DisplayName, user.PasswordHash,
 		user.Role, user.Status, user.SSOProvider, user.SSOSubject,
 		user.TOTPSecretEnc, user.TOTPEnabled, user.RecoveryCodesHash,
 		user.PushDeviceID, user.MustChangePassword,
 		user.CreatedAt, user.UpdatedAt, lastLogin,
-	)
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
+	); err != nil {
+		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
 		return err
+	}
+	return tx.Commit()
+}
+
+// refuseTwin is ErrAlreadyExists when an account other than id holds name in any case. The
+// unique index is case-sensitive; this is what keeps "ann" and "ANN" from both existing.
+func (u *userStore) refuseTwin(ctx context.Context, tx *sql.Tx, id, name string) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE LOWER(username) = LOWER(?) AND id <> ?"), name, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrAlreadyExists
 	}
 	return nil
 }
@@ -497,8 +517,10 @@ func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) e
 	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
+// RenameUser checks for a case twin only when the name changes ignoring case, so a legacy twin
+// can still change the case of its own name.
 func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName string) error {
-	tx, err := u.store.db.BeginTx(ctx, nil)
+	tx, err := u.store.lockedTx(ctx, "user-names")
 	if err != nil {
 		return err
 	}
@@ -510,9 +532,14 @@ func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName strin
 	} else if err != nil {
 		return err
 	}
+	if strings.ToLower(from) != strings.ToLower(newName) {
+		if err := u.refuseTwin(ctx, tx, userID, newName); err != nil {
+			return err
+		}
+	}
 	now := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, updated_at = ? WHERE id = ?`), newName, now, userID); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
+		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
 		return err

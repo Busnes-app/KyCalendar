@@ -93,19 +93,12 @@ func (s *Server) writeUsernameTaken(w http.ResponseWriter) {
 	s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Another account already uses this username", "code": "name_taken"})
 }
 
-// usernameFree is false, with 409 name_taken written, when another account holds name in any
-// case: a case twin would split one person's sign-in across two rows.
-func (s *Server) usernameFree(w http.ResponseWriter, r *http.Request, name, self string) bool {
-	other, err := s.store.Users().GetUserByUsername(r.Context(), name)
-	switch {
-	case errors.Is(err, store.ErrNotFound) || (err == nil && other.ID == self):
-		return true
-	case err != nil:
-		s.writeError(w, http.StatusInternalServerError, "Failed to check the username")
-	default:
-		s.writeUsernameTaken(w)
+// validEmail checks an optional email: syntax, and at most 255 bytes.
+func validEmail(email string) error {
+	if len(email) > 255 {
+		return errors.New("Email must be at most 255 characters")
 	}
-	return false
+	return auth.ValidateEmail(email)
 }
 
 // writeOnce sends a response carrying a one-time password; nothing may cache it.
@@ -140,7 +133,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := auth.ValidateEmail(body.Email); err != nil {
+	if err := validEmail(body.Email); err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -150,9 +143,6 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
-	if !s.usernameFree(w, r, body.Username, "") {
-		return
-	}
 	plain, hash, err := newTemporaryPassword()
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to generate a password")
@@ -187,10 +177,90 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusInternalServerError, "Failed to generate a password")
 		return
 	}
-	if err := s.store.Users().ResetPassword(r.Context(), u.ID, hash); err != nil {
+	if err := s.store.Users().ResetPassword(r.Context(), u.ID, hash); errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, http.StatusNotFound, "No such person")
+		return
+	} else if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to reset the password")
 		return
 	}
 	s.auditAction(r.Context(), r, "admin.user_reset_password", u.ID, "")
 	s.writeOnce(w, http.StatusOK, map[string]string{"temporary_password": plain})
+}
+
+// handleUpdateUser changes a local person's username, display name or email. Every field is
+// checked before any is written; the store refuses a case twin of another account.
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Username    *string `json:"username"`
+		DisplayName *string `json:"display_name"`
+		Email       *string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+	u := s.adminUser(w, r, true)
+	if u == nil {
+		return
+	}
+	username, display, email := u.Username, u.DisplayName, u.Email
+	if body.Username != nil {
+		username = strings.TrimSpace(*body.Username)
+		if err := auth.ValidateUsername(username); err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if body.DisplayName != nil {
+		var ok bool
+		if display, ok = cleanName(*body.DisplayName); !ok {
+			s.writeError(w, http.StatusBadRequest, "Display name must be 1-255 characters with no control characters")
+			return
+		}
+	}
+	if body.Email != nil {
+		email = strings.TrimSpace(*body.Email)
+		if err := validEmail(email); err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	var changed []string
+	if username != u.Username {
+		err := s.store.Users().RenameUser(r.Context(), sessionUser(r.Context()).ID, u.ID, username)
+		switch {
+		case errors.Is(err, store.ErrAlreadyExists):
+			s.writeUsernameTaken(w)
+			return
+		case errors.Is(err, store.ErrNotFound):
+			s.writeError(w, http.StatusNotFound, "No such person")
+			return
+		case err != nil:
+			s.writeError(w, http.StatusInternalServerError, "Failed to rename the person")
+			return
+		}
+		changed = append(changed, "username")
+	}
+	if display != u.DisplayName || email != u.Email {
+		if err := s.store.Users().UpdateProfile(r.Context(), u.ID, display, email); err != nil {
+			s.writeError(w, http.StatusInternalServerError, "Failed to update the person")
+			return
+		}
+		changed = append(changed, "profile")
+	}
+	if len(changed) > 0 {
+		s.auditAction(r.Context(), r, "admin.user_update", u.ID, "fields="+strings.Join(changed, ","))
+	}
+	s.writeUser(w, r, u.ID)
+}
+
+// writeUser answers 200 with the {id} person as stored now.
+func (s *Server) writeUser(w http.ResponseWriter, r *http.Request, id string) {
+	u, err := s.store.Users().GetUserByID(r.Context(), id)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to load the person")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, userViewOf(u))
 }
