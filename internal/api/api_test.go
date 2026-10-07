@@ -413,7 +413,7 @@ func TestExportCapsuleRejectsAnOversizedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("CREATE TABLE big(b BLOB); INSERT INTO big VALUES (zeroblob(%d))", recoveryclient.MaxCapsuleFileBytes+1)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("CREATE TABLE calendars(id); CREATE TABLE calendar_objects(id); CREATE TABLE big(b BLOB); INSERT INTO big VALUES (zeroblob(%d))", recoveryclient.MaxCapsuleFileBytes+1)); err != nil {
 		t.Fatal(err)
 	}
 	_ = db.Close()

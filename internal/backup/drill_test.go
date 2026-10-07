@@ -2,6 +2,8 @@ package backup_test
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/capsule"
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/kycalendar/internal/backup"
+	_ "modernc.org/sqlite"
 )
 
 func TestChecksFailsOnAScratchDirMissingTheDatabase(t *testing.T) {
@@ -295,5 +298,134 @@ func TestChecksSQLiteFilenameIsNotADSN(t *testing.T) {
 	}
 	if !result.Passed {
 		t.Fatalf("escaped filename failed: %+v", result)
+	}
+}
+
+const validEvent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VEVENT\r\nUID:%s\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260102T100000Z\r\nDTEND:20260102T110000Z\r\nSUMMARY:secret-summary\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+
+// seedCalendars inserts the given calendar IDs and, per calendar, the named objects.
+func seedCalendars(t *testing.T, dsn string, objects map[string]map[string]string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for id, objs := range objects {
+		if _, err := db.Exec(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, created_at) VALUES (?, 'user', ?, ?, 'n', '2026-01-01T00:00:00Z')`, id, id, id); err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range objs {
+			if _, err := db.Exec(`INSERT INTO calendar_objects (calendar_id, name, uid, etag, data, first_start, modified_at) VALUES (?, ?, ?, 'e', ?, 0, '2026-01-01T00:00:00Z')`, id, name, name, []byte(data)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func calendarCheckResults(t *testing.T, objects map[string]map[string]string, mutate func(map[string]any)) map[string]recoveryclient.Check {
+	t.Helper()
+	t.Setenv("KY_PORT", "8080")
+	t.Setenv("KY_DB_DRIVER", "sqlite")
+	cfg, _ := payloadConfig(t)
+	seedCalendars(t, cfg.Database.DSN, objects)
+	payload, err := backup.Collect(context.Background(), cfg, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := t.TempDir()
+	for _, f := range payload.Files {
+		full := filepath.Join(scratch, f.Path)
+		if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, f.Data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	payload.VerificationRecipe = maps.Clone(payload.VerificationRecipe)
+	if mutate != nil {
+		mutate(payload.VerificationRecipe)
+	}
+	out := map[string]recoveryclient.Check{}
+	for _, c := range backup.Checks(scratch, manifestFor(payload)) {
+		out[c.Name] = c
+	}
+	return out
+}
+
+func twoCalendars() map[string]map[string]string {
+	return map[string]map[string]string{
+		"cal-a": {"a1.ics": fmt.Sprintf(validEvent, "a1"), "a2.ics": fmt.Sprintf(validEvent, "a2")},
+		"cal-b": {"b1.ics": fmt.Sprintf(validEvent, "b1")},
+	}
+}
+
+func TestDrillCalendarCountsAndObjectsPass(t *testing.T) {
+	got := calendarCheckResults(t, twoCalendars(), nil)
+	for _, name := range []string{"Calendar Counts", "Calendar Objects"} {
+		if !got[name].Passed {
+			t.Errorf("%s: %+v", name, got[name])
+		}
+	}
+	if got["Calendar Objects"].Message != "Parsed 3 of 3 objects" {
+		t.Errorf("message %q", got["Calendar Objects"].Message)
+	}
+}
+
+func TestDrillCalendarCountMismatchNamesBothNumbers(t *testing.T) {
+	got := calendarCheckResults(t, twoCalendars(), func(r map[string]any) { r["object_count"] = int64(4) })
+	c := got["Calendar Counts"]
+	if c.Passed || !strings.Contains(c.Message, "3") || !strings.Contains(c.Message, "4") {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestDrillCalendarRecipeCountsAreStrict(t *testing.T) {
+	for _, key := range []string{"calendar_count", "object_count"} {
+		for name, v := range map[string]any{"missing": nil, "negative": int64(-1), "fractional": 1.5, "string": "2"} {
+			t.Run(key+" "+name, func(t *testing.T) {
+				got := calendarCheckResults(t, nil, func(r map[string]any) {
+					if v == nil {
+						delete(r, key)
+					} else {
+						r[key] = v
+					}
+				})
+				c := got["Verification Recipe"]
+				if c.Passed || c.Message != key+" must be a non-negative integer" {
+					t.Fatalf("%+v", c)
+				}
+			})
+		}
+	}
+}
+
+func TestDrillCalendarAcceptsJSONNumbers(t *testing.T) {
+	got := calendarCheckResults(t, twoCalendars(), func(r map[string]any) {
+		r["calendar_count"] = float64(2)
+		r["object_count"] = float64(3)
+	})
+	if !got["Calendar Counts"].Passed {
+		t.Fatalf("%+v", got["Calendar Counts"])
+	}
+}
+
+func TestDrillBrokenObjectNamesIDsNotData(t *testing.T) {
+	objs := twoCalendars()
+	objs["cal-b"]["b1.ics"] = "BEGIN:VCALENDAR\r\nBROKEN secret-body"
+	c := calendarCheckResults(t, objs, nil)["Calendar Objects"]
+	if c.Passed || c.Message != "Cannot parse cal-b/b1.ics" {
+		t.Fatalf("%+v", c)
+	}
+	if strings.Contains(c.Message, "secret") || strings.Contains(c.Message, "BROKEN") {
+		t.Fatal("message carries object data")
+	}
+}
+
+func TestDrillEmptyCalendarDatabasePasses(t *testing.T) {
+	got := calendarCheckResults(t, nil, nil)
+	if !got["Calendar Counts"].Passed || !got["Calendar Objects"].Passed || got["Calendar Objects"].Message != "No objects to parse" {
+		t.Fatalf("%+v", got)
 	}
 }

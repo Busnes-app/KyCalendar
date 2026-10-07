@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -171,6 +172,11 @@ func TestCapsuleCarriesTheDatabaseTheServerOpens(t *testing.T) {
 	if want != backup.DatabaseMember {
 		t.Fatalf("DSN file %q != member %q", want, backup.DatabaseMember)
 	}
+	st, err := store.Open(context.Background(), cfg.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
 	p, err := backup.Collect(context.Background(), cfg, "test")
 	if err != nil {
 		t.Fatal(err)
@@ -180,5 +186,19 @@ func TestCapsuleCarriesTheDatabaseTheServerOpens(t *testing.T) {
 	}
 	if findFile(p.Files, backup.DatabaseMember) == nil {
 		t.Fatalf("payload lacks %s", backup.DatabaseMember)
+	}
+}
+
+func TestCollectRecordsCalendarCounts(t *testing.T) {
+	cfg, _ := payloadConfig(t)
+	seedCalendars(t, cfg.Database.DSN, map[string]map[string]string{
+		"cal-a": {"a1.ics": fmt.Sprintf(validEvent, "a1"), "a2.ics": fmt.Sprintf(validEvent, "a2")},
+	})
+	p, err := backup.Collect(context.Background(), cfg, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.VerificationRecipe["calendar_count"] != int64(1) || p.VerificationRecipe["object_count"] != int64(2) {
+		t.Fatalf("recipe %v", p.VerificationRecipe)
 	}
 }

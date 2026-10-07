@@ -30,6 +30,7 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
   the database, settings and encryption key; SQLite integrity and required environment
   checks cannot be disabled. File checks accept only clean relative manifest members;
   SQLite opens read-only and missing/empty databases fail.
+- `Collect` counts `calendars` and `calendar_objects` in the snapshot file (not the live database) and records `calendar_count` and `object_count` in the recipe. `Checks` requires both as non-negative integers, then `Calendar Counts` compares them with the restored database and `Calendar Objects` decodes and `calendar.Inspect`s up to 50 objects; messages name calendar ID/object name, never data.
 - HTTP and CLI call `RunDrill`, which holds an OS advisory lock on `<data dir>/drill.lock`
   across scratch preparation and the library drill. Contention returns `ErrDrillBusy`;
   closing the descriptor or process exit releases ownership. Keep the lock file in place.

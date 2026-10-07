@@ -44,7 +44,7 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	if strings.ToLower(cfg.Database.Driver) != "sqlite" {
 		return recoveryclient.Payload{}, fmt.Errorf("%w: %s", ErrNoDatabaseSnapshot, cfg.Database.Driver)
 	}
-	dbBytes, err := snapshotSQLite(ctx, cfg.Database.DSN, cfg.Database.DataDir)
+	dbBytes, counts, err := snapshotSQLite(ctx, cfg.Database.DSN, cfg.Database.DataDir)
 	if err != nil {
 		return recoveryclient.Payload{}, err
 	}
@@ -82,6 +82,8 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 		VerificationRecipe: map[string]any{
 			"check_sqlite_integrity": true,
 			"sqlite_paths":           sqlitePaths,
+			"calendar_count":         counts.Calendars,
+			"object_count":           counts.Objects,
 			"required_files":         requiredFiles(files),
 			"expected_env":           []string{"KY_PORT", "KY_DB_DRIVER"},
 			"expected_ports":         []int{cfg.Server.Port},
@@ -95,22 +97,45 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 // under a concurrent checkpoint; the lib's SQLiteSnapshot runs VACUUM INTO through a live
 // connection. The scaffold opens its own handle from the DSN because store.Store exposes no
 // *sql.DB.
-func snapshotSQLite(ctx context.Context, dsn, dataDir string) ([]byte, error) {
+func snapshotSQLite(ctx context.Context, dsn, dataDir string) ([]byte, calendarCounts, error) {
+	var counts calendarCounts
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, err
+		return nil, counts, err
 	}
 	defer db.Close()
 	dir, err := os.MkdirTemp(dataDir, "snapshot-*")
 	if err != nil {
-		return nil, err
+		return nil, counts, err
 	}
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "kycalendar.db")
 	if err := recoveryclient.SQLiteSnapshot(ctx, db, path); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrNoDatabaseSnapshot, err)
+		return nil, counts, fmt.Errorf("%w: %v", ErrNoDatabaseSnapshot, err)
 	}
-	return os.ReadFile(path)
+	// Counted from the snapshot, not the live database, so a write after VACUUM INTO
+	// cannot make the drill fail against its own capsule.
+	snap, err := openReadOnly(path)
+	if err != nil {
+		return nil, counts, err
+	}
+	defer snap.Close()
+	if counts, err = countCalendars(ctx, snap); err != nil {
+		return nil, counts, fmt.Errorf("backup: counting calendars: %w", err)
+	}
+	data, err := os.ReadFile(path)
+	return data, counts, err
+}
+
+type calendarCounts struct{ Calendars, Objects int64 }
+
+func countCalendars(ctx context.Context, db *sql.DB) (calendarCounts, error) {
+	var c calendarCounts
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendars`).Scan(&c.Calendars); err != nil {
+		return c, err
+	}
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_objects`).Scan(&c.Objects)
+	return c, err
 }
 
 // Members names what a capsule carries, for the screen; it is what Collect would seal now.
