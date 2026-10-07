@@ -8,9 +8,10 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 
 ## Local Contracts
 - Paths: `/dav/<user-id>/calendars/<slug>/<name>`; anything outside the user's home is 403. Object names are opaque keys (clients use UIDs, including Outlook's `{...}` and base64): 1-255 bytes of valid UTF-8, no `/`, no control characters, not `.` or `..` (403 otherwise).
-- The home lists the user's personal calendars (a default is created on first listing) and every group calendar a grant lets them read, at `_<calendar-id>/`. Roles come from `access.Resolve` over `Backend.Grants`, which `handleDAV` loads from `UserGrants` on every request, so membership changes apply to the next request.
+- The home lists the user's personal calendars and every group calendar a grant lets them read, at `_<calendar-id>/`. Roles come from `access.Resolve` over `Backend.Grants`, which `handleDAV` loads from `UserGrants` on every request, so membership changes apply to the next request.
 - A group calendar the user cannot read answers 404 on every method. Reading needs reader, `PUT` and `DELETE` of objects need editor, and `PROPPATCH` needs manager (owner on personal calendars); otherwise 403. `ReadOnly` (no `write` in `current-user-privilege-set`) is set below editor. `MKCALENDAR` at a `_` segment is 403. Deleting any calendar over CalDAV stays 403.
-- A group calendar is its own quota owner: the per-user object, byte and calendar limits apply per group calendar, and the instance byte cap still applies.
+- A `default` personal calendar is created on first listing or on first access to its path (`ensureDefault`), only when the user owns no calendar.
+- A group calendar is its own quota owner: only the per-owner object and byte limits apply to it, plus the instance byte cap. No calendar-count limit applies; admins create group calendars with no cap.
 - Bytes from PUT are stored as received; GET, calendar-data and sync serve `Raw` and never decode. Only objects that go through `caldav.Match` are decoded.
 - Per-user caps answer 507 (`store.ErrQuotaExceeded`): objects on create, calendars on MKCALENDAR and default creation, stored bytes on every PUT (total minus the replaced object plus the new body). The store enforces them atomically; the backend only passes the limits.
 - Calendar properties are bounded at this boundary (`calendar.CheckProps`): `calendar-color` empty or `#RRGGBB`/`#RRGGBBAA`, `displayname` at most 255 bytes, `calendar-description` at most 4096 bytes. MKCALENDAR over a bound is 400; PROPPATCH is 403 for the whole request, nothing is stored.
@@ -19,7 +20,7 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 - DELETE `If-Match` reaches the backend through `WithIfMatch`. Any `If-Match` (including `*`) on a missing object is 412 for PUT and DELETE; `*` is passed to the store, which checks it inside the write transaction.
 
 ## Verification
-- `go test ./internal/api/ -run 'CalDAV|DAV'`
+- `go test ./internal/api/ -run 'CalDAV|DAV|GroupCalendar|MembershipRemoval|GroupSegment'`
 
 ## Child DOX Index
 None.
