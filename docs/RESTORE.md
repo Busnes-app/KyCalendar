@@ -29,8 +29,8 @@ Everything a fresh server needs to be the old one:
 
 | Path in the capsule | What it is |
 |---|---|
-| `data/kycalendar.db` | The whole database: users, groups, calendars and events, app-password hashes, sessions, MFA state, audit log, settings, the sealed KyRecovery token |
-| `data/encryption.key` | 32 bytes. Every TOTP secret and the KyRecovery pairing token are encrypted under it |
+| `data/kycalendar.db` | The whole database: users, groups, calendars and events, app-password hashes, sessions, MFA state, audit log, settings (sign-in settings included), the sealed KyRecovery token |
+| `data/encryption.key` | 32 bytes. Every TOTP secret, the KyRecovery pairing token and the sign-in client secret are encrypted under it, so a restore brings sign-in settings back (not drill-checked) |
 | `data/recovery.pub` | The suite recovery public key, so the restored server comes back pinned (present when the backup had a key) |
 | `config/settings.json` | App name, URL, port, database driver. For your reference when re-deploying; nothing reads it |
 
