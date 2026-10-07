@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
@@ -17,6 +18,8 @@ import (
 var (
 	errNotProvisioned  = errors.New("user account not provisioned")
 	errAccountInactive = errors.New("account is not active")
+	// errUsernameTaken: a different account already holds the IdP username. Never linked by name.
+	errUsernameTaken = errors.New("username already used by another account")
 )
 
 // upsertSSOUser maps a verified login onto a local user. The admin grant follows the token's
@@ -45,7 +48,12 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 			SSOProvider: claims.Provider,
 			SSOSubject:  claims.Subject,
 		}
-		return user, s.store.Users().CreateUser(ctx, user)
+		if err := s.store.Users().CreateUser(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
+			return nil, errUsernameTaken
+		} else if err != nil {
+			return nil, err
+		}
+		return user, nil
 	}
 	if err != nil {
 		return nil, err
@@ -139,7 +147,12 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	case errors.Is(err, errAccountInactive):
 		s.writeError(w, http.StatusForbidden, "Account is not active")
 		return
+	case errors.Is(err, errUsernameTaken):
+		log.Printf("sso: sign-in for subject %s refused: username %q belongs to another account", claims.Subject, claims.PreferredUsername)
+		s.writeError(w, http.StatusConflict, "Another KyCalendar account already uses this username; an administrator must rename it (kycalendar rename-user)")
+		return
 	case err != nil:
+		log.Printf("sso: provisioning subject %s failed: %v", claims.Subject, err)
 		s.writeError(w, http.StatusInternalServerError, "Failed to provision SSO user")
 		return
 	}

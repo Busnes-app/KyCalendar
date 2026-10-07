@@ -145,3 +145,21 @@ func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
 		t.Fatalf("role stored despite the failure: %q", got.Role)
 	}
 }
+
+// A local account owns its name: an IdP user with the same username is refused, never linked,
+// because linking by name would let whoever holds that IdP username take the local account.
+func TestUpsertSSOUserRefusesTakenUsername(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_local_admin", Username: "admin", Role: "admin", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	claims := &sso.IdentityClaims{Subject: "sub-admin", PreferredUsername: "admin", Provider: "kysignon", Roles: []string{access.AdminAppRole}}
+	if _, err := s.upsertSSOUser(ctx, claims); !errors.Is(err, errUsernameTaken) {
+		t.Fatalf("want errUsernameTaken, got %v", err)
+	}
+	local, err := s.store.Users().GetUserByUsername(ctx, "admin")
+	if err != nil || local.ID != "usr_local_admin" || local.SSOProvider != "local" {
+		t.Fatalf("local account changed: %+v %v", local, err)
+	}
+}

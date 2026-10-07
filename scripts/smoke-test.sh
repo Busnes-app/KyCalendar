@@ -79,6 +79,12 @@ check "init-admin rejects empty stdin" \
   "$(KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" init-admin </dev/null >/dev/null 2>&1 && echo 0 || echo 1)" "1"
 check "init-admin creates admin" \
   "$(printf '%s\n' "$ADMIN_PASS" | KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" init-admin >/dev/null 2>&1 && echo 0 || echo 1)" "0"
+check "rename-user renames a local account" \
+  "$(KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" rename-user -username admin -to Cal-Admin >/dev/null 2>&1 && echo 0 || echo 1)" "0"
+check "rename-user refuses the old name afterwards" \
+  "$(KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" rename-user -username admin -to other-admin >/dev/null 2>&1 && echo 0 || echo 1)" "1"
+check "rename-user refuses a case twin of an existing name" \
+  "$(printf '%s\n' "$ADMIN_PASS" | KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" init-admin -username second >/dev/null 2>&1; KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" rename-user -username second -to cal-admin >/dev/null 2>&1 && echo 0 || echo 1)" "1"
 
 echo "==> HTTP with default PoW captcha"
 start_server pow

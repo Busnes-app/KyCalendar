@@ -469,6 +469,33 @@ func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) e
 	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
+func (u *userStore) RenameUser(ctx context.Context, userID, newName string) error {
+	tx, err := u.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var from string
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT username FROM users WHERE id = ? AND sso_provider = 'local'`), userID).Scan(&from)
+	if errorsIs(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, updated_at = ? WHERE id = ?`), newName, now, userID); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
+			return ErrAlreadyExists
+		}
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+		"system", "user.renamed", userID, "from="+from+" to="+newName, "", now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one transaction.
 func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash string) error {
 	tx, err := u.store.db.BeginTx(ctx, nil)
