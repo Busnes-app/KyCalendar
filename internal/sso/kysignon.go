@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -52,6 +54,16 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 	}
 	if payload.ID == "" {
 		return errors.New("webhook user id is missing")
+	}
+	// Only accounts bound to KyIdentity are its directory's: under any other binding a stale
+	// secret would create or re-activate rows another provider's login could adopt.
+	bound, err := k.store.Settings().GetSetting(ctx, KeyBound)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	if kind, _, _ := strings.Cut(bound, " "); kind != KindKyIdentity {
+		log.Printf("[SSO] directory webhook %q ignored: sign-in is not bound to KyIdentity", payload.Event)
+		return nil
 	}
 
 	switch payload.Event {

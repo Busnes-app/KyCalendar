@@ -48,7 +48,7 @@ func TestOAuthAuthorizationURLUsesDiscoveryAndPKCE(t *testing.T) {
 }
 
 func TestKySignOnWebhookSync(t *testing.T) {
-	st, err := store.Open(context.Background(), testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatalf("failed to open store: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestSAMLServiceProvider(t *testing.T) {
 
 // The webhook's legacy role is the global KyIdentity role: it never grants admin.
 func TestKySignOnWebhookIgnoresGlobalRole(t *testing.T) {
-	st, err := store.Open(context.Background(), testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestKySignOnWebhookIgnoresGlobalRole(t *testing.T) {
 // role is re-proved at the next sign-in; an everyday user's session survives.
 func TestKySignOnWebhookUpdateRevokesAdminSessionsOnly(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func webhook(t *testing.T, client *sso.KySignOnClient, secret string, fields map
 // the same user, so the webhook reaches it (deactivating it) instead of colliding or ignoring it.
 func TestKySignOnWebhookReachesSCIMUsers(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestKySignOnWebhookReachesSCIMUsers(t *testing.T) {
 // Revocation comes before the write: a failed deactivation still signs the user out.
 func TestKySignOnWebhookRevokesBeforeStoring(t *testing.T) {
 	ctx := context.Background()
-	real, err := store.Open(ctx, testdb.Config(t))
+	real, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestKySignOnWebhookRevokesBeforeStoring(t *testing.T) {
 // never resolve to one of them.
 func TestKySignOnWebhookRefusesEmptyID(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestKySignOnWebhookRefusesEmptyID(t *testing.T) {
 // SCIM owns a SCIM-provisioned user: the webhook may take access away, never give it back.
 func TestKySignOnWebhookCannotRestoreSCIMUsers(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func TestKySignOnWebhookCannotRestoreSCIMUsers(t *testing.T) {
 // The webhook's delete only deactivates them.
 func TestKySignOnWebhookDeleteOnlyDeactivatesSCIMUsers(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, testdb.Config(t))
+	st, err := boundStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,5 +313,53 @@ func TestKySignOnWebhookDeleteOnlyDeactivatesSCIMUsers(t *testing.T) {
 	u, err := st.Users().GetUserByID(ctx, "usr_d")
 	if err != nil || u.Status != "inactive" {
 		t.Fatalf("want the SCIM user kept and inactive: %+v %v", u, err)
+	}
+}
+
+// boundStore is a test store whose accounts are bound to a KyIdentity provider, the only
+// binding the directory webhook writes under.
+func boundStore(t *testing.T) (store.Store, error) {
+	t.Helper()
+	st, err := store.Open(context.Background(), testdb.Config(t))
+	if err != nil {
+		return nil, err
+	}
+	return st, st.Settings().SetSetting(context.Background(), sso.KeyBound, sso.KindKyIdentity+" https://idp.example")
+}
+
+// A webhook secret left over from KyIdentity must not create or re-activate rows once sign-in
+// is bound elsewhere (or nowhere): another provider's login could adopt them.
+func TestKySignOnWebhookIgnoredUnlessBoundToKyIdentity(t *testing.T) {
+	ctx := context.Background()
+	secret := "webhook-secret-999"
+	for _, bound := range []string{"", sso.KindOIDC + " https://other.example"} {
+		st, err := store.Open(ctx, testdb.Config(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		if bound != "" {
+			if err := st.Settings().SetSetting(ctx, sso.KeyBound, bound); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "ext-off"}); err != nil {
+			t.Fatal(err)
+		}
+		client := sso.NewKySignOnClient(config.SSOConfig{KySignOnHMACSecret: secret}, st)
+		for _, fields := range []map[string]any{
+			{"event": "user.created", "id": "ext-new", "username": "newbie", "status": "active"},
+			{"event": "user.updated", "id": "ext-off", "username": "off", "status": "active"},
+		} {
+			if err := webhook(t, client, secret, fields); err != nil {
+				t.Fatalf("bound %q: %v, want the webhook ignored without error", bound, err)
+			}
+		}
+		if _, err := st.Users().GetUserBySSO(ctx, "kysignon", "ext-new"); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("bound %q: webhook created a user (%v)", bound, err)
+		}
+		if u, _ := st.Users().GetUserByID(ctx, "usr_off"); u.Status != "inactive" {
+			t.Errorf("bound %q: webhook re-activated a row", bound)
+		}
 	}
 }
