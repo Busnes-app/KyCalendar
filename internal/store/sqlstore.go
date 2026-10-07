@@ -73,7 +73,8 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"sessions", "mfa_challenges", "app_passwords"} {
+	// The same grants revokePasswordGrants clears, for every user.
+	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -91,7 +92,7 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", "sessions, MFA challenges, app passwords revoked; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -173,6 +173,7 @@ Failures you may see, and what they mean:
 | `capsule is for service "X", this instance is "kycalendar"` | The capsule belongs to another product, or `-service` names something else |
 | `shamir: fewer shares than the threshold requires` | Fewer than k valid lines were read. Check for a missed line or a truncated paste |
 | `restore target directory is not empty` | Use an empty directory. The restore never overwrites |
+| `restore target ... contains '?' or '#'` | The database path cannot carry those characters. Choose a target without them |
 | a decrypt or integrity error | Wrong shares (from a different ceremony), a share mistyped, or a damaged file. Re-download and retry with the custodians |
 
 ## Step 2: check what came out

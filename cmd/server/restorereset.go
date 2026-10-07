@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/backup"
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -18,9 +19,21 @@ import (
 // are still the backup's: the server must not start on it until restore-reset succeeds.
 var errResetFailed = errors.New("restored, but the reset failed")
 
+// checkRestorePath refuses a target the SQLite DSN cannot name: the driver cuts the path at
+// '?' or '#', so the reset would open (and create) a different, empty database.
+func checkRestorePath(dir string) error {
+	if strings.ContainsAny(dir, "?#") {
+		return fmt.Errorf("restore target %q contains '?' or '#'; choose a path without them", dir)
+	}
+	return nil
+}
+
 // resetRestored opens the restored database under dataDir and runs ResetAfterRestore. It is
 // idempotent, so an interrupted restore is finished by running it again.
 func resetRestored(ctx context.Context, dataDir string) error {
+	if err := checkRestorePath(dataDir); err != nil {
+		return err
+	}
 	path := filepath.Join(dataDir, filepath.Base(backup.DatabaseMember))
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("no restored database at %s: %w", path, err)

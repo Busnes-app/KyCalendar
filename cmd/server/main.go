@@ -427,6 +427,9 @@ func runExportCapsule(args []string) {
 // touched; the authenticated manifest printed for comparison with KyRecovery's record.
 // The restored database then loses every credential and sync epoch issued before the backup.
 func restore(capsulePath, targetDir, expectService string, shares []string, stdout io.Writer) error {
+	if err := checkRestorePath(targetDir); err != nil {
+		return err
+	}
 	if err := recoveryclient.Restore(capsulePath, targetDir, expectService, shares, stdout); err != nil {
 		return err
 	}

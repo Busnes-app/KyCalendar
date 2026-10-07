@@ -368,6 +368,9 @@ func TestResetAfterRestore(t *testing.T) {
 	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "h"); err != nil {
 		t.Fatal(err)
 	}
+	if err := st.Devices().CreatePairing(ctx, &store.DevicePairing{Secret: "pair", UserID: u.ID, Status: "pending", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
 	addAppPassword(t, st, u.ID)
 
 	before, err := st.Calendars().SyncEpoch(ctx)
@@ -389,6 +392,9 @@ func TestResetAfterRestore(t *testing.T) {
 	}
 	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("challenge survived", err)
+	}
+	if _, err := st.Devices().GetPairingBySecret(ctx, "pair"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("device pairing survived", err)
 	}
 	checkAppPasswordsRevoked(t, st, u.ID)
 	// A forced change proves nothing: whoever knows a leaked restored password can satisfy it.

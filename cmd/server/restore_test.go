@@ -149,3 +149,21 @@ func TestRestoreRefusesOneShare(t *testing.T) {
 		t.Fatal("one share of a 2-of-3 kit was accepted")
 	}
 }
+
+// The SQLite DSN ends the path at '?' or '#': the reset would open a new, empty file elsewhere.
+func TestRestoreRefusesAPathTheDSNCannotName(t *testing.T) {
+	path, shares := sealFixture(t, backup.ServiceName)
+	for _, name := range []string{"a?b", "a#b"} {
+		target := filepath.Join(t.TempDir(), name)
+		if err := restore(path, target, backup.ServiceName, shares, &bytes.Buffer{}); err == nil || errors.Is(err, errResetFailed) {
+			t.Fatalf("%s: got %v, want a refusal before extracting", name, err)
+		}
+		if _, err := os.Stat(target); !os.IsNotExist(err) {
+			t.Fatalf("%s: restore wrote the target before refusing", name)
+		}
+		dataDir := filepath.Join(t.TempDir(), name, "data")
+		if err := resetRestored(context.Background(), dataDir); err == nil || !strings.Contains(err.Error(), "'?' or '#'") {
+			t.Fatalf("%s: restore-reset got %v, want the path refusal", name, err)
+		}
+	}
+}
