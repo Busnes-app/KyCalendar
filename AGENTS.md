@@ -219,7 +219,7 @@ and retain their own identity, sealer label and collection adapters.
 
 - Web themes default to the Busnes.app cream/light and charcoal/dark palettes with orange accents, following the OS until a browser-local choice is saved. Preserve existing named themes and saved choices.
 
-- KyCalendar must be fully administrable standalone, without KyIdentity: admin screens for local people (create, reset, disable), local groups and membership (so group calendars work), and sign-in settings to connect KyIdentity or another OIDC provider without environment variables. Design pending (brainstorm 2026-10-07).
+- KyCalendar must be fully administrable standalone, without KyIdentity: admin screens for local people (create, reset, disable), local groups and membership (so group calendars work), and sign-in settings to connect KyIdentity or another OIDC provider without environment variables. Design: `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`.
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
