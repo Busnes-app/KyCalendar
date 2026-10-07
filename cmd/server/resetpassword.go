@@ -70,5 +70,5 @@ func resetPassword(ctx context.Context, st store.Store, username, pw string) err
 	if err != nil {
 		return err
 	}
-	return st.Users().ResetPassword(ctx, u.ID, hash)
+	return st.Users().ResetPassword(ctx, store.System, u.ID, hash)
 }

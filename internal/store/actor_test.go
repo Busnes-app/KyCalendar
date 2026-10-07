@@ -18,13 +18,14 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 	st := newTestStore(t)
 	root := &store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"}
 	bob := &store.User{ID: "usr_bob", Username: "bob", Role: "admin", Status: "active", SSOProvider: "local"}
-	ann := &store.User{ID: "usr_ann", Username: "ann", Role: "user", Status: "active", SSOProvider: "local"}
+	ann := &store.User{ID: "usr_ann", Username: "ann", PasswordHash: "h_ann", Role: "user", Status: "active", SSOProvider: "local"}
 	seedUsers(t, st, root, bob, ann)
 	seedSession(t, st, bob)
 	bobActs := store.AdminActor(bob.ID, "tok_"+bob.ID)
 
 	// Each write a revoked actor might still have in flight.
 	writes := map[string]func(store.Actor) error{
+		"reset ann":    func(a store.Actor) error { return st.Users().ResetPassword(ctx, a, ann.ID, "h_reset") },
 		"promote ann":  func(a store.Actor) error { return st.Users().SetRole(ctx, a, ann.ID, "admin") },
 		"disable ann":  func(a store.Actor) error { return st.Users().SetStatus(ctx, a, ann.ID, "inactive") },
 		"restore self": func(a store.Actor) error { return st.Users().SetRole(ctx, a, bob.ID, "admin") },
@@ -40,8 +41,8 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 	unchanged := func(why string) {
 		t.Helper()
 		for _, want := range []*store.User{root, ann} {
-			if u, _ := st.Users().GetUserByID(ctx, want.ID); u.Role != want.Role || u.Status != want.Status {
-				t.Errorf("%s: %s changed to role=%s status=%s", why, want.ID, u.Role, u.Status)
+			if u, _ := st.Users().GetUserByID(ctx, want.ID); u.Role != want.Role || u.Status != want.Status || u.PasswordHash != want.PasswordHash {
+				t.Errorf("%s: %s changed to role=%s status=%s hash=%s", why, want.ID, u.Role, u.Status, u.PasswordHash)
 			}
 		}
 		for _, id := range []string{"usr_new", "usr_new2"} {
@@ -129,6 +130,9 @@ func TestActorRecheckWaitsForTheAccessLock(t *testing.T) {
 		},
 		"promote ann": func(ctx context.Context, st store.Store, a store.Actor) error {
 			return st.Users().SetRole(ctx, a, "usr_ann", "admin")
+		},
+		"reset ann": func(ctx context.Context, st store.Store, a store.Actor) error {
+			return st.Users().ResetPassword(ctx, a, "usr_ann", "h_reset")
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

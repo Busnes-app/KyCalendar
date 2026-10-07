@@ -528,11 +528,11 @@ func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash,
 
 // ResetAdminPassword is the operator recovery path, including disabled local accounts.
 func (u *userStore) ResetAdminPassword(ctx context.Context, userID, newHash string) error {
-	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+	return u.operatorReset(ctx, System, `UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
-func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) error {
-	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+func (u *userStore) ResetPassword(ctx context.Context, actor Actor, userID, newHash string) error {
+	return u.operatorReset(ctx, actor, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
 // RenameUser checks for a case twin only when the name changes ignoring case, so a legacy twin
@@ -570,12 +570,19 @@ func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName strin
 }
 
 // operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one transaction.
-func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash string) error {
-	tx, err := u.store.db.BeginTx(ctx, nil)
+func (u *userStore) operatorReset(ctx context.Context, actor Actor, update, userID, newHash string) error {
+	var keys []string
+	if !actor.system {
+		keys = []string{"local-admins"} // serialised with demotions
+	}
+	tx, err := u.store.lockedTx(ctx, keys...)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	result, err := tx.ExecContext(ctx, u.store.rebind(update), newHash, true, now, userID)
 	if err != nil {

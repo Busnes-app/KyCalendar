@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
@@ -32,6 +33,11 @@ func (u revokeBeforeWrite) CreateUserAs(ctx context.Context, a store.Actor, nu *
 	return u.UserStore.CreateUserAs(ctx, a, nu)
 }
 
+func (u revokeBeforeWrite) ResetPassword(ctx context.Context, a store.Actor, id, hash string) error {
+	u.revoke()
+	return u.UserStore.ResetPassword(ctx, a, id, hash)
+}
+
 type revokingStore struct {
 	store.Store
 	users store.UserStore
@@ -46,7 +52,7 @@ func TestAccessWriteFailsWhenTheActorIsRevokedMidRequest(t *testing.T) {
 	for _, u := range []*store.User{
 		{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"},
 		bob,
-		{ID: "usr_ann", Username: "ann", Role: "user", Status: "active", SSOProvider: "local"},
+		{ID: "usr_ann", Username: "ann", PasswordHash: "h_ann", Role: "user", Status: "active", SSOProvider: "local"},
 		{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "local"},
 	} {
 		if err := st.Users().CreateUser(ctx, u); err != nil {
@@ -60,6 +66,7 @@ func TestAccessWriteFailsWhenTheActorIsRevokedMidRequest(t *testing.T) {
 	}
 	requests := []struct{ name, path, body string }{
 		{"promote ann", "/api/admin/users/usr_ann/role", `{"role":"admin"}`},
+		{"reset ann", "/api/admin/users/usr_ann/reset-password", ""},
 		{"disable ann", "/api/admin/users/usr_ann/disable", ""},
 		{"enable off", "/api/admin/users/usr_off/enable", ""},
 		{"create an admin", "/api/admin/users", `{"username":"eve","role":"admin"}`},
@@ -84,6 +91,12 @@ func TestAccessWriteFailsWhenTheActorIsRevokedMidRequest(t *testing.T) {
 				if u, _ := st.Users().GetUserByID(ctx, id); u.Role+"/"+u.Status != want {
 					t.Errorf("%s, %s: %s is %s/%s, want %s", how, rq.name, id, u.Role, u.Status, want)
 				}
+			}
+			if strings.Contains(w.Body.String(), "temporary_password") {
+				t.Errorf("%s, %s: the body carries a temporary password", how, rq.name)
+			}
+			if u, _ := st.Users().GetUserByID(ctx, "usr_ann"); u.PasswordHash != "h_ann" || u.MustChangePassword {
+				t.Errorf("%s, %s: ann's password changed", how, rq.name)
 			}
 			if _, err := st.Users().GetUserByUsername(ctx, "eve"); !errors.Is(err, store.ErrNotFound) {
 				t.Errorf("%s, %s: eve was created", how, rq.name)

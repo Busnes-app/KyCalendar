@@ -180,8 +180,11 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusInternalServerError, "Failed to generate a password")
 		return
 	}
-	if err := s.store.Users().ResetPassword(r.Context(), u.ID, hash); errors.Is(err, store.ErrNotFound) {
+	if err := s.store.Users().ResetPassword(r.Context(), actorOf(r.Context()), u.ID, hash); errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "No such person")
+		return
+	} else if errors.Is(err, store.ErrActorRevoked) {
+		s.writeActorRevoked(w)
 		return
 	} else if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to reset the password")

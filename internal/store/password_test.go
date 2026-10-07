@@ -158,7 +158,7 @@ func TestResetPasswordKeepsRoleAndStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := st.Users().ResetPassword(ctx, u.ID, "new"); err != nil {
+	if err := st.Users().ResetPassword(ctx, store.System, u.ID, "new"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := st.Users().GetUserByID(ctx, u.ID)
@@ -184,10 +184,10 @@ func TestResetPasswordKeepsRoleAndStatus(t *testing.T) {
 	if err := st.Users().CreateUser(ctx, sso); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Users().ResetPassword(ctx, sso.ID, "new"); !errors.Is(err, store.ErrNotFound) {
+	if err := st.Users().ResetPassword(ctx, store.System, sso.ID, "new"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("SSO account reset: %v", err)
 	}
-	if err := st.Users().ResetPassword(ctx, "nobody", "new"); !errors.Is(err, store.ErrNotFound) {
+	if err := st.Users().ResetPassword(ctx, store.System, "nobody", "new"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown user reset: %v", err)
 	}
 }
