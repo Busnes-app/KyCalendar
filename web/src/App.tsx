@@ -9,6 +9,7 @@ import { Settings } from './pages/Settings';
 import AppPasswords from './pages/AppPasswords';
 import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
+import People from './pages/People';
 import './styles/theme.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
@@ -118,6 +119,7 @@ export const App: React.FC = () => {
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
         {/* Admin pages: the API refuses everyday users anyway; never render them either. */}
         {isAdmin && activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
+        {isAdmin && activeTab === 'people' && <People me={user.id} />}
         {isAdmin && activeTab === 'groups' && <Groups />}
         {isAdmin && activeTab === 'group-calendars' && <GroupCalendars />}
         {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
