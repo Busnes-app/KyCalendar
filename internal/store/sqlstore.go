@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store/migrations"
 )
 
@@ -65,6 +66,36 @@ func (s *SQLStore) Settings() SettingsStore        { return s.settings }
 func (s *SQLStore) Driver() string                 { return s.driver }
 func (s *SQLStore) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 func (s *SQLStore) Close() error                   { return s.db.Close() }
+
+func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, table := range []string{"sessions", "mfa_challenges", "app_passwords"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	epoch := crypto.RandomHex(8)
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_meta SET value = ? WHERE key = 'sync_epoch'`), epoch)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
+	}
+	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+		"system", "system.restore_reset", "store", "sessions, mfa challenges and app passwords revoked; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
 // rebind converts '?' placeholders to '$1, $2, ...' for Postgres
 func (s *SQLStore) rebind(query string) string {

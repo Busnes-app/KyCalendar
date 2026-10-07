@@ -24,6 +24,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - `GetObjectByUID` finds an object by its UID within one calendar (UIDs are unique per calendar), for the JSON event API.
 - Object ETag is the SHA-256 hex of the stored bytes. `first_start` and `last_end` are unix seconds; NULL `last_end` means unbounded.
 - `PruneChanges` sets `min_sync_seq` to the highest pruned seq; `ChangesSince` returns `ErrSyncTokenExpired` only when the token seq is below it.
+- `Store.ResetAfterRestore` deletes every session, MFA challenge and app password, writes a new random `sync_epoch` (16 hex) and audits `system.restore_reset` (user `system`), in one transaction. Accounts and calendar data stay. It is idempotent; `cmd/server` runs it after `restore` and from `restore-reset`.
 - `store.Open(ctx, cfg)` initializes and auto-migrates the configured database backend.
 - SQLite runs in WAL mode with foreign keys enabled.
 - PostgreSQL queries are rebound dynamically from standard positional parameters.

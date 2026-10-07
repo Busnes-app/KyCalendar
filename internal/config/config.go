@@ -117,6 +117,11 @@ const MinDepositInterval = 15 * time.Minute
 // under backup.ServiceName, not this.
 const DefaultAppName = "Busnes.app"
 
+// SQLiteDSN is the DSN for the SQLite database at path, with the pragmas every opener needs.
+func SQLiteDSN(path string) string {
+	return path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
+}
+
 // LoadFromEnv initializes a Config struct populated from environment variables with sensible defaults.
 func LoadFromEnv() (*Config, error) {
 	// The backup variables carry the product prefix (root AGENTS.md); a retired name left in
@@ -134,7 +139,7 @@ func LoadFromEnv() (*Config, error) {
 
 	driver := strings.ToLower(getEnv("KY_DB_DRIVER", "sqlite"))
 	dataDir := getEnv("KY_DATA_DIR", "./data")
-	defaultDSN := fmt.Sprintf("%s/kycalendar.db?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", dataDir)
+	defaultDSN := SQLiteDSN(dataDir + "/kycalendar.db")
 	if driver == "postgres" || driver == "postgresql" {
 		driver = "postgres"
 		defaultDSN = "postgres://postgres:postgres@localhost:5432/ky_server?sslmode=disable"

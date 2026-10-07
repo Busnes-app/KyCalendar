@@ -351,3 +351,64 @@ func TestDeleteUserRemovesTheirCalendars(t *testing.T) {
 		t.Fatalf("deleted user's bytes still counted: %v", err)
 	}
 }
+
+func TestResetAfterRestore(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	u := &store.User{ID: "restored", Username: "restored", PasswordHash: "h", Role: "user", Status: "active", SSOProvider: "local"}
+	if err := st.Users().CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	sess := &store.Session{TokenHash: "session", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.Sessions().CreateSession(ctx, sess, "h"); err != nil {
+		t.Fatal(err)
+	}
+	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "h"); err != nil {
+		t.Fatal(err)
+	}
+	addAppPassword(t, st, u.ID)
+
+	before, err := st.Calendars().SyncEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ResetAfterRestore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := st.Calendars().SyncEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == before || len(after) != 16 {
+		t.Fatalf("epoch %q -> %q", before, after)
+	}
+	if _, err := st.Sessions().GetSession(ctx, sess.TokenHash); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("session survived", err)
+	}
+	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("challenge survived", err)
+	}
+	checkAppPasswordsRevoked(t, st, u.ID)
+	if _, err := st.Users().GetUserByID(ctx, u.ID); err != nil {
+		t.Fatal("the reset must keep accounts", err)
+	}
+
+	// Idempotent: an interrupted restore is finished by running it again.
+	if err := st.ResetAfterRestore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := st.Calendars().SyncEpoch(ctx)
+	if again == after {
+		t.Fatal("a second reset kept the epoch")
+	}
+	audits, n, err := st.Audit().ListAuditRecords(ctx, 0, 10)
+	if err != nil || n != 2 {
+		t.Fatal("audit", n, err)
+	}
+	for _, a := range audits {
+		if a.Action != "system.restore_reset" || a.UserID != "system" {
+			t.Fatalf("audit row %+v", a)
+		}
+	}
+}

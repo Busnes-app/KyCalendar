@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -46,6 +47,9 @@ func main() {
 			return
 		case "restore":
 			runRestore(os.Args[2:])
+			return
+		case "restore-reset":
+			runRestoreReset(os.Args[2:])
 			return
 		case "version":
 			fmt.Println("kycalendar v1.0.0 (Busnes.app calendar)")
@@ -418,8 +422,15 @@ func runExportCapsule(args []string) {
 // restore is the product-side half of the ceremony, owned by the lib: k custodian shares
 // combined, used once, dropped; a capsule from another service refused before the key is
 // touched; the authenticated manifest printed for comparison with KyRecovery's record.
+// The restored database then loses every credential and sync epoch issued before the backup.
 func restore(capsulePath, targetDir, expectService string, shares []string, stdout io.Writer) error {
-	return recoveryclient.Restore(capsulePath, targetDir, expectService, shares, stdout)
+	if err := recoveryclient.Restore(capsulePath, targetDir, expectService, shares, stdout); err != nil {
+		return err
+	}
+	if err := resetRestored(context.Background(), filepath.Join(targetDir, "data")); err != nil {
+		return fmt.Errorf("%w: %w", errResetFailed, err)
+	}
+	return nil
 }
 
 // stdinIsTerminal reports whether a human is typing, so a pipeline gets no stray prompt.
@@ -459,6 +470,10 @@ func runRestore(args []string) {
 		log.Fatal("Error: no custodian shares on stdin")
 	}
 	if err := restore(*capsulePath, *target, *service, shares, os.Stdout); err != nil {
+		if errors.Is(err, errResetFailed) {
+			log.Fatalf("%v\nDo not start the server on %s. Finish with: kycalendar restore-reset -to %s", err, *target, *target)
+		}
 		log.Fatalf("Restore failed: %v", err)
 	}
+	fmt.Println(resetDone)
 }
