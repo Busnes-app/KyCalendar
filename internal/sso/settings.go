@@ -1,6 +1,7 @@
 package sso
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -41,18 +42,40 @@ type Field struct {
 	Source string `json:"source"`
 }
 
+// SecretField holds the client secret. It prints and marshals only its source, so neither a
+// log line nor an API response carries the plain secret.
+type SecretField struct {
+	Value  string
+	Source string
+}
+
+func (f SecretField) String() string   { return "{Source:" + f.Source + "}" }
+func (f SecretField) GoString() string { return f.String() }
+func (f SecretField) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Source string `json:"source"`
+	}{f.Source})
+}
+
 // Settings is the effective sign-in configuration. Secret.Value is the plain secret once the
-// caller has opened a saved one; it is never serialised.
+// caller has opened a saved one.
 type Settings struct {
-	Provider, DisplayName, Issuer, ClientID, Secret Field
+	Provider, DisplayName, Issuer, ClientID Field
+	Secret                                  SecretField
 }
 
 // Resolve merges the environment over saved settings. KY_KYSIGNON_ISSUER, _CLIENT_ID and
 // _SECRET each win and lock their field, and any of them fixes the provider to kyidentity.
 // KY_KYSIGNON_HMAC_SECRET only authenticates the directory webhook and leaves the provider
-// alone: it must not turn a generic provider into one whose roles claim grants admin. A saved
-// secret is reported as set but left sealed: Secret.Value is empty until the caller opens it.
+// alone: it must not turn a generic provider into one whose roles claim grants admin. When the
+// environment fixes kyidentity over a saved row of another kind, every saved field is dropped:
+// kyidentity is never paired with a foreign issuer, nor sent another provider's credentials.
+// A saved secret is reported as set but left sealed: Secret.Value is empty until opened.
 func Resolve(env config.SSOConfig, saved map[string]string) Settings {
+	envKy := env.KySignOnIssuer != "" || env.KySignOnClientID != "" || env.KySignOnSecret != ""
+	if envKy && saved[KeyProvider] != "" && saved[KeyProvider] != KindKyIdentity {
+		saved = nil
+	}
 	pick := func(envValue, key string) Field {
 		switch {
 		case envValue != "":
@@ -67,12 +90,13 @@ func Resolve(env config.SSOConfig, saved map[string]string) Settings {
 		DisplayName: pick("", KeyDisplayName),
 		Issuer:      pick(strings.TrimRight(env.KySignOnIssuer, "/"), KeyIssuer),
 		ClientID:    pick(env.KySignOnClientID, KeyClientID),
-		Secret:      pick(env.KySignOnSecret, KeySecretSealed),
 	}
+	secret := pick(env.KySignOnSecret, KeySecretSealed)
+	st.Secret = SecretField{Value: secret.Value, Source: secret.Source}
 	if st.Secret.Source == SourceSaved {
 		st.Secret.Value = ""
 	}
-	if env.KySignOnIssuer != "" || env.KySignOnClientID != "" || env.KySignOnSecret != "" {
+	if envKy {
 		st.Provider = Field{KindKyIdentity, SourceEnvironment}
 	}
 	if st.Provider.Value == "" {
@@ -109,6 +133,7 @@ func SealSecret(master []byte, secret string) (string, error) {
 	return crypto.EncryptAESGCM([]byte(secret), crypto.DeriveKey(master, SecretLabel))
 }
 
+// OpenSecret reverses SealSecret; a wrong key or any tampering fails.
 func OpenSecret(master []byte, sealed string) (string, error) {
 	plain, err := crypto.DecryptAESGCM(sealed, crypto.DeriveKey(master, SecretLabel))
 	return string(plain), err
