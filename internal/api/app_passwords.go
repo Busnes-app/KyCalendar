@@ -16,7 +16,7 @@ const maxAppPasswordsPerUser = 20
 // requireEveryday admits signed-in non-admin users; admin identities never use calendars.
 func (s *Server) requireEveryday(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user := s.authenticate(w, r)
+		user, sess := s.authenticate(w, r)
 		if user == nil {
 			return
 		}
@@ -24,7 +24,7 @@ func (s *Server) requireEveryday(h http.HandlerFunc) http.HandlerFunc {
 			s.writeError(w, http.StatusForbidden, "Administrator accounts cannot use calendars")
 			return
 		}
-		h(w, withSessionUser(r, user))
+		h(w, withSessionUser(r, user, sess))
 	}
 }
 

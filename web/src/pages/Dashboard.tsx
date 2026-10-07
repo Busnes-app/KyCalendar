@@ -1,5 +1,5 @@
 import React from 'react';
-import { Key, Archive, Database, Users, CheckCircle2, ArrowRight, UsersRound } from 'lucide-react';
+import { Key, Archive, Database, Users, CheckCircle2, ArrowRight, UsersRound, UserRound } from 'lucide-react';
 
 interface DashboardProps {
   settings: any;
@@ -9,6 +9,15 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate }) => {
   const cards = [
+    {
+      title: 'People',
+      desc: 'Add people who sign in with a password, reset them, make administrators, disable accounts.',
+      status: 'Local and synced',
+      statusType: 'accent',
+      icon: UserRound,
+      action: () => onNavigate('people'),
+      actionLabel: 'Manage people',
+    },
     {
       title: 'Groups',
       desc: 'Local groups for group calendars, beside the groups your identity provider syncs.',

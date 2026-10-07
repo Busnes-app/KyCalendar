@@ -74,8 +74,7 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	// The same grants revokePasswordGrants clears, for every user.
-	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
+	for _, table := range grantTables {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -142,15 +141,18 @@ func (s *SQLStore) lockKey(ctx context.Context, tx *sql.Tx, key string) error {
 	return err
 }
 
-// lockedTx begins a transaction already holding the advisory lock on key.
-func (s *SQLStore) lockedTx(ctx context.Context, key string) (*sql.Tx, error) {
+// lockedTx begins a transaction already holding the advisory locks on keys, in order. Callers
+// holding two take local-admins before user-names.
+func (s *SQLStore) lockedTx(ctx context.Context, keys ...string) (*sql.Tx, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.lockKey(ctx, tx, key); err != nil {
-		_ = tx.Rollback()
-		return nil, err
+	for _, key := range keys {
+		if err := s.lockKey(ctx, tx, key); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
 	}
 	return tx, nil
 }
@@ -164,6 +166,14 @@ type userStore struct {
 }
 
 func (u *userStore) CreateUser(ctx context.Context, user *User) error {
+	return u.createUser(ctx, System, user)
+}
+
+func (u *userStore) CreateUserAs(ctx context.Context, actor Actor, user *User) error {
+	return u.createUser(ctx, actor, user)
+}
+
+func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) error {
 	now := time.Now().UTC()
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now
@@ -189,18 +199,45 @@ INSERT INTO users (
 		lastLogin = sql.NullTime{Time: *user.LastLoginAt, Valid: true}
 	}
 
-	_, err := u.store.db.ExecContext(ctx, q,
+	keys := []string{"user-names"}
+	if !actor.system {
+		keys = []string{"local-admins", "user-names"} // serialised with demotions
+	}
+	tx, err := u.store.lockedTx(ctx, keys...)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
+	if err := u.refuseTwin(ctx, tx, user.ID, user.Username); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, q,
 		user.ID, user.Username, user.Email, user.DisplayName, user.PasswordHash,
 		user.Role, user.Status, user.SSOProvider, user.SSOSubject,
 		user.TOTPSecretEnc, user.TOTPEnabled, user.RecoveryCodesHash,
 		user.PushDeviceID, user.MustChangePassword,
 		user.CreatedAt, user.UpdatedAt, lastLogin,
-	)
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
+	); err != nil {
+		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
 		return err
+	}
+	return tx.Commit()
+}
+
+// refuseTwin is ErrAlreadyExists when an account other than id holds name in any case. The
+// unique index is case-sensitive; this is what keeps "ann" and "ANN" from both existing.
+func (u *userStore) refuseTwin(ctx context.Context, tx *sql.Tx, id, name string) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE LOWER(username) = LOWER(?) AND id <> ?"), name, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrAlreadyExists
 	}
 	return nil
 }
@@ -460,9 +497,13 @@ func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string
 	return tx.Commit()
 }
 
+// CreateSession also records the sign-in as the user's last_login_at.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expectedPasswordHash string) error {
 	return s.store.withPassword(ctx, sess.UserID, expectedPasswordHash, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt)
+		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), sess.CreatedAt, sess.UserID)
 		return err
 	})
 }
@@ -487,15 +528,17 @@ func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash,
 
 // ResetAdminPassword is the operator recovery path, including disabled local accounts.
 func (u *userStore) ResetAdminPassword(ctx context.Context, userID, newHash string) error {
-	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+	return u.operatorReset(ctx, System, `UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
-func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) error {
-	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+func (u *userStore) ResetPassword(ctx context.Context, actor Actor, userID, newHash string) error {
+	return u.operatorReset(ctx, actor, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
 }
 
-func (u *userStore) RenameUser(ctx context.Context, userID, newName string) error {
-	tx, err := u.store.db.BeginTx(ctx, nil)
+// RenameUser checks for a case twin only when the name changes ignoring case, so a legacy twin
+// can still change the case of its own name.
+func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName string) error {
+	tx, err := u.store.lockedTx(ctx, "user-names")
 	if err != nil {
 		return err
 	}
@@ -507,27 +550,39 @@ func (u *userStore) RenameUser(ctx context.Context, userID, newName string) erro
 	} else if err != nil {
 		return err
 	}
+	if strings.ToLower(from) != strings.ToLower(newName) {
+		if err := u.refuseTwin(ctx, tx, userID, newName); err != nil {
+			return err
+		}
+	}
 	now := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, updated_at = ? WHERE id = ?`), newName, now, userID); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
+		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "user.renamed", userID, "from="+from+" to="+newName, "", now); err != nil {
+		actor, "user.renamed", userID, "from="+from+" to="+newName, "", now); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 // operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one transaction.
-func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash string) error {
-	tx, err := u.store.db.BeginTx(ctx, nil)
+func (u *userStore) operatorReset(ctx context.Context, actor Actor, update, userID, newHash string) error {
+	var keys []string
+	if !actor.system {
+		keys = []string{"local-admins"} // serialised with demotions
+	}
+	tx, err := u.store.lockedTx(ctx, keys...)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	result, err := tx.ExecContext(ctx, u.store.rebind(update), newHash, true, now, userID)
 	if err != nil {
@@ -546,14 +601,107 @@ func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash s
 	return tx.Commit()
 }
 
-func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID, details, ip string, now time.Time) error {
-	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
+// grantTables hold everything a credential or a role has handed out.
+var grantTables = []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"}
+
+// revokeGrants deletes every session, MFA challenge, device pairing and app password of userID.
+func (u *userStore) revokeGrants(ctx context.Context, tx *sql.Tx, userID string) error {
+	for _, table := range grantTables {
 		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id = ?"), userID); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID, details, ip string, now time.Time) error {
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`), userID, "auth.password_changed", "user", details, ip, now)
 	return err
+}
+
+func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), displayName, email, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (u *userStore) SetRole(ctx context.Context, actor Actor, userID, role string) error {
+	return u.changeAccess(ctx, actor, userID, func(_, status string) (string, string) { return role, status })
+}
+
+func (u *userStore) SetStatus(ctx context.Context, actor Actor, userID, status string) error {
+	return u.changeAccess(ctx, actor, userID, func(role, _ string) (string, string) { return role, status })
+}
+
+// checkActor is ErrActorRevoked unless actor is System or an active administrator whose session
+// is still live. Run it inside the write's transaction, under the local-admins lock.
+func (u *userStore) checkActor(ctx context.Context, tx *sql.Tx, actor Actor) error {
+	if actor.system {
+		return nil
+	}
+	var n int
+	if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT COUNT(1) FROM sessions s JOIN users u ON u.id = s.user_id
+WHERE s.token_hash = ? AND u.id = ? AND u.role = 'admin' AND u.status = 'active' AND s.expires_at > ?`),
+		actor.sessionHash, actor.userID, time.Now().UTC()).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrActorRevoked
+	}
+	return nil
+}
+
+// changeAccess applies change to a local account's role and status under the local-admins lock,
+// so two admins demoting each other cannot both pass the last-admin check.
+func (u *userStore) changeAccess(ctx context.Context, actor Actor, userID string, change func(role, status string) (string, string)) error {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
+	var role, status string
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ? AND sso_provider = 'local'`), userID).Scan(&role, &status)
+	if errorsIs(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	wasAdmin := role == "admin" && status == "active"
+	role, status = change(role, status)
+	if wasAdmin && (role != "admin" || status != "active") {
+		var others int
+		if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT COUNT(1) FROM users WHERE role = 'admin' AND status = 'active' AND sso_provider = 'local' AND id <> ?`), userID).Scan(&others); err != nil {
+			return err
+		}
+		if others == 0 {
+			return ErrLastAdmin
+		}
+	}
+	// Row first: it blocks withPassword until commit, so no grant is issued between the purge and the change.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), role, status, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrNotFound
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *sessionStore) GetSession(ctx context.Context, tokenHash string) (*Session, error) {

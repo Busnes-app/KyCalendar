@@ -295,8 +295,9 @@ func TestDeleteSettingIsIdempotent(t *testing.T) {
 	}
 }
 
-// Usernames are unique only case-sensitively, so an SSO "ADMIN" can exist beside local "admin";
-// the case-insensitive lookup behind password login and init-admin must pick the local account.
+// The unique index is case-sensitive, so a legacy SSO "ADMIN" (from before CreateUser refused
+// case twins) can exist beside local "admin"; the case-insensitive lookup behind password login
+// and init-admin must pick the local account.
 func TestGetUserByUsernamePrefersLocalAccount(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(ctx, testdb.Config(t))
@@ -304,10 +305,15 @@ func TestGetUserByUsernamePrefersLocalAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_sso", Username: "ADMIN", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}); err != nil {
+	sso := &store.User{ID: "usr_sso", Username: "sso-admin", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}
+	if err := st.Users().CreateUser(ctx, sso); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_local", Username: "admin", Role: "admin", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	sso.Username = "ADMIN"
+	if err := st.Users().UpdateUser(ctx, sso); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"admin", "Admin", "ADMIN"} {

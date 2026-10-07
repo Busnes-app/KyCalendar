@@ -149,7 +149,7 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	case errors.Is(err, errUsernameTaken):
 		log.Printf("sso: sign-in for subject %s refused: username %q belongs to another account", claims.Subject, claims.PreferredUsername)
-		s.writeError(w, http.StatusConflict, "Another KyCalendar account already uses this username; an administrator must rename it (kycalendar rename-user)")
+		s.writeError(w, http.StatusConflict, "Another KyCalendar account already uses this username; an administrator must rename it on the People screen")
 		return
 	case err != nil:
 		log.Printf("sso: provisioning subject %s failed: %v", claims.Subject, err)

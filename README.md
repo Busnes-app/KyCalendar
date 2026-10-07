@@ -74,6 +74,8 @@ are not retroactively flagged, since the server cannot infer whether they still 
 
 ## Local everyday accounts
 
+The **People** screen is the everyday way to add and manage local accounts; these commands are for scripts and recovery.
+
 `create-user` makes a local everyday account for testing or for instances without KyIdentity.
 The password is read from stdin: `printf '%s\n' "$PW" | kycalendar create-user -username alice`.
 The user must change it at first sign-in. An existing name is refused, never reset.
@@ -112,6 +114,15 @@ In KyCalendar, **Group calendars** lists every group calendar. Create one, then 
 - **manager** also renames and recolours the calendar and changes who has access.
 
 A member's phone shows every group calendar they can read under the same app password, read-only below editor. Removing someone from a group cuts their access on their next sync. Deleting a KyIdentity group removes its access and leaves the calendar for you to re-grant or delete. Deleting a calendar needs a sign-in from the last 10 minutes.
+
+## People
+
+**People** lists every account. Local accounts (people who sign in with a password) can be edited here; accounts from KyIdentity or SCIM carry a "Managed by ..." badge and change only in the identity provider.
+
+- **Add person**: username, optional display name and email, and Everyday user or Administrator. KyCalendar generates a temporary password and shows it once: give it to the person in person or over another channel you trust, not in the same message as the username. They choose their own password at first sign-in.
+- **Reset password** shows a new temporary password once and signs the person out everywhere; their phones stop syncing until they create new app passwords.
+- **Make admin / Make user** and **Disable** sign the person out everywhere. Administrators never see calendars. You cannot demote or disable yourself, and nobody can demote or disable the last active local administrator: that account is the way back in when single sign-on is down.
+- Adding an administrator, resetting, changing a role, disabling and enabling need a sign-in from the last 10 minutes. There is no delete: disabling keeps the person's calendars.
 
 ## Groups
 

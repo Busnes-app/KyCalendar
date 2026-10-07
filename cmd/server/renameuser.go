@@ -62,7 +62,7 @@ func renameUser(ctx context.Context, st store.Store, from, to string) error {
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	if err := st.Users().RenameUser(ctx, u.ID, to); errors.Is(err, store.ErrAlreadyExists) {
+	if err := st.Users().RenameUser(ctx, "system", u.ID, to); errors.Is(err, store.ErrAlreadyExists) {
 		return errUserExists
 	} else {
 		return err
