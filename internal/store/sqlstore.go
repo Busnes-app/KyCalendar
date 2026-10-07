@@ -696,6 +696,19 @@ type groupStore struct {
 	store *SQLStore
 }
 
+const groupColumns = "id, display_name, external_id, source, created_at, updated_at"
+
+func scanGroup(row interface{ Scan(...any) error }) (*Group, error) {
+	var grp Group
+	if err := row.Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.Source, &grp.CreatedAt, &grp.UpdatedAt); err != nil {
+		if errorsIs(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &grp, nil
+}
+
 func (g *groupStore) CreateGroup(ctx context.Context, group *Group) error {
 	now := time.Now().UTC()
 	if group.CreatedAt.IsZero() {
@@ -704,14 +717,12 @@ func (g *groupStore) CreateGroup(ctx context.Context, group *Group) error {
 	if group.UpdatedAt.IsZero() {
 		group.UpdatedAt = now
 	}
-
-	q := g.store.rebind(`
-INSERT INTO groups (id, display_name, external_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
-`)
-	_, err := g.store.db.ExecContext(ctx, q, group.ID, group.DisplayName, group.ExternalID, group.CreatedAt, group.UpdatedAt)
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
+	if group.Source == "" {
+		group.Source = GroupSourceLocal
+	}
+	q := g.store.rebind("INSERT INTO groups (" + groupColumns + ") VALUES (?, ?, ?, ?, ?, ?)")
+	if _, err := g.store.db.ExecContext(ctx, q, group.ID, group.DisplayName, group.ExternalID, group.Source, group.CreatedAt, group.UpdatedAt); err != nil {
+		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
 		return err
@@ -720,40 +731,25 @@ VALUES (?, ?, ?, ?, ?)
 }
 
 func (g *groupStore) GetGroupByID(ctx context.Context, id string) (*Group, error) {
-	q := g.store.rebind("SELECT id, display_name, external_id, created_at, updated_at FROM groups WHERE id = ?")
-	var grp Group
-	err := g.store.db.QueryRowContext(ctx, q, id).Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.CreatedAt, &grp.UpdatedAt)
-	if err != nil {
-		if errorsIs(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-
-	members, err := g.getMembers(ctx, grp.ID)
+	grp, err := scanGroup(g.store.db.QueryRowContext(ctx, g.store.rebind("SELECT "+groupColumns+" FROM groups WHERE id = ?"), id))
 	if err != nil {
 		return nil, err
 	}
-	grp.Members = members
-	return &grp, nil
+	if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+		return nil, err
+	}
+	return grp, nil
 }
 
 func (g *groupStore) GetGroupByName(ctx context.Context, name string) (*Group, error) {
-	q := g.store.rebind("SELECT id, display_name, external_id, created_at, updated_at FROM groups WHERE LOWER(display_name) = LOWER(?)")
-	var grp Group
-	err := g.store.db.QueryRowContext(ctx, q, name).Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.CreatedAt, &grp.UpdatedAt)
-	if err != nil {
-		if errorsIs(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	members, err := g.getMembers(ctx, grp.ID)
+	grp, err := scanGroup(g.store.db.QueryRowContext(ctx, g.store.rebind("SELECT "+groupColumns+" FROM groups WHERE LOWER(display_name) = LOWER(?)"), name))
 	if err != nil {
 		return nil, err
 	}
-	grp.Members = members
-	return &grp, nil
+	if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+		return nil, err
+	}
+	return grp, nil
 }
 
 func (g *groupStore) getMembers(ctx context.Context, groupID string) ([]string, error) {
@@ -801,22 +797,25 @@ func (g *groupStore) DeleteGroup(ctx context.Context, id string) error {
 	return nil
 }
 
-func (g *groupStore) ListGroups(ctx context.Context, offset, limit int) ([]*Group, int, error) {
+func (g *groupStore) ListGroups(ctx context.Context, offset, limit int, source string) ([]*Group, int, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	where, args := "", []any{}
+	if source != "" {
+		where, args = " WHERE source = ?", []any{source}
+	}
 
 	var count int
-	err := g.store.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM groups").Scan(&count)
-	if err != nil {
+	if err := g.store.db.QueryRowContext(ctx, g.store.rebind("SELECT COUNT(1) FROM groups"+where), args...).Scan(&count); err != nil {
 		return nil, 0, err
 	}
 
-	q := g.store.rebind("SELECT id, display_name, external_id, created_at, updated_at FROM groups ORDER BY display_name ASC LIMIT ? OFFSET ?")
-	rows, err := g.store.db.QueryContext(ctx, q, limit, offset)
+	q := g.store.rebind("SELECT " + groupColumns + " FROM groups" + where + " ORDER BY display_name ASC LIMIT ? OFFSET ?")
+	rows, err := g.store.db.QueryContext(ctx, q, append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -824,11 +823,14 @@ func (g *groupStore) ListGroups(ctx context.Context, offset, limit int) ([]*Grou
 
 	var groups []*Group
 	for rows.Next() {
-		var grp Group
-		if err := rows.Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.CreatedAt, &grp.UpdatedAt); err != nil {
+		grp, err := scanGroup(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		groups = append(groups, &grp)
+		groups = append(groups, grp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
 	}
 
 	for _, grp := range groups {
@@ -836,7 +838,7 @@ func (g *groupStore) ListGroups(ctx context.Context, offset, limit int) ([]*Grou
 		grp.Members = members
 	}
 
-	return groups, count, rows.Err()
+	return groups, count, nil
 }
 
 func (g *groupStore) AddGroupMember(ctx context.Context, groupID, userID string) error {
@@ -853,7 +855,7 @@ func (g *groupStore) RemoveGroupMember(ctx context.Context, groupID, userID stri
 
 func (g *groupStore) GetUserGroups(ctx context.Context, userID string) ([]*Group, error) {
 	q := g.store.rebind(`
-SELECT g.id, g.display_name, g.external_id, g.created_at, g.updated_at
+SELECT g.id, g.display_name, g.external_id, g.source, g.created_at, g.updated_at
 FROM groups g
 JOIN group_members gm ON g.id = gm.group_id
 WHERE gm.user_id = ?
@@ -867,11 +869,11 @@ ORDER BY g.display_name ASC
 
 	var groups []*Group
 	for rows.Next() {
-		var grp Group
-		if err := rows.Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.CreatedAt, &grp.UpdatedAt); err != nil {
+		grp, err := scanGroup(rows)
+		if err != nil {
 			return nil, err
 		}
-		groups = append(groups, &grp)
+		groups = append(groups, grp)
 	}
 	return groups, rows.Err()
 }

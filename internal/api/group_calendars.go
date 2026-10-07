@@ -150,7 +150,7 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 	offset, limit := listPage(r)
-	groups, total, err := s.store.Groups().ListGroups(r.Context(), offset, limit)
+	groups, total, err := s.store.Groups().ListGroups(r.Context(), offset, limit, "")
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to list groups")
 		return

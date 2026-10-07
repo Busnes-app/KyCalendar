@@ -62,13 +62,22 @@ type DevicePairing struct {
 
 // Group represents a SCIM/RBAC user group.
 type Group struct {
-	ID          string    `json:"id"`
-	DisplayName string    `json:"display_name"`
-	ExternalID  string    `json:"external_id,omitempty"`
-	Members     []string  `json:"members,omitempty"` // User IDs
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	ExternalID  string `json:"external_id,omitempty"`
+	// Source owns the group: GroupSourceLocal (the admin screens) or GroupSourceSCIM. Only the
+	// owner writes it. Empty on insert means local.
+	Source    string    `json:"source"`
+	Members   []string  `json:"members,omitempty"` // User IDs
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// Group owners.
+const (
+	GroupSourceLocal = "local"
+	GroupSourceSCIM  = "scim"
+)
 
 // AuditRecord logs security and operational events with tamper-evident structure.
 type AuditRecord struct {

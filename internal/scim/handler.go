@@ -285,7 +285,7 @@ func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resourc
 	return groupResource(group), nil
 }
 func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
-	groups, total, err := h.store.Groups().ListGroups(r.Context(), params.StartIndex-1, params.Count)
+	groups, total, err := h.store.Groups().ListGroups(r.Context(), params.StartIndex-1, params.Count, "")
 	if err != nil {
 		return protocol.Page{}, err
 	}

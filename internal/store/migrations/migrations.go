@@ -385,8 +385,18 @@ CREATE INDEX idx_calendar_grants_group ON calendar_grants(group_id);`,
 		Name:     "revoke_sso_admin_sessions",
 		SQLite:   revokeSSOAdminSessions,
 		Postgres: revokeSSOAdminSessions,
+	}, {
+		// Groups get an owner. SCIM was the only group writer before this, so every existing row
+		// is SCIM's; rows inserted from here on default to local.
+		Version:  10,
+		Name:     "group_source",
+		SQLite:   groupSource,
+		Postgres: groupSource,
 	},
 }
+
+const groupSource = `ALTER TABLE groups ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
+UPDATE groups SET source = 'scim';`
 
 const revokeSSOAdminSessions = `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role = 'admin' AND sso_provider IN ('kysignon', 'scim'));`
 
