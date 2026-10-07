@@ -431,3 +431,13 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 	})
 	return out, nil
 }
+
+// SeriesTimes is a master's own start and end for a viewer: the first occurrence, which the web
+// edits when the user changes all occurrences.
+func SeriesTimes(master *ical.Component, viewer *time.Location) (start, end time.Time, allDay bool, err error) {
+	s, err := spanOf(master, viewer)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+	return s.start.In(viewer), s.endAt(s.start).In(viewer), s.allDay, nil
+}
