@@ -127,6 +127,19 @@ describe('EventDialog', () => {
     expect(calls[0].body).not.toHaveProperty('recurrence_id');
   });
 
+  it('warns that All events drops single-event changes, and confirms deleting every occurrence', async () => {
+    const calls = capture();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<EventDialog calendars={cals} event={recurring} initial={formFromEvent(recurring, 'this')} onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByText(/removes changes made to single events/)).toBeNull();
+    fireEvent.click(screen.getByLabelText('All events'));
+    expect(screen.getByText('Moving all events removes changes made to single events, including deleted ones.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(confirm).toHaveBeenCalledWith('Delete every occurrence of this event?');
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].url).toBe('/api/events/cal_p/u1?scope=all');
+  });
+
   it('keeps typed text when the scope changes', () => {
     render(<EventDialog calendars={cals} event={recurring} initial={formFromEvent(recurring, 'this')} onDone={vi.fn()} onClose={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Typed' } });

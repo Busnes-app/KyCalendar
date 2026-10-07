@@ -91,6 +91,11 @@ export function CalendarPage() {
   }, [loadCalendars]);
 
   const refetch = () => ref.current?.getApi().refetchEvents();
+  // Refetch on every close: after a 412 the cached etag is stale and reopening would conflict again.
+  const closeDialog = () => {
+    setDialog(null);
+    refetch();
+  };
 
   const writable = calendars.filter((c) => c.role !== 'reader');
 
@@ -230,8 +235,8 @@ export function CalendarPage() {
             calendars={calendars}
             event={dialog.event}
             initial={dialog.initial}
-            onClose={() => setDialog(null)}
-            onDone={() => { setDialog(null); refetch(); }}
+            onClose={closeDialog}
+            onDone={closeDialog}
           />
         )}
       </div>

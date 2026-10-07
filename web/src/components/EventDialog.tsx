@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, browserZone, createEvent, deleteEvent, updateEvent, type CalendarInfo, type EventInfo, type Freq } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { linkify } from '../linkify';
+import { MOVE_ALL_WARNING } from './ScopeDialog';
 
 interface Props {
   calendars: CalendarInfo[];
@@ -83,7 +84,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
 
   function remove() {
     if (!event) return;
-    if (!window.confirm(scope === 'this' ? 'Delete this occurrence?' : 'Delete this event?')) return;
+    if (!window.confirm(scope === 'this' ? 'Delete this occurrence?' : event.recurring ? 'Delete every occurrence of this event?' : 'Delete this event?')) return;
     void act(() => deleteEvent(event, scope), 'Could not delete the event');
   }
 
@@ -107,6 +108,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
               <label><input type="radio" name="scope" checked={scope === 'all'} onChange={() => chooseScope('all')} /> All events</label>
             </fieldset>
           )}
+          {event?.recurring && scope === 'all' && <p>{MOVE_ALL_WARNING}</p>}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>

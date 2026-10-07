@@ -120,6 +120,20 @@ describe('drag', () => {
     expect(revert).toHaveBeenCalled();
   });
 
+  it('refetches events when the event dialog closes after a conflict', async () => {
+    setup(412);
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const refetchEvents = vi.fn();
+    (fcProps.at(-1)!.ref as { current: unknown }).current = { getApi: () => ({ refetchEvents }) };
+    fire('eventClick', { event: { extendedProps: { info: single } } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/changed elsewhere/);
+    expect(refetchEvents).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(refetchEvents).toHaveBeenCalledTimes(1);
+  });
+
   it('moves an all-day event by whole days', async () => {
     const puts = setup();
     render(<CalendarPage />);
