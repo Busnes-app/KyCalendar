@@ -29,7 +29,10 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | GET | `/api/admin/calendars` | admin | `[{id,name,color,description,created_at,grants:[{group_id,group_name,role}]}]` |
 | POST | `/api/admin/calendars` | admin | `{name,color?,description?}` -> 201 the calendar |
 | DELETE | `/api/admin/calendars/{id}` | admin + step-up | 204; 403 `reauth_required`; 404 not a group calendar |
-| GET | `/api/admin/groups` | admin | `{groups:[{id,display_name}],total}`, `offset`/`limit` <= 200 |
+| GET | `/api/admin/groups` | admin | `{groups:[{id,display_name,source,member_count,calendar_count,scim_conflict?}],total}`, `offset`/`limit` <= 200; `scim_conflict` flags a local group whose name a SCIM create was refused for |
+| POST | `/api/admin/groups` | admin | `{display_name}` (trimmed, 1-255 bytes, no control characters; else 400) -> 201 a `local` group; 409 `name_taken` on a case twin; audits `admin.group_create` |
+| GET | `/api/admin/groups/{id}` | admin | `{id,display_name,source,calendar_count,members:[{id,username,display_name,source}]}` (members by username); 404 missing |
+| PATCH | `/api/admin/groups/{id}` | admin | `{display_name}` -> 200; 409 `managed_externally` for a `scim` group, `name_taken` on a case twin; a rename to a name differing other than by case clears the old name's SCIM conflict flag; audits `admin.group_rename` `from=`/`to=` |
 | GET | `/api/admin/audit` | admin | `{records:[...],total}`, `offset`/`limit` <= 200 |
 | GET | `/api/calendars` | everyday | `[{id,name,color,description,kind,role,dav_path}]`, personal first (default created), then readable group calendars by name |
 | GET | `/api/events?start&end[&tz][&calendar=id,id]` | everyday | expanded instances; 400 bad or > 400-day range or non-IANA `tz`; 404 an unreadable `calendar`; 422 `too_many_instances` over 5000 instances or when expansion passes the 2 s per-request budget (`maxExpandTime`, checked after each object) |

@@ -98,8 +98,12 @@ func newWorld(t *testing.T) *world {
 	for _, a := range []actor{reader, editor, manager} {
 		grantRole(t, st, w.group, string(a), "usr_"+string(a))
 	}
-	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_extra", DisplayName: "Extra"}); err != nil {
-		t.Fatal(err)
+	// grp_extra takes grants; grp_matrix takes members and a rename, so no row's membership
+	// change can grant a caller access another row expects refused; grp_doomed is deleted.
+	for _, g := range []*store.Group{{ID: "grp_extra", DisplayName: "Extra"}, {ID: "grp_matrix", DisplayName: "Matrix"}, {ID: "grp_doomed", DisplayName: "Doomed"}} {
+		if err := st.Groups().CreateGroup(ctx, g); err != nil {
+			t.Fatal(err)
+		}
 	}
 	put := func(name, uid string) {
 		o := &store.CalendarObject{CalendarID: w.group.ID, Name: name, UID: uid, Data: []byte(eventICS(uid))}
@@ -175,6 +179,9 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/calendars":                 {method: "POST", path: "/api/admin/calendars", body: `{"name":"Matrix"}`, want: adminOnly},
 		"DELETE /api/admin/calendars/{id}":          {method: "DELETE", path: "/api/admin/calendars/" + w.doomed.ID, want: adminOnly},
 		"GET /api/admin/groups":                     {method: "GET", path: "/api/admin/groups", want: adminOnly},
+		"POST /api/admin/groups":                    {method: "POST", path: "/api/admin/groups", body: `{"display_name":"Matrix new"}`, want: adminOnly},
+		"GET /api/admin/groups/{id}":                {method: "GET", path: "/api/admin/groups/grp_matrix", want: adminOnly},
+		"PATCH /api/admin/groups/{id}":              {method: "PATCH", path: "/api/admin/groups/grp_matrix", body: `{"display_name":"Matrix"}`, want: adminOnly},
 		"GET /api/admin/users":                      {method: "GET", path: "/api/admin/users?q=owner", want: adminOnly},
 		"GET /api/admin/audit":                      {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":            {method: "GET", path: g, want: grantManager},

@@ -139,24 +139,6 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
-	offset, limit := listPage(r)
-	groups, total, err := s.store.Groups().ListGroups(r.Context(), offset, limit, "")
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "Failed to list groups")
-		return
-	}
-	type groupView struct {
-		ID          string `json:"id"`
-		DisplayName string `json:"display_name"`
-	}
-	out := make([]groupView, 0, len(groups))
-	for _, g := range groups {
-		out = append(out, groupView{ID: g.ID, DisplayName: g.DisplayName})
-	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"groups": out, "total": total})
-}
-
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	offset, limit := listPage(r)
 	recs, total, err := s.store.Audit().ListAuditRecords(r.Context(), offset, limit)
