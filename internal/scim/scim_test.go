@@ -31,7 +31,7 @@ func setupSCIMServer(t *testing.T) (*scim.Server, *http.ServeMux, string) {
 	}, "http://localhost:8080")
 
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	return srv, mux, token
 }
 
@@ -149,7 +149,7 @@ func TestSCIMDeactivationRevokesAppPasswords(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
 	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_ap", Username: "ap_user", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
@@ -203,7 +203,7 @@ func TestSCIMRemovingRolesDemotesAdmin(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
 	cases := map[string]func(id string) (string, any){
@@ -262,7 +262,7 @@ func TestSCIMEqFilterIsExact(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 	for _, u := range []*store.User{
 		{ID: "usr_devops", Username: "devops", DisplayName: "ops", Email: "ops@example.com", Role: "user", Status: "active", SSOProvider: "local"},
@@ -315,7 +315,7 @@ func TestSCIMAdminNeedsTheAppRole(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
 	for value, want := range map[string]string{"kycalendar.admin": "admin", "admin": "user", "kypost.admin": "user"} {
@@ -343,7 +343,7 @@ func TestSCIMDeactivationKeepsCalendars(t *testing.T) {
 	token := "scim-secret-bearer-token"
 	srv := scim.NewServer(st, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
 	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux.Handle)
 	handler := srv.AuthMiddleware(mux)
 
 	id := "usr_dana"

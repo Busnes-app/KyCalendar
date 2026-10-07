@@ -1,6 +1,7 @@
 package api
 
 import (
+	"slices"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -48,3 +49,6 @@ func SetStepUpWindowForTest(d time.Duration) func() {
 	stepUpWindow = d
 	return func() { stepUpWindow = old }
 }
+
+// RoutesForTest returns every registered route pattern. Test-only.
+func RoutesForTest(s *Server) []string { return slices.Clone(s.patterns) }

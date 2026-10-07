@@ -28,7 +28,9 @@ func davClient(t *testing.T, ts *httptest.Server, user, pass string) *caldav.Cli
 func rawDAV(t *testing.T, ts *httptest.Server, method, path, user, pass, body string, hdr map[string]string) *http.Response {
 	t.Helper()
 	req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
-	req.SetBasicAuth(user, pass)
+	if user != "" {
+		req.SetBasicAuth(user, pass)
+	}
 	for k, v := range hdr {
 		req.Header.Set(k, v)
 	}

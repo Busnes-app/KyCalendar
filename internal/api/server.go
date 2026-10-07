@@ -38,6 +38,7 @@ type Server struct {
 	scim       *scim.Server
 	recovery   recoveryClient
 	mux        *http.ServeMux
+	patterns   []string // every registered route, for the authorization matrix
 	attemptsMu sync.Mutex
 	attempts   map[string]attemptWindow
 	accounts   map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
@@ -227,64 +228,71 @@ func (s *Server) limitIP(r *http.Request) string {
 	return ip
 }
 
+// handle registers a route and records its pattern, so the authorization matrix can prove it
+// covers every route.
+func (s *Server) handle(pattern string, h http.Handler) {
+	s.patterns = append(s.patterns, pattern)
+	s.mux.Handle(pattern, h)
+}
+
 func (s *Server) routes() {
 	// Auth
-	s.mux.HandleFunc("/api/auth/pow-challenge", s.handlePoWChallenge)
-	s.mux.HandleFunc("/api/auth/login", s.handleLogin)
-	s.mux.HandleFunc("/api/auth/mfa/totp", s.handleMFATOTP)
-	s.mux.HandleFunc("/api/auth/mfa/recovery-code", s.handleMFARecovery)
-	s.mux.HandleFunc("/api/auth/logout", s.handleLogout)
-	s.mux.HandleFunc("/api/auth/me", s.handleMe)
-	s.mux.HandleFunc("/api/auth/change-password", s.handleChangePassword)
+	s.handle("/api/auth/pow-challenge", http.HandlerFunc(s.handlePoWChallenge))
+	s.handle("/api/auth/login", http.HandlerFunc(s.handleLogin))
+	s.handle("/api/auth/mfa/totp", http.HandlerFunc(s.handleMFATOTP))
+	s.handle("/api/auth/mfa/recovery-code", http.HandlerFunc(s.handleMFARecovery))
+	s.handle("/api/auth/logout", http.HandlerFunc(s.handleLogout))
+	s.handle("/api/auth/me", http.HandlerFunc(s.handleMe))
+	s.handle("/api/auth/change-password", http.HandlerFunc(s.handleChangePassword))
 
 	// SSO
-	s.mux.HandleFunc("/api/sso/kysignon/login", s.requireSSO(s.handleKySignOnLogin))
-	s.mux.HandleFunc("/api/sso/kysignon/callback", s.requireSSO(s.handleKySignOnCallback))
-	s.mux.HandleFunc("/api/sso/kysignon/sync", s.requireSSO(s.handleKySignOnSyncWebhook))
-	s.mux.HandleFunc("/saml/metadata", s.handleSAMLMetadata)
+	s.handle("/api/sso/kysignon/login", s.requireSSO(s.handleKySignOnLogin))
+	s.handle("/api/sso/kysignon/callback", s.requireSSO(s.handleKySignOnCallback))
+	s.handle("/api/sso/kysignon/sync", s.requireSSO(s.handleKySignOnSyncWebhook))
+	s.handle("/saml/metadata", http.HandlerFunc(s.handleSAMLMetadata))
 
 	// Feature 0 KyBackup & Restore Drills. Capsules carry site data and keys: admins only.
 	// Method patterns: only the declared method reaches a handler. Export is a POST so the
 	// CSRF check covers a download that carries the whole instance.
-	s.mux.HandleFunc("POST /api/backup/drill", s.requireAdmin(s.handleBackupDrill))
-	s.mux.HandleFunc("POST /api/backup/export-capsule", s.requireAdmin(s.handleExportCapsule))
-	s.mux.HandleFunc("POST /api/backup/pair-remote", s.tracked(s.requireAdmin(s.handlePairRemoteRecovery)))
-	s.mux.HandleFunc("POST /api/backup/deposit", s.tracked(s.requireAdmin(s.handleRunBackup)))
-	s.mux.HandleFunc("DELETE /api/backup/pairing", s.requireAdmin(s.handleUnpair))
-	s.mux.HandleFunc("POST /api/backup/pin-key", s.tracked(s.requireAdmin(s.handlePinKey)))
-	s.mux.HandleFunc("PUT /api/backup/schedule", s.requireAdmin(s.handleSetSchedule))
-	s.mux.HandleFunc("GET /api/backup/status", s.requireAdmin(s.handleBackupStatus))
+	s.handle("POST /api/backup/drill", s.requireAdmin(s.handleBackupDrill))
+	s.handle("POST /api/backup/export-capsule", s.requireAdmin(s.handleExportCapsule))
+	s.handle("POST /api/backup/pair-remote", s.tracked(s.requireAdmin(s.handlePairRemoteRecovery)))
+	s.handle("POST /api/backup/deposit", s.tracked(s.requireAdmin(s.handleRunBackup)))
+	s.handle("DELETE /api/backup/pairing", s.requireAdmin(s.handleUnpair))
+	s.handle("POST /api/backup/pin-key", s.tracked(s.requireAdmin(s.handlePinKey)))
+	s.handle("PUT /api/backup/schedule", s.requireAdmin(s.handleSetSchedule))
+	s.handle("GET /api/backup/status", s.requireAdmin(s.handleBackupStatus))
 
 	// Settings & Theme. The read endpoint tiers its own payload by role.
-	s.mux.HandleFunc("/api/settings", s.handleGetSettings)
-	s.mux.HandleFunc("/api/settings/theme", s.requireAdmin(s.handleSetTheme))
+	s.handle("/api/settings", http.HandlerFunc(s.handleGetSettings))
+	s.handle("/api/settings/theme", s.requireAdmin(s.handleSetTheme))
 
 	// SCIM 2.0 routes
-	s.scim.RegisterRoutes(s.mux)
+	s.scim.RegisterRoutes(s.handle)
 
 	// App passwords for native CalDAV clients. Everyday users only.
-	s.mux.HandleFunc("GET /api/app-passwords", s.requireEveryday(s.handleListAppPasswords))
-	s.mux.HandleFunc("POST /api/app-passwords", s.requireEveryday(s.handleCreateAppPassword))
-	s.mux.HandleFunc("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
+	s.handle("GET /api/app-passwords", s.requireEveryday(s.handleListAppPasswords))
+	s.handle("POST /api/app-passwords", s.requireEveryday(s.handleCreateAppPassword))
+	s.handle("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
 
 	// Group calendars: administrators create and delete them; administrators and managers
 	// change grants. None of these routes reads or writes events.
-	s.mux.HandleFunc("GET /api/admin/calendars", s.requireAdmin(s.handleListGroupCalendars))
-	s.mux.HandleFunc("POST /api/admin/calendars", s.requireAdmin(s.handleCreateGroupCalendar))
-	s.mux.HandleFunc("DELETE /api/admin/calendars/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroupCalendar)))
-	s.mux.HandleFunc("GET /api/admin/groups", s.requireAdmin(s.handleListGroups))
-	s.mux.HandleFunc("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
-	s.mux.HandleFunc("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
-	s.mux.HandleFunc("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
-	s.mux.HandleFunc("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))
+	s.handle("GET /api/admin/calendars", s.requireAdmin(s.handleListGroupCalendars))
+	s.handle("POST /api/admin/calendars", s.requireAdmin(s.handleCreateGroupCalendar))
+	s.handle("DELETE /api/admin/calendars/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroupCalendar)))
+	s.handle("GET /api/admin/groups", s.requireAdmin(s.handleListGroups))
+	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
+	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
+	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
+	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))
 
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.
 	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))
-	s.mux.Handle("/dav/", dav)
-	s.mux.Handle("/.well-known/caldav", dav)
+	s.handle("/dav/", dav)
+	s.handle("/.well-known/caldav", dav)
 
 	// Embedded React PWA Frontend
-	s.mux.Handle("/", web.Handler())
+	s.handle("/", web.Handler())
 }
 
 type sessionUserKey struct{}

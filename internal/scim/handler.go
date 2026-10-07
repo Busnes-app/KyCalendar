@@ -46,10 +46,11 @@ func NewServer(st store.Store, cfg config.SCIMConfig, appURL string) *Server {
 	return &Server{config: cfg, protocol: server}
 }
 
-func (s *Server) RegisterRoutes(mux *http.ServeMux) {
+// RegisterRoutes mounts the SCIM endpoints through handle, which records them.
+func (s *Server) RegisterRoutes(handle func(pattern string, h http.Handler)) {
 	h := http.StripPrefix("/scim", s.protocol)
-	mux.Handle("/scim/v2", h)
-	mux.Handle("/scim/v2/", h)
+	handle("/scim/v2", h)
+	handle("/scim/v2/", h)
 }
 
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {

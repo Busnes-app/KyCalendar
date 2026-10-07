@@ -10,7 +10,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 - POST `/api/auth/change-password` accepts a restricted local session, current password and a different policy-valid new password. Browser CSRF and per-IP/account limits apply. Success revokes all sessions and requires sign-in again; flagged sessions get `password_change_required` on protected routes and public-only settings.
 - All JSON API endpoints return structured errors `{"error": "message"}` upon failure.
 - Non-API routes fall back to serving `web.Handler()` for client-side SPA routing.
-- New routes are unauthenticated only by deliberate choice; privileged ones are registered wrapped in `s.requireAdmin` in `routes()`, so the trust level of every route is readable in one place.
+- Every route is registered through `s.handle`, which records its pattern. `authz_matrix_test.go` holds one row per pattern (public, session, everyday, admin-only, grant-manager, SCIM) and one row per CalDAV operation, each run against anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers. `TestEveryRouteIsInTheMatrix` fails on a route without a row, so adding a route means adding its row.
 - Backup routes and theme writes are admin-only: capsules and settings carry site data and secrets. Group calendar deletion is the one step-up action: the session's credentials must be younger than 10 minutes (`stepUpWindow`, from `Session.CreatedAt`), else 403 `reauth_required`. Other destructive backup routes rely on admin-only plus `TestPrivilegedEndpointsRequireAdmin`. Routes are registered with method patterns, and because the SPA catch-all answers any method, tests pin that a wrong method never reaches a backup handler rather than expecting 405.
 
 | Method | Path | Handler | Response |
@@ -54,7 +54,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 - `GET /api/settings` tiers its payload: public fields for the login screen, `db_driver`/`scim_enabled` for any session, and `extra_settings` for admins only; KyRecovery tokens are omitted in both sealed and legacy plaintext forms, dropped by the `kyrecovery_token` key prefix rather than by literal key name.
 
 ## Verification
-- `go test -v ./internal/api/...` (`authz_test.go` pins the per-role exposure of every privileged route; `backup_test.go` the backup routes, on SQLite only because a run snapshots the database)
+- `go test -v ./internal/api/...` (`authz_matrix_test.go` is the route-complete authorization matrix; `authz_test.go` pins the per-role exposure of every privileged route; `backup_test.go` the backup routes, on SQLite only because a run snapshots the database)
 - `scripts/smoke-test.sh` asserts the same boundaries against a running binary
 
 ## Child DOX Index

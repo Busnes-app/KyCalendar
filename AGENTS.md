@@ -257,6 +257,7 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `go test -race` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17
 - Frontend vitest suite, then typecheck/build plus a check that committed `web/dist` matches source (it is embedded in the binary)
 - `govulncheck` and `npm audit --audit-level=high`
+- The authorization matrix (`internal/api/authz_matrix_test.go`) runs inside `go test` and fails when a registered route has no row.
 - `scripts/smoke-test.sh`: runs the built binary and asserts CLI, auth, session, and SPA behavior
 - Docker image build and container HTTP check
 - Chromium regressions against the built server: production CSP/worker, themes, responsive layout and keyboard navigation; the browser job gates publishing.
