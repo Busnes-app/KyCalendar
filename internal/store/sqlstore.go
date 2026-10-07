@@ -459,9 +459,13 @@ func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string
 	return tx.Commit()
 }
 
+// CreateSession also records the sign-in as the user's last_login_at.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expectedPasswordHash string) error {
 	return s.store.withPassword(ctx, sess.UserID, expectedPasswordHash, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt)
+		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), sess.CreatedAt, sess.UserID)
 		return err
 	})
 }

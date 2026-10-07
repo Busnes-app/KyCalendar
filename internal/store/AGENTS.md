@@ -35,6 +35,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - PostgreSQL queries are rebound dynamically from standard positional parameters.
 - MFA challenges and device pairings are consumed with database state transitions that permit exactly one successful use.
 - Recovery-code hash updates use optimistic concurrency so simultaneous redemption cannot reuse a code.
+- `CreateSession` stamps `users.last_login_at` with the session's `CreatedAt` in the same transaction; the People list shows it.
 
 ## Verification
 - `go test -v ./internal/store/...`
