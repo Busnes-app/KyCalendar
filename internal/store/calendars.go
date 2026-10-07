@@ -91,9 +91,8 @@ func (c *calendarStore) GetCalendarBySlug(ctx context.Context, ownerKind, ownerI
 WHERE owner_kind = ? AND owner_id = ? AND slug = ?`), ownerKind, ownerID, slug))
 }
 
-func (c *calendarStore) ListCalendarsByOwner(ctx context.Context, ownerKind, ownerID string) ([]*Calendar, error) {
-	rows, err := c.store.db.QueryContext(ctx, c.q(`SELECT `+calendarCols+` FROM calendars
-WHERE owner_kind = ? AND owner_id = ? ORDER BY created_at, id`), ownerKind, ownerID)
+func (c *calendarStore) queryCalendars(ctx context.Context, query string, args ...any) ([]*Calendar, error) {
+	rows, err := c.store.db.QueryContext(ctx, c.q(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +106,83 @@ WHERE owner_kind = ? AND owner_id = ? ORDER BY created_at, id`), ownerKind, owne
 		out = append(out, cal)
 	}
 	return out, rows.Err()
+}
+
+func (c *calendarStore) ListCalendarsByOwner(ctx context.Context, ownerKind, ownerID string) ([]*Calendar, error) {
+	return c.queryCalendars(ctx, `SELECT `+calendarCols+` FROM calendars WHERE owner_kind = ? AND owner_id = ? ORDER BY created_at, id`, ownerKind, ownerID)
+}
+
+func (c *calendarStore) ListCalendarsByKind(ctx context.Context, ownerKind string) ([]*Calendar, error) {
+	return c.queryCalendars(ctx, `SELECT `+calendarCols+` FROM calendars WHERE owner_kind = ? ORDER BY name, id`, ownerKind)
+}
+
+func (c *calendarStore) GetCalendarByID(ctx context.Context, id string) (*Calendar, error) {
+	return scanCalendar(c.store.db.QueryRowContext(ctx, c.q(`SELECT `+calendarCols+` FROM calendars WHERE id = ?`), id))
+}
+
+func (c *calendarStore) DeleteCalendar(ctx context.Context, id string) error {
+	res, err := c.store.db.ExecContext(ctx, c.q(`DELETE FROM calendars WHERE id = ?`), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+const grantSelect = `SELECT g.calendar_id, g.group_id, gr.display_name, g.role FROM calendar_grants g JOIN groups gr ON gr.id = g.group_id `
+
+func (c *calendarStore) queryGrants(ctx context.Context, rest string, args ...any) ([]CalendarGrant, error) {
+	rows, err := c.store.db.QueryContext(ctx, c.q(grantSelect+rest), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CalendarGrant
+	for rows.Next() {
+		var g CalendarGrant
+		if err := rows.Scan(&g.CalendarID, &g.GroupID, &g.GroupName, &g.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (c *calendarStore) ListGrants(ctx context.Context, calendarID string) ([]CalendarGrant, error) {
+	return c.queryGrants(ctx, `WHERE g.calendar_id = ? ORDER BY gr.display_name, g.group_id`, calendarID)
+}
+
+func (c *calendarStore) UserGrants(ctx context.Context, userID string) ([]CalendarGrant, error) {
+	return c.queryGrants(ctx, `JOIN group_members m ON m.group_id = g.group_id WHERE m.user_id = ? ORDER BY g.calendar_id, g.group_id`, userID)
+}
+
+func (c *calendarStore) SetGrant(ctx context.Context, g CalendarGrant) error {
+	tx, err := c.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var found int
+	err = tx.QueryRowContext(ctx, c.q(`SELECT (SELECT COUNT(*) FROM calendars WHERE id = ? AND owner_kind = 'group') + (SELECT COUNT(*) FROM groups WHERE id = ?)`),
+		g.CalendarID, g.GroupID).Scan(&found)
+	if err != nil {
+		return err
+	}
+	if found != 2 {
+		return ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_grants (calendar_id, group_id, role) VALUES (?, ?, ?)
+ON CONFLICT (calendar_id, group_id) DO UPDATE SET role = excluded.role`), g.CalendarID, g.GroupID, g.Role); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (c *calendarStore) DeleteGrant(ctx context.Context, calendarID, groupID string) error {
+	_, err := c.store.db.ExecContext(ctx, c.q(`DELETE FROM calendar_grants WHERE calendar_id = ? AND group_id = ?`), calendarID, groupID)
+	return err
 }
 
 func (c *calendarStore) UpdateCalendar(ctx context.Context, id string, name, description, color *string) error {
