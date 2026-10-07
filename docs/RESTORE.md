@@ -267,8 +267,8 @@ unset TEMP_PW
 ```
 
 Hand each temporary password to the account owner out of band. Use `init-admin` only when no
-administrator account exists at all: it makes the named account an administrator and takes
-its password on the command line. SSO accounts sign in through KyIdentity and need nothing
+administrator account exists at all: it makes the named account an administrator and reads
+its password from stdin the same way. SSO accounts sign in through KyIdentity and need nothing
 here.
 
 Then start:

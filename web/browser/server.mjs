@@ -15,7 +15,7 @@ const env = {
   KY_CAPTCHA_PROVIDER: 'none',
 };
 // The server only bootstraps its admin into an empty database, so create the admin first.
-const admin = spawnSync(binary, ['init-admin', '-password', 'BrowserInitial123!'], { cwd: dir, env, stdio: 'inherit' });
+const admin = spawnSync(binary, ['init-admin'], { cwd: dir, env, input: 'BrowserInitial123!\n', stdio: ['pipe', 'inherit', 'inherit'] });
 if (admin.status !== 0) { await rm(dir, { recursive: true, force: true }); process.exit(admin.status ?? 1); }
 // The everyday user the calendar specs sign in as.
 const created = spawnSync(binary, ['create-user', '-username', 'walter'], { cwd: dir, env, input: 'WalterInitial123!\n', stdio: ['pipe', 'inherit', 'inherit'] });
