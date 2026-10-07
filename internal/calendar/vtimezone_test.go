@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -41,4 +42,40 @@ func TestVTimezoneTransitions(t *testing.T) {
 		t.Fatalf("Tokyo offset %q", off)
 	}
 	_ = time.UTC
+}
+
+// Past tzdata's explicit transitions Go extrapolates zone rules, and ZoneBounds can stop
+// advancing; generation must still terminate with a bounded number of observances.
+func TestVTimezoneTerminatesBeyondExplicitTransitions(t *testing.T) {
+	done := make(chan int, 1)
+	go func() {
+		most := 0
+		for _, name := range []string{"America/New_York", "Europe/Berlin", "Australia/Sydney", "America/Santiago", "Pacific/Auckland", "Asia/Tehran"} {
+			loc := zone(t, name)
+			for year := 2036; year <= 9000; year += 97 {
+				from := time.Date(year, 1, 1, 0, 0, 0, 0, loc)
+				n := len(VTimezone(loc, from, from.AddDate(vtimezoneYears, 0, 0)).Children)
+				most = max(most, n)
+			}
+		}
+		done <- most
+	}()
+	select {
+	case most := <-done:
+		if most > maxObservances {
+			t.Fatalf("%d observances, cap is %d", most, maxObservances)
+		}
+		ny := zone(t, "America/New_York")
+		from := time.Date(2040, 1, 1, 0, 0, 0, 0, ny)
+		var got []string
+		for _, c := range VTimezone(ny, from, from.AddDate(2, 0, 0)).Children {
+			got = append(got, c.Name+" "+c.Props.Get(ical.PropDateTimeStart).Value)
+		}
+		want := []string{"STANDARD 20400101T000000", "DAYLIGHT 20400311T020000", "STANDARD 20401104T020000", "DAYLIGHT 20410310T020000", "STANDARD 20411103T020000"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("extrapolated New York 2040-2041:\n got %v\nwant %v", got, want)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("VTimezone did not terminate")
+	}
 }

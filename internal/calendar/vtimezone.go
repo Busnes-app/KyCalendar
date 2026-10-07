@@ -7,6 +7,10 @@ import (
 	"github.com/emersion/go-ical"
 )
 
+// maxObservances caps a generated VTIMEZONE: an offset change or two per year over
+// vtimezoneYears, plus the opening observance, with room to spare.
+const maxObservances = 4*vtimezoneYears + 1
+
 // VTimezone describes loc for clients without its IANA data: the observance in force at from,
 // then one per offset change in [from, to).
 func VTimezone(loc *time.Location, from, to time.Time) *ical.Component {
@@ -14,12 +18,26 @@ func VTimezone(loc *time.Location, from, to time.Time) *ical.Component {
 	tz.Props.SetText(ical.PropTimezoneID, loc.String())
 	t := from.In(loc)
 	tz.Children = append(tz.Children, observance(t, t))
-	for t.Before(to) {
+	for t.Before(to) && len(tz.Children) < maxObservances {
 		_, end := t.ZoneBounds()
 		if end.IsZero() || !end.Before(to) {
 			break
 		}
-		tz.Children = append(tz.Children, observance(end, end.Add(-time.Second)))
+		if !end.After(t) {
+			// Past tzdata's explicit transitions Go extrapolates the zone's rule and ZoneBounds
+			// can return t itself. t is a change already recorded and no zone changes twice in a
+			// day, so stepping a day ahead skips nothing.
+			t = t.Add(24 * time.Hour)
+			continue
+		}
+		before := end.Add(-time.Second)
+		_, offBefore := before.Zone()
+		_, offAfter := end.Zone()
+		// Go also reports boundaries that change nothing (e.g. at year ends past the explicit
+		// data); only real offset or DST changes become observances.
+		if offBefore != offAfter || before.IsDST() != end.IsDST() {
+			tz.Children = append(tz.Children, observance(end, before))
+		}
 		t = end
 	}
 	return tz
