@@ -32,8 +32,8 @@ func TestOAuthAuthorizationURLUsesDiscoveryAndPKCE(t *testing.T) {
 	defer idp.Close()
 	issuer = idp.URL
 
-	client := sso.NewKySignOnClient(config.SSOConfig{KySignOnIssuer: issuer, KySignOnClientID: "client"}, nil)
-	authURL, err := client.BuildAuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce")
+	p := sso.NewProvider(sso.KindKyIdentity, "KyIdentity", issuer, "client", "", nil)
+	authURL, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce")
 	if err != nil {
 		t.Fatal(err)
 	}

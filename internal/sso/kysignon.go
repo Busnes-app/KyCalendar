@@ -12,34 +12,14 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// KySignOnClient manages interactions with the central KySignOn identity provider.
+// KySignOnClient receives KyIdentity's signed directory webhooks. Sign-in is Provider's.
 type KySignOnClient struct {
 	config config.SSOConfig
 	store  store.Store
-	flow   *oauthFlow
 }
 
 func NewKySignOnClient(cfg config.SSOConfig, st store.Store) *KySignOnClient {
-	return &KySignOnClient{
-		config: cfg,
-		store:  st,
-		flow:   newOAuthFlow(cfg.KySignOnIssuer, cfg.KySignOnClientID, cfg.KySignOnSecret),
-	}
-}
-
-// BuildAuthURL generates the authorization code URL with PKCE for KySignOn.
-func (k *KySignOnClient) BuildAuthURL(ctx context.Context, redirectURI, state, verifier, nonce string) (string, error) {
-	return k.flow.authCodeURL(ctx, redirectURI, state, verifier, nonce)
-}
-
-// ExchangeCode exchanges the authorization code and verifier for identity claims.
-func (k *KySignOnClient) ExchangeCode(ctx context.Context, code, verifier, redirectURI, expectedNonce string) (*IdentityClaims, error) {
-	claims, err := k.flow.exchange(ctx, code, verifier, redirectURI, expectedNonce)
-	if err != nil {
-		return nil, err
-	}
-	claims.Provider = "kysignon"
-	return claims, nil
+	return &KySignOnClient{config: cfg, store: st}
 }
 
 // KySignOnSyncPayload defines the schema received during automatic directory replication webhooks.

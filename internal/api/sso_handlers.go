@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
@@ -22,11 +23,12 @@ var (
 	errUsernameTaken = errors.New("username already used by another account")
 )
 
-// upsertSSOUser maps a verified login onto a local user. The admin grant follows the token's
-// `roles` claim on every login; a change revokes the user's sessions and app passwords first.
+// upsertSSOUser maps a verified login onto a local user. A KyIdentity login's admin grant
+// follows the token's `roles` claim on every login; any other provider's users are everyday. A
+// change revokes the user's sessions and app passwords first.
 func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) (*store.User, error) {
 	role := "user"
-	if access.IsAdmin(claims.Roles) {
+	if claims.Provider == "kysignon" && access.IsAdmin(claims.Roles) {
 		role = "admin"
 	}
 	user, err := s.store.Users().GetUserBySSO(ctx, claims.Provider, claims.Subject)
@@ -82,14 +84,20 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims) 
 }
 
 func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
+	p := s.signin.Load()
+	if p == nil {
+		s.writeError(w, http.StatusNotFound, "Single sign-on is not configured")
+		return
+	}
 	state := crypto.RandomHex(16)
 	nonce := crypto.RandomHex(16)
 	verifier := oauth2.GenerateVerifier()
 
 	redirectURI := fmt.Sprintf("%s/api/sso/kysignon/callback", s.config.Server.AppURL)
-	authURL, err := s.kysignon.BuildAuthURL(r.Context(), redirectURI, state, verifier, nonce)
+	authURL, err := p.AuthURL(r.Context(), redirectURI, state, verifier, nonce)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
+		log.Printf("sso: %s authorization URL failed: %v", p.Kind, err)
+		s.writeError(w, http.StatusBadGateway, "The sign-in provider could not be reached")
 		return
 	}
 
@@ -103,9 +111,10 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   s.config.Security.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	// The nonce cookie carries the provider's ID: a callback after a provider swap fails.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ky_nonce_" + state,
-		Value:    nonce,
+		Value:    p.ID + "." + nonce,
 		Path:     "/api/sso/kysignon/callback",
 		MaxAge:   300,
 		HttpOnly: true,
@@ -132,8 +141,14 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	p := s.signin.Load()
+	providerID, nonce, _ := strings.Cut(nonceCookie.Value, ".")
+	if p == nil || providerID != p.ID || nonce == "" {
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	redirectURI := fmt.Sprintf("%s/api/sso/kysignon/callback", s.config.Server.AppURL)
-	claims, err := s.kysignon.ExchangeCode(r.Context(), code, verifier, redirectURI, nonceCookie.Value)
+	claims, err := p.Exchange(r.Context(), code, verifier, redirectURI, nonce)
 	if err != nil {
 		s.writeError(w, http.StatusUnauthorized, fmt.Sprintf("SSO exchange failed: %v", err))
 		return

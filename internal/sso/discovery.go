@@ -28,11 +28,15 @@ var (
 // AddrPolicy decides whether a resolved address may be dialled.
 type AddrPolicy func(netip.Addr) error
 
+// metadataAddrs are cloud metadata services outside the link-local ranges: AWS's IPv6 endpoint
+// and Alibaba's.
+var metadataAddrs = []netip.Addr{netip.MustParseAddr("fd00:ec2::254"), netip.MustParseAddr("100.100.100.200")}
+
 // RefuseLocal admits public and private LAN addresses and refuses loopback, link-local (cloud
-// metadata answers at 169.254.169.254), unspecified and multicast ones.
+// metadata answers at 169.254.169.254), unspecified and multicast ones, and metadataAddrs.
 func RefuseLocal(a netip.Addr) error {
 	a = a.Unmap()
-	if a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() || a.IsInterfaceLocalMulticast() || a.IsMulticast() || a.IsUnspecified() {
+	if slices.Contains(metadataAddrs, a) || a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() || a.IsInterfaceLocalMulticast() || a.IsMulticast() || a.IsUnspecified() {
 		return fmt.Errorf("%w: %s", ErrAddressRefused, a)
 	}
 	return nil
@@ -58,6 +62,7 @@ func NewGuardedClient(policy AddrPolicy, roots *x509.CertPool) *http.Client {
 		DialContext:            dialer.DialContext,
 		TLSClientConfig:        &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
 		TLSHandshakeTimeout:    10 * time.Second,
+		IdleConnTimeout:        90 * time.Second,
 		ResponseHeaderTimeout:  10 * time.Second,
 		MaxResponseHeaderBytes: 64 << 10,
 	}

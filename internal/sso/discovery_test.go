@@ -137,7 +137,7 @@ func TestGuardedClientRefusesPlainHTTP(t *testing.T) {
 func TestRefuseLocal(t *testing.T) {
 	for addr, refused := range map[string]bool{
 		"127.0.0.1": true, "::1": true, "169.254.169.254": true, "fe80::1": true, "::ffff:127.0.0.1": true, "::ffff:169.254.169.254": true,
-		"0.0.0.0": true, "224.0.0.1": true,
+		"0.0.0.0": true, "224.0.0.1": true, "fd00:ec2::254": true, "100.100.100.200": true,
 		"10.0.0.5": false, "192.168.1.2": false, "172.16.0.1": false, "100.64.0.1": false, "203.0.113.7": false,
 	} {
 		if err := sso.RefuseLocal(netip.MustParseAddr(addr)); (err != nil) != refused {

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
@@ -29,11 +30,17 @@ type recoveryClient interface {
 }
 
 type Server struct {
-	config     *config.Config
-	store      store.Store
-	sessions   *auth.SessionManager
-	kysignon   *sso.KySignOnClient
-	saml       *sso.SAMLServiceProvider
+	config   *config.Config
+	store    store.Store
+	sessions *auth.SessionManager
+	kysignon *sso.KySignOnClient
+	saml     *sso.SAMLServiceProvider
+	// signin is the live sign-in provider, nil until LoadSignIn binds accounts to one; saving
+	// sign-in settings swaps it.
+	signin atomic.Pointer[sso.Provider]
+	// signinHTTP reaches admin-entered providers: HTTPS only, no redirects, no loopback,
+	// link-local or cloud metadata targets.
+	signinHTTP *http.Client
 	scim       *scim.Server
 	recovery   recoveryClient
 	mux        *http.ServeMux
@@ -152,6 +159,8 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 		accounts: make(map[string]attemptWindow),
 	}
 
+	// No provider is live yet: LoadSignIn stores one after binding accounts to it.
+	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
 	s.routes()
 	return s
 }

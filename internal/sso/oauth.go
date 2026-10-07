@@ -3,7 +3,7 @@ package sso
 import (
 	"context"
 	"errors"
-	"strings"
+	"net/http"
 	"sync"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
@@ -15,12 +15,22 @@ type oauthFlow struct {
 	issuer       string
 	clientID     string
 	clientSecret string
+	client       *http.Client // nil: the default transport
 	mu           sync.Mutex
 	provider     *oidc.Provider
 }
 
-func newOAuthFlow(issuer, clientID, clientSecret string) *oauthFlow {
-	return &oauthFlow{issuer: strings.TrimRight(issuer, "/"), clientID: clientID, clientSecret: clientSecret}
+func newOAuthFlow(issuer, clientID, clientSecret string, client *http.Client) *oauthFlow {
+	return &oauthFlow{issuer: issuer, clientID: clientID, clientSecret: clientSecret, client: client}
+}
+
+// withClient routes discovery, the token exchange and key fetches through f.client: go-oidc and
+// oauth2 both read it from the context's oauth2.HTTPClient value.
+func (f *oauthFlow) withClient(ctx context.Context) context.Context {
+	if f.client == nil {
+		return ctx
+	}
+	return oidc.ClientContext(ctx, f.client)
 }
 
 func (f *oauthFlow) getProvider(ctx context.Context) (*oidc.Provider, error) {
@@ -29,7 +39,7 @@ func (f *oauthFlow) getProvider(ctx context.Context) (*oidc.Provider, error) {
 	if f.provider != nil {
 		return f.provider, nil
 	}
-	provider, err := oidc.NewProvider(ctx, f.issuer)
+	provider, err := oidc.NewProvider(f.withClient(ctx), f.issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +71,7 @@ func (f *oauthFlow) exchange(ctx context.Context, code, verifier, redirectURI, e
 	if err != nil {
 		return nil, err
 	}
-	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+	token, err := config.Exchange(f.withClient(ctx), code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +79,7 @@ func (f *oauthFlow) exchange(ctx context.Context, code, verifier, redirectURI, e
 	if !ok || rawIDToken == "" {
 		return nil, errors.New("missing id_token in token response")
 	}
-	idToken, err := provider.Verifier(&oidc.Config{ClientID: f.clientID}).Verify(ctx, rawIDToken)
+	idToken, err := provider.Verifier(&oidc.Config{ClientID: f.clientID}).Verify(f.withClient(ctx), rawIDToken)
 	if err != nil || expectedNonce == "" || idToken.Nonce != expectedNonce {
 		return nil, ErrInvalidIDToken
 	}
