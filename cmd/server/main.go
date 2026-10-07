@@ -138,6 +138,9 @@ func runServer() {
 	}()
 
 	srv := api.NewServer(cfg, st)
+	if err := srv.LoadSignIn(ctx); err != nil {
+		log.Printf("[SSO] sign-in closed: settings not applied: %v", err)
+	}
 	backupDone := make(chan struct{})
 	go backupLoop(ctx, cfg, st, backupDone)
 

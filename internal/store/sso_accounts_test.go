@@ -53,3 +53,23 @@ func TestDisableSSOAccounts(t *testing.T) {
 		t.Fatalf("empty list: %d %v, want 0", n, err)
 	}
 }
+
+// Local accounts are never SSO accounts, whatever list the caller passes.
+func TestDisableSSOAccountsNeverTouchesLocal(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	lo := &store.User{ID: "usr_lo", Username: "lo", Role: "admin", Status: "active", SSOProvider: "local"}
+	seedUsers(t, st, lo)
+	seedSession(t, st, lo)
+	local := []string{"local"}
+	if n, err := st.Users().CountSSOAccounts(ctx, local); err != nil || n != 0 {
+		t.Fatalf("count local: %d %v, want 0", n, err)
+	}
+	if n, err := st.Users().DisableSSOAccounts(ctx, local); err != nil || n != 0 {
+		t.Fatalf("disable local: %d %v, want 0", n, err)
+	}
+	got, _ := st.Users().GetUserByID(ctx, lo.ID)
+	if _, err := st.Sessions().GetSession(ctx, "tok_"+lo.ID); got.Status != "active" || err != nil {
+		t.Fatalf("local account: status %s, session %v; want untouched", got.Status, err)
+	}
+}

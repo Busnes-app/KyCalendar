@@ -90,6 +90,7 @@ type UserStore interface {
 	// DisableSSOAccounts makes every active account whose sso_provider is in providers inactive
 	// and deletes the sessions, MFA challenges, device pairings and app passwords of every
 	// account of those providers, in one transaction. It returns how many accounts it deactivated.
+	// Local accounts are never touched, whatever the list.
 	DisableSSOAccounts(ctx context.Context, providers []string) (int, error)
 	// CountSSOAccounts counts the active accounts DisableSSOAccounts would deactivate.
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)

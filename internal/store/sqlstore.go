@@ -642,7 +642,7 @@ func (u *userStore) DisableSSOAccounts(ctx context.Context, providers []string) 
 	}
 	defer tx.Rollback()
 	// Rows first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
-	res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET status = 'inactive', updated_at = ? WHERE status = 'active' AND sso_provider IN ("+in+")"), append([]any{time.Now().UTC()}, args...)...)
+	res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET status = 'inactive', updated_at = ? WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), append([]any{time.Now().UTC()}, args...)...)
 	if err != nil {
 		return 0, err
 	}
@@ -651,7 +651,7 @@ func (u *userStore) DisableSSOAccounts(ctx context.Context, providers []string) 
 		return 0, err
 	}
 	for _, table := range grantTables {
-		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id IN (SELECT id FROM users WHERE sso_provider IN ("+in+"))"), args...); err != nil {
+		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local' AND sso_provider IN ("+in+"))"), args...); err != nil {
 			return 0, err
 		}
 	}
@@ -664,7 +664,7 @@ func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (i
 	}
 	in, args := inList(providers)
 	var n int
-	err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE status = 'active' AND sso_provider IN ("+in+")"), args...).Scan(&n)
+	err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), args...).Scan(&n)
 	return n, err
 }
 
