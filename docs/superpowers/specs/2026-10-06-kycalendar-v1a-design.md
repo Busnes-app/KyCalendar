@@ -83,7 +83,7 @@ Storage is SQLite through the base's DB layer.
   the calendar; VEVENT only; object ≤ 1 MiB and per-user object quota (both configurable);
   `If-Match` and `If-None-Match` honoured.
 - Every write or delete increments the calendar's `seq` and appends to `changes` in the same
-  transaction. `getctag` is `seq`; the sync token is an opaque URL encoding `sync_epoch` and `seq`.
+  transaction. `getctag` is the sync token (`sync_epoch` and `seq`), so it changes after a restore; the sync token is an opaque URL encoding `sync_epoch` and `seq`.
   `sync-collection` returns changes since the token. Change rows older than 90 days are pruned; an
   older or foreign-epoch token gets `valid-sync-token` and the client resyncs.
 - Time-range queries prefilter on `first_start`/`last_end` in SQL, then go-webdav `match.go` decides

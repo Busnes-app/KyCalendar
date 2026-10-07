@@ -168,11 +168,22 @@ func TestCalDAVTokenFromBeforeRestoreRefused(t *testing.T) {
 			t.Fatalf("PUT %s: %d", name, r.StatusCode)
 		}
 	}
+	ctag := func(pass string) string {
+		body := `<d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/"><d:prop><cs:getctag/></d:prop></d:propfind>`
+		r := rawDAV(t, ts, "PROPFIND", cal, "alice", pass, body, map[string]string{"Content-Type": "application/xml", "Depth": "0"})
+		b := readAll(r)
+		v := between(b, "getctag xmlns=\"http://calendarserver.org/ns/\">", "<")
+		if r.StatusCode != 207 || v == "" {
+			t.Fatalf("getctag %d %s", r.StatusCode, b)
+		}
+		return v
+	}
 	put(old, "pre")
 	tok := between(readAll(sync(old, "")), "<sync-token>", "</sync-token>")
 	if !strings.HasSuffix(tok, ":1") {
 		t.Fatalf("token %q", tok)
 	}
+	ctagBefore := ctag(old)
 
 	if err := st.ResetAfterRestore(context.Background()); err != nil {
 		t.Fatal(err)
@@ -186,6 +197,11 @@ func TestCalDAVTokenFromBeforeRestoreRefused(t *testing.T) {
 	}
 	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}); err != nil {
 		t.Fatal(err)
+	}
+	// Same seq as before the reset: a ctag of seq alone would equal the cached one and the
+	// client would skip the resync.
+	if after := ctag(fresh); after == ctagBefore {
+		t.Fatalf("getctag %q unchanged across the restore", after)
 	}
 	put(fresh, "post1")
 	put(fresh, "post2")

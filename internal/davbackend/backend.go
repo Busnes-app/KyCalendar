@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -133,7 +132,7 @@ func (b *Backend) toDAV(ctx context.Context, c *store.Calendar, role access.Role
 		Name:                  c.Name,
 		Description:           c.Description,
 		Color:                 c.Color,
-		CTag:                  strconv.FormatInt(c.Seq, 10),
+		CTag:                  calendar.FormatSyncToken(epoch, c.Seq), // seq alone repeats after a restore
 		SyncToken:             calendar.FormatSyncToken(epoch, c.Seq),
 		MaxResourceSize:       calendar.MaxObjectSize,
 		SupportedComponentSet: []string{ical.CompEvent},

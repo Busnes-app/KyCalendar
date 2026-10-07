@@ -34,13 +34,13 @@ func resetRestored(ctx context.Context, dataDir string) error {
 	return st.ResetAfterRestore(ctx)
 }
 
-const resetDone = "✓ Sessions, MFA challenges and app passwords revoked; new sync epoch written. Every user creates new app passwords; CalDAV clients resync."
+const resetDone = "✓ Sessions, MFA challenges and app passwords revoked; local passwords must change at next sign-in; new sync epoch written. Every user creates new app passwords; CalDAV clients resync."
 
 func runRestoreReset(args []string) {
 	fs := flag.NewFlagSet("restore-reset", flag.ExitOnError)
 	target := fs.String("to", "", "directory a restore extracted into")
 	_ = fs.Parse(args)
-	if *target == "" {
+	if *target == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "Usage: kycalendar restore-reset -to <dir>")
 		os.Exit(2)
 	}

@@ -29,8 +29,9 @@ type Store interface {
 	Audit() AuditStore
 	Settings() SettingsStore
 
-	// ResetAfterRestore ends every session, MFA challenge and app password and writes a new
-	// sync epoch, in one transaction, so nothing issued after the backup is believed.
+	// ResetAfterRestore ends every session, MFA challenge and app password, flags every local
+	// password for replacement and writes a new sync epoch, in one transaction, so nothing
+	// issued after the backup is believed.
 	ResetAfterRestore(ctx context.Context) error
 
 	Driver() string
