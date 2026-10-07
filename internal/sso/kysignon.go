@@ -70,10 +70,13 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 	if payload.Timestamp == 0 || time.Since(time.Unix(payload.Timestamp, 0)).Abs() > 5*time.Minute {
 		return errors.New("webhook timestamp is missing or expired")
 	}
+	if payload.ID == "" {
+		return errors.New("webhook user id is missing")
+	}
 
 	switch payload.Event {
 	case "user.created", "user.updated":
-		existing, err := k.store.Users().GetUserBySSO(ctx, "kysignon", payload.ID)
+		existing, err := k.findUser(ctx, payload.ID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -87,21 +90,16 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		// this webhook, whose legacy `role` is KyIdentity's global role. The webhook cannot see
 		// app roles, so an admin re-proves the role at the next sign-in: their sessions end here.
 		if existing != nil {
-			revoke := existing.Status != status || existing.Role == "admin"
+			if existing.Status != status || existing.Role == "admin" {
+				if err := k.revoke(ctx, existing.ID); err != nil {
+					return err
+				}
+			}
 			existing.Username = payload.Username
 			existing.Email = payload.Email
 			existing.DisplayName = payload.DisplayName
 			existing.Status = status
-			if err := k.store.Users().UpdateUser(ctx, existing); err != nil {
-				return err
-			}
-			if revoke {
-				if err := k.store.Sessions().DeleteUserSessions(ctx, existing.ID); err != nil {
-					return err
-				}
-				return k.store.AppPasswords().DeleteByUser(ctx, existing.ID)
-			}
-			return nil
+			return k.store.Users().UpdateUser(ctx, existing)
 		}
 
 		newUser := &store.User{
@@ -117,26 +115,48 @@ func (k *KySignOnClient) HandleSyncWebhook(ctx context.Context, body []byte, sig
 		return k.store.Users().CreateUser(ctx, newUser)
 
 	case "user.deactivated":
-		existing, err := k.store.Users().GetUserBySSO(ctx, "kysignon", payload.ID)
+		existing, err := k.findUser(ctx, payload.ID)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
 		if err != nil {
-			return nil // User might not exist locally
+			return err
+		}
+		if err := k.revoke(ctx, existing.ID); err != nil {
+			return err
 		}
 		existing.Status = "inactive"
-		if err := k.store.Users().UpdateUser(ctx, existing); err != nil {
-			return err
-		}
-		if err := k.store.Sessions().DeleteUserSessions(ctx, existing.ID); err != nil {
-			return err
-		}
-		return k.store.AppPasswords().DeleteByUser(ctx, existing.ID)
+		return k.store.Users().UpdateUser(ctx, existing)
 
 	case "user.deleted":
-		existing, err := k.store.Users().GetUserBySSO(ctx, "kysignon", payload.ID)
-		if err != nil {
+		existing, err := k.findUser(ctx, payload.ID)
+		if errors.Is(err, store.ErrNotFound) {
 			return nil
+		}
+		if err != nil {
+			return err
 		}
 		return k.store.Users().DeleteUser(ctx, existing.ID)
 	}
 
 	return nil
+}
+
+// findUser resolves a directory ID to the local user. KyIdentity's SCIM externalId is the same
+// ID, so a SCIM-provisioned user is found too.
+func (k *KySignOnClient) findUser(ctx context.Context, id string) (*store.User, error) {
+	u, err := k.store.Users().GetUserBySSO(ctx, "kysignon", id)
+	if errors.Is(err, store.ErrNotFound) {
+		return k.store.Users().GetUserBySSO(ctx, "scim", id)
+	}
+	return u, err
+}
+
+// revoke ends the user's sessions and app passwords; callers do it before storing the change,
+// so a failed write still leaves the user signed out.
+func (k *KySignOnClient) revoke(ctx context.Context, userID string) error {
+	if err := k.store.Sessions().DeleteUserSessions(ctx, userID); err != nil {
+		return err
+	}
+	return k.store.AppPasswords().DeleteByUser(ctx, userID)
 }

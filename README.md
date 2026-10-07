@@ -80,7 +80,7 @@ In KyIdentity, on the KyCalendar app:
 
 1. Create the app role `kycalendar.admin`. Creating an app's first role also stops KyIdentity from sending its global admin role to KyCalendar; until then, a global admin is still not a KyCalendar admin.
 2. Assign `kycalendar.admin` to the dedicated administrator login, directly or through a group.
-3. For group calendars, enable group delivery on the KyCalendar SCIM connector so groups and their members reach KyCalendar.
+3. For group calendars, enable group delivery on the KyCalendar SCIM connector so groups and their members reach KyCalendar. KyCalendar matches a SCIM user to their KySignOn login by KyIdentity's user ID, so SCIM must come from KyIdentity, not another identity provider.
 
 A role change takes effect at that user's next sign-in, or at once through SCIM, and signs them out of KyCalendar everywhere. After upgrading, SSO administrators sign in again once, so the app role decides who stays an administrator.
 

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/scim"
@@ -419,5 +421,65 @@ func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
 	}
 	if list, _ := st.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
 		t.Fatal("the role change kept the app passwords")
+	}
+}
+
+type failingUpdates struct{ store.Store }
+type failingUserStore struct{ store.UserStore }
+
+func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
+func (failingUserStore) UpdateUser(context.Context, *store.User) error {
+	return errors.New("update refused")
+}
+
+// A role or status change revokes first: when the write then fails, the user is signed out
+// and keeps the old role, so no old session ever runs under the new one.
+func TestSCIMRevokesBeforeStoringPrivilegeChange(t *testing.T) {
+	cases := map[string]func(id string) (string, any){
+		"put promotion": func(id string) (string, any) {
+			return "PUT", map[string]any{"schemas": []string{scim.SchemaUser}, "userName": id, "active": true,
+				"roles": []any{map[string]any{"value": "kycalendar.admin"}}}
+		},
+		"patch deactivation": func(string) (string, any) {
+			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "replace", "path": "active", "value": false}}}
+		},
+	}
+	for name, req := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			real, err := store.Open(ctx, testdb.Config(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = real.Close() })
+			id := "usr_" + strings.ReplaceAll(name, " ", "_")
+			if err := real.Users().CreateUser(ctx, &store.User{ID: id, Username: id, Role: "user", Status: "active", SSOProvider: "scim"}); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			if err := real.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + id, UserID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := real.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "phone", Hash: "h"}); err != nil {
+				t.Fatal(err)
+			}
+			token := "scim-secret-bearer-token"
+			srv := scim.NewServer(failingUpdates{real}, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
+			mux := http.NewServeMux()
+			srv.RegisterRoutes(mux.Handle)
+			method, body := req(id)
+			if w := scimDo(t, srv.AuthMiddleware(mux), token, method, "/scim/v2/Users/"+id, body); w.Code < 400 {
+				t.Fatalf("%s succeeded despite the failing write: %d", method, w.Code)
+			}
+			if _, err := real.Sessions().GetSession(ctx, "tok_"+id); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("session survived a failed privilege change: %v", err)
+			}
+			if list, _ := real.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
+				t.Fatal("app passwords survived a failed privilege change")
+			}
+			if u, _ := real.Users().GetUserByID(ctx, id); u.Role != "user" || u.Status != "active" {
+				t.Fatalf("change stored despite the failure: role %q status %q", u.Role, u.Status)
+			}
+		})
 	}
 }
