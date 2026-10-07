@@ -11,7 +11,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 - All JSON API endpoints return structured errors `{"error": "message"}` upon failure.
 - Non-API routes fall back to serving `web.Handler()` for client-side SPA routing.
 - Every route is registered through `s.handle`, which records its pattern. `authz_matrix_test.go` holds one row per pattern (public, session, everyday, admin-only, grant-manager, SCIM) and one row per CalDAV operation, each run against anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers. `TestEveryRouteIsInTheMatrix` fails on a route without a row, so adding a route means adding its row. An `allow` cell fails on 401, 403, 404 and any 5xx.
-- Backup routes and theme writes are admin-only: capsules and settings carry site data and secrets. Group calendar deletion is the one step-up action: the session's credentials must be younger than 10 minutes (`stepUpWindow`, from `Session.CreatedAt`), else 403 `reauth_required`. Other destructive backup routes rely on admin-only plus `TestPrivilegedEndpointsRequireAdmin`. Routes are registered with method patterns, and because the SPA catch-all answers any method, tests pin that a wrong method never reaches a backup handler rather than expecting 405.
+- Backup routes and theme writes are admin-only: capsules and settings carry site data and secrets. Group calendar deletion and `DELETE /api/backup/pairing` are the step-up actions: the session's credentials must be younger than 10 minutes (`stepUpWindow`, from `Session.CreatedAt`), else 403 `reauth_required`. Other destructive backup routes rely on admin-only plus `TestPrivilegedEndpointsRequireAdmin`. Routes are registered with method patterns, and because the SPA catch-all answers any method, tests pin that a wrong method never reaches a backup handler rather than expecting 405.
 
 | Method | Path | Handler | Response |
 |---|---|---|---|
@@ -19,7 +19,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | POST | `/api/backup/export-capsule` | `handleExportCapsule` | `.kycap` attachment; POST so the CSRF check covers it |
 | POST | `/api/backup/pair-remote` | `handlePairRemoteRecovery` | `{recovery_key_id, threshold, total_shares}` |
 | POST | `/api/backup/deposit` | `handleRunBackup` | `recoveryclient.Result` (+`receipt_unrecorded`) |
-| DELETE | `/api/backup/pairing` | `handleUnpair` | `{paired:false}`; URL and token rows only, key pin stays |
+| DELETE | `/api/backup/pairing` | `handleUnpair` | `{paired:false}`; step-up (403 `reauth_required`); URL and token rows only, key pin stays |
 | POST | `/api/backup/pin-key` | `handlePinKey` | write-once; 409 on a different key |
 | PUT | `/api/backup/schedule` | `handleSetSchedule` | `{interval_sec}` read back from the store |
 | GET | `/api/backup/status` | `handleBackupStatus` | pairing, key, local copies, schedule, members, `database_driver`, `last_run`; never the token |

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Backup } from './Backup';
 
 function mockStatus(body: Record<string, unknown>) {
@@ -84,5 +84,25 @@ describe('Backup', () => {
     mockStatus({ ...PAIRED, last_run: { at: '2026-10-06T10:00:00Z', outcome: 'success' } });
     render(<Backup />);
     expect(await screen.findByText(/Last run succeeded/)).toBeTruthy();
+  });
+
+  it('asks for a fresh sign-in when unpair is refused, and stays paired', async () => {
+    vi.stubGlobal('confirm', () => true);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/backup/status')) return new Response(JSON.stringify(PAIRED), { status: 200 });
+        if (url.endsWith('/api/backup/pairing') && init?.method === 'DELETE') {
+          return new Response(JSON.stringify({ error: 'Sign in again to unpair', code: 'reauth_required' }), { status: 403 });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+    render(<Backup />);
+    fireEvent.click(await screen.findByRole('button', { name: /unpair/i }));
+    expect(await screen.findByText('Sign in again to unpair')).toBeTruthy();
+    expect(screen.queryByText(/^Unpaired\./)).toBeNull();
+    expect(screen.getByText('https://recovery.example')).toBeTruthy();
   });
 });

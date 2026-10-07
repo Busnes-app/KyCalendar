@@ -235,6 +235,32 @@ func TestUnpairKeepsPin(t *testing.T) {
 	}
 }
 
+func TestUnpairNeedsRecentSignIn(t *testing.T) {
+	srv, st, _ := setupSQLiteServer(t)
+	priv, _ := recoverykey.Generate()
+	api.SetRecoveryClientForTest(srv, fakePairer{result: recoveryclient.PairingResult{
+		APIToken: "kyrec_live_t",
+		Key:      recoveryclient.RecoveryKey{Public: priv.Public(), Threshold: 2, TotalShares: 3},
+	}})
+	session := loginAs(t, srv, st, "alice", "admin")
+	pair := map[string]string{"recovery_url": "https://recovery.busnes.app", "pairing_code": "123456"}
+	if w := adminDo(t, srv, session, "POST", "/api/backup/pair-remote", pair); w.Code != http.StatusOK {
+		t.Fatalf("pair: got %d: %s", w.Code, w.Body.String())
+	}
+	restore := api.SetStepUpWindowForTest(0)
+	w := adminDo(t, srv, session, "DELETE", "/api/backup/pairing", nil)
+	restore()
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauth_required"`) {
+		t.Fatalf("stale session: got %d: %s", w.Code, w.Body.String())
+	}
+	if status := statusOf(t, srv, session); status["paired"] != true {
+		t.Errorf("a refused unpair removed the pairing: %v", status)
+	}
+	if rows := auditRows(t, st, "admin.backup_unpair"); len(rows) != 0 {
+		t.Errorf("a refused unpair was audited as done: %+v", rows)
+	}
+}
+
 func TestScheduleBounds(t *testing.T) {
 	srv, st, _ := setupSQLiteServer(t)
 	session := loginAs(t, srv, st, "alice", "admin")
