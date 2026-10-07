@@ -32,6 +32,9 @@ func main() {
 		case "init-admin":
 			runInitAdmin(os.Args[2:])
 			return
+		case "create-user":
+			runCreateUser(os.Args[2:])
+			return
 		case "backup-drill":
 			runBackupDrill(os.Args[2:])
 			return
