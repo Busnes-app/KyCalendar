@@ -2,6 +2,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@fullcalendar/react', () => ({ default: () => <div data-testid="fullcalendar" /> }));
+const dashboard = vi.hoisted(() => ({ renders: 0 }));
+vi.mock('./pages/Dashboard', () => ({ Dashboard: () => { dashboard.renders++; return <p>Overview</p>; } }));
 
 import { App } from './App';
 
@@ -15,6 +17,7 @@ function signedInAs(role: string) {
 }
 
 afterEach(() => {
+  dashboard.renders = 0;
   cleanup();
   vi.restoreAllMocks();
 });
@@ -25,6 +28,7 @@ describe('App landing', () => {
     render(<App />);
     expect(await screen.findByTestId('fullcalendar')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Calendar/ })).toBeTruthy();
+    expect(dashboard.renders).toBe(0); // no Overview flash before the calendar
   });
 
   it('shows admins no Calendar item and no calendar page', async () => {

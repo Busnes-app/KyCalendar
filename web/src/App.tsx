@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
@@ -8,17 +8,20 @@ import { SCIMAdmin } from './pages/SCIMAdmin';
 import { Settings } from './pages/Settings';
 import AppPasswords from './pages/AppPasswords';
 import GroupCalendars from './pages/GroupCalendars';
-import { CalendarPage } from './pages/CalendarPage';
 import './styles/theme.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
 import { secureFetch } from './api';
 
+// FullCalendar is the bulk of the bundle; load it only for the calendar (same-origin chunk).
+const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+
 export const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // null until the user picks a tab: the landing tab follows the role, so there is no flash.
+  const [chosenTab, setActiveTab] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
 
   useEffect(() => {
@@ -50,10 +53,6 @@ export const App: React.FC = () => {
     checkAuth();
   }, []);
 
-  useEffect(() => {
-    if (user) setActiveTab(user.role === 'admin' ? 'dashboard' : 'calendar');
-  }, [user?.id]);
-
   // /api/settings returns more fields once authenticated, so re-read it after login.
   const loadSettings = async () => {
     const resp = await fetch('/api/settings');
@@ -66,7 +65,7 @@ export const App: React.FC = () => {
   const handleLogout = async () => {
     await secureFetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
-    setActiveTab('dashboard');
+    setActiveTab(null);
   };
 
   if (loading) {
@@ -100,6 +99,8 @@ export const App: React.FC = () => {
     }} />;
   }
 
+  const activeTab = chosenTab ?? (user.role === 'admin' ? 'dashboard' : 'calendar');
+
   return (
     <div className="app-shell">
       <AppHeader
@@ -111,7 +112,7 @@ export const App: React.FC = () => {
       />
 
       <main className="app-main">
-        {activeTab === 'calendar' && user.role !== 'admin' && <CalendarPage />}
+        {activeTab === 'calendar' && user.role !== 'admin' && <Suspense fallback={<p>Loading calendar…</p>}><CalendarPage /></Suspense>}
         {activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
         {activeTab === 'scim' && <SCIMAdmin />}
         {activeTab === 'backup' && <Backup />}
