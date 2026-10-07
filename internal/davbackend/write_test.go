@@ -63,3 +63,17 @@ func TestWrite(t *testing.T) {
 		t.Fatalf("METHOD: %v", err)
 	}
 }
+
+func TestWriteRefusesAnOverlargeObject(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	raw := make([]byte, calendar.MaxObjectSize+1)
+	_, err = davbackend.Write(ctx, st, "cal_none", "a.ics", decode(t, event), raw, "", true, store.OwnerLimits{})
+	if !errors.Is(err, davbackend.ErrTooLarge) {
+		t.Fatalf("got %v, want ErrTooLarge", err)
+	}
+}

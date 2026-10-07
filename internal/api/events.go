@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/emersion/go-ical"
 	"github.com/google/uuid"
@@ -212,11 +213,19 @@ func eventInput(b eventBody, allowCustom bool) (calendar.EventInput, error) {
 	case len(b.Title) > maxTitleBytes, len(b.Location) > maxLocationBytes, len(b.Description) > maxDescriptionBytes:
 		return in, fmt.Errorf("%w: text too long", errBadEvent)
 	}
+	for _, text := range []string{b.Title, b.Location, b.Description} {
+		if strings.ContainsFunc(text, func(c rune) bool { return unicode.IsControl(c) && c != '\n' && c != '\t' }) {
+			return in, fmt.Errorf("%w: text contains control characters", errBadEvent)
+		}
+	}
 	if b.AllDay {
 		s, err1 := time.Parse(time.DateOnly, b.Start)
 		e, err2 := time.Parse(time.DateOnly, b.End)
 		if err1 != nil || err2 != nil || !e.After(s) {
 			return in, fmt.Errorf("%w: all-day start and end must be dates, end after start", errBadEvent)
+		}
+		if !yearsInRange(s, e) {
+			return in, fmt.Errorf("%w: years must be 1900 to 9000", errBadEvent)
 		}
 		in.Start, in.End = s, e
 	} else {
@@ -231,6 +240,9 @@ func eventInput(b eventBody, allowCustom bool) (calendar.EventInput, error) {
 		e, err2 := time.Parse(time.RFC3339, b.End)
 		if err1 != nil || err2 != nil || e.Before(s) {
 			return in, fmt.Errorf("%w: start and end must be RFC 3339, end not before start", errBadEvent)
+		}
+		if !yearsInRange(s, e) {
+			return in, fmt.Errorf("%w: years must be 1900 to 9000", errBadEvent)
 		}
 		in.Start, in.End, in.Zone = s, e, loc
 	}
@@ -258,20 +270,38 @@ func eventInput(b eventBody, allowCustom bool) (calendar.EventInput, error) {
 	return in, nil
 }
 
-// ifMatch reads a strong If-Match ETag; ok is false when absent or weak.
-func ifMatch(r *http.Request) (string, bool) {
-	v := strings.TrimSpace(r.Header.Get("If-Match"))
-	if v == "" || strings.HasPrefix(v, "W/") || v == "*" {
-		return "", false
+func yearsInRange(ts ...time.Time) bool {
+	for _, t := range ts {
+		if y := t.Year(); y < 1900 || y > 9000 {
+			return false
+		}
 	}
-	return strings.Trim(v, `"`), true
+	return true
+}
+
+// ifMatch reads exactly one strong entity tag, "<etag>": present reports whether the header was
+// sent, ok whether it is well formed. A bare, weak, wildcard, empty or listed value is not ok,
+// because the store reads "" and "*" as no precondition.
+func ifMatch(r *http.Request) (etag string, present, ok bool) {
+	v := strings.TrimSpace(r.Header.Get("If-Match"))
+	if v == "" && len(r.Header.Values("If-Match")) == 0 {
+		return "", false, false
+	}
+	if len(v) < 3 || v[0] != '"' || v[len(v)-1] != '"' {
+		return "", true, false
+	}
+	etag = v[1 : len(v)-1]
+	if etag == "*" || strings.ContainsFunc(etag, func(c rune) bool { return c == '"' || c == ',' || unicode.IsSpace(c) }) {
+		return "", true, false
+	}
+	return etag, true, true
 }
 
 // writeEvent stores cal through the one write path and maps its errors to JSON.
 func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, bool) {
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
-		s.writeError(w, http.StatusUnprocessableEntity, "The event cannot be encoded")
+		s.writeError(w, http.StatusInternalServerError, "The event cannot be encoded")
 		return nil, false
 	}
 	o, err := davbackend.Write(r.Context(), s.store, c.ID, name, cal, buf.Bytes(), etag, create, s.objectLimits())
@@ -280,6 +310,10 @@ func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Cal
 		return o, true
 	case errors.Is(err, store.ErrPreconditionFailed):
 		s.writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "The event changed elsewhere; reload it", "code": "conflict"})
+	case errors.Is(err, davbackend.ErrTooLarge):
+		s.writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "The event is too large", "code": "too_large"})
+	case errors.Is(err, store.ErrNotFound):
+		s.writeError(w, http.StatusNotFound, "No such calendar")
 	case errors.Is(err, store.ErrUIDConflict):
 		s.writeError(w, http.StatusConflict, "An event with this UID already exists")
 	case errors.Is(err, store.ErrQuotaExceeded):
@@ -329,9 +363,13 @@ func (s *Server) loadEvent(w http.ResponseWriter, r *http.Request) (*store.Calen
 		s.writeError(w, http.StatusForbidden, "This calendar is read-only for you")
 		return nil, nil, nil, "", false
 	}
-	etag, ok := ifMatch(r)
-	if !ok {
+	etag, present, ok := ifMatch(r)
+	if !present {
 		s.writeError(w, http.StatusPreconditionRequired, "If-Match with the event's ETag is required")
+		return nil, nil, nil, "", false
+	}
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, "If-Match must be one strong ETag")
 		return nil, nil, nil, "", false
 	}
 	o, err := s.store.Calendars().GetObjectByUID(r.Context(), c.ID, r.PathValue("uid"))

@@ -16,10 +16,16 @@ import (
 // ErrInvalidResource is an object CalDAV refuses outright, such as one carrying METHOD.
 var ErrInvalidResource = errors.New("davbackend: not a valid calendar object resource")
 
+// ErrTooLarge is an object over calendar.MaxObjectSize, whichever path wrote it.
+var ErrTooLarge = errors.New("davbackend: calendar object too large")
+
 // Write is the one write path for calendar objects, from CalDAV PUT and from web edits alike:
 // CalDAV validation, Inspect, then a store write with ETag preconditions, quotas and a change
 // row in one transaction.
 func Write(ctx context.Context, st store.Store, calendarID, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits) (*store.CalendarObject, error) {
+	if len(raw) > calendar.MaxObjectSize {
+		return nil, ErrTooLarge
+	}
 	if _, _, err := caldav.ValidateCalendarObject(cal); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidResource, err)
 	}

@@ -394,6 +394,8 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
 	o, err := Write(ctx, b.Store, c.ID, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits())
 	switch {
+	case errors.Is(err, ErrTooLarge):
+		return nil, caldav.NewPreconditionError(caldav.PreconditionMaxResourceSize)
 	case errors.Is(err, ErrInvalidResource):
 		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarObjectResource)
 	case errors.Is(err, calendar.ErrUnsupportedComponent):

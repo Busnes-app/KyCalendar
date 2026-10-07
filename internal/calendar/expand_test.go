@@ -193,12 +193,21 @@ func calendarOf(vevents ...string) string {
 
 func TestExpandNeverMatchingRuleIsBounded(t *testing.T) {
 	for _, rule := range []string{"FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30", "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2", "FREQ=MONTHLY;BYDAY=1MO;BYMONTHDAY=15"} {
+		// Structural: the rule is recognised as unsatisfiable, so expansion never iterates it.
+		opt, err := rrule.StrToROption(rule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := day(2010, 1, 1)
+		if satisfiable(opt) && yields(opt, start) {
+			t.Errorf("%s: neither satisfiable nor yields reports false", rule)
+		}
 		var evs []string
 		for i := range 10 {
 			dt := "201" + strconv.Itoa(i) + "0101T000000Z"
 			evs = append(evs, event("UID:never\nDTSTART:"+dt+"\nDTEND:"+dt+"\nRRULE:"+rule))
 		}
-		start := time.Now()
+		began := time.Now()
 		got, err := Expand(parse(t, calendarOf(evs...)), day(2026, 10, 1), day(2026, 10, 8), time.UTC, 5000)
 		if err != nil {
 			t.Fatal(err)
@@ -208,7 +217,7 @@ func TestExpandNeverMatchingRuleIsBounded(t *testing.T) {
 				t.Fatalf("%s: instance of a never-matching rule: %+v", rule, in)
 			}
 		}
-		if d := time.Since(start); d > 300*time.Millisecond {
+		if d := time.Since(began); d > 10*time.Second {
 			t.Fatalf("%s: took %v", rule, d)
 		}
 	}

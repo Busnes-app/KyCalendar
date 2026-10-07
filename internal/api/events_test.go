@@ -298,3 +298,129 @@ func TestEventWriteRolesAndValidation(t *testing.T) {
 		t.Fatalf("missing event %d, want 404", w.Code)
 	}
 }
+
+func TestEventIfMatchMustBeOneStrongETag(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "ifm", "user")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_ifm")
+	w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", `{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, cookie)
+	var created struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	before, _ := st.Calendars().GetObjectByUID(context.Background(), group.ID, created.UID)
+	edit := `{"title":"B","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`
+	for _, bad := range []string{`""`, `"*"`, `*`, `W/"x"`, `"a", "b"`, `abc`} {
+		for _, m := range []string{"PUT", "DELETE"} {
+			req := httptest.NewRequest(m, "/api/events/"+group.ID+"/"+created.UID+"?scope=all", strings.NewReader(edit))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("If-Match", bad)
+			req.AddCookie(cookie)
+			req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
+			req.Header.Set(auth.HeaderCSRF, "test-csrf")
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s If-Match %s: %d, want 400", m, bad, rec.Code)
+			}
+		}
+	}
+	after, err := st.Calendars().GetObjectByUID(context.Background(), group.ID, created.UID)
+	if err != nil || after.ETag != before.ETag || string(after.Data) != string(before.Data) {
+		t.Fatal("a malformed If-Match changed the stored object")
+	}
+}
+
+func TestEventWriteRefusesAnOverlargeObject(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "big", "user")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_big")
+	pad := strings.Repeat("x", 1<<20-len(recurringICS)-100)
+	data := strings.Replace(recurringICS, "SUMMARY:", "X-PAD:"+pad+"\r\nSUMMARY:", 1)
+	putObject(t, st, group, "weekly.ics", "weekly", data, 1790000000)
+	o, _ := st.Calendars().GetObjectByUID(context.Background(), group.ID, "weekly")
+	evs := eventsIn(t, srv, cookie, group.ID)
+	if len(evs) == 0 {
+		t.Fatal("seed not listed")
+	}
+	one := `{"title":"T","description":"` + strings.Repeat("d", 5000) + `","start":"2026-10-12T09:00:00+02:00","end":"2026-10-12T10:00:00+02:00","zone":"Europe/Berlin","repeat":{"freq":"custom"},"scope":"this","recurrence_id":"` + evs[1].RecurrenceID + `"}`
+	w := withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/weekly", one, o.ETag, cookie)
+	if w.Code != http.StatusRequestEntityTooLarge || !strings.Contains(w.Body.String(), `"too_large"`) {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEventTextAndDateLimits(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "lim", "user")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_lim")
+	for _, bad := range []string{
+		`{"title":"a\rb","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`,
+		`{"title":"A","location":"a\u0000b","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`,
+		`{"title":"A","description":"a\u001bb","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`,
+		`{"title":"A","start":"1899-12-31T09:00:00Z","end":"1900-01-01T10:00:00Z","zone":"UTC"}`,
+		`{"title":"A","start":"2026-10-07T09:00:00Z","end":"9001-01-01T10:00:00Z","zone":"UTC"}`,
+		`{"title":"A","start":"1850-10-07","end":"1850-10-08","all_day":true}`,
+	} {
+		if w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", bad, cookie); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d, want 400", bad, w.Code)
+		}
+	}
+	ok := `{"title":"multi\nline\ttab","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`
+	if w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", ok, cookie); w.Code != http.StatusCreated {
+		t.Fatalf("newline and tab are allowed: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEventEditErrorsAndOwnerFlow(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "own", "user")
+	mine := personalCalendar(t, st, "usr_own")
+	other := groupCalendar(t, st, "Other")
+	grantRole(t, st, other, "editor", "usr_own")
+	mk := func(cal string) (string, string) {
+		w := call(t, srv, "POST", "/api/calendars/"+cal+"/events", `{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, cookie)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create %d %s", w.Code, w.Body.String())
+		}
+		var c struct{ UID, ETag string }
+		_ = json.Unmarshal(w.Body.Bytes(), &c)
+		return c.UID, c.ETag
+	}
+	uid, etag := mk(mine.ID)
+	body := `{"title":"B","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"`
+	for _, sc := range []string{"bogus"} {
+		if w := withIfMatch(t, srv, "PUT", "/api/events/"+mine.ID+"/"+uid, body+`,"scope":"`+sc+`"}`, etag, cookie); w.Code != http.StatusBadRequest {
+			t.Errorf("PUT scope=%s %d", sc, w.Code)
+		}
+		if w := withIfMatch(t, srv, "DELETE", "/api/events/"+mine.ID+"/"+uid+"?scope="+sc, "", etag, cookie); w.Code != http.StatusBadRequest {
+			t.Errorf("DELETE scope=%s %d", sc, w.Code)
+		}
+	}
+	w := withIfMatch(t, srv, "PUT", "/api/events/"+mine.ID+"/"+uid, body+`,"scope":"this","recurrence_id":"x"}`, etag, cookie)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "does not repeat") {
+		t.Errorf("non-recurring this: %d %s", w.Code, w.Body.String())
+	}
+	rw := call(t, srv, "POST", "/api/calendars/"+mine.ID+"/events", `{"title":"R","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC","repeat":{"freq":"daily"}}`, cookie)
+	var rc struct{ UID, ETag string }
+	_ = json.Unmarshal(rw.Body.Bytes(), &rc)
+	w = withIfMatch(t, srv, "PUT", "/api/events/"+mine.ID+"/"+rc.UID, body+`,"repeat":{"freq":"custom"},"scope":"this","recurrence_id":"20300101T000000Z"}`, rc.ETag, cookie)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "No such occurrence") {
+		t.Errorf("bad occurrence: %d %s", w.Code, w.Body.String())
+	}
+	w = withIfMatch(t, srv, "PUT", "/api/events/"+mine.ID+"/"+uid, body+`}`, etag, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("owner edit %d %s", w.Code, w.Body.String())
+	}
+	var up struct{ ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &up)
+	if w = withIfMatch(t, srv, "DELETE", "/api/events/"+mine.ID+"/"+uid, "", up.ETag, cookie); w.Code != http.StatusNoContent {
+		t.Fatalf("owner delete %d", w.Code)
+	}
+	// A UID that lives in another calendar is not found under this {cal}.
+	uid2, etag2 := mk(mine.ID)
+	if w = withIfMatch(t, srv, "PUT", "/api/events/"+other.ID+"/"+uid2, body+`}`, etag2, cookie); w.Code != http.StatusNotFound {
+		t.Fatalf("cross-calendar PUT %d", w.Code)
+	}
+}
