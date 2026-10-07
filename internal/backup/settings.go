@@ -44,7 +44,7 @@ func RunConfig(cfg *config.Config, appVersion string) (recoveryclient.RunConfig,
 		return recoveryclient.RunConfig{}, err
 	}
 	return recoveryclient.RunConfig{
-		DataDir: cfg.Database.DataDir, AppName: cfg.Server.AppName, AppVersion: appVersion,
+		DataDir: cfg.Database.DataDir, AppName: ServiceName, AppVersion: appVersion,
 		BackupDir: cfg.Backup.Dir, Keep: cfg.Backup.Keep, Sealer: sealer,
 	}, nil
 }

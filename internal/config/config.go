@@ -113,12 +113,24 @@ type CaptchaConfig struct {
 // and uploads it, and KyRecovery admits 60 deposits per token per 15 minutes.
 const MinDepositInterval = 15 * time.Minute
 
-// DefaultAppName is the service name an unconfigured instance runs under. Capsules are sealed
-// under it, so the restore CLI has to agree with it without loading a whole Config.
+// DefaultAppName is the display name an unconfigured instance runs under. Capsules are sealed
+// under backup.ServiceName, not this.
 const DefaultAppName = "Busnes.app"
+
+// SQLiteDSN is the DSN for the SQLite database at path, with the pragmas every opener needs.
+func SQLiteDSN(path string) string {
+	return path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
+}
 
 // LoadFromEnv initializes a Config struct populated from environment variables with sensible defaults.
 func LoadFromEnv() (*Config, error) {
+	// The backup variables carry the product prefix (root AGENTS.md); a retired name left in
+	// .env would otherwise switch backups off without a word.
+	for _, old := range []string{"KY_BACKUP_DIR", "KY_BACKUP_KEEP", "KY_BACKUP_DEPOSIT_INTERVAL", "KY_BACKUP_ALLOW_PRIVATE_RECOVERY"} {
+		if os.Getenv(old) != "" {
+			return nil, fmt.Errorf("%s was renamed to KYCALENDAR_%s", old, strings.TrimPrefix(old, "KY_"))
+		}
+	}
 	port := getEnvInt("KY_PORT", getEnvInt("PORT", 8080))
 	host := getEnv("KY_HOST", "0.0.0.0")
 	appURL := getEnv("KY_APP_URL", fmt.Sprintf("http://localhost:%d", port))
@@ -127,7 +139,7 @@ func LoadFromEnv() (*Config, error) {
 
 	driver := strings.ToLower(getEnv("KY_DB_DRIVER", "sqlite"))
 	dataDir := getEnv("KY_DATA_DIR", "./data")
-	defaultDSN := fmt.Sprintf("%s/kycalendar.db?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", dataDir)
+	defaultDSN := SQLiteDSN(dataDir + "/kycalendar.db")
 	if driver == "postgres" || driver == "postgresql" {
 		driver = "postgres"
 		defaultDSN = "postgres://postgres:postgres@localhost:5432/ky_server?sslmode=disable"
@@ -153,17 +165,17 @@ func LoadFromEnv() (*Config, error) {
 		}
 	}
 
-	depositInterval, err := getEnvDuration("KY_BACKUP_DEPOSIT_INTERVAL", 24*time.Hour)
+	depositInterval, err := getEnvDuration("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL", 24*time.Hour)
 	if err != nil {
-		return nil, fmt.Errorf("KY_BACKUP_DEPOSIT_INTERVAL: %w", err)
+		return nil, fmt.Errorf("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL: %w", err)
 	}
 	if depositInterval != 0 && depositInterval < MinDepositInterval {
-		return nil, fmt.Errorf("KY_BACKUP_DEPOSIT_INTERVAL: %s is below the %s minimum (0 disables)", depositInterval, MinDepositInterval)
+		return nil, fmt.Errorf("KYCALENDAR_BACKUP_DEPOSIT_INTERVAL: %s is below the %s minimum (0 disables)", depositInterval, MinDepositInterval)
 	}
 
-	backupKeep := getEnvInt("KY_BACKUP_KEEP", 7)
+	backupKeep := getEnvInt("KYCALENDAR_BACKUP_KEEP", 7)
 	if backupKeep < 1 {
-		return nil, fmt.Errorf("KY_BACKUP_KEEP: must be at least 1, got %d", backupKeep)
+		return nil, fmt.Errorf("KYCALENDAR_BACKUP_KEEP: must be at least 1, got %d", backupKeep)
 	}
 
 	calCfg := CalendarConfig{
@@ -243,10 +255,10 @@ func LoadFromEnv() (*Config, error) {
 			BearerToken: getEnv("KY_SCIM_TOKEN", generateRandomHex(24)),
 		},
 		Backup: BackupConfig{
-			Dir:                  getEnv("KY_BACKUP_DIR", ""),
+			Dir:                  getEnv("KYCALENDAR_BACKUP_DIR", ""),
 			Keep:                 backupKeep,
 			DepositInterval:      depositInterval,
-			AllowPrivateRecovery: getEnvBool("KY_BACKUP_ALLOW_PRIVATE_RECOVERY", false),
+			AllowPrivateRecovery: getEnvBool("KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY", false),
 		},
 		Captcha: CaptchaConfig{
 			Provider:      getEnv("KY_CAPTCHA_PROVIDER", "pow"),

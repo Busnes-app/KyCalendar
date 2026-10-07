@@ -24,8 +24,8 @@ FROM alpine:3.24
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 COPY --from=backend-builder /app/kycalendar /app/kycalendar
-# /app/backups is the optional mount for sealed local capsules; KY_BACKUP_DIR is set by the
-# operator (compose does), so an image run bare keeps no local copies.
+# /app/backups is the optional mount for sealed local capsules; KYCALENDAR_BACKUP_DIR is set
+# by the operator (compose does), so an image run bare keeps no local copies.
 RUN mkdir -p /app/data /app/backups
 
 ENV KY_PORT=8080

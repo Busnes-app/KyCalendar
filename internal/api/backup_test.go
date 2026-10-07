@@ -23,6 +23,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/recoverykey"
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/auth"
+	"github.com/Busnes-app/kycalendar/internal/backup"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -133,7 +134,7 @@ func TestRunWithPinnedKeyAndNoDestination(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	w := adminPost(t, srv, session, "/api/backup/deposit")
-	if w.Code != http.StatusPreconditionFailed || !strings.Contains(w.Body.String(), "pair with KyRecovery or set KY_BACKUP_DIR") {
+	if w.Code != http.StatusPreconditionFailed || !strings.Contains(w.Body.String(), "pair with KyRecovery or set KYCALENDAR_BACKUP_DIR") {
 		t.Fatalf("no destination: got %d: %s", w.Code, w.Body.String())
 	}
 	if fake.got != nil {
@@ -231,6 +232,32 @@ func TestUnpairKeepsPin(t *testing.T) {
 	}
 	if w := adminDo(t, srv, session, "DELETE", "/api/backup/pairing", nil); w.Code != http.StatusPreconditionFailed {
 		t.Fatalf("second unpair: got %d, want 412: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUnpairNeedsRecentSignIn(t *testing.T) {
+	srv, st, _ := setupSQLiteServer(t)
+	priv, _ := recoverykey.Generate()
+	api.SetRecoveryClientForTest(srv, fakePairer{result: recoveryclient.PairingResult{
+		APIToken: "kyrec_live_t",
+		Key:      recoveryclient.RecoveryKey{Public: priv.Public(), Threshold: 2, TotalShares: 3},
+	}})
+	session := loginAs(t, srv, st, "alice", "admin")
+	pair := map[string]string{"recovery_url": "https://recovery.busnes.app", "pairing_code": "123456"}
+	if w := adminDo(t, srv, session, "POST", "/api/backup/pair-remote", pair); w.Code != http.StatusOK {
+		t.Fatalf("pair: got %d: %s", w.Code, w.Body.String())
+	}
+	restore := api.SetStepUpWindowForTest(0)
+	w := adminDo(t, srv, session, "DELETE", "/api/backup/pairing", nil)
+	restore()
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauth_required"`) {
+		t.Fatalf("stale session: got %d: %s", w.Code, w.Body.String())
+	}
+	if status := statusOf(t, srv, session); status["paired"] != true {
+		t.Errorf("a refused unpair removed the pairing: %v", status)
+	}
+	if rows := auditRows(t, st, "admin.backup_unpair"); len(rows) != 0 {
+		t.Errorf("a refused unpair was audited as done: %+v", rows)
 	}
 }
 
@@ -353,7 +380,7 @@ func TestDrillReportsBusyAndRunsDecodedChecks(t *testing.T) {
 	if !result.Passed {
 		t.Fatalf("drill failed: %+v", result)
 	}
-	for _, name := range []string{"Required Files", "SQLite Integrity: data/ky_server.db", "Environment: KY_PORT", "Environment: KY_DB_DRIVER"} {
+	for _, name := range []string{"Required Files", "SQLite Integrity: " + backup.DatabaseMember, "Environment: KY_PORT", "Environment: KY_DB_DRIVER"} {
 		found := false
 		for _, check := range result.Checks {
 			if check.Name == name && check.Passed {
@@ -389,7 +416,7 @@ func TestRunRefusesAPrivateDestination(t *testing.T) {
 	if w.Code != http.StatusPreconditionFailed {
 		t.Fatalf("private destination: got %d, want 412: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "KY_BACKUP_ALLOW_PRIVATE_RECOVERY") {
+	if !strings.Contains(w.Body.String(), "KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY") {
 		t.Errorf("body does not name the switch: %s", w.Body.String())
 	}
 }

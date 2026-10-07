@@ -8,7 +8,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 )
 
-// The scaffold builds the lib client from KY_BACKUP_ALLOW_PRIVATE_RECOVERY alone. Pin the
+// The scaffold builds the lib client from KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY alone. Pin the
 // contract that switch buys: RFC1918 and CGNAT are admitted only with it, loopback is never
 // admitted, and HTTPS stays mandatory either way.
 func TestClientOptionsAdmitOnlyPrivateAndCGNAT(t *testing.T) {

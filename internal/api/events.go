@@ -43,6 +43,8 @@ type eventView struct {
 	Description  string     `json:"description,omitempty"`
 	Start        string     `json:"start"`
 	End          string     `json:"end"`
+	SeriesStart  string     `json:"series_start"`
+	SeriesEnd    string     `json:"series_end"`
 	AllDay       bool       `json:"all_day"`
 	Recurring    bool       `json:"recurring"`
 	Override     bool       `json:"override,omitempty"`
@@ -78,12 +80,16 @@ func viewerZone(r *http.Request) (*time.Location, bool) {
 	return loc, err == nil
 }
 
-func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView, zone string, in calendar.Instance, viewer *time.Location, role access.Role) eventView {
+// seriesTimes are the master's first start and end, formatted like an instance's.
+type seriesTimes struct{ start, end string }
+
+func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView, zone string, series seriesTimes, in calendar.Instance, viewer *time.Location, role access.Role) eventView {
 	text := func(name string) string { v, _ := in.Event.Props.Text(name); return v }
 	v := eventView{CalendarID: c.ID, UID: in.UID, RecurrenceID: in.RecurrenceID, ETag: o.ETag,
 		Title: text(ical.PropSummary), Location: text(ical.PropLocation), Description: text(ical.PropDescription),
 		AllDay: in.AllDay, Recurring: in.Recurring, Override: in.Override, Floating: in.Floating,
-		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: role.CanWrite(), Repeat: repeat, Zone: zone}
+		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: role.CanWrite(), Repeat: repeat, Zone: zone,
+		SeriesStart: series.start, SeriesEnd: series.end}
 	if in.AllDay {
 		v.Start, v.End = in.Start.In(viewer).Format(time.DateOnly), in.End.In(viewer).Format(time.DateOnly)
 	} else {
@@ -170,14 +176,22 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			var repeat repeatView
 			var zone string
+			var series seriesTimes
 			if master, _ := calendar.Master(cal); master != nil {
 				repeat = repeatViewOf(calendar.RepeatOf(master))
 				if p := master.Props.Get(ical.PropDateTimeStart); p != nil {
 					zone = p.Params.Get(ical.ParamTimezoneID)
 				}
+				if ss, se, sAllDay, err := calendar.SeriesTimes(master, viewer); err == nil {
+					layout := time.RFC3339
+					if sAllDay {
+						layout = time.DateOnly
+					}
+					series = seriesTimes{ss.Format(layout), se.Format(layout)}
+				}
 			}
 			for _, in := range insts {
-				out = append(out, instanceView(c, o, repeat, zone, in, viewer, role))
+				out = append(out, instanceView(c, o, repeat, zone, series, in, viewer, role))
 			}
 		}
 	}

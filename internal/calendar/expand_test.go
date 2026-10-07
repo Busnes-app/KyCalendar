@@ -483,3 +483,19 @@ func TestExpandAllDayUTCUntilSameForEveryViewer(t *testing.T) {
 		}
 	}
 }
+
+func TestSeriesTimes(t *testing.T) {
+	m, err := Master(fixture(t, "apple_weekly_override.ics"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end, allDay, err := SeriesTimes(m, time.UTC)
+	if err != nil || allDay || start.Format(time.RFC3339) != "2026-10-05T07:00:00Z" || end.Format(time.RFC3339) != "2026-10-05T08:00:00Z" {
+		t.Fatalf("%v %v %v %v", start, end, allDay, err)
+	}
+	m, _ = Master(fixture(t, "thunderbird_allday.ics"))
+	start, end, allDay, _ = SeriesTimes(m, zone(t, "Pacific/Auckland"))
+	if !allDay || start.Format("2006-01-02") != "2026-10-07" || end.Format("2006-01-02") != "2026-10-08" {
+		t.Fatalf("all-day %v %v %v", start, end, allDay)
+	}
+}

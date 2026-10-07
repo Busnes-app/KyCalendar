@@ -16,7 +16,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// stepUpWindow is how recently an admin must have signed in to delete a group calendar.
+// stepUpWindow is how recently an admin must have signed in to delete a group calendar or unpair.
 var stepUpWindow = 10 * time.Minute
 
 const maxListPage = 200

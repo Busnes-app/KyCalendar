@@ -1,7 +1,7 @@
-# Restoring a Busnes.app server from a capsule
+# Restoring KyCalendar from a capsule
 
-This is the procedure for bringing a server built on this scaffold back from a `.kycap`
-backup after the original is gone. It needs three things, held by three different parties by
+This is the procedure for bringing KyCalendar back from a `.kycap` backup after the original
+is gone. It needs three things, held by three different parties by
 design:
 
 | Thing | Who has it |
@@ -29,7 +29,7 @@ Everything a fresh server needs to be the old one:
 
 | Path in the capsule | What it is |
 |---|---|
-| `data/ky_server.db` | The whole database: users, sessions, MFA state, devices, SCIM groups, audit log, settings, the sealed KyRecovery token |
+| `data/kycalendar.db` | The whole database: users, groups, calendars and events, app-password hashes, sessions, MFA state, audit log, settings, the sealed KyRecovery token |
 | `data/encryption.key` | 32 bytes. Every TOTP secret and the KyRecovery pairing token are encrypted under it |
 | `data/recovery.pub` | The suite recovery public key, so the restored server comes back pinned (present when the backup had a key) |
 | `config/settings.json` | App name, URL, port, database driver. For your reference when re-deploying; nothing reads it |
@@ -37,7 +37,7 @@ Everything a fresh server needs to be the old one:
 The restored directory is the live directory in the clear. Treat it like the running server's
 `data/`.
 
-**This procedure is for SQLite deployments.** A capsule carries `data/ky_server.db` because the
+**This procedure is for SQLite deployments.** A capsule carries `data/kycalendar.db` because the
 collector snapshots SQLite with `VACUUM INTO`; on `KY_DB_DRIVER=postgres` no snapshot is
 possible, so no capsule is made at all and there is nothing here to restore from. Back a
 Postgres deployment up with `pg_dump` on its own schedule, guard that dump as the plaintext of
@@ -45,14 +45,20 @@ everything above, and copy `data/encryption.key` and `data/recovery.pub` separat
 recovery key pin, the pairing and the schedule are rows in the database and come back with the
 dump, but nothing in it can be decrypted without `encryption.key`.
 
+Backups require the default database path, `<KY_DATA_DIR>/kycalendar.db`: the capsule restores
+the database there, so a backup refuses while `KY_DB_DSN` opens another file. Unset
+`KY_DB_DSN` on the restored server, or point it at `<KY_DATA_DIR>/kycalendar.db`.
+
 ## Before you start
 
 - **Pick the capsule.** In the KyRecovery dashboard, open Capsules, find the newest one for
-  this service (the app name, `Busnes.app` unless `KY_APP_NAME` was set) that is not flagged
+  this service (`kycalendar`) that is not flagged
   corrupt, and note its `capsule_id`, `created_at` and `digest`. You will compare these after
-  the restore. From a local backup directory the file is `<escaped app name>.<capsule-id>.kycap`
-  (`Busnes_2eapp.cap-Busnes.app-<n>.kycap` by default); the newest is the one to use unless
+  the restore. From a local backup directory the file is `<service>.<capsule-id>.kycap`
+  (`kycalendar.cap-kycalendar-<n>.kycap`); the newest is the one to use unless
   you have a reason.
+- **Install the `sqlite3` CLI on the host.** The image does not carry it, and the password
+  steps below query the restored and old databases with it.
 - **Gather k custodians.** Each card carries one share, a single line beginning `ky2-`. They
   type or paste it themselves; do not collect the shares in a file, a chat, or an email. Two
   shares in one place is the suite key in one place.
@@ -64,12 +70,11 @@ dump, but nothing in it can be decrypted without `encryption.key`.
 With the binary (from a release, or `go build ./cmd/server`):
 
 ```bash
-kycalendar restore -capsule Busnes_2eapp.cap-XXXXXXXX.kycap -to ./restored
+kycalendar restore -capsule kycalendar.cap-kycalendar-XXXXXXXX.kycap -to ./restored
 ```
 
-`-service` defaults to `KY_APP_NAME`, then `Busnes.app`. Pass it only when the backup was made
-under a different app name; the capsule's service name must match or the restore stops before
-reading a share.
+`-service` defaults to `kycalendar`, the name every KyCalendar capsule is sealed under; the
+capsule's service name must match or the restore stops before reading a share.
 
 For a published-image install, and always on a fresh recovery machine, pin the commit you
 intend to run (normally the one that made the backup, or the current tip) to a digest you have
@@ -113,7 +118,7 @@ keeps the real server down:
 ```bash
 mkdir -m 700 restored
 docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
-  -v "$PWD/Busnes_2eapp.cap-XXXXXXXX.kycap:/in.kycap:ro" \
+  -v "$PWD/kycalendar.cap-kycalendar-XXXXXXXX.kycap:/in.kycap:ro" \
   -v "$PWD/restored:/restored" \
   app restore -capsule /in.kycap -to /restored
 ```
@@ -136,12 +141,27 @@ Delete it afterwards; a file holding k shares is the suite key in a file.
 On success it prints the authenticated manifest:
 
 ```
-Restored 4 files from capsule cap-Busnes.app-1788605720094118543
-  service:      Busnes.app (v1.0.0)
+Restored 4 files from capsule cap-kycalendar-1788605720094118543
+  service:      kycalendar (v1.0.0)
   created:      2026-09-05T12:15:20Z
   recovery key: 886ff52c...
   payload hash: 8a053985...
 ```
+
+Then it resets the restored database in one transaction, with no further input: sessions,
+MFA challenges and app passwords are deleted, a new sync epoch is written and
+`system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
+deals with them. It ends with:
+
+```
+✓ Sessions, MFA challenges and app passwords revoked; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
+```
+
+If the reset fails, the files are in place but the credentials are still the backup's. The
+command exits non-zero with `Do not start the server on <dir>. Finish with: kycalendar
+restore-reset -to <dir>`. Run that command (in the same one-off container, with the same
+mounts); it is idempotent, so it also finishes a restore that died halfway. It refuses a
+directory with no restored database.
 
 **Check it against KyRecovery's record.** The capsule ID and `created` must match the
 deposit record you noted. Opening has already proved the bytes are intact and were sealed to
@@ -152,9 +172,10 @@ Failures you may see, and what they mean:
 
 | Message | Meaning |
 |---|---|
-| `capsule is for service "Busnes.app", this instance is "X"` | `-service` or `KY_APP_NAME` names something else. Override `-service` only if the backup was made under a different app name |
+| `capsule is for service "X", this instance is "kycalendar"` | The capsule belongs to another product, or `-service` names something else |
 | `shamir: fewer shares than the threshold requires` | Fewer than k valid lines were read. Check for a missed line or a truncated paste |
 | `restore target directory is not empty` | Use an empty directory. The restore never overwrites |
+| `restore target ... contains '?' or '#'` | The database path cannot carry those characters. Choose a target without them |
 | a decrypt or integrity error | Wrong shares (from a different ceremony), a share mistyped, or a damaged file. Re-download and retry with the custodians |
 
 ## Step 2: check what came out
@@ -170,7 +191,7 @@ Expect three or four files, all mode `600`, under `restored/data` and `restored/
 
 **Docker Compose (the normal deployment).** The data directory is the bind mount `./data`
 in the compose project. It must be empty before the copy, for the same reason Step 1 demands
-an empty directory: a capsule carries `ky_server.db` but never its `-wal` and `-shm`
+an empty directory: a capsule carries `kycalendar.db` but never its `-wal` and `-shm`
 sidecars, and a write-ahead log left over from the old database would be replayed into the
 restored one at first open, mixing two databases.
 
@@ -181,8 +202,8 @@ ls -A data | wc -l
 
 That must print `0`. If it does not, the old directory still holds data, and you keep a copy
 of it before anything else: it holds every change made after the capsule was sealed, and it
-is the only record Step 5 can walk. The container runs as root, so the files are root-owned;
-copy as root into a directory you create at mode 700:
+is the only record Steps 3 and 5 can walk. The container runs as root, so the files are
+root-owned; copy as root into a directory you create at mode 700:
 
 ```bash
 mkdir -m 700 old-data
@@ -191,7 +212,8 @@ sudo cp -a data/. old-data/ && sudo ls -A old-data | wc -l
 
 The count must equal the count above and the command must exit 0. `old-data/` is now the
 old live directory in the clear, with the same key the capsule holds; it is removed in
-"Afterwards", not before Step 5 is done.
+"Afterwards", not before Step 5 is done. If `data/` was already empty (a new machine, or the
+old disk is gone), there is no old audit log; the password step below says what to do.
 
 Only with the copy confirmed, empty the directory. This is irreversible:
 
@@ -200,16 +222,64 @@ sudo rm -rf data/* data/.[!.]*
 ls -A data | wc -l
 ```
 
-With `0` confirmed, copy the restored files in and start:
+With `0` confirmed, copy the restored files in. Do not start the server yet:
 
 ```bash
 sudo cp -a restored/data/. data/ && sudo chmod 600 data/*
+```
+
+**Reset rotated local passwords before the server starts.** A restore brings back every local
+password hash as it was at the backup, so a password that leaked and was rotated after the
+capsule works again the moment the service listens. Find the accounts first, with the stack
+still down.
+
+If you kept `old-data/`, its audit log names every local password changed after the capsule:
+the `auth.password_changed` rows newer than `created_at`. Match them to the restored users by
+ID, and add every restored local account the old server no longer had: it was deleted after
+the capsule, and the restore brought it back with its old password. The log stores UTC times
+as `2026-09-05 12:15:20...`, so write the capsule's `created` with a space, not a `T`, and
+without the `Z`:
+
+```bash
+sudo sqlite3 data/kycalendar.db "ATTACH 'old-data/kycalendar.db' AS old; SELECT u.username, u.role FROM users u WHERE u.sso_provider = 'local' AND (u.id IN (SELECT user_id FROM old.audit_records WHERE action = 'auth.password_changed' AND created_at > '2026-09-05 12:15:20') OR u.id NOT IN (SELECT id FROM old.users)) ORDER BY u.role = 'admin' DESC, u.username;"
+```
+
+Reset every account in the list; an account deleted after the capsule should then be deleted
+or disabled again (step 5 re-applies what happened since).
+
+If the old audit log is unavailable, you cannot know which passwords changed: reset every
+local account, administrators first. List them from the restored database:
+
+```bash
+sudo sqlite3 data/kycalendar.db "SELECT username, role FROM users WHERE sso_provider = 'local' ORDER BY role = 'admin' DESC, username;"
+```
+
+For every account in the list, set a temporary password. `reset-password` reads it from
+stdin, keeps the account's role and status, revokes its sessions, MFA challenges and app
+passwords, and forces a change at the next sign-in. `run --rm -T` starts a one-off container
+on the same `./data` with no published port, so nothing is reachable while you do this; `-T`
+lets the pipe reach stdin:
+
+```bash
+read -rs TEMP_PW   # typed, not echoed, not in history
+printf '%s\n' "$TEMP_PW" | docker compose run --rm --no-deps -T app reset-password -username <name>
+unset TEMP_PW
+```
+
+Hand each temporary password to the account owner out of band. Use `init-admin` only when no
+administrator account exists at all: it makes the named account an administrator and takes
+its password on the command line. SSO accounts sign in through KyIdentity and need nothing
+here.
+
+Then start:
+
+```bash
 docker compose up -d
 ```
 
-Keep `KY_APP_URL` and `KY_APP_NAME` identical to the old deployment, from
-`config/settings.json`: the app name is what every capsule is sealed under and what
-KyRecovery pinned for the pairing token.
+Keep `KY_APP_URL` identical to the old deployment, from `config/settings.json`. The service
+name is fixed at `kycalendar`; it is what every capsule is sealed under and what KyRecovery
+pinned for the pairing token. `KY_APP_NAME` is display only.
 
 The restored `encryption.key` is the key; the file form is the one to use. If the old
 deployment supplied `KY_ENCRYPTION_KEY` by environment instead, the environment wins when
@@ -219,12 +289,13 @@ one on a command line: it lands in scrollback, session recordings and shell hist
 must produce the hex form, write it straight into the compose project's `.env` with
 `umask 077` and nothing else on stdout.
 
-**Bare binary.** Point `KY_DATA_DIR` at `restored/data`, set `KY_APP_URL` and `KY_APP_NAME`
-as before, and start.
+**Bare binary.** Point `KY_DATA_DIR` at `restored/data`, set `KY_APP_URL` as before, run
+the password resets above with the bare binary (`printf '%s\n' "$TEMP_PW" | kycalendar
+reset-password -username <name>`), and only then start.
 
 ## Step 4: prove it
 
-1. Open the app URL and sign in with an existing admin account and its second factor. TOTP
+1. Open the app URL and sign in. Every session was revoked, so everyone signs in again. TOTP
    working proves `encryption.key` is right.
 2. Open Backup & recovery. If the backup had a key, the recovery key shows as pinned with the
    same key ID as before; compare it with the ceremony card. If the backup was paired, the
@@ -239,24 +310,26 @@ as before, and start.
 
 The restore proves the service works. It does not make the restored state current or safe.
 Everything comes back as of the capsule's `created_at`: users, passwords, MFA enrolments,
-paired devices, SCIM state, sessions. Anything you revoked or changed after that moment is
-undone, and a session cookie minted before the capsule still validates against the restored
-server, because sessions are database rows and the capsule brought them back.
+SCIM state, calendars and events. Anything you revoked or changed after that moment is undone.
+`restore` has already revoked every session, MFA challenge and app password and started a
+new sync epoch. It does not touch passwords: **a restore brings back every local password
+hash as it was at the backup**, so a password that leaked and was rotated after the capsule
+would work again; Step 3 reset those before the service opened.
 
-1. Revoke sessions. There is no per-user control in the UI and no global revoke; sessions
-   are rows in the `sessions` table. Delete them all, once, before anyone signs in:
-
-   ```bash
-   docker compose down
-   sudo sqlite3 data/ky_server.db 'DELETE FROM sessions;'
-   docker compose up -d
-   ```
-
-   Everyone signs in again. After hardware loss that is enough.
-2. Walk the old audit log in `old-data/ky_server.db` from `created_at` to the moment the old
-   server was lost (the restored server's log stops at `created_at`), and re-apply what
-   happened after the capsule: disabled accounts, rotated passwords, removed devices, reset
-   MFA, SCIM changes.
+1. Tell users what changes:
+   - Everyone signs in again; every user creates new app passwords under Phones & apps, and
+     CalDAV clients resync from scratch (the epoch changes the calendar CTag).
+   - Local passwords changed after the backup were reset in Step 3; their owners sign in with
+     the temporary password and choose a new one. SSO accounts are unaffected.
+   - Recovery codes come back as they were at backup time. A user who used or regenerated
+     recovery codes after the backup should regenerate them.
+   - Events created after the backup are gone unless a client still holds them; the old audit
+     log in step 2 shows what happened since.
+   - The interop and real-device client checks remain an operator step: reconnect one
+     iPhone, Android and Thunderbird client and confirm the calendars sync.
+2. Walk the old audit log (`old-data/kycalendar.db`, when you kept it) from `created_at` to
+   the moment the old server was lost (the restored server's log stops at `created_at`), and
+   re-apply what else happened after the capsule: disabled accounts, reset MFA, SCIM changes.
 3. If the reason for the restore was a suspected compromise rather than hardware loss, treat
    the restored secrets as exposed and rotate the ones that can be rotated. A restore from
    before a compromise brings the attacker's access back with the service unless you do this.
@@ -296,7 +369,9 @@ capsule format restores; only this proves the cards do.
 
 The in-app drill and `backup-drill` CLI validate the recipe from the capsule actually opened,
 including required files, read-only SQLite integrity and environment-variable presence.
-A malformed recipe fails the drill. Concurrent drills on one data directory are refused
+A malformed recipe fails the drill. The drill also compares the calendar and object counts
+recorded at backup with the restored database and parses up to 50 stored objects (IDs only in
+messages). Concurrent drills on one data directory are refused
 (HTTP 409 or a CLI error); retry after the active drill finishes. The OS releases the lock
 if the process exits. Keep `data/drill.lock` in place; it holds no secret and must not be
 removed to bypass a running drill. Opened scratch data stays under `data/drill` with 0700

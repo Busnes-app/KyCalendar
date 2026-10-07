@@ -32,6 +32,8 @@ type eventJSON struct {
 	Location     string `json:"location"`
 	Start        string `json:"start"`
 	End          string `json:"end"`
+	SeriesStart  string `json:"series_start"`
+	SeriesEnd    string `json:"series_end"`
 	AllDay       bool   `json:"all_day"`
 	Recurring    bool   `json:"recurring"`
 	Editable     bool   `json:"editable"`
@@ -433,5 +435,21 @@ func TestEventPutAuthorizesBeforeDecoding(t *testing.T) {
 	stranger := loginAs(t, srv, st, "nora", "user")
 	if w := withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/weekly", "{not json", "x", stranger); w.Code != http.StatusNotFound {
 		t.Fatalf("non-member malformed PUT: %d %s, want 404", w.Code, w.Body.String())
+	}
+}
+
+func TestEventsCarrySeriesTimes(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "sia", "user")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "reader", "usr_sia")
+	putObject(t, st, group, "weekly.ics", "weekly", recurringICS, 1791183600)
+	w := call(t, srv, "GET", "/api/events?start=2026-10-10T00:00:00Z&end=2026-10-20T00:00:00Z&tz=Europe/Berlin", "", cookie)
+	var evs []eventJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil || len(evs) == 0 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if evs[0].Start != "2026-10-12T09:00:00+02:00" || evs[0].SeriesStart != "2026-10-05T09:00:00+02:00" || evs[0].SeriesEnd != "2026-10-05T10:00:00+02:00" {
+		t.Fatalf("instance %+v", evs[0])
 	}
 }

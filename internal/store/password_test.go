@@ -136,3 +136,58 @@ func checkAppPasswordsRevoked(t *testing.T, st store.Store, userID string) {
 		t.Fatalf("app passwords survived: %d %v", len(list), err)
 	}
 }
+
+func TestResetPasswordKeepsRoleAndStatus(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	u := &store.User{ID: "everyday", Username: "everyday", PasswordHash: "old", Role: "user", Status: "active", SSOProvider: "local"}
+	if err := st.Users().CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	sess := &store.Session{TokenHash: "session", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.Sessions().CreateSession(ctx, sess, "old"); err != nil {
+		t.Fatal(err)
+	}
+	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); err != nil {
+		t.Fatal(err)
+	}
+	addAppPassword(t, st, u.ID)
+	u.Status = "disabled" // ResetAdminPassword would reactivate it
+	if err := st.Users().UpdateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.Users().ResetPassword(ctx, u.ID, "new"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Users().GetUserByID(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Role != "user" || got.Status != "disabled" || !got.MustChangePassword || got.PasswordHash != "new" {
+		t.Fatalf("after reset: %+v", got)
+	}
+	if _, err := st.Sessions().GetSession(ctx, sess.TokenHash); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("session survived", err)
+	}
+	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("challenge survived", err)
+	}
+	checkAppPasswordsRevoked(t, st, u.ID)
+	audits, n, err := st.Audit().ListAuditRecords(ctx, 0, 10)
+	if err != nil || n != 1 || audits[0].Action != "auth.password_changed" || audits[0].UserID != u.ID {
+		t.Fatal("audit", n, err)
+	}
+
+	sso := &store.User{ID: "sso", Username: "sso", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub"}
+	if err := st.Users().CreateUser(ctx, sso); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Users().ResetPassword(ctx, sso.ID, "new"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("SSO account reset: %v", err)
+	}
+	if err := st.Users().ResetPassword(ctx, "nobody", "new"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("unknown user reset: %v", err)
+	}
+}

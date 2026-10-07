@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store/migrations"
 )
 
@@ -65,6 +66,37 @@ func (s *SQLStore) Settings() SettingsStore        { return s.settings }
 func (s *SQLStore) Driver() string                 { return s.driver }
 func (s *SQLStore) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 func (s *SQLStore) Close() error                   { return s.db.Close() }
+
+func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// The same grants revokePasswordGrants clears, for every user.
+	for _, table := range []string{"sessions", "mfa_challenges", "device_pairings", "app_passwords"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	epoch := crypto.RandomHex(8)
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_meta SET value = ? WHERE key = 'sync_epoch'`), epoch)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
+	}
+	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
 // rebind converts '?' placeholders to '$1, $2, ...' for Postgres
 func (s *SQLStore) rebind(query string) string {
@@ -430,13 +462,22 @@ func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash,
 
 // ResetAdminPassword is the operator recovery path, including disabled local accounts.
 func (u *userStore) ResetAdminPassword(ctx context.Context, userID, newHash string) error {
+	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+}
+
+func (u *userStore) ResetPassword(ctx context.Context, userID, newHash string) error {
+	return u.operatorReset(ctx, `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`, userID, newHash)
+}
+
+// operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one transaction.
+func (u *userStore) operatorReset(ctx context.Context, update, userID, newHash string) error {
 	tx, err := u.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
-	result, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET password_hash = ?, must_change_password = ?, status = 'active', role = 'admin', updated_at = ? WHERE id = ? AND sso_provider = 'local'`), newHash, true, now, userID)
+	result, err := tx.ExecContext(ctx, u.store.rebind(update), newHash, true, now, userID)
 	if err != nil {
 		return err
 	}

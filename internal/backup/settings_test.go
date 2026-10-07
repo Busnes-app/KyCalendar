@@ -22,11 +22,11 @@ func sqliteInstance(t *testing.T) (*config.Config, store.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{}
-	cfg.Server.AppName = "busnes_app"
+	cfg.Server.AppName = "Busnes Calendar"
 	cfg.Server.Port = 8080
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DataDir = dir
-	cfg.Database.DSN = filepath.Join(dir, "ky_server.db") + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
+	cfg.Database.DSN = filepath.Join(dir, "kycalendar.db") + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
 	cfg.Security.EncryptionKey = bytes.Repeat([]byte{1}, 32)
 	st, err := store.Open(context.Background(), cfg.Database)
 	if err != nil {

@@ -246,6 +246,9 @@ Inherited from the scaffold; these rules apply to the server code.
 
 - Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges and app passwords. Untouched existing accounts are not retroactively flagged.
 
+- `create-user` makes a local everyday account (password from stdin, forced change at first sign-in); it refuses an existing name.
+- `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
+
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.
   Preserve existing overlays when updating `COMPOSE_FILE`; the base keeps automatic addressing.
@@ -293,6 +296,22 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - `GET /api/events` returns at most 5000 instances over at most 400 days within a 2-second expansion budget (422 `too_many_instances`, 400 for a bad range); event `PUT`/`DELETE` require exactly one strong quoted `If-Match` (428 absent, 400 malformed, 412 on conflict).
 - Plan 3b builds the FullCalendar UI on this API; Plan 4's interop gate records real client exports.
 
+#### Plan 3b web calendar contracts
+
+- The calendar is the landing page for everyday users and is never shown to administrators. FullCalendar is 6.1.21 across every package.
+- Event text renders as text through `linkify`; "all occurrences" edits send `series_start`/`series_end`; dragging a recurring event asks for the scope first. Detail and the CSP `font-src data:` ruling are in `web/AGENTS.md`.
+- The browser suite (`web/browser/calendar.spec.mjs`) covers the calendar under the production CSP.
+
+#### Plan 4 backup and restore contracts
+
+- The service name, claimed and sealed, is `kycalendar` (`backup.ServiceName`); `KY_APP_NAME` is display only. The capsule database member `data/kycalendar.db` (`backup.DatabaseMember`) equals the file the default DSN opens, so a restored tree starts on restored data; `Collect` refuses a `KY_DB_DSN` that opens any other file.
+- Backup variables are `KYCALENDAR_BACKUP_DIR`, `_KEEP`, `_DEPOSIT_INTERVAL`, `_ALLOW_PRIVATE_RECOVERY` and `KYCALENDAR_DNS`; the server refuses the retired `KY_BACKUP_*` names at startup when non-empty, compose included; the retired `KY_DNS` is compose-only and is simply no longer read.
+- The drill compares the snapshot's calendar and object counts with the restored database and parses up to 50 objects; messages carry IDs only.
+- Unpair requires a sign-in younger than the step-up window (403 `reauth_required`).
+- `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges, device pairings and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it. Both refuse a target containing `?` or `#`, which the SQLite DSN would cut.
+- Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
+- The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.
+
 #### Server child DOX index
 
 - [internal/config/AGENTS.md](internal/config/AGENTS.md): Configuration management and environment loader.
@@ -323,4 +342,4 @@ in the shipped deployment instead of assuming a supervisor grace period;
 `TestComposeGracePeriodCoversTheShutdownBudget` keeps the three in step. Past the deadline the
 work is abandoned with a log line rather than killed silently.
 
-The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spec.md` (v2.0.0, sealed-capsule deposit); the product half is `ky-primitives/recoveryclient`, wired through `internal/backup` and `internal/api` so every server built on this base inherits it. Operator documents: `README.md` (disaster recovery, every `KY_BACKUP_*` variable, the LAN DNS override) and `docs/RESTORE.md` (the restore runbook, proven against a scratch 2-of-3 kit).
+The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spec.md` (v2.0.0, sealed-capsule deposit); the product half is `ky-primitives/recoveryclient`, wired through `internal/backup` and `internal/api` so every server built on this base inherits it. Operator documents: `README.md` (disaster recovery, every `KYCALENDAR_BACKUP_*` variable, the LAN DNS override) and `docs/RESTORE.md` (the restore runbook, proven against a scratch 2-of-3 kit).

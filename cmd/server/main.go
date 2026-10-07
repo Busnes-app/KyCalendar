@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -32,6 +33,12 @@ func main() {
 		case "init-admin":
 			runInitAdmin(os.Args[2:])
 			return
+		case "create-user":
+			runCreateUser(os.Args[2:])
+			return
+		case "reset-password":
+			runResetPassword(os.Args[2:])
+			return
 		case "backup-drill":
 			runBackupDrill(os.Args[2:])
 			return
@@ -43,6 +50,9 @@ func main() {
 			return
 		case "restore":
 			runRestore(os.Args[2:])
+			return
+		case "restore-reset":
+			runRestoreReset(os.Args[2:])
 			return
 		case "version":
 			fmt.Println("kycalendar v1.0.0 (Busnes.app calendar)")
@@ -70,7 +80,7 @@ func runServer() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 	if cfg.Backup.AllowPrivateRecovery {
-		log.Printf("[BACKUP] KY_BACKUP_ALLOW_PRIVATE_RECOVERY is on: RFC1918 and CGNAT destinations admitted; loopback, link-local and other reserved addresses remain refused (HTTPS still required)")
+		log.Printf("[BACKUP] KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY is on: RFC1918 and CGNAT destinations admitted; loopback, link-local and other reserved addresses remain refused (HTTPS still required)")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -415,8 +425,18 @@ func runExportCapsule(args []string) {
 // restore is the product-side half of the ceremony, owned by the lib: k custodian shares
 // combined, used once, dropped; a capsule from another service refused before the key is
 // touched; the authenticated manifest printed for comparison with KyRecovery's record.
+// The restored database then loses every credential and sync epoch issued before the backup.
 func restore(capsulePath, targetDir, expectService string, shares []string, stdout io.Writer) error {
-	return recoveryclient.Restore(capsulePath, targetDir, expectService, shares, stdout)
+	if err := checkRestorePath(targetDir); err != nil {
+		return err
+	}
+	if err := recoveryclient.Restore(capsulePath, targetDir, expectService, shares, stdout); err != nil {
+		return err
+	}
+	if err := resetRestored(context.Background(), filepath.Join(targetDir, "data")); err != nil {
+		return fmt.Errorf("%w: %w", errResetFailed, err)
+	}
+	return nil
 }
 
 // stdinIsTerminal reports whether a human is typing, so a pipeline gets no stray prompt.
@@ -429,7 +449,7 @@ func runRestore(args []string) {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	capsulePath := fs.String("capsule", "", "path to the .kycap file")
 	target := fs.String("to", "", "empty directory to restore into")
-	service := fs.String("service", "", "expected service name (default: $KY_APP_NAME)")
+	service := fs.String("service", "", "expected service name (default: kycalendar)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "Usage: kycalendar restore -capsule <file.kycap> -to <dir> [-service <name>]\n\n"+
 			"Custodian shares are read from stdin, one ky2-... share per line, and never from\n"+
@@ -442,15 +462,7 @@ func runRestore(args []string) {
 		os.Exit(2)
 	}
 	if *service == "" {
-		// Not config.LoadFromEnv: it mints <DataDir>/encryption.key as a side effect, and a
-		// recovery host has no business growing a key of its own mid-ceremony.
-		*service = os.Getenv("KY_APP_NAME")
-	}
-	if *service == "" {
-		*service = config.DefaultAppName
-	}
-	if *service == "" {
-		log.Fatal("Error: -service is required when KY_APP_NAME is not set")
+		*service = backup.ServiceName
 	}
 
 	if stdinIsTerminal() {
@@ -464,6 +476,10 @@ func runRestore(args []string) {
 		log.Fatal("Error: no custodian shares on stdin")
 	}
 	if err := restore(*capsulePath, *target, *service, shares, os.Stdout); err != nil {
+		if errors.Is(err, errResetFailed) {
+			log.Fatalf("%v\nDo not start the server on %s. Finish with: kycalendar restore-reset -to %s", err, *target, *target)
+		}
 		log.Fatalf("Restore failed: %v", err)
 	}
+	fmt.Println(resetDone)
 }

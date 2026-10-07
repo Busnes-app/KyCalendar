@@ -27,7 +27,7 @@ const errRecoveryKeyMismatch = "Recovery key file does not match the pinned key 
 
 // privateRecoveryHint names the opt-in, so a refused LAN destination is not a dead end. Both
 // the pairing and the run refusals end with it.
-const privateRecoveryHint = " (set KY_BACKUP_ALLOW_PRIVATE_RECOVERY=true for a KyRecovery on your own network)"
+const privateRecoveryHint = " (set KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=true for a KyRecovery on your own network)"
 
 // depositWriteBudget is how long the admin's connection may stay open for the receipt: the
 // upload budget plus room for sealing. The listener's WriteTimeout is sized for JSON replies.
@@ -222,8 +222,8 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 	target := recoveryclient.AuditSafe(req.RecoveryURL)
 
 	// The service name sent here is what kyrecovery pins for the token and what every
-	// capsule's manifest is checked against, so it is the same AppName the collector seals under.
-	result, err := s.recovery.ClaimPairing(ctx, req.RecoveryURL, req.PairingCode, s.config.Server.AppName, s.config.Server.AppName)
+	// capsule's manifest is checked against, so it is the same ServiceName the collector seals under.
+	result, err := s.recovery.ClaimPairing(ctx, req.RecoveryURL, req.PairingCode, backup.ServiceName, s.config.Server.AppName)
 	if err != nil {
 		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error="+err.Error())
 		s.writeError(w, http.StatusBadRequest, "Recovery pairing failed")
@@ -321,7 +321,7 @@ func (s *Server) handleRunBackup(w http.ResponseWriter, r *http.Request) {
 			// all. A configuration fact the operator must read, not a server fault.
 			s.writeError(w, http.StatusPreconditionFailed, err.Error())
 		case errors.Is(err, recoveryclient.ErrNoDestination):
-			s.writeError(w, http.StatusPreconditionFailed, "Nowhere to put a capsule: pair with KyRecovery or set KY_BACKUP_DIR")
+			s.writeError(w, http.StatusPreconditionFailed, "Nowhere to put a capsule: pair with KyRecovery or set KYCALENDAR_BACKUP_DIR")
 		case errors.Is(err, recoveryclient.ErrInProgress):
 			s.writeError(w, http.StatusConflict, "A backup is already in progress")
 		case errors.Is(err, recoveryclient.ErrKeyMismatch):
@@ -360,6 +360,15 @@ func (s *Server) handleRunBackup(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	_, sess, err := s.sessions.AuthenticateRequest(r)
+	if err != nil {
+		s.writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	if time.Since(sess.CreatedAt) > stepUpWindow {
+		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in again to unpair", "code": "reauth_required"})
 		return
 	}
 	ctx := r.Context()
@@ -529,7 +538,7 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	if s.config.Backup.Dir != "" {
 		out["local_dir"] = s.config.Backup.Dir
 		out["local_keep"] = s.config.Backup.Keep
-		if copies, err := recoveryclient.ListLocalCopies(s.config.Backup.Dir, s.config.Server.AppName); err == nil {
+		if copies, err := recoveryclient.ListLocalCopies(s.config.Backup.Dir, backup.ServiceName); err == nil {
 			out["local_copies"] = copies
 		} else {
 			out["local_error"] = recoveryclient.AuditSafe(err.Error())

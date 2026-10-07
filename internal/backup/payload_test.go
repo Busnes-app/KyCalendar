@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
@@ -126,9 +128,9 @@ func TestSnapshotSeesUncheckpointedCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := findFile(payload.Files, "data/ky_server.db")
+	f := findFile(payload.Files, backup.DatabaseMember)
 	if f == nil {
-		t.Fatal("no data/ky_server.db in the payload")
+		t.Fatal("no " + backup.DatabaseMember + " in the payload")
 	}
 	restored := filepath.Join(t.TempDir(), "restored.db")
 	if err := os.WriteFile(restored, f.Data, 0600); err != nil {
@@ -154,5 +156,69 @@ func TestCollectRefusesADriverItCannotSnapshot(t *testing.T) {
 	cfg.Database.Driver = "postgres"
 	if _, err := backup.Collect(context.Background(), cfg, "1.0.0"); !errors.Is(err, backup.ErrNoDatabaseSnapshot) {
 		t.Fatalf("got %v, want ErrNoDatabaseSnapshot", err)
+	}
+}
+
+// A KY_DB_DSN elsewhere would seal a file the restored server never opens: it would start empty.
+func TestCollectRefusesADatabaseOutsideTheDefaultPath(t *testing.T) {
+	cfg, _ := payloadConfig(t)
+	cfg.Database.DSN = config.SQLiteDSN(filepath.Join(t.TempDir(), "kycalendar.db"))
+	_, err := backup.Collect(context.Background(), cfg, "1.0.0")
+	if !errors.Is(err, backup.ErrNoDatabaseSnapshot) || !strings.Contains(err.Error(), "KY_DB_DSN") {
+		t.Fatalf("got %v, want ErrNoDatabaseSnapshot naming KY_DB_DSN", err)
+	}
+}
+
+func TestCapsuleCarriesTheDatabaseTheServerOpens(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("KY_DATA_DIR", dir)
+	t.Setenv("KY_DB_DRIVER", "sqlite")
+	t.Setenv("KY_DB_DSN", "")
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "data/" + filepath.Base(strings.SplitN(cfg.Database.DSN, "?", 2)[0])
+	if want != backup.DatabaseMember {
+		t.Fatalf("DSN file %q != member %q", want, backup.DatabaseMember)
+	}
+	st, err := store.Open(context.Background(), cfg.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	p, err := backup.Collect(context.Background(), cfg, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ServiceName != "kycalendar" {
+		t.Fatalf("service = %q, want kycalendar", p.ServiceName)
+	}
+	if findFile(p.Files, backup.DatabaseMember) == nil {
+		t.Fatalf("payload lacks %s", backup.DatabaseMember)
+	}
+}
+
+func TestCollectRecordsCalendarCounts(t *testing.T) {
+	cfg, _ := payloadConfig(t)
+	seedCalendars(t, cfg.Database.DSN, map[string]map[string]string{
+		"cal-a": {"a1.ics": fmt.Sprintf(validEvent, "a1"), "a2.ics": fmt.Sprintf(validEvent, "a2")},
+	})
+	p, err := backup.Collect(context.Background(), cfg, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.VerificationRecipe["calendar_count"] != int64(1) || p.VerificationRecipe["object_count"] != int64(2) {
+		t.Fatalf("recipe %v", p.VerificationRecipe)
+	}
+}
+
+// A relative data dir and an absolute DSN naming the same file are the same database.
+func TestCollectAcceptsAnAbsoluteDSNForARelativeDataDir(t *testing.T) {
+	cfg, _ := payloadConfig(t)
+	t.Chdir(filepath.Dir(cfg.Database.DataDir))
+	cfg.Database.DataDir = "./" + filepath.Base(cfg.Database.DataDir)
+	if _, err := backup.Collect(context.Background(), cfg, "1.0.0"); err != nil {
+		t.Fatalf("Collect: %v", err)
 	}
 }

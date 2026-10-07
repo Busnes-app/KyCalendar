@@ -13,6 +13,8 @@ This directory owns test setup, disposable server launch and UI assertions. The 
 - Never reuse a development or production server. Launch the compiled `.browser/server` with a minimal environment and an owned temporary data directory; remove that directory on exit.
 - Use loopback only, with `KY_APP_URL` matching the test origin. Bootstrap credentials are disposable test values, not deployment defaults.
 - Test light/dark at 390px and 1280px, using real authentication and API state. Do not disable service workers, relax CSP/CSRF, or substitute mocked responses.
+- `server.mjs` runs `init-admin` (the server bootstraps its admin only into an empty database) and then `create-user` for the everyday user `walter`, both before the server starts; `setup.mjs` replaces both bootstrap passwords, each in its own cookie jar.
+- `calendar.spec.mjs` signs in as `walter` and covers the calendar under the production CSP: create by form, Enter on the focused list event opens it, Escape closes the event dialog, delete (checked again after a reload), no horizontal scroll.
 - Screenshots and failure traces live in ignored `test-results/` and CI artifacts, not production assets.
 
 ## Work Guidance

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/apppass"
+	"github.com/Busnes-app/kycalendar/internal/store"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 )
@@ -145,6 +147,66 @@ func TestCalDAVSyncBadToken(t *testing.T) {
 		if b := readAll(r); r.StatusCode != 403 || !strings.Contains(b, "valid-sync-token") {
 			t.Fatalf("token %q: %d %s", tok, r.StatusCode, b)
 		}
+	}
+}
+
+// A token issued after the backup must not be believed once writes on the restored data push
+// seq past it: the new epoch is what refuses it.
+func TestCalDAVTokenFromBeforeRestoreRefused(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	old := davUser(t, st, "alice", "user")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	cal := "/dav/usr_alice/calendars/default/"
+	sync := func(pass, tok string) *http.Response {
+		body := `<d:sync-collection xmlns:d="DAV:"><d:sync-token>` + tok + `</d:sync-token><d:sync-level>1</d:sync-level><d:prop><d:getetag/></d:prop></d:sync-collection>`
+		return rawDAV(t, ts, "REPORT", cal, "alice", pass, body, map[string]string{"Content-Type": "application/xml"})
+	}
+	put := func(pass, name string) {
+		ev := strings.Replace(evA, "UID:evt-a", "UID:"+name, 1)
+		if r := rawDAV(t, ts, "PUT", cal+name+".ics", "alice", pass, ev, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != http.StatusCreated {
+			t.Fatalf("PUT %s: %d", name, r.StatusCode)
+		}
+	}
+	ctag := func(pass string) string {
+		body := `<d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/"><d:prop><cs:getctag/></d:prop></d:propfind>`
+		r := rawDAV(t, ts, "PROPFIND", cal, "alice", pass, body, map[string]string{"Content-Type": "application/xml", "Depth": "0"})
+		b := readAll(r)
+		v := between(b, "getctag xmlns=\"http://calendarserver.org/ns/\">", "<")
+		if r.StatusCode != 207 || v == "" {
+			t.Fatalf("getctag %d %s", r.StatusCode, b)
+		}
+		return v
+	}
+	put(old, "pre")
+	tok := between(readAll(sync(old, "")), "<sync-token>", "</sync-token>")
+	if !strings.HasSuffix(tok, ":1") {
+		t.Fatalf("token %q", tok)
+	}
+	ctagBefore := ctag(old)
+
+	if err := st.ResetAfterRestore(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r := sync(old, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("app password survived the reset: %d", r.StatusCode)
+	}
+	id, fresh, hash, err := apppass.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	// Same seq as before the reset: a ctag of seq alone would equal the cached one and the
+	// client would skip the resync.
+	if after := ctag(fresh); after == ctagBefore {
+		t.Fatalf("getctag %q unchanged across the restore", after)
+	}
+	put(fresh, "post1")
+	put(fresh, "post2")
+	if r := sync(fresh, tok); r.StatusCode != http.StatusForbidden || !strings.Contains(readAll(r), "valid-sync-token") {
+		t.Fatalf("pre-restore token at a reached seq: %d", r.StatusCode)
 	}
 }
 

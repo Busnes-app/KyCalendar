@@ -42,7 +42,7 @@ start_server() { # start_server <captcha-provider>
   KY_PORT="$PORT" \
     KY_HOST=127.0.0.1 \
     KY_DATA_DIR="$WORK/data" \
-    KY_BACKUP_DIR="$WORK/backups" \
+    KYCALENDAR_BACKUP_DIR="$WORK/backups" \
     KY_DB_DRIVER=sqlite \
     KY_ADMIN_PASSWORD="$ADMIN_PASS" \
     KY_CAPTCHA_PROVIDER="$1" \

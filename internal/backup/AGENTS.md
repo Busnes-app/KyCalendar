@@ -24,11 +24,13 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
   never sealed. It also carries the encryption key (`data/encryption.key`, required — restores
   a database whose MFA secrets are gone otherwise) and the pinned recovery public key
   (`data/recovery.pub`, only when paired).
+- `ServiceName` (`kycalendar`) is what is claimed, sealed and used for local copies; `KY_APP_NAME` is display only. `DatabaseMember` (`data/kycalendar.db`) must equal the file the default DSN opens, so a restored tree starts on restored data; `Collect` refuses (`ErrNoDatabaseSnapshot`) a DSN whose file is not `<DataDir>/kycalendar.db`.
 - `Checks(dir, opened)` reads the opened capsule's manifest, normalizes JSON lists and
   fails malformed or incomplete recipes. Required files include all capsule members and
   the database, settings and encryption key; SQLite integrity and required environment
   checks cannot be disabled. File checks accept only clean relative manifest members;
   SQLite opens read-only and missing/empty databases fail.
+- `Collect` counts `calendars` and `calendar_objects` in the snapshot file (not the live database) and records `calendar_count` and `object_count` in the recipe. `Checks` requires both as non-negative integers, then `Calendar Counts` compares them with the restored database and `Calendar Objects` decodes and `calendar.Inspect`s up to 50 objects; messages name the calendar ID and the object's position in the sample, never its client-chosen name or data.
 - HTTP and CLI call `RunDrill`, which holds an OS advisory lock on `<data dir>/drill.lock`
   across scratch preparation and the library drill. Contention returns `ErrDrillBusy`;
   closing the descriptor or process exit releases ownership. Keep the lock file in place.
@@ -44,7 +46,7 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
 - Pairing, the write-once key pin, `Run` (one seal, every destination), the schedule, local
   copies and their pruning, drill mechanics, restore and the decrypt guard are the lib's;
   their contracts are in the `recoveryclient` README. `client_test.go` pins only what this
-  package's wiring buys: `KY_BACKUP_ALLOW_PRIVATE_RECOVERY` admits RFC1918 and CGNAT and
+  package's wiring buys: `KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY` admits RFC1918 and CGNAT and
   nothing else.
 
 ## Verification

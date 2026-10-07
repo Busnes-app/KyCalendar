@@ -9,6 +9,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 ## Local Contracts
 - `CompletePasswordChange` atomically compares the old password, updates a flagged local account, clears the flag, deletes sessions/MFA challenges/device pairings/app passwords and records `auth.password_changed`. Session/MFA issuance locks the same user row against the verified hash; MFA challenges persist the creation-time password hash, and consumption returns that snapshot to reject stale completions. Migration 4 discards preexisting challenges because their credential snapshot is unknown.
 - `ResetAdminPassword` reactivates a local administrator with the replacement flag set and shares the atomic grant purge and audit path with `CompletePasswordChange`; it also works for disabled accounts.
+- `ResetPassword` is the same operator reset (`operatorReset`: hash, replacement flag, grant purge, `auth.password_changed` audit, one transaction) for any local account, without touching role or status; a missing or non-local account is `ErrNotFound`.
 - Migration 5 rebuilds `device_pairings` without the six-digit code column and with `authenticated_at`; pending pairings (90 s) are dropped on upgrade.
 - Migration 6 adds `calendars` (owner_kind user|group, per-owner unique slug, `seq`, `min_sync_seq`), `calendar_objects` (unique name and uid per calendar), `calendar_changes` and `calendar_meta` (random `sync_epoch`).
 - Migration 7 adds `app_passwords` (id, user_id cascade, label, SHA-256 hex `hash`, `last_used_at`). `AppPasswordStore.Delete` is scoped to the owning user and returns `ErrNotFound` otherwise; `DeleteByUser` revokes all.
@@ -24,6 +25,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - `GetObjectByUID` finds an object by its UID within one calendar (UIDs are unique per calendar), for the JSON event API.
 - Object ETag is the SHA-256 hex of the stored bytes. `first_start` and `last_end` are unix seconds; NULL `last_end` means unbounded.
 - `PruneChanges` sets `min_sync_seq` to the highest pruned seq; `ChangesSince` returns `ErrSyncTokenExpired` only when the token seq is below it.
+- `Store.ResetAfterRestore` deletes every session, MFA challenge, device pairing and app password (the grants `revokePasswordGrants` clears), writes a new random `sync_epoch` (16 hex) and audits `system.restore_reset` (user `system`, details carry the epoch), in one transaction. Accounts, password hashes, `must_change_password`, recovery codes and calendar data stay as restored: a blanket forced change is no defence against a leaked restored password, so the runbook resets rotated ones by hand. It is idempotent; `cmd/server` runs it after `restore` and from `restore-reset`.
 - `store.Open(ctx, cfg)` initializes and auto-migrates the configured database backend.
 - SQLite runs in WAL mode with foreign keys enabled.
 - PostgreSQL queries are rebound dynamically from standard positional parameters.
