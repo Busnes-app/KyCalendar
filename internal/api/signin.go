@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -56,15 +57,18 @@ func (s *Server) LoadSignIn(ctx context.Context) error {
 		return err
 	}
 	if prev != "" {
-		_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: "system", Action: "admin.signin_provider_change", Resource: st.Provider.Value, Details: bindDetails(prev, st, n)})
-		log.Printf("[SSO] sign-in provider changed from %q to %q: %d accounts of the previous provider disabled", prev, st.Identity(), n)
+		// The binding is committed: a lost audit row is logged, not a reason to keep sign-in closed.
+		if err := s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: "system", Action: "admin.signin_provider_change", Resource: st.Provider.Value, Details: bindDetails(prev, st, n)}); err != nil {
+			log.Printf("[SSO] audit of the sign-in provider change failed: %v", err)
+		}
+		log.Printf("[SSO] sign-in provider changed from %q to %q: %d accounts of the previous provider disabled", prev, bindingIdentity(st), n)
 	}
 	s.signin.Store(s.buildProvider(st))
 	return nil
 }
 
 func bindDetails(prev string, st sso.Settings, n int) string {
-	return "from=" + strconv.Quote(prev) + " to=" + strconv.Quote(st.Identity()) + " disabled=" + strconv.Itoa(n)
+	return "from=" + strconv.Quote(prev) + " to=" + strconv.Quote(bindingIdentity(st)) + " disabled=" + strconv.Itoa(n)
 }
 
 // boundTo is the identity accounts are bound to, "" when nothing is bound yet.
@@ -79,23 +83,41 @@ func (s *Server) boundTo(ctx context.Context) (string, error) {
 // ssoAccountProviders is every users.sso_provider value a sign-in provider can reach.
 var ssoAccountProviders = []string{"kysignon", "scim", "oidc"}
 
-// boundAccounts is the account providers of a binding: its kind's, or every SSO provider when
-// the stored kind is unknown, so a damaged binding disables too much rather than nothing.
-func boundAccounts(bound string) []string {
+// bindingIdentity is the identity accounts bind to: the kind and the issuer with every
+// trailing '/' trimmed, so a cosmetic slash is not a provider change. Discovery still gets the
+// issuer as entered.
+func bindingIdentity(st sso.Settings) string {
+	return st.Provider.Value + " " + strings.TrimRight(st.Issuer.Value, "/")
+}
+
+// unchanged reports whether binding st keeps the stored binding.
+func unchanged(bound string, st sso.Settings) bool {
+	return strings.TrimRight(bound, "/") == bindingIdentity(st)
+}
+
+// disableList is the account providers a change from bound to st disables: the previous kind's,
+// or every SSO provider when the stored kind is unknown, so a damaged binding disables too much
+// rather than nothing. KyIdentity logins adopt scim rows by sub, so moving to KyIdentity from
+// any other kind disables scim rows too: one provisioned under the old binding is not adoptable.
+func disableList(bound string, st sso.Settings) []string {
 	kind, _, _ := strings.Cut(bound, " ")
-	if p := sso.AccountProviders(kind); p != nil {
-		return p
+	p := sso.AccountProviders(kind)
+	if p == nil {
+		return ssoAccountProviders
 	}
-	return ssoAccountProviders
+	if st.Provider.Value == sso.KindKyIdentity && !slices.Contains(p, "scim") {
+		p = append(p, "scim")
+	}
+	return p
 }
 
 // pendingDisable is how many accounts binding to st would disable.
 func (s *Server) pendingDisable(ctx context.Context, st sso.Settings) (int, error) {
 	bound, err := s.boundTo(ctx)
-	if err != nil || !st.Live() || bound == "" || bound == st.Identity() {
+	if err != nil || !st.Live() || bound == "" || unchanged(bound, st) {
 		return 0, err
 	}
-	return s.store.Users().CountSSOAccounts(ctx, boundAccounts(bound))
+	return s.store.Users().CountSSOAccounts(ctx, disableList(bound, st))
 }
 
 // bindAccounts makes st the provider SSO accounts belong to. On a change of kind or issuer the
@@ -109,16 +131,16 @@ func (s *Server) bindAccounts(ctx context.Context, st sso.Settings) (string, int
 		return "", 0, nil
 	}
 	bound, err := s.boundTo(ctx)
-	if err != nil || bound == st.Identity() {
+	if err != nil || unchanged(bound, st) {
 		return "", 0, err
 	}
 	n := 0
 	if bound != "" {
-		if n, err = s.store.Users().DisableSSOAccounts(ctx, boundAccounts(bound)); err != nil {
+		if n, err = s.store.Users().DisableSSOAccounts(ctx, disableList(bound, st)); err != nil {
 			return "", 0, err
 		}
 	}
-	if err := s.store.Settings().SetSetting(ctx, sso.KeyBound, st.Identity()); err != nil {
+	if err := s.store.Settings().SetSetting(ctx, sso.KeyBound, bindingIdentity(st)); err != nil {
 		return "", 0, err
 	}
 	return bound, n, nil

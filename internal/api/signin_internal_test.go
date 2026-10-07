@@ -185,3 +185,47 @@ func TestLoadSignInAppliesSavedSettingsUnderTheEnvironment(t *testing.T) {
 		t.Fatalf("provider live after a failed load: %+v", p)
 	}
 }
+
+// KyIdentity logins adopt scim rows by sub, so a scim row provisioned under an oidc binding is
+// disabled when the binding moves to KyIdentity, and counted beforehand.
+func TestMoveToKyIdentityDisablesSCIMRows(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	if _, _, err := s.bindAccounts(ctx, oidcAt("https://a.example")); err != nil {
+		t.Fatal(err)
+	}
+	createUsers(t, s,
+		&store.User{ID: "usr_o", Username: "o", Role: "user", Status: "active", SSOProvider: "oidc", SSOSubject: "o-1"},
+		&store.User{ID: "usr_s", Username: "s", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "s-1"},
+	)
+	if n, err := s.pendingDisable(ctx, kyidentityAt("https://id.example")); err != nil || n != 2 {
+		t.Fatalf("pending disable: %d %v, want 2", n, err)
+	}
+	if _, n, err := s.bindAccounts(ctx, kyidentityAt("https://id.example")); err != nil || n != 2 {
+		t.Fatalf("oidc to kyidentity: %d %v, want 2", n, err)
+	}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s-1", PreferredUsername: "mallory"}); !errors.Is(err, errAccountInactive) {
+		t.Fatalf("scim sub through kyidentity: %v, want errAccountInactive", err)
+	}
+}
+
+// Trailing slashes on the issuer are not a provider change.
+func TestTrailingSlashIsNotAProviderChange(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	if _, _, err := s.bindAccounts(ctx, kyidentityAt("https://a.example/")); err != nil {
+		t.Fatal(err)
+	}
+	createUsers(t, s, &store.User{ID: "usr_k", Username: "k", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"})
+	for _, issuer := range []string{"https://a.example", "https://a.example//", "https://a.example/"} {
+		if n, err := s.pendingDisable(ctx, kyidentityAt(issuer)); err != nil || n != 0 {
+			t.Fatalf("pending for %s: %d %v, want 0", issuer, n, err)
+		}
+		if prev, n, err := s.bindAccounts(ctx, kyidentityAt(issuer)); err != nil || prev != "" || n != 0 {
+			t.Fatalf("rebinding %s: %q %d %v, want a no-op", issuer, prev, n, err)
+		}
+	}
+	if u, _ := s.store.Users().GetUserByID(ctx, "usr_k"); u.Status != "active" {
+		t.Fatalf("account after cosmetic issuer edits: %s", u.Status)
+	}
+}
