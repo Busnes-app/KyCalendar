@@ -379,8 +379,16 @@ CREATE TABLE calendar_grants (
     PRIMARY KEY (calendar_id, group_id)
 );
 CREATE INDEX idx_calendar_grants_group ON calendar_grants(group_id);`,
+	}, {
+		// The retired webhook copied KyIdentity's global role; its admins re-prove the app role.
+		Version:  9,
+		Name:     "revoke_sso_admin_sessions",
+		SQLite:   revokeSSOAdminSessions,
+		Postgres: revokeSSOAdminSessions,
 	},
 }
+
+const revokeSSOAdminSessions = `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role = 'admin' AND sso_provider IN ('kysignon', 'scim'));`
 
 // Run executes all pending migrations for the specified database driver.
 func Run(ctx context.Context, db *sql.DB, driver string) error {
