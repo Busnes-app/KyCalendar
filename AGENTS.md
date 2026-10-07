@@ -219,7 +219,7 @@ and retain their own identity, sealer label and collection adapters.
 
 - Web themes default to the Busnes.app cream/light and charcoal/dark palettes with orange accents, following the OS until a browser-local choice is saved. Preserve existing named themes and saved choices.
 
-- KyCalendar must be fully administrable standalone, without KyIdentity: admin screens for local people (create, reset, disable), local groups and membership (so group calendars work), and sign-in settings to connect KyIdentity or another OIDC provider without environment variables. Design: `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`.
+- KyCalendar must be fully administrable standalone, without KyIdentity: admin screens for local people (create, reset, disable), local groups and membership (so group calendars work), and sign-in settings to connect KyIdentity or another OIDC provider without environment variables. Design: `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`. Plan: `docs/superpowers/plans/2026-10-07-kycalendar-standalone-admin.md`.
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
@@ -315,6 +315,15 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges, device pairings and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it. Both refuse a target containing `?` or `#`, which the SQLite DSN would cut.
 - Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
 - The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.
+
+#### Standalone administration contracts
+
+Spec `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`.
+
+- Groups have an owner, `groups.source` (migration 10): `local` (the Groups screen) or `scim`; rows older than migration 10 are `scim`. Admin writes reach local groups only (409 `managed_externally`); SCIM sees, reads and writes only `scim` groups, so a reconciling IdP never renames, empties or deletes a local group. Names are unique ignoring case across both owners; a SCIM create that collides with a local name is a SCIM 409 and sets `scim.ConflictKey(name)`, which the Groups screen flags until the local group is renamed or deleted.
+- Group members are active everyday users (409 `admin_member`, `inactive_member`). Membership changes revoke nothing: `access.Resolve` reads membership on every request, so CalDAV clients see the change at their next sync. Deleting a group (step-up) cascades memberships and grants; group calendars stay.
+- `requireStepUp` (10 minutes, 403 `reauth_required`) guards every step-up route.
+- Audit: `admin.group_create`, `admin.group_rename`, `admin.group_delete` (details `calendars=N`), `admin.group_member_add`, `admin.group_member_remove`; a repeated, idempotent call writes no row.
 
 #### Server child DOX index
 

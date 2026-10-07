@@ -259,3 +259,30 @@ func (s *Server) handleRemoveGroupMember(w http.ResponseWriter, r *http.Request)
 	s.auditAction(r.Context(), r, "admin.group_member_remove", g.ID, "user="+strconv.Quote(userID))
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// handleDeleteGroup deletes a local group with its memberships and calendar grants; the group
+// calendars stay. A step-up action, detached so a dropped connection cannot lose the audit row.
+func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	if !s.requireStepUp(w, r, "delete a group") {
+		return
+	}
+	r = r.WithContext(context.WithoutCancel(r.Context()))
+	g := s.adminGroup(w, r, true)
+	if g == nil {
+		return
+	}
+	counts, err := s.grantCounts(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to count group calendars")
+		return
+	}
+	if err := s.store.Groups().DeleteGroup(r.Context(), g.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, http.StatusInternalServerError, "Failed to delete the group")
+		return
+	}
+	if err := s.store.Settings().DeleteSetting(r.Context(), scim.ConflictKey(g.DisplayName)); err != nil {
+		log.Printf("groups: SCIM conflict flag for %s not cleared: %v", g.ID, err)
+	}
+	s.auditAction(r.Context(), r, "admin.group_delete", g.ID, "name="+strconv.Quote(g.DisplayName)+" calendars="+strconv.Itoa(counts[g.ID]))
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -182,6 +182,7 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/groups":                         {method: "POST", path: "/api/admin/groups", body: `{"display_name":"Matrix new"}`, want: adminOnly},
 		"GET /api/admin/groups/{id}":                     {method: "GET", path: "/api/admin/groups/grp_matrix", want: adminOnly},
 		"PATCH /api/admin/groups/{id}":                   {method: "PATCH", path: "/api/admin/groups/grp_matrix", body: `{"display_name":"Matrix"}`, want: adminOnly},
+		"DELETE /api/admin/groups/{id}":                  {method: "DELETE", path: "/api/admin/groups/grp_doomed", want: adminOnly},
 		"PUT /api/admin/groups/{id}/members/{userId}":    {method: "PUT", path: "/api/admin/groups/grp_matrix/members/usr_nonmember", want: adminOnly},
 		"DELETE /api/admin/groups/{id}/members/{userId}": {method: "DELETE", path: "/api/admin/groups/grp_matrix/members/usr_nonmember", want: adminOnly},
 		"GET /api/admin/users":                           {method: "GET", path: "/api/admin/users?q=owner", want: adminOnly},
