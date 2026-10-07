@@ -70,10 +70,10 @@ func probeYears(f rrule.Frequency) int {
 	return 400
 }
 
-// yields probes a BYSETPOS or BYWEEKNO rule with rrule-go itself: it must produce an occurrence
-// before rrule-go stops at year 9999.
+// yields probes a BYSETPOS or BYWEEKNO rule, or an ordinal BYDAY with a day filter, with
+// rrule-go itself: it must produce an occurrence before rrule-go stops at year 9999.
 func yields(opt *rrule.ROption, start time.Time) bool {
-	if len(opt.Bysetpos) == 0 && len(opt.Byweekno) == 0 {
+	if len(opt.Bysetpos) == 0 && len(opt.Byweekno) == 0 && !ordinalWithDayFilter(opt) {
 		return true
 	}
 	probe := *opt
@@ -86,4 +86,12 @@ func yields(opt *rrule.ROption, start time.Time) bool {
 	}
 	_, ok := r.Iterator()()
 	return ok
+}
+
+// ordinalWithDayFilter: satisfiable ignores BYDAY ordinals, so "1MO" with BYMONTHDAY=15 passes it.
+func ordinalWithDayFilter(opt *rrule.ROption) bool {
+	if len(opt.Bymonthday) == 0 && len(opt.Byyearday) == 0 {
+		return false
+	}
+	return slices.ContainsFunc(opt.Byweekday, func(w rrule.Weekday) bool { return w.N() != 0 })
 }

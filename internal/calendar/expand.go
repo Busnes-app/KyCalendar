@@ -158,23 +158,35 @@ func tooLong(opt *rrule.ROption, to time.Time) bool {
 
 // skipAhead moves DTSTART of a COUNT-less DAILY, WEEKLY or HOURLY rule by whole intervals to just
 // before from, so an old series does not spend its budget on the past. MONTHLY and YEARLY stay put.
+// A landing in a DST gap would shift the wall clock rrule-go takes as the phase, so up to two
+// earlier intervals are tried before giving up and keeping DTSTART.
 func skipAhead(opt *rrule.ROption, from time.Time) {
 	k := periods(opt, from.Sub(opt.Dtstart)) - 1
-	if k <= 0 {
-		return
+	for i := 0; i < 3 && k > 0; i, k = i+1, k-1 {
+		if t, ok := shifted(opt, k); ok {
+			opt.Dtstart = t
+			return
+		}
 	}
+}
+
+// shifted is DTSTART moved by k intervals in wall time, as rrule-go steps them; ok is false when
+// that wall time does not exist in DTSTART's zone (UTC, which has no gaps, gives the intended one).
+func shifted(opt *rrule.ROption, k int) (time.Time, bool) {
 	n := max(opt.Interval, 1)
+	y, mo, d := opt.Dtstart.Date()
+	h, mi, sec := opt.Dtstart.Clock()
 	switch opt.Freq {
 	case rrule.DAILY:
-		opt.Dtstart = opt.Dtstart.AddDate(0, 0, k*n)
+		d += k * n
 	case rrule.WEEKLY:
-		opt.Dtstart = opt.Dtstart.AddDate(0, 0, 7*k*n)
+		d += 7 * k * n
 	case rrule.HOURLY:
-		// wall hours, as rrule-go steps them: absolute hours flip the phase across a DST change
-		y, mo, d := opt.Dtstart.Date()
-		h, mi, sec := opt.Dtstart.Clock()
-		opt.Dtstart = time.Date(y, mo, d, h+k*n, mi, sec, 0, opt.Dtstart.Location())
+		h += k * n
 	}
+	t := time.Date(y, mo, d, h, mi, sec, 0, opt.Dtstart.Location())
+	want := time.Date(y, mo, d, h, mi, sec, 0, time.UTC)
+	return t, t.Format(time.DateTime) == want.Format(time.DateTime)
 }
 
 // boundedRule parses comp's single RRULE for expansion over [from, to): nil when it is not safe.

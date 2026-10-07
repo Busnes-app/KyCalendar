@@ -192,7 +192,7 @@ func calendarOf(vevents ...string) string {
 }
 
 func TestExpandNeverMatchingRuleIsBounded(t *testing.T) {
-	for _, rule := range []string{"FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30", "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2"} {
+	for _, rule := range []string{"FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30", "FREQ=HOURLY;BYMINUTE=0;BYSETPOS=2", "FREQ=MONTHLY;BYDAY=1MO;BYMONTHDAY=15"} {
 		var evs []string
 		for i := range 10 {
 			dt := "201" + strconv.Itoa(i) + "0101T000000Z"
@@ -370,6 +370,55 @@ func TestExpandSetposAndWeekno(t *testing.T) {
 			t.Fatalf("%s: %v %v", tc.rule, got, err)
 		}
 		if tc.partial != got[0].Partial || tc.partial && len(got) != 1 || !tc.partial && len(got) < 2 {
+			t.Errorf("%s: partial=%v, %d instances", tc.rule, got[0].Partial, len(got))
+		}
+	}
+}
+
+// Skip-ahead landing on a spring-forward gap must not shift the wall-clock phase: the result
+// equals the same rule expanded from the original DTSTART under a COUNT that reaches the range.
+func TestExpandSkipAheadAvoidsDSTGap(t *testing.T) {
+	ny := zone(t, "America/New_York")
+	for _, tc := range []struct {
+		start, rule, count string
+		from               time.Time
+		days               int
+	}{
+		{"20260101T020000", "FREQ=HOURLY;INTERVAL=12", ";COUNT=2000", time.Date(2027, 3, 15, 0, 0, 0, 0, ny), 1},
+		{"20260101T023000", "FREQ=DAILY", ";COUNT=1000", time.Date(2027, 3, 16, 0, 0, 0, 0, ny), 2},
+	} {
+		run := func(rule string) []string {
+			cal := parse(t, calendarOf(event("UID:g\nDTSTART;TZID=America/New_York:"+tc.start+"\nDTEND;TZID=America/New_York:"+tc.start+"\nRRULE:"+rule)))
+			got, err := Expand(cal, tc.from, tc.from.AddDate(0, 0, tc.days), time.UTC, 5000)
+			if err != nil || len(got) == 0 {
+				t.Fatalf("%s: %v %v", rule, got, err)
+			}
+			var desc []string
+			for _, in := range got {
+				desc = append(desc, in.Start.In(ny).Format(time.RFC3339)+" "+in.RecurrenceID)
+			}
+			return desc
+		}
+		if skip, full := run(tc.rule), run(tc.rule+tc.count); !reflect.DeepEqual(skip, full) {
+			t.Errorf("%s:\nskip %v\nfull %v", tc.rule, skip, full)
+		}
+	}
+}
+
+func TestExpandOrdinalBydayWithDayFilter(t *testing.T) {
+	for _, tc := range []struct {
+		rule    string
+		partial bool
+	}{
+		{"FREQ=MONTHLY;BYDAY=1MO;BYMONTHDAY=15", true},
+		{"FREQ=MONTHLY;BYDAY=2TU;BYMONTHDAY=8,9,10,11,12,13,14", false},
+	} {
+		cal := parse(t, calendarOf(event("UID:b\nDTSTART:20261001T090000Z\nDTEND:20261001T100000Z\nRRULE:"+tc.rule)))
+		got, err := Expand(cal, day(2026, 10, 1), day(2027, 1, 1), time.UTC, 5000)
+		if err != nil || len(got) == 0 {
+			t.Fatalf("%s: %v %v", tc.rule, got, err)
+		}
+		if tc.partial != got[0].Partial || tc.partial && len(got) != 1 || !tc.partial && len(got) < 3 {
 			t.Errorf("%s: partial=%v, %d instances", tc.rule, got[0].Partial, len(got))
 		}
 	}
