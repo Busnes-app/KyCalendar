@@ -98,6 +98,11 @@ func newWorld(t *testing.T) *world {
 	for _, a := range []actor{reader, editor, manager} {
 		grantRole(t, st, w.group, string(a), "usr_"+string(a))
 	}
+	// victim is the local account the People rows reset, promote, disable and enable; no row
+	// signs in as it.
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_victim", Username: "victim", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+		t.Fatal(err)
+	}
 	// grp_extra takes grants; grp_matrix takes members and a rename, so no row's membership
 	// change can grant a caller access another row expects refused; grp_doomed is deleted.
 	for _, g := range []*store.Group{{ID: "grp_extra", DisplayName: "Extra"}, {ID: "grp_matrix", DisplayName: "Matrix"}, {ID: "grp_doomed", DisplayName: "Doomed"}} {
@@ -186,6 +191,8 @@ func apiRows(w *world) map[string]apiRow {
 		"PUT /api/admin/groups/{id}/members/{userId}":    {method: "PUT", path: "/api/admin/groups/grp_matrix/members/usr_nonmember", want: adminOnly},
 		"DELETE /api/admin/groups/{id}/members/{userId}": {method: "DELETE", path: "/api/admin/groups/grp_matrix/members/usr_nonmember", want: adminOnly},
 		"GET /api/admin/users":                           {method: "GET", path: "/api/admin/users?q=owner", want: adminOnly},
+		"POST /api/admin/users":                          {method: "POST", path: "/api/admin/users", body: `{"username":"matrix-new","role":"user"}`, want: adminOnly},
+		"POST /api/admin/users/{id}/reset-password":      {method: "POST", path: "/api/admin/users/usr_victim/reset-password", want: adminOnly},
 		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
 		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
