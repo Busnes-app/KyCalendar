@@ -26,6 +26,9 @@ const (
 	KeyIssuer       = "signin_issuer"
 	KeyClientID     = "signin_client_id"
 	KeySecretSealed = "signin_client_secret_sealed"
+	// KeySecretRegistration is the registration the sealed secret was entered for
+	// (SecretRegistration). Its prefix keeps it out of every settings response.
+	KeySecretRegistration = "signin_client_secret_registration"
 	// KeyBound is the Identity of the provider existing SSO accounts belong to.
 	KeyBound = "signin_bound"
 )
@@ -74,8 +77,9 @@ type Settings struct {
 // directory webhook and leaves the provider alone: it must not turn a generic provider into one
 // whose roles claim grants admin. When the environment fixes kyidentity over a saved row of
 // another kind, every saved field is dropped: kyidentity is never paired with a foreign issuer,
-// nor sent another provider's credentials. A saved secret is reported as set but left sealed:
-// Secret.Value is empty until opened.
+// nor sent another provider's credentials. A saved secret applies only to the registration it was
+// entered for (SavedSecretFits), else it is unset and the settings are not Live. It is reported
+// as set but left sealed: Secret.Value is empty until opened.
 func Resolve(env config.SSOConfig, saved map[string]string) Settings {
 	envKy := env.KySignOnIssuer != ""
 	if !envKy {
@@ -113,7 +117,24 @@ func Resolve(env config.SSOConfig, saved map[string]string) Settings {
 	if st.DisplayName.Value == "" && st.Provider.Value == KindKyIdentity {
 		st.DisplayName.Value = "KyIdentity"
 	}
+	if st.Secret.Source == SourceSaved && !SavedSecretFits(saved, st) {
+		st.Secret = SecretField{Source: SourceUnset}
+	}
 	return st
+}
+
+// SavedSecretFits reports whether the saved sealed secret was entered for st's registration:
+// the same kind, exact issuer and client ID. A missing record never fits, so one registration's
+// secret is never sent to another, whether an admin or the environment changed it.
+func SavedSecretFits(saved map[string]string, st Settings) bool {
+	return saved[KeySecretSealed] != "" && saved[KeySecretRegistration] == SecretRegistration(st.Provider.Value, st.Issuer.Value, st.ClientID.Value)
+}
+
+// SecretRegistration records the registration a secret belongs to: kind, exact issuer and
+// client ID, as JSON so no two registrations share a record.
+func SecretRegistration(kind, issuer, clientID string) string {
+	b, _ := json.Marshal([3]string{kind, issuer, clientID})
+	return string(b)
 }
 
 // IgnoredEnv names the environment variables Resolve ignores because KY_KYSIGNON_ISSUER is
@@ -132,9 +153,10 @@ func IgnoredEnv(env config.SSOConfig) []string {
 	return names
 }
 
-// Live reports whether the settings name a provider people can sign in with.
+// Live reports whether the settings name a provider people can sign in with: a kind, an issuer,
+// a client ID and a secret for that registration.
 func (st Settings) Live() bool {
-	return st.Provider.Value != KindNone && st.Issuer.Value != "" && st.ClientID.Value != ""
+	return st.Provider.Value != KindNone && st.Issuer.Value != "" && st.ClientID.Value != "" && st.Secret.Source != SourceUnset
 }
 
 // Identity is what account binding compares: the provider kind and its issuer.

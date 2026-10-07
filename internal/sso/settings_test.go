@@ -16,11 +16,13 @@ import (
 var savedOIDC = map[string]string{
 	sso.KeyProvider: sso.KindOIDC, sso.KeyDisplayName: "Acme", sso.KeyIssuer: "https://saved.example",
 	sso.KeyClientID: "saved-client", sso.KeySecretSealed: "sealed-blob",
+	sso.KeySecretRegistration: sso.SecretRegistration(sso.KindOIDC, "https://saved.example", "saved-client"),
 }
 
 var savedKy = map[string]string{
 	sso.KeyProvider: sso.KindKyIdentity, sso.KeyDisplayName: "Acme", sso.KeyIssuer: "https://saved.example",
 	sso.KeyClientID: "saved-client", sso.KeySecretSealed: "sealed-blob",
+	sso.KeySecretRegistration: sso.SecretRegistration(sso.KindKyIdentity, "https://saved.example", "saved-client"),
 }
 
 func TestResolveEnvironmentWinsAndLocks(t *testing.T) {
@@ -130,8 +132,8 @@ func TestResolveEachEnvironmentFieldLocksOnlyItself(t *testing.T) {
 		want  sso.Field
 		saved int
 	}{
-		{"issuer", config.SSOConfig{KySignOnIssuer: issuer}, func(s sso.Settings) sso.Field { return s.Issuer }, sso.Field{Value: issuer, Source: sso.SourceEnvironment}, 3},
-		{"client id", config.SSOConfig{KySignOnIssuer: issuer, KySignOnClientID: "env-client"}, func(s sso.Settings) sso.Field { return s.ClientID }, sso.Field{Value: "env-client", Source: sso.SourceEnvironment}, 2},
+		{"issuer", config.SSOConfig{KySignOnIssuer: issuer}, func(s sso.Settings) sso.Field { return s.Issuer }, sso.Field{Value: issuer, Source: sso.SourceEnvironment}, 2},
+		{"client id", config.SSOConfig{KySignOnIssuer: issuer, KySignOnClientID: "env-client"}, func(s sso.Settings) sso.Field { return s.ClientID }, sso.Field{Value: "env-client", Source: sso.SourceEnvironment}, 1},
 		{"secret", config.SSOConfig{KySignOnIssuer: issuer, KySignOnSecret: "env-secret"}, func(s sso.Settings) sso.Field { return sso.Field(s.Secret) }, sso.Field{Value: "env-secret", Source: sso.SourceEnvironment}, 2},
 	}
 	for _, c := range cases {
@@ -142,7 +144,8 @@ func TestResolveEachEnvironmentFieldLocksOnlyItself(t *testing.T) {
 		if st.Provider != envKy {
 			t.Errorf("%s: provider %+v, want kyidentity from the environment", c.name, st.Provider)
 		}
-		// Every field the environment does not set stays saved.
+		// Every field the environment does not set stays saved, except the saved secret, which
+		// belongs to the saved registration and so not to an environment issuer or client ID.
 		saved := 0
 		for _, f := range []sso.Field{st.DisplayName, st.Issuer, st.ClientID, sso.Field(st.Secret)} {
 			if f.Source == sso.SourceSaved {
@@ -173,6 +176,7 @@ func TestResolveWebhookSecretAloneLeavesProvider(t *testing.T) {
 func TestResolveSavedAndUnset(t *testing.T) {
 	st := sso.Resolve(config.SSOConfig{}, map[string]string{
 		sso.KeyProvider: sso.KindOIDC, sso.KeyIssuer: "https://saved.example", sso.KeyClientID: "c", sso.KeySecretSealed: "sealed-blob",
+		sso.KeySecretRegistration: sso.SecretRegistration(sso.KindOIDC, "https://saved.example", "c"),
 	})
 	if st.Provider.Source != sso.SourceSaved || st.Issuer.Value != "https://saved.example" || !st.Live() {
 		t.Fatalf("saved oidc: %+v", st)
@@ -249,5 +253,52 @@ func TestAccountProviders(t *testing.T) {
 	}
 	if got := sso.AccountProviders(sso.KindNone); got != nil {
 		t.Errorf("none: %v", got)
+	}
+}
+
+// A saved secret belongs to the registration it was entered for: the effective kind, exact issuer
+// and client ID must equal its record, or it is unset and sign-in is not live. No record is a
+// mismatch. An environment secret is unaffected.
+func TestResolveSavedSecretNeedsItsRegistration(t *testing.T) {
+	with := func(m map[string]string, k, v string) map[string]string {
+		out := map[string]string{}
+		for key, val := range m {
+			out[key] = val
+		}
+		if v == "" {
+			delete(out, k)
+		} else {
+			out[k] = v
+		}
+		return out
+	}
+	if st := sso.Resolve(config.SSOConfig{}, savedKy); st.Secret.Source != sso.SourceSaved || !st.Live() {
+		t.Fatalf("matching registration: %+v", st)
+	}
+	for name, tc := range map[string]struct {
+		env   config.SSOConfig
+		saved map[string]string
+	}{
+		"environment issuer":        {config.SSOConfig{KySignOnIssuer: "https://other.example"}, savedKy},
+		"environment client ID":     {config.SSOConfig{KySignOnIssuer: "https://saved.example", KySignOnClientID: "env-client"}, savedKy},
+		"no registration":           {config.SSOConfig{}, with(savedKy, sso.KeySecretRegistration, "")},
+		"trailing slash":            {config.SSOConfig{}, with(savedKy, sso.KeyIssuer, "https://saved.example/")},
+		"saved client ID changed":   {config.SSOConfig{}, with(savedOIDC, sso.KeyClientID, "other")},
+		"registration of oidc kind": {config.SSOConfig{}, with(savedKy, sso.KeySecretRegistration, sso.SecretRegistration(sso.KindOIDC, "https://saved.example", "saved-client"))},
+	} {
+		st := sso.Resolve(tc.env, tc.saved)
+		if st.Secret != (sso.SecretField{Source: sso.SourceUnset}) || st.Live() {
+			t.Errorf("%s: secret %+v live %v, want unset and closed", name, st.Secret, st.Live())
+		}
+	}
+	env := config.SSOConfig{KySignOnIssuer: "https://other.example", KySignOnClientID: "c", KySignOnSecret: "env-secret"}
+	if st := sso.Resolve(env, savedKy); st.Secret.Source != sso.SourceEnvironment || !st.Live() {
+		t.Fatalf("environment secret: %+v", st)
+	}
+	if sso.SecretRegistration("a b", "c", "d") == sso.SecretRegistration("a", "b c", "d") {
+		t.Fatal("registration records are ambiguous")
+	}
+	if !strings.HasPrefix(sso.KeySecretRegistration, "signin_client_secret") {
+		t.Fatal("the registration key escapes the secret prefix filter")
 	}
 }

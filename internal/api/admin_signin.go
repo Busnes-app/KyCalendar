@@ -131,12 +131,6 @@ func (s *Server) discover(ctx context.Context, st sso.Settings) error {
 	return err
 }
 
-// sameClient reports whether a and b are one provider registration, so a stored secret may be
-// kept: the same kind, exact issuer and client ID.
-func sameClient(a, b sso.Settings) bool {
-	return a.Identity() == b.Identity() && a.ClientID.Value == b.ClientID.Value
-}
-
 // handleTestSignIn runs discovery for the submitted values without saving anything.
 func (s *Server) handleTestSignIn(w http.ResponseWriter, r *http.Request) {
 	var req signinRequest
@@ -194,12 +188,11 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 	// newSecret is what to seal; "" keeps the stored one (same registration) or the environment's.
 	newSecret := ""
 	if st.Provider.Value != sso.KindNone && st.Secret.Source != sso.SourceEnvironment {
-		cur := sso.Resolve(s.config.SSO, saved)
 		switch {
 		case req.ClientSecret != "":
 			newSecret = req.ClientSecret
 			st.Secret = sso.SecretField{Value: newSecret, Source: sso.SourceSaved}
-		case sameClient(cur, st) && cur.Secret.Source == sso.SourceSaved:
+		case sso.SavedSecretFits(saved, st):
 			v, err := sso.OpenSecret(s.config.Security.EncryptionKey, saved[sso.KeySecretSealed])
 			if err != nil {
 				log.Printf("[SSO] the saved client secret could not be opened: %v", err)
@@ -285,13 +278,15 @@ func (s *Server) signinValues(st sso.Settings, newSecret string) (map[string]str
 	}
 	switch {
 	case st.Provider.Value == sso.KindNone:
-		values[sso.KeySecretSealed] = ""
+		values[sso.KeySecretSealed], values[sso.KeySecretRegistration] = "", ""
 	case newSecret != "":
 		sealed, err := sso.SealSecret(s.config.Security.EncryptionKey, newSecret)
 		if err != nil {
 			return nil, err
 		}
+		// The secret and the registration it belongs to are written together, in one transaction.
 		values[sso.KeySecretSealed] = sealed
+		values[sso.KeySecretRegistration] = sso.SecretRegistration(st.Provider.Value, st.Issuer.Value, st.ClientID.Value)
 	}
 	return values, nil
 }

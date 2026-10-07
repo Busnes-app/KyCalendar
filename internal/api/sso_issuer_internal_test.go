@@ -180,7 +180,7 @@ func TestTrailingSlashIsAProviderChange(t *testing.T) {
 	}
 	createUsers(t, s, &store.User{ID: "usr_k", Username: "k", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1", SSOIssuer: a.Identity()})
 	slash := kyidentityAt("https://a.example/")
-	if sameClient(a, slash) {
+	if sso.SavedSecretFits(map[string]string{sso.KeySecretSealed: "x", sso.KeySecretRegistration: sso.SecretRegistration(a.Provider.Value, a.Issuer.Value, a.ClientID.Value)}, slash) {
 		t.Fatal("a trailing slash kept the registration, and so its secret")
 	}
 	if n, err := s.pendingDisable(ctx, slash); err != nil || n != 1 {

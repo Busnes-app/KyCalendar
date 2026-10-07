@@ -96,6 +96,9 @@ func TestSignInSaveSealsTheSecretAndSwapsLive(t *testing.T) {
 	if sealed == "" || strings.Contains(sealed, "s3cret") {
 		t.Fatalf("stored secret %q, want it sealed", sealed)
 	}
+	if r := setting(t, st, sso.KeySecretRegistration); r != sso.SecretRegistration(sso.KindOIDC, a.URL, "kc") {
+		t.Fatalf("secret registration %q", r)
+	}
 	if loc := startLogin(t, srv); loc.Scheme+"://"+loc.Host != a.URL || loc.Path != "/authorize" || loc.Query().Get("code_challenge_method") != "S256" {
 		t.Fatalf("login goes to %s", loc)
 	}
@@ -104,7 +107,7 @@ func TestSignInSaveSealsTheSecretAndSwapsLive(t *testing.T) {
 	}
 	for _, path := range []string{"/api/settings", "/api/admin/signin"} {
 		body := call(t, srv, "GET", path, "", admin).Body.Bytes()
-		if bytes.Contains(body, []byte("s3cret")) || bytes.Contains(body, []byte(sealed)) || bytes.Contains(body, []byte(sso.KeySecretSealed)) {
+		if bytes.Contains(body, []byte("s3cret")) || bytes.Contains(body, []byte(sealed)) || bytes.Contains(body, []byte(sso.KeySecretSealed)) || bytes.Contains(body, []byte(sso.KeySecretRegistration)) {
 			t.Errorf("%s leaked the client secret: %s", path, body)
 		}
 	}
@@ -149,6 +152,9 @@ func TestSignInSaveSealsTheSecretAndSwapsLive(t *testing.T) {
 	if again == sealed || again == "" {
 		t.Error("b's secret was not stored")
 	}
+	if r := setting(t, st, sso.KeySecretRegistration); r != sso.SecretRegistration(sso.KindOIDC, b.URL, "kc") {
+		t.Errorf("b's secret registration %q", r)
+	}
 	if n := len(auditDetails(t, st, "admin.signin_save")); n != 4 {
 		t.Errorf("want 4 admin.signin_save rows (three saves, one refusal), got %d", n)
 	}
@@ -172,7 +178,7 @@ func TestSignInSaveSealsTheSecretAndSwapsLive(t *testing.T) {
 	if w := call(t, srv, "GET", "/api/sso/kysignon/login", "", nil); w.Code != http.StatusNotFound {
 		t.Fatalf("login after none: %d", w.Code)
 	}
-	for _, key := range []string{sso.KeySecretSealed, sso.KeyIssuer, sso.KeyClientID} {
+	for _, key := range []string{sso.KeySecretSealed, sso.KeySecretRegistration, sso.KeyIssuer, sso.KeyClientID} {
 		if v := setting(t, st, key); v != "" {
 			t.Errorf("%s = %q after none", key, v)
 		}

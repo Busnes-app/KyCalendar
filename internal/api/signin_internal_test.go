@@ -13,6 +13,7 @@ func kyidentityAt(issuer string) sso.Settings {
 	return sso.Settings{
 		Provider: sso.Field{Value: sso.KindKyIdentity}, DisplayName: sso.Field{Value: "KyIdentity"},
 		Issuer: sso.Field{Value: issuer}, ClientID: sso.Field{Value: "kc"},
+		Secret: sso.SecretField{Value: "sec", Source: sso.SourceSaved},
 	}
 }
 
@@ -131,6 +132,7 @@ func TestLoadSignInAppliesSavedSettingsUnderTheEnvironment(t *testing.T) {
 	for k, v := range map[string]string{
 		sso.KeyProvider: sso.KindOIDC, sso.KeyDisplayName: "Acme", sso.KeyIssuer: "https://acme.example",
 		sso.KeyClientID: "kc", sso.KeySecretSealed: sealed,
+		sso.KeySecretRegistration: sso.SecretRegistration(sso.KindOIDC, "https://acme.example", "kc"),
 	} {
 		if err := s.store.Settings().SetSetting(ctx, k, v); err != nil {
 			t.Fatal(err)
@@ -145,8 +147,9 @@ func TestLoadSignInAppliesSavedSettingsUnderTheEnvironment(t *testing.T) {
 	createUsers(t, s, &store.User{ID: "usr_o", Username: "o", Role: "user", Status: "active", SSOProvider: "oidc", SSOSubject: "o-1"})
 
 	// An operator sets KyIdentity in the environment and restarts: it wins, and the oidc
-	// accounts are disabled at startup.
-	s.config.SSO.KySignOnIssuer, s.config.SSO.KySignOnClientID = "https://id.example", "env-client"
+	// accounts are disabled at startup. Without its own secret it would stay closed: the saved
+	// one is the oidc registration's.
+	s.config.SSO.KySignOnIssuer, s.config.SSO.KySignOnClientID, s.config.SSO.KySignOnSecret = "https://id.example", "env-client", "env-secret"
 	before := auditCount(t, s)
 	if err := s.LoadSignIn(ctx); err != nil {
 		t.Fatal(err)
