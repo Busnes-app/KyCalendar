@@ -376,7 +376,8 @@ func seriesOf(cal *ical.Calendar, name, key string) (m *ical.Component, p *ical.
 		return
 	}
 	if name == ical.PropExceptionDates && hasExdate(m, p) {
-		return // already deleted: repeating it is a no-op
+		o, err = overrideFor(cal, m, key) // already deleted: only a leftover override remains
+		return
 	}
 	o, err = checkOccurrence(cal, m, key, at)
 	return
@@ -409,7 +410,11 @@ func DeleteOne(cal *ical.Calendar, recurrenceID string, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if !hasExdate(m, ex) {
+	had := hasExdate(m, ex)
+	if had && o == nil {
+		return nil
+	}
+	if !had {
 		m.Props.Add(ex)
 	}
 	if o != nil {

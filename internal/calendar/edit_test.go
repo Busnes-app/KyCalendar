@@ -381,6 +381,14 @@ func TestDeleteOneTwiceWritesOneExdate(t *testing.T) {
 	if n := strings.Count(encode(t, cal), "20261102T090000"); n != 1 {
 		t.Fatalf("want one EXDATE value, found %d", n)
 	}
+	m, _ := Master(cal)
+	seq := m.Props.Get(ical.PropSequence).Value
+	if err := DeleteOne(cal, "20261102T080000Z", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Props.Get(ical.PropSequence).Value; got != seq {
+		t.Fatalf("a no-op repeat bumped SEQUENCE %s -> %s", seq, got)
+	}
 }
 
 func TestRepeatEqualIgnoresWeekdayOrder(t *testing.T) {
@@ -405,5 +413,41 @@ func TestSequenceIncrements(t *testing.T) {
 	touch(m, now)
 	if p := m.Props.Get(ical.PropSequence); p.Value != "2147483647" {
 		t.Fatalf("SEQUENCE overflowed: %s", p.Value)
+	}
+}
+
+func TestDeleteOneRemovesOverrideBehindExistingExdate(t *testing.T) {
+	cal := decodeString(t, `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//t//EN
+BEGIN:VEVENT
+UID:d
+DTSTAMP:20261001T000000Z
+DTSTART:20261005T090000Z
+DTEND:20261005T100000Z
+RRULE:FREQ=DAILY;COUNT=5
+EXDATE:20261007T090000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:d
+DTSTAMP:20261001T000000Z
+RECURRENCE-ID:20261007T090000Z
+DTSTART:20261007T110000Z
+DTEND:20261007T120000Z
+SUMMARY:Stale
+END:VEVENT
+END:VCALENDAR
+`)
+	if got := starts(t, cal, day(2026, 10, 7), day(2026, 10, 8)); got != "2026-10-07T11:00" {
+		t.Fatalf("before: %s", got)
+	}
+	if err := DeleteOne(cal, "20261007T090000Z", now); err != nil {
+		t.Fatal(err)
+	}
+	if got := starts(t, cal, day(2026, 10, 7), day(2026, 10, 8)); got != "" {
+		t.Fatalf("override still shows: %s", got)
+	}
+	if countOverrides(cal) != 0 || strings.Count(encode(t, cal), "EXDATE") != 1 {
+		t.Fatalf("override or EXDATE count wrong:\n%s", encode(t, cal))
 	}
 }
