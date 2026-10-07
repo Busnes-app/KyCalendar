@@ -36,9 +36,14 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | POST | `/api/calendars` | everyday | `{name,color?,description?}` → 201 personal calendar; 409 `quota` at `KY_CALENDAR_MAX_CALENDARS_PER_USER` |
 | PATCH | `/api/calendars/{id}` | everyday; owner or manager | partial `{name?,color?,description?}` → 200; 403 reader/editor; 404 cannot read; group changes audit `calendar.update` |
 | DELETE | `/api/calendars/{id}` | everyday; owner, detached and tracked | 204; 403 group calendar (admins delete those); 404 cannot read; audits `calendar.delete` |
+| POST | `/api/calendars/{id}/events` | everyday; editor or owner | event body → 201 `{calendar_id,uid,etag}`; 400 invalid; 403 reader; 404 cannot read |
+| PUT | `/api/events/{cal}/{uid}` | everyday; editor or owner; `If-Match` | body + `scope` (`all`/`this`) + `recurrence_id` → 200 `{etag}`; 428 no `If-Match`; 412 `conflict`; 400 invalid, not recurring or no such occurrence |
+| DELETE | `/api/events/{cal}/{uid}?scope&recurrence_id` | everyday; editor or owner; `If-Match` | `all` → 204; `this` → 200 `{etag}`; 428, 412 as above |
 | GET | `/api/calendars/{id}/grants` | session: admin or manager | `[grant]` |
 | PUT | `/api/calendars/{id}/grants/{group}` | session: admin or manager | `{role}` -> 200 `[grant]`; 400 bad role or `{group}` over 64 bytes; 404 no such group |
 | DELETE | `/api/calendars/{id}/grants/{group}` | session: admin or manager | 200 `[grant]` (idempotent); 400 `{group}` over 64 bytes |
+
+- Event writes decode the stored object, apply `calendar.NewEvent`/`EditAll`/`EditOne`/`DeleteOne`, encode, and store through `davbackend.Write` with the request's `If-Match` (strong ETags only; `*` and weak are refused), so web edits get CalDAV's validation, ETag check, quotas and change log. Authorization (404/403) and `If-Match` (428) come before body validation.
 
 - Event instances carry `calendar_id, uid, recurrence_id, etag, title, location, description, start, end, all_day, recurring, override, repeat{freq,weekdays}, floating, unknown_zone, partial, zone, editable`. Timed `start`/`end` are RFC 3339 in the viewer's `tz`; all-day ones are dates. Text is returned verbatim; rendering it safely is the UI's job.
 

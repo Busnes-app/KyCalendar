@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -166,5 +169,132 @@ func TestEventsHideUnreadableCalendars(t *testing.T) {
 	var evs []eventJSON
 	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil || w.Code != http.StatusOK || len(evs) != 0 {
 		t.Fatalf("non-member sees %d events: %s", len(evs), w.Body.String())
+	}
+}
+
+func withIfMatch(t *testing.T, srv *api.Server, method, path, body, etag string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if etag != "" {
+		req.Header.Set("If-Match", `"`+etag+`"`)
+	}
+	req.AddCookie(cookie)
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
+	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w
+}
+
+func eventsIn(t *testing.T, srv *api.Server, cookie *http.Cookie, calID string) []eventJSON {
+	t.Helper()
+	w := call(t, srv, "GET", "/api/events?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&tz=Europe/Berlin&calendar="+calID, "", cookie)
+	var evs []eventJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	return evs
+}
+
+func TestEventLifecycleOnAGroupCalendar(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "eda", "user")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_eda")
+
+	create := `{"title":"Sync","start":"2026-10-05T09:00:00+02:00","end":"2026-10-05T10:00:00+02:00","zone":"Europe/Berlin","repeat":{"freq":"weekly","weekdays":["MO"]}}`
+	w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", create, cookie)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var created struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	evs := eventsIn(t, srv, cookie, group.ID)
+	if len(evs) != 4 || evs[0].Start != "2026-10-05T09:00:00+02:00" || !evs[0].Editable {
+		t.Fatalf("created series %+v", evs)
+	}
+
+	// Move one occurrence.
+	one := `{"title":"Sync (Tue)","start":"2026-10-13T09:00:00+02:00","end":"2026-10-13T10:00:00+02:00","zone":"Europe/Berlin","repeat":{"freq":"custom"},"scope":"this","recurrence_id":"` + evs[1].RecurrenceID + `"}`
+	w = withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/"+created.UID, one, created.ETag, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("edit one %d %s", w.Code, w.Body.String())
+	}
+	var updated struct{ ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &updated)
+	evs = eventsIn(t, srv, cookie, group.ID)
+	if evs[1].Title != "Sync (Tue)" || evs[1].Start != "2026-10-13T09:00:00+02:00" {
+		t.Fatalf("moved occurrence %+v", evs[1])
+	}
+
+	// Delete another occurrence, then the series.
+	w = withIfMatch(t, srv, "DELETE", "/api/events/"+group.ID+"/"+created.UID+"?scope=this&recurrence_id="+evs[2].RecurrenceID, "", updated.ETag, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete one %d %s", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &updated)
+	if got := eventsIn(t, srv, cookie, group.ID); len(got) != 3 {
+		t.Fatalf("after deleting one: %+v", got)
+	}
+	w = withIfMatch(t, srv, "DELETE", "/api/events/"+group.ID+"/"+created.UID+"?scope=all", "", updated.ETag, cookie)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete all %d %s", w.Code, w.Body.String())
+	}
+	if got := eventsIn(t, srv, cookie, group.ID); len(got) != 0 {
+		t.Fatalf("after deleting the series: %+v", got)
+	}
+}
+
+func TestEventPutStaleETagIs412(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "sam", "user")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_sam")
+	w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", `{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, cookie)
+	var created struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	before, _ := st.Calendars().GetObjectByUID(context.Background(), group.ID, created.UID)
+
+	edit := `{"title":"B","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC","scope":"all"}`
+	if w := withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/"+created.UID, edit, "0000", cookie); w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("stale If-Match: %d %s", w.Code, w.Body.String())
+	}
+	if w := withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/"+created.UID, edit, "", cookie); w.Code != http.StatusPreconditionRequired {
+		t.Fatalf("missing If-Match: %d", w.Code)
+	}
+	after, _ := st.Calendars().GetObjectByUID(context.Background(), group.ID, created.UID)
+	if string(after.Data) != string(before.Data) || after.ETag != before.ETag {
+		t.Fatal("a refused edit changed the stored object")
+	}
+}
+
+func TestEventWriteRolesAndValidation(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	group := groupCalendar(t, st, "Team")
+	reader := loginAs(t, srv, st, "ray", "user")
+	editor := loginAs(t, srv, st, "eve", "user")
+	grantRole(t, st, group, "reader", "usr_ray")
+	grantRole(t, st, group, "editor", "usr_eve")
+	ok := `{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`
+	if w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", ok, reader); w.Code != http.StatusForbidden {
+		t.Fatalf("reader create %d, want 403", w.Code)
+	}
+	for _, bad := range []string{
+		`{"title":"A","start":"2026-10-07T10:00:00Z","end":"2026-10-07T09:00:00Z","zone":"UTC"}`,
+		`{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z"}`,
+		`{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"Local"}`,
+		`{"title":"A","start":"2026-10-07","end":"2026-10-07","all_day":true}`,
+		`{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC","repeat":{"freq":"hourly"}}`,
+		`{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC","repeat":{"freq":"daily","weekdays":["MO"]}}`,
+		`{"title":"A","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC","repeat":{"freq":"custom"}}`,
+		`{"title":"` + strings.Repeat("x", 1001) + `","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`,
+	} {
+		if w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", bad, editor); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d, want 400", bad, w.Code)
+		}
+	}
+	if w := withIfMatch(t, srv, "PUT", "/api/events/"+group.ID+"/missing", ok, "x", editor); w.Code != http.StatusNotFound {
+		t.Fatalf("missing event %d, want 404", w.Code)
 	}
 }

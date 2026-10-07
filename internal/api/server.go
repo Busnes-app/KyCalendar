@@ -293,6 +293,9 @@ func (s *Server) routes() {
 	s.handle("PATCH /api/calendars/{id}", s.requireEveryday(s.handlePatchCalendar))
 	s.handle("DELETE /api/calendars/{id}", s.tracked(s.requireEveryday(s.handleDeleteCalendar)))
 	s.handle("GET /api/events", s.requireEveryday(s.handleListEvents))
+	s.handle("POST /api/calendars/{id}/events", s.requireEveryday(s.handleCreateEvent))
+	s.handle("PUT /api/events/{cal}/{uid}", s.requireEveryday(s.handleUpdateEvent))
+	s.handle("DELETE /api/events/{cal}/{uid}", s.requireEveryday(s.handleDeleteEvent))
 
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.
 	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))

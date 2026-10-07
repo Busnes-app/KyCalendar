@@ -48,6 +48,7 @@ var (
 	anySession   = expect{anon: 401, deactivated: 401, admin: allow, owner: allow, reader: allow, editor: allow, manager: allow, nonmember: allow}
 	grantManager = expect{anon: 401, deactivated: 401, admin: allow, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
 	groupManage  = expect{anon: 401, deactivated: 401, admin: 403, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
+	groupWrite   = expect{anon: 401, deactivated: 401, admin: 403, editor: allow, manager: allow, reader: 403, owner: 404, nonmember: 404}
 	ownerOnly    = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// SCIM takes only its bearer token: a session cookie is never enough.
 	scimOnly = expect{anon: 401, deactivated: 401, admin: 401, owner: 401, reader: 401, editor: 401, manager: 401, nonmember: 401}
@@ -183,6 +184,11 @@ func apiRows(w *world) map[string]apiRow {
 		"PATCH /api/calendars/{id}":                 {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
 		"DELETE /api/calendars/{id}":                {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
 		"GET /api/events":                           {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
+		"POST /api/calendars/{id}/events": {method: "POST", path: "/api/calendars/" + w.group.ID + "/events",
+			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
+		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed.ics",
+			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
+		"DELETE /api/events/{cal}/{uid}": {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed.ics?scope=all", want: groupWrite},
 	}
 }
 
