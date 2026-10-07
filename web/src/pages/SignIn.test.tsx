@@ -82,6 +82,7 @@ describe("SignIn", () => {
     render(<SignIn />);
     fireEvent.change(await screen.findByLabelText("Provider"), { target: { value: "oidc" } });
     fireEvent.change(screen.getByLabelText("Button label"), { target: { value: "Acme" } });
+    fireEvent.change(screen.getByLabelText("Client secret"), { target: { value: "s3cret" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect((await screen.findByRole("status")).textContent).toMatch(/Continue with Acme/);
     expect(confirm.mock.calls[0][0]).toMatch(/disables 3 accounts/);
@@ -116,6 +117,7 @@ describe("SignIn", () => {
     });
     render(<SignIn />);
     fireEvent.change(await screen.findByLabelText("Client ID"), { target: { value: "other" } });
+    fireEvent.change(screen.getByLabelText("Client secret"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/Enter the client secret/);
   });
@@ -136,5 +138,25 @@ describe("SignIn", () => {
     render(<SignIn />);
     fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(saved.callback_url));
+  });
+
+  it("requires a new secret as soon as the registration changes", async () => {
+    mockFetch({ "GET /api/admin/signin": () => saved });
+    render(<SignIn />);
+    const secret = await screen.findByLabelText<HTMLInputElement>("Client secret");
+    expect(secret.required).toBe(false);
+    fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://id.example/" } });
+    expect(secret.required).toBe(false);
+    fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://other.example" } });
+    expect(secret.required).toBe(true);
+    expect(secret.placeholder).toBe("Required");
+  });
+
+  it("shows an alert when the clipboard is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    mockFetch({ "GET /api/admin/signin": () => saved });
+    render(<SignIn />);
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Could not copy/);
   });
 });

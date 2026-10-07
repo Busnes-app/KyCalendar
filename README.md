@@ -135,7 +135,7 @@ Register a client with PKCE (S256) at the provider, with the redirect URI the sc
 
 Switching provider, or changing the issuer, disables every account of the previous provider (their calendars stay) so that a different provider can never sign in as one of them; the screen states how many before you confirm. The login page shows "Continue with <label>" only while a provider is configured.
 
-Environment variables win: `KY_KYSIGNON_ISSUER` fixes the provider to KyIdentity and locks the issuer; `KY_KYSIGNON_CLIENT_ID` and `KY_KYSIGNON_SECRET` lock their fields but apply only beside the issuer variable. Changing them between restarts counts as a provider change too. `KY_SSO_ENABLED=false` switches single sign-on off whatever is saved. Save tests the issuer even when the environment sets it, so an issuer reachable only over loopback or plain HTTP must stay environment-only.
+Environment variables win: `KY_KYSIGNON_ISSUER` fixes the provider to KyIdentity and locks the issuer; `KY_KYSIGNON_CLIENT_ID` and `KY_KYSIGNON_SECRET` lock their fields but apply only beside the issuer variable. Changing them between restarts counts as a provider change too. `KY_SSO_ENABLED=false` switches single sign-on off whatever is saved. An issuer set by the environment is not rediscovered on Save and may be loopback or plain HTTP; Test still reads its discovery document without the guard.
 
 ## Groups
 

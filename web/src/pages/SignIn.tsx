@@ -63,7 +63,23 @@ export default function SignIn() {
 
   const env = (f: Field) => f.source === "environment";
   const secretLocked = view.client_secret.source === "environment";
+  const trim = (u: string) => u.trim().replace(/\/+$/, "");
+  // The server keeps a stored secret only for the same registration.
+  const keepsSecret =
+    view.client_secret.set &&
+    form.provider === view.provider.value &&
+    trim(form.issuer) === trim(view.issuer.value) &&
+    form.client_id === view.client_id.value;
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setError(null);
+    } catch {
+      setError("Could not copy; select the address instead.");
+    }
+  }
 
   async function test() {
     setError(null);
@@ -84,7 +100,7 @@ export default function SignIn() {
       const f = await failure(res);
       if (f.code === "confirm_provider_change" && f.count !== undefined) {
         const accounts = f.count === 1 ? "1 account" : `${f.count} accounts`;
-        if (window.confirm(`Switching provider disables ${accounts} from the previous provider. They keep their calendars but cannot sign in again. Continue?`)) {
+        if (window.confirm(`Switching provider or issuer disables ${accounts} from the previous provider. They keep their calendars but cannot sign in again. Continue?`)) {
           await save(f.count);
         }
         return;
@@ -146,13 +162,13 @@ export default function SignIn() {
               value={form.client_secret}
               onChange={set("client_secret")}
               disabled={secretLocked}
-              required={!secretLocked && !view.client_secret.set}
-              placeholder={view.client_secret.set ? "Stored; leave blank to keep it" : "Required"}
+              required={!secretLocked && !keepsSecret}
+              placeholder={keepsSecret ? "Stored; leave blank to keep it" : "Required"}
             />
             {secretLocked && <EnvNote name="KY_KYSIGNON_SECRET" />}
             <p>
               Redirect URI to register with the provider: <code>{view.callback_url}</code>{" "}
-              <button type="button" onClick={() => void navigator.clipboard.writeText(view.callback_url).catch(() => setError("Could not copy; select the address instead."))}>
+              <button type="button" onClick={() => void copy(view.callback_url)}>
                 Copy
               </button>
             </p>
