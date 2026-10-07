@@ -281,6 +281,8 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/groups", s.requireAdmin(s.handleCreateGroup))
 	s.handle("GET /api/admin/groups/{id}", s.requireAdmin(s.handleGetGroup))
 	s.handle("PATCH /api/admin/groups/{id}", s.requireAdmin(s.handleRenameGroup))
+	s.handle("PUT /api/admin/groups/{id}/members/{userId}", s.requireAdmin(s.handleAddGroupMember))
+	s.handle("DELETE /api/admin/groups/{id}/members/{userId}", s.requireAdmin(s.handleRemoveGroupMember))
 	s.handle("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))

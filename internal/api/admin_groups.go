@@ -203,3 +203,59 @@ func (s *Server) handleRenameGroup(w http.ResponseWriter, r *http.Request) {
 	s.auditAction(r.Context(), r, "admin.group_rename", g.ID, "from="+strconv.Quote(from)+" to="+strconv.Quote(name))
 	s.writeJSON(w, http.StatusOK, groupView{ID: g.ID, DisplayName: g.DisplayName, Source: g.Source, MemberCount: len(g.Members)})
 }
+
+// handleAddGroupMember adds an active everyday user to a local group; adding a member twice is
+// not an error. Administrators never see calendars, so they cannot be members.
+func (s *Server) handleAddGroupMember(w http.ResponseWriter, r *http.Request) {
+	g := s.adminGroup(w, r, true)
+	if g == nil {
+		return
+	}
+	u, err := s.store.Users().GetUserByID(r.Context(), r.PathValue("userId"))
+	if errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, http.StatusNotFound, "No such person")
+		return
+	}
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to load the person")
+		return
+	}
+	if u.Role == "admin" {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Administrators cannot be group members: they never see calendars", "code": "admin_member"})
+		return
+	}
+	if u.Status != "active" {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Only active people can join a group", "code": "inactive_member"})
+		return
+	}
+	if slices.Contains(g.Members, u.ID) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := s.store.Groups().AddGroupMember(r.Context(), g.ID, u.ID); err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to add the member")
+		return
+	}
+	s.auditAction(r.Context(), r, "admin.group_member_add", g.ID, "user="+strconv.Quote(u.ID))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRemoveGroupMember removes a member of a local group; removing a non-member is not an
+// error. Access follows membership at the next request, so nothing else is revoked.
+func (s *Server) handleRemoveGroupMember(w http.ResponseWriter, r *http.Request) {
+	g := s.adminGroup(w, r, true)
+	if g == nil {
+		return
+	}
+	userID := r.PathValue("userId")
+	if !slices.Contains(g.Members, userID) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := s.store.Groups().RemoveGroupMember(r.Context(), g.ID, userID); err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to remove the member")
+		return
+	}
+	s.auditAction(r.Context(), r, "admin.group_member_remove", g.ID, "user="+strconv.Quote(userID))
+	w.WriteHeader(http.StatusNoContent)
+}
