@@ -7,22 +7,20 @@ import (
 	"github.com/emersion/go-ical"
 )
 
-// VTimezone describes loc for clients without its IANA data: one observance per offset change
-// in [from, to), or a single STANDARD observance for a zone that does not change there.
+// VTimezone describes loc for clients without its IANA data: the observance in force at from,
+// then one per offset change in [from, to).
 func VTimezone(loc *time.Location, from, to time.Time) *ical.Component {
 	tz := ical.NewComponent(ical.CompTimezone)
 	tz.Props.SetText(ical.PropTimezoneID, loc.String())
-	for t := from.In(loc); t.Before(to); {
+	t := from.In(loc)
+	tz.Children = append(tz.Children, observance(t, t))
+	for t.Before(to) {
 		_, end := t.ZoneBounds()
 		if end.IsZero() || !end.Before(to) {
 			break
 		}
 		tz.Children = append(tz.Children, observance(end, end.Add(-time.Second)))
 		t = end
-	}
-	if len(tz.Children) == 0 {
-		at := from.In(loc)
-		tz.Children = append(tz.Children, observance(at, at))
 	}
 	return tz
 }

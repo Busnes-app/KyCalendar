@@ -184,3 +184,226 @@ func TestEditErrors(t *testing.T) {
 		t.Fatalf("bad recurrence id: %v", err)
 	}
 }
+
+func decodeString(t *testing.T, raw string) *ical.Calendar {
+	t.Helper()
+	cal, err := ical.NewDecoder(strings.NewReader(strings.ReplaceAll(raw, "\n", "\r\n"))).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cal
+}
+
+func encode(t *testing.T, cal *ical.Calendar) string {
+	t.Helper()
+	_, raw := roundTrip(t, cal)
+	return raw
+}
+
+func recurring(t *testing.T, name, rule string) *ical.Calendar {
+	t.Helper()
+	cal := fixture(t, name)
+	m, err := Master(cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setRaw(m, ical.PropRecurrenceRule, rule)
+	return cal
+}
+
+func starts(t *testing.T, cal *ical.Calendar, from, to time.Time) string {
+	t.Helper()
+	got, err := Expand(cal, from, to, time.UTC, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, in := range got {
+		out = append(out, in.Start.Format("2006-01-02T15:04"))
+	}
+	return strings.Join(out, ",")
+}
+
+func TestDeleteOneWritesTZIDAsWritten(t *testing.T) {
+	cal := recurring(t, "unknown_tz.ics", "FREQ=DAILY;COUNT=5")
+	if err := DeleteOne(cal, "20261008T090000Z", now); err != nil {
+		t.Fatal(err)
+	}
+	out, raw := roundTrip(t, cal)
+	if !strings.Contains(raw, "EXDATE;TZID=Custom/Nowhere:20261008T090000") {
+		t.Fatalf("EXDATE must carry the master's TZID:\n%s", raw)
+	}
+	if got := starts(t, out, day(2026, 10, 7), day(2026, 10, 12)); got != "2026-10-07T09:00,2026-10-09T09:00,2026-10-10T09:00,2026-10-11T09:00" {
+		t.Fatalf("after delete: %s", got)
+	}
+
+	cal = fixture(t, "outlook_windows_tz.ics")
+	if err := DeleteOne(cal, "20261102T140000Z", now); err != nil {
+		t.Fatal(err)
+	}
+	out, raw = roundTrip(t, cal)
+	if !strings.Contains(raw, "EXDATE;TZID=Eastern Standard Time:20261102T090000") && !strings.Contains(raw, `EXDATE;TZID="Eastern Standard Time":20261102T090000`) {
+		t.Fatalf("EXDATE must carry the Windows TZID:\n%s", raw)
+	}
+	if got := starts(t, out, day(2026, 10, 25), day(2026, 11, 30)); got != "2026-10-26T09:00,2026-11-09T09:00" {
+		t.Fatalf("after delete: %s", got)
+	}
+}
+
+func TestEditOneKeepsMozillaTZID(t *testing.T) {
+	cal := recurring(t, "thunderbird_mozilla_tz.ics", "FREQ=DAILY;COUNT=5")
+	in := EventInput{Title: "x", Start: time.Date(2026, 10, 8, 9, 0, 0, 0, zone(t, "America/New_York")), End: time.Date(2026, 10, 8, 10, 0, 0, 0, zone(t, "America/New_York")), Zone: zone(t, "America/New_York"), Repeat: Repeat{Freq: "custom"}}
+	if err := EditOne(cal, "20261008T130000Z", in, now); err != nil {
+		t.Fatal(err)
+	}
+	if raw := encode(t, cal); !strings.Contains(raw, "RECURRENCE-ID;TZID=/mozilla.org/20050126_1/America/New_York:20261008T090000") {
+		t.Fatalf("RECURRENCE-ID lost the Mozilla TZID:\n%s", raw)
+	}
+}
+
+const floatingWeekly = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//t//EN
+BEGIN:VEVENT
+UID:fl
+DTSTAMP:20261001T000000Z
+DTSTART:20261007T090000
+DTEND:20261007T100000
+RRULE:FREQ=WEEKLY
+EXDATE:20261014T090000
+SUMMARY:Floating
+END:VEVENT
+BEGIN:VEVENT
+UID:fl
+DTSTAMP:20261001T000000Z
+RECURRENCE-ID:20261021T090000
+DTSTART:20261021T110000
+DTEND:20261021T120000
+SUMMARY:Moved
+END:VEVENT
+END:VCALENDAR
+`
+
+func TestEditAllTextOnFloatingKeepsExceptions(t *testing.T) {
+	cal := decodeString(t, floatingWeekly)
+	berlin := zone(t, "Europe/Berlin")
+	in := EventInput{Title: "New", Start: time.Date(2026, 10, 7, 9, 0, 0, 0, berlin), End: time.Date(2026, 10, 7, 10, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "weekly"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	raw := encode(t, cal)
+	for _, keep := range []string{"EXDATE:20261014T090000", "RECURRENCE-ID:20261021T090000", "DTSTART:20261007T090000", "DTEND:20261007T100000", "SUMMARY:New"} {
+		if !strings.Contains(raw, keep) {
+			t.Fatalf("lost %q:\n%s", keep, raw)
+		}
+	}
+	if strings.Contains(raw, "TZID") || strings.Contains(raw, "VTIMEZONE") {
+		t.Fatalf("floating series became zoned:\n%s", raw)
+	}
+	in.End = time.Date(2026, 10, 7, 11, 0, 0, 0, berlin)
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	if raw = encode(t, cal); !strings.Contains(raw, "DTEND:20261007T110000") || !strings.Contains(raw, "EXDATE:20261014T090000") || strings.Contains(raw, "TZID") {
+		t.Fatalf("end change in floating form:\n%s", raw)
+	}
+}
+
+func TestEditRefusesWrongOrNonexistentKeys(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	in := EventInput{Title: "x", Start: time.Date(2026, 10, 27, 9, 0, 0, 0, berlin), End: time.Date(2026, 10, 27, 10, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	cal := fixture(t, "apple_weekly_override.ics")
+	before := encode(t, cal)
+	for _, key := range []string{"20261027T080000Z", "20261012T090000", "20261027", "20261102T083000Z"} {
+		if err := EditOne(cal, key, in, now); !errors.Is(err, ErrNoSuchOccurrence) {
+			t.Errorf("EditOne(%q) = %v", key, err)
+		}
+		if err := DeleteOne(cal, key, now); !errors.Is(err, ErrNoSuchOccurrence) {
+			t.Errorf("DeleteOne(%q) = %v", key, err)
+		}
+	}
+	if encode(t, cal) != before {
+		t.Fatal("a refused edit changed the object")
+	}
+	if err := EditOne(recurring(t, "floating.ics", "FREQ=DAILY"), "20261008T090000Z", in, now); !errors.Is(err, ErrNoSuchOccurrence) {
+		t.Fatalf("Z key on floating master: %v", err)
+	}
+	if err := EditOne(recurring(t, "floating.ics", "FREQ=DAILY"), "20261008T090000", in, now); err != nil {
+		t.Fatalf("wall key on floating master: %v", err)
+	}
+}
+
+func countOverrides(cal *ical.Calendar) int {
+	n := 0
+	for _, c := range cal.Children {
+		if c.Name == ical.CompEvent && c.Props.Get(ical.PropRecurrenceID) != nil {
+			n++
+		}
+	}
+	return n
+}
+
+func TestEditOneTwiceEditsOneOverrideWithoutAliasing(t *testing.T) {
+	cal := fixture(t, "apple_weekly_override.ics")
+	berlin := zone(t, "Europe/Berlin")
+	in := EventInput{Title: "A", Start: time.Date(2026, 11, 2, 9, 0, 0, 0, berlin), End: time.Date(2026, 11, 2, 10, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditOne(cal, "20261102T080000Z", in, now); err != nil {
+		t.Fatal(err)
+	}
+	in.Title = "B"
+	if err := EditOne(cal, "20261102T080000Z", in, now); err != nil {
+		t.Fatal(err)
+	}
+	if n := countOverrides(cal); n != 2 {
+		t.Fatalf("want the fixture's override plus one, got %d", n)
+	}
+	m, _ := Master(cal)
+	m.Props.Get(ical.PropAttendee).Params.Set(ical.ParamCommonName, "Eve")
+	for _, c := range cal.Children {
+		if rid := c.Props.Get(ical.PropRecurrenceID); rid != nil && strings.HasPrefix(rid.Value, "20261102") {
+			if cn := c.Props.Get(ical.PropAttendee).Params.Get(ical.ParamCommonName); cn != "Bob" {
+				t.Fatalf("override aliases the master's ATTENDEE: %q", cn)
+			}
+			if s, _ := c.Props.Text(ical.PropSummary); s != "B" {
+				t.Fatalf("summary %q", s)
+			}
+		}
+	}
+}
+
+func TestDeleteOneTwiceWritesOneExdate(t *testing.T) {
+	cal := fixture(t, "apple_weekly_override.ics")
+	for range 2 {
+		if err := DeleteOne(cal, "20261102T080000Z", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(encode(t, cal), "20261102T090000"); n != 1 {
+		t.Fatalf("want one EXDATE value, found %d", n)
+	}
+}
+
+func TestRepeatEqualIgnoresWeekdayOrder(t *testing.T) {
+	a := Repeat{Freq: "weekly", Weekdays: []time.Weekday{time.Wednesday, time.Monday}}
+	if !a.equal(Repeat{Freq: "weekly", Weekdays: []time.Weekday{time.Monday, time.Wednesday}}) {
+		t.Fatal("order must not matter")
+	}
+}
+
+func TestSequenceIncrements(t *testing.T) {
+	cal := fixture(t, "floating.ics")
+	m, _ := Master(cal)
+	setRaw(m, ical.PropSequence, "4")
+	in := EventInput{Start: time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC), End: time.Date(2026, 10, 7, 10, 0, 0, 0, time.UTC), Zone: time.UTC}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	if raw := encode(t, cal); !strings.Contains(raw, "SEQUENCE:5") {
+		t.Fatalf("SEQUENCE:\n%s", raw)
+	}
+	setRaw(m, ical.PropSequence, "2147483647")
+	touch(m, now)
+	if p := m.Props.Get(ical.PropSequence); p.Value != "2147483647" {
+		t.Fatalf("SEQUENCE overflowed: %s", p.Value)
+	}
+}
