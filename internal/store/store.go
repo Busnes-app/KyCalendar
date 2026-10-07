@@ -87,6 +87,12 @@ type UserStore interface {
 	// ErrActorRevoked, checked in the same transaction before the write.
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
+	// DisableSSOAccounts makes every active account whose sso_provider is in providers inactive
+	// and deletes the sessions, MFA challenges, device pairings and app passwords of every
+	// account of those providers, in one transaction. It returns how many accounts it deactivated.
+	DisableSSOAccounts(ctx context.Context, providers []string) (int, error)
+	// CountSSOAccounts counts the active accounts DisableSSOAccounts would deactivate.
+	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
 	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is

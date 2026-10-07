@@ -622,6 +622,52 @@ func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID
 	return err
 }
 
+// inList is "?, ?, ..." for values, with the values as query arguments.
+func inList(values []string) (string, []any) {
+	args := make([]any, len(values))
+	for i, v := range values {
+		args[i] = v
+	}
+	return strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", "), args
+}
+
+func (u *userStore) DisableSSOAccounts(ctx context.Context, providers []string) (int, error) {
+	if len(providers) == 0 {
+		return 0, nil
+	}
+	in, args := inList(providers)
+	tx, err := u.store.beginTx(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	// Rows first, as in changeAccess: the row lock keeps a concurrent sign-in from slipping a grant in after the purge.
+	res, err := tx.ExecContext(ctx, u.store.rebind("UPDATE users SET status = 'inactive', updated_at = ? WHERE status = 'active' AND sso_provider IN ("+in+")"), append([]any{time.Now().UTC()}, args...)...)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	for _, table := range grantTables {
+		if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM "+table+" WHERE user_id IN (SELECT id FROM users WHERE sso_provider IN ("+in+"))"), args...); err != nil {
+			return 0, err
+		}
+	}
+	return int(n), tx.Commit()
+}
+
+func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (int, error) {
+	if len(providers) == 0 {
+		return 0, nil
+	}
+	in, args := inList(providers)
+	var n int
+	err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE status = 'active' AND sso_provider IN ("+in+")"), args...).Scan(&n)
+	return n, err
+}
+
 func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
 	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), displayName, email, time.Now().UTC(), userID)
 	if err != nil {

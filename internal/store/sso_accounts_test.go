@@ -1,0 +1,55 @@
+package store_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/Busnes-app/kycalendar/internal/store"
+)
+
+func TestDisableSSOAccounts(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	ky := &store.User{ID: "usr_ky", Username: "ky", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "s1"}
+	sc := &store.User{ID: "usr_sc", Username: "sc", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "s2"}
+	oi := &store.User{ID: "usr_oi", Username: "oi", Role: "user", Status: "active", SSOProvider: "oidc", SSOSubject: "s3"}
+	lo := &store.User{ID: "usr_lo", Username: "lo", Role: "admin", Status: "active", SSOProvider: "local"}
+	off := &store.User{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s4"}
+	seedUsers(t, st, ky, sc, oi, lo, off)
+	for _, u := range []*store.User{ky, sc, oi, lo} {
+		seedSession(t, st, u)
+	}
+	// An inactive account cannot get a session, but a leftover app password must still go.
+	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "ap_" + off.ID, UserID: off.ID, Label: "phone", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_ky", OwnerKind: "user", OwnerID: ky.ID, Slug: "default", Name: "Calendar"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	providers := []string{"kysignon", "scim"}
+	if n, err := st.Users().CountSSOAccounts(ctx, providers); err != nil || n != 2 {
+		t.Fatalf("count: %d %v, want 2", n, err)
+	}
+	if n, err := st.Users().DisableSSOAccounts(ctx, providers); err != nil || n != 2 {
+		t.Fatalf("disable: %d %v, want 2", n, err)
+	}
+	for _, u := range []*store.User{ky, sc, oi, lo, off} {
+		got, _ := st.Users().GetUserByID(ctx, u.ID)
+		_, sessErr := st.Sessions().GetSession(ctx, "tok_"+u.ID)
+		aps, _ := st.AppPasswords().ListByUser(ctx, u.ID)
+		hit := u == ky || u == sc || u == off
+		if (got.Status == "inactive") != hit || (u != off && errors.Is(sessErr, store.ErrNotFound) != hit) || (len(aps) == 0) != hit {
+			t.Errorf("%s: status %s, session %v, %d app passwords; disabled want %v", u.ID, got.Status, sessErr, len(aps), hit)
+		}
+	}
+	if _, err := st.Calendars().GetCalendarByID(ctx, "cal_ky"); err != nil {
+		t.Errorf("calendar did not survive: %v", err)
+	}
+	if n, err := st.Users().DisableSSOAccounts(ctx, providers); err != nil || n != 0 {
+		t.Fatalf("second run: %d %v, want 0", n, err)
+	}
+	if n, err := st.Users().DisableSSOAccounts(ctx, nil); err != nil || n != 0 {
+		t.Fatalf("empty list: %d %v, want 0", n, err)
+	}
+}
