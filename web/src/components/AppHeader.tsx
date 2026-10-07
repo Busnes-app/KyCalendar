@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive } from 'lucide-react';
+import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 
 interface AppHeaderProps {
@@ -16,6 +16,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
     { id: 'scim', label: 'Directory & SCIM', icon: Users },
     { id: 'backup', label: 'KyBackup (Feature 0)', icon: Archive },
     { id: 'settings', label: 'Settings & DB', icon: SettingsIcon },
+    ...(user?.role === 'admin' ? [{ id: 'group-calendars', label: 'Group calendars', icon: CalendarDays }] : []),
     ...(user?.role !== 'admin' ? [{ id: 'devices', label: 'Phones & apps', icon: Smartphone }] : []),
   ];
 

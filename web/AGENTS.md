@@ -1,7 +1,7 @@
 # Web
 
 ## Purpose
-React 19 + TypeScript + Vite PWA frontend embedding KySecurity color tokens (Busnes light/dark defaults plus `Patina Ky`, `Cyber`, `Nord`, `Paper`, `OLED`), client-side WebCrypto PoW CAPTCHA, the Phones and apps (app password) page, and administrative management panels.
+React 19 + TypeScript + Vite PWA frontend embedding KySecurity color tokens (Busnes light/dark defaults plus `Patina Ky`, `Cyber`, `Nord`, `Paper`, `OLED`), client-side WebCrypto PoW CAPTCHA, the Phones and apps (app password) page, the group calendars admin screen, and administrative management panels.
 
 ## Ownership
 Owns user interface components, service worker caching, PWA installation manifests, and frontend theme switching.
@@ -15,6 +15,7 @@ Owns user interface components, service worker caching, PWA installation manifes
 - Authenticated state-changing requests use `secureFetch` so the `ky_csrf` cookie is mirrored into `X-CSRF-Token`.
 - Register the service worker from the production JS bundle; keep `script-src 'self'` intact. There is no device-pairing UI (R27); native CalDAV clients use app passwords from Phones and apps.
 - `src/pages/AppPasswords.tsx` shows a new password once, and a `role="alert"` message when listing, creating or revoking fails (non-OK or network error).
+- `src/pages/GroupCalendars.tsx` is admin-only (tab `group-calendars`): create a group calendar, add a group with a role, change or remove a grant, delete a calendar after a confirm. A 403 `reauth_required` asks for a fresh sign-in. Every failure shows a `role="alert"` message, and nothing on it shows events.
 - Worker caching is limited to the same-origin public shell, manifest and assets. HTML is network-first with offline fallback so deployments refresh; dynamic/auth routes stay uncached.
 - `Backup.tsx` shows `last_run` under the schedule, as an alert when it failed, so a failing scheduled backup is visible on screen.
 - `Backup.tsx` warns for as long as `database_driver` from `/api/backup/status` is not `sqlite`: only the SQLite path can snapshot a database into a capsule, so a Postgres deployment makes no capsules at all.
