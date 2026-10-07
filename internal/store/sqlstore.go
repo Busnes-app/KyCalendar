@@ -611,10 +611,17 @@ func (u *userStore) changeAccess(ctx context.Context, userID string, change func
 			return ErrLastAdmin
 		}
 	}
-	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+	// Row first: it blocks withPassword until commit, so no grant is issued between the purge and the change.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), role, status, time.Now().UTC(), userID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ?, updated_at = ? WHERE id = ?`), role, status, time.Now().UTC(), userID); err != nil {
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrNotFound
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
 		return err
 	}
 	return tx.Commit()

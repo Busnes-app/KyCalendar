@@ -2,12 +2,14 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
 func seedUsers(t *testing.T, st store.Store, users ...*store.User) {
@@ -120,5 +122,66 @@ func TestUpdateProfileIsLocalOnly(t *testing.T) {
 	}
 	if err := st.Users().UpdateProfile(ctx, "usr_s", "Taken", ""); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("SCIM account: %v, want ErrNotFound", err)
+	}
+}
+
+// A session issued while a role change runs must not survive it. The raw transaction holds the
+// user row the way withPassword does, so SetRole is caught mid-flight on Postgres.
+func TestRoleChangeRevokesASessionIssuedDuringIt(t *testing.T) {
+	cfg := testdb.Config(t)
+	if cfg.Driver != "postgres" {
+		t.Skip("postgres only: SQLite's single connection serialises the two")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	seedUsers(t, st,
+		&store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"},
+		&store.User{ID: "usr_ann", Username: "ann", Role: "user", Status: "active", SSOProvider: "local"},
+	)
+	raw, err := sql.Open("pgx", cfg.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	issue, err := raw.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer issue.Rollback()
+	if _, err := issue.ExecContext(ctx, `UPDATE users SET id = id WHERE id = 'usr_ann' AND status = 'active'`); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- st.Users().SetRole(ctx, "usr_ann", "admin") }()
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		var waiting int
+		if err := raw.QueryRowContext(ctx, `SELECT COUNT(1) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE users SET role%'`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("SetRole never waited on the user row")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	now := time.Now().UTC()
+	if _, err := issue.ExecContext(ctx, `INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES ('tok_mid', 'usr_ann', '', '', $1, $2)`, now, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := issue.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Sessions().GetSession(ctx, "tok_mid"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a session issued during the promotion survived it: %v", err)
 	}
 }
