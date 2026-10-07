@@ -719,9 +719,17 @@ func (u *userStore) ReattachSSOUser(ctx context.Context, actor Actor, userID, bi
 	} else if err != nil {
 		return "", err
 	}
-	// Row first, as in changeAccess: no grant is issued between the purge and the change.
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET sso_issuer = ?, status = 'active', updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), binding, time.Now().UTC(), userID); err != nil {
+	// Row first, as in changeAccess: no grant is issued between the purge and the change. Only a
+	// row bound elsewhere: one already on binding (a concurrent reattach the IdP then disabled)
+	// keeps the status its IdP gave it.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET sso_issuer = ?, status = 'active', updated_at = ? WHERE id = ? AND sso_provider <> 'local' AND sso_issuer <> ?`), binding, time.Now().UTC(), userID, binding)
+	if err != nil {
 		return "", err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return "", err
+	} else if n == 0 {
+		return "", ErrAlreadyBound
 	}
 	if err := u.revokeGrants(ctx, tx, userID); err != nil {
 		return "", err

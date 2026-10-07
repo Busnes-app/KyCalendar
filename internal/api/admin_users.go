@@ -388,6 +388,16 @@ func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, a
 	s.writeUser(w, r, u.ID)
 }
 
+// answerBound answers a reattach of a person already bound to the live sign-in, writing nothing:
+// 200 when active; 409 managed_externally when inactive, since their IdP disabled and restores them.
+func (s *Server) answerBound(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if u.Status != "active" {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Your identity provider disabled this person; restore them there", "code": "managed_externally"})
+		return
+	}
+	s.writeUser(w, r, u.ID)
+}
+
 // handleReattachUser binds an SSO person bound to another issuer to the live sign-in and
 // reactivates them, revoking every grant so they sign in fresh: the one admin write on an identity
 // provider's account. The admin vouches it is the same person and names the binding they
@@ -430,14 +440,19 @@ func (s *Server) handleReattachUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if u.SSOIssuer == p.Binding {
-		if u.Status != "active" {
-			s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Your identity provider disabled this person; restore them there", "code": "managed_externally"})
-			return
-		}
-		s.writeUser(w, r, u.ID)
+		s.answerBound(w, r, u)
 		return
 	}
 	from, err := s.store.Users().ReattachSSOUser(r.Context(), actorOf(r.Context()), u.ID, p.Binding)
+	if errors.Is(err, store.ErrAlreadyBound) {
+		// Bound by a concurrent reattach since we read it: answer as if we had read it bound.
+		if u, err = s.store.Users().GetUserByID(r.Context(), u.ID); err != nil {
+			s.writeError(w, http.StatusInternalServerError, "Failed to load the person")
+			return
+		}
+		s.answerBound(w, r, u)
+		return
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.writeError(w, http.StatusNotFound, "No such person")

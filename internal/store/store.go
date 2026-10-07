@@ -21,6 +21,9 @@ var (
 	// ErrActorRevoked refuses an administrator's write once they are no longer an active
 	// administrator or their session is gone.
 	ErrActorRevoked = errors.New("acting administrator revoked")
+	// ErrAlreadyBound: ReattachSSOUser found the account already bound to the target binding and
+	// wrote nothing; its status is the identity provider's.
+	ErrAlreadyBound = errors.New("account already bound to this sign-in")
 )
 
 // Actor is who makes an access write. An administrator is rechecked inside the write's
@@ -109,7 +112,8 @@ type UserStore interface {
 	// ErrActorRevoked unless actor is still an active administrator with a live session; then the
 	// account's sso_issuer becomes binding and its status active, and its sessions, MFA challenges,
 	// device pairings and app passwords are deleted. The role is untouched. It returns the previous
-	// sso_issuer. Local or missing: ErrNotFound.
+	// sso_issuer. Local or missing: ErrNotFound. Already bound to binding: ErrAlreadyBound, and
+	// nothing is written or revoked.
 	ReattachSSOUser(ctx context.Context, actor Actor, userID, binding string) (string, error)
 	// CountSSOAccounts counts the active accounts BindSignIn would deactivate.
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)

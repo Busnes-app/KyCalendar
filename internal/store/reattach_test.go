@@ -77,3 +77,29 @@ func TestReattachSSOUser(t *testing.T) {
 		t.Errorf("the actor's own session was revoked: %v", err)
 	}
 }
+
+// A row already bound to the target, as after a concurrent reattach the IdP then disabled, is
+// not this write's: nothing is activated, revoked or returned as changed.
+func TestReattachSkipsARowAlreadyBound(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	root := &store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"}
+	const b = "kyidentity https://b.example"
+	dan := &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "d1", SSOIssuer: b}
+	seedUsers(t, st, root, dan)
+	rootActs := store.AdminActor(root.ID, seedRootSession(t, st, root))
+	seedSession(t, st, dan)
+	dan.Status = "inactive" // the IdP's deactivation, grants left in place to prove nothing is revoked
+	if err := st.Users().UpdateUser(ctx, dan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Users().ReattachSSOUser(ctx, rootActs, dan.ID, b); !errors.Is(err, store.ErrAlreadyBound) {
+		t.Fatalf("reattach onto its own binding: %v, want ErrAlreadyBound", err)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.SSOIssuer != b {
+		t.Fatalf("the IdP's deactivation was undone: %+v", u)
+	}
+	if list, _ := st.AppPasswords().ListByUser(ctx, dan.ID); len(list) != 1 {
+		t.Error("a skipped reattach revoked grants")
+	}
+}

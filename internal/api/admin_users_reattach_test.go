@@ -205,3 +205,35 @@ func TestReattachFailsWhenTheActorIsRevokedMidRequest(t *testing.T) {
 		t.Errorf("a refused reattach was audited: %+v", rows)
 	}
 }
+
+// Another admin's reattach commits and the IdP disables the row before this write: the row is
+// already on the live binding, so it stays disabled and nothing is audited.
+func TestReattachRacingAnotherKeepsTheIdPsDeactivation(t *testing.T) {
+	_, st, cfg := setupTestServer(t)
+	ctx := context.Background()
+	root := &store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"}
+	if err := st.Users().CreateUser(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	carol := carolOf(t, st)
+	srv := api.NewServer(cfg, revokingStore{Store: st, users: revokeBeforeWrite{UserStore: st.Users(), revoke: func() {
+		// The other admin's reattach, then the IdP's deactivation.
+		if _, err := st.Users().ReattachSSOUser(ctx, store.System, carol.ID, bindingB); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Users().RevokeSSOUser(ctx, carol.ID, true); err != nil {
+			t.Fatal(err)
+		}
+	}}})
+	liveAt(srv, "https://b.example")
+	w := call(t, srv, "POST", "/api/admin/users/"+carol.ID+"/reattach", `{"binding":"`+bindingB+`"}`, sessionFor(t, st, root))
+	if w.Code != http.StatusConflict || codeOf(t, w.Body.Bytes()) != "managed_externally" {
+		t.Fatalf("%d %s, want 409 managed_externally", w.Code, w.Body.String())
+	}
+	if u, _ := st.Users().GetUserByID(ctx, carol.ID); u.Status != "inactive" {
+		t.Fatalf("the IdP's deactivation was undone: %+v", u)
+	}
+	if rows := auditRows(t, st, "admin.user_reattach"); len(rows) != 0 {
+		t.Errorf("a skipped reattach was audited: %+v", rows)
+	}
+}
