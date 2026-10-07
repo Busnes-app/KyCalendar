@@ -40,6 +40,9 @@ func main() {
 		case "reset-password":
 			runResetPassword(os.Args[2:])
 			return
+		case "rename-user":
+			runRenameUser(os.Args[2:])
+			return
 		case "backup-drill":
 			runBackupDrill(os.Args[2:])
 			return

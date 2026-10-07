@@ -219,6 +219,8 @@ and retain their own identity, sealer label and collection adapters.
 
 - Web themes default to the Busnes.app cream/light and charcoal/dark palettes with orange accents, following the OS until a browser-local choice is saved. Preserve existing named themes and saved choices.
 
+- KyCalendar must be fully administrable standalone, without KyIdentity: admin screens for local people (create, reset, disable), local groups and membership (so group calendars work), and sign-in settings to connect KyIdentity or another OIDC provider without environment variables. Design pending (brainstorm 2026-10-07).
+
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
 ## Child DOX Index
@@ -248,6 +250,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 - `init-admin [-username <name>]` makes the named local account a break-glass admin (created if absent, promoted and reactivated if present) and resets its password; password from stdin, never argv (a `-password` flag is refused).
 - `create-user` makes a local everyday account (password from stdin, forced change at first sign-in); it refuses an existing name.
+- `rename-user -username <name> -to <new>` renames a local account (exact name; SSO accounts, taken names and case twins refused), keeping password, role, MFA and sessions; audited `user.renamed`. Use it when an IdP username collides with a local one.
 - `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
 
 - Container network IP configuration belongs to Compose: the optional

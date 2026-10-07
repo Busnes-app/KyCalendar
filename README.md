@@ -88,6 +88,11 @@ and sets its password, read from stdin the same way:
 `printf '%s\n' "$PW" | kycalendar init-admin -username admin`. The password must be replaced at
 first sign-in.
 
+`rename-user` renames a local account, keeping its password, role and MFA:
+`kycalendar rename-user -username admin -to Cal-Admin`. Use it when a KyIdentity user has the
+same username as a local account: KyCalendar refuses that sign-in (409) rather than link the two
+by name. CalDAV clients of a renamed everyday account must sign in with the new name.
+
 ## Administrators and group calendars
 
 KyCalendar administrators manage group calendars, access, backups and the audit log. They never see events and cannot use calendars on their devices. Give a dedicated KyIdentity login the admin role, and keep everyday logins for calendar use.
