@@ -159,10 +159,9 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
 	user.Role = roleFromSCIM(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
-	if err := h.store.Users().UpdateUser(r.Context(), user); err != nil {
+	if err := h.save(r, user, oldRole, oldStatus); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
 	}
-	h.revokeIfPrivilegesChanged(r, user, oldRole, oldStatus)
 	return userResource(user), nil
 }
 
@@ -195,18 +194,24 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 			applyUserValue(user, attr, op.Value)
 		}
 	}
-	if err := h.store.Users().UpdateUser(r.Context(), user); err != nil {
+	if err := h.save(r, user, oldRole, oldStatus); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
 	}
-	h.revokeIfPrivilegesChanged(r, user, oldRole, oldStatus)
 	return userResource(user), nil
 }
 
-func (h *userResourceHandler) revokeIfPrivilegesChanged(r *http.Request, user *store.User, oldRole, oldStatus string) {
+// save stores user. A role or status change revokes the user's sessions and app passwords
+// first, so no old session runs under the new role and a failed revocation stores nothing.
+func (h *userResourceHandler) save(r *http.Request, user *store.User, oldRole, oldStatus string) error {
 	if user.Role != oldRole || user.Status != oldStatus {
-		_ = h.store.Sessions().DeleteUserSessions(r.Context(), user.ID)
-		_ = h.store.AppPasswords().DeleteByUser(r.Context(), user.ID)
+		if err := h.store.Sessions().DeleteUserSessions(r.Context(), user.ID); err != nil {
+			return err
+		}
+		if err := h.store.AppPasswords().DeleteByUser(r.Context(), user.ID); err != nil {
+			return err
+		}
 	}
+	return h.store.Users().UpdateUser(r.Context(), user)
 }
 
 // roleFromSCIM is "admin" only when the IdP sends the KyCalendar app role; any other value,
