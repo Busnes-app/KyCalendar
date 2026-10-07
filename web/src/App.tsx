@@ -51,7 +51,7 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (user && user.role !== 'admin') setActiveTab('calendar');
+    if (user) setActiveTab(user.role === 'admin' ? 'dashboard' : 'calendar');
   }, [user?.id]);
 
   // /api/settings returns more fields once authenticated, so re-read it after login.
@@ -66,6 +66,7 @@ export const App: React.FC = () => {
   const handleLogout = async () => {
     await secureFetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
+    setActiveTab('dashboard');
   };
 
   if (loading) {

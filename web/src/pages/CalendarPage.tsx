@@ -22,7 +22,11 @@ export function loadHidden(): Set<string> {
 }
 
 export function saveHidden(s: Set<string>) {
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s]));
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s]));
+  } catch {
+    // storage disabled or full: visibility still toggles for this session
+  }
 }
 
 // toFcEvent hands FullCalendar an API instance; titles stay text (FullCalendar escapes them).
@@ -51,6 +55,7 @@ export function CalendarPage() {
   const loadCalendars = useCallback(async () => {
     try {
       setCalendars(await listCalendars());
+      setError(null);
     } catch {
       setError('Could not load your calendars. Reload the page to try again.');
     }
@@ -59,25 +64,33 @@ export function CalendarPage() {
     void loadCalendars();
   }, [loadCalendars]);
 
+  // Tasks 5 and 6 call this after saves.
   const refetch = () => ref.current?.getApi().refetchEvents();
-  useEffect(refetch, [hidden, calendars]);
+  void refetch; // used by Tasks 5 and 6
 
-  const colorOf = (id: string) => calendars.find((c) => c.id === id)?.color || 'var(--ky-accent)';
-  const visible = calendars.filter((c) => !hidden.has(c.id)).map((c) => c.id);
   const writable = calendars.filter((c) => c.role !== 'reader');
 
-  const fetchEvents = (info: { start: Date; end: Date }, success: (e: EventInput[]) => void, failure: (e: Error) => void) => {
-    if (calendars.length === 0 || visible.length === 0) {
-      success([]);
-      return;
-    }
-    listEvents(info.start, info.end, browserZone(), visible)
-      .then((evs) => success(evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id)))))
-      .catch((e: Error) => {
-        setError(e.message || 'Could not load events.');
-        failure(e);
-      });
-  };
+  // Stable identity: FullCalendar re-fetches whenever this function changes.
+  const fetchEvents = useCallback(
+    (info: { start: Date; end: Date }, success: (e: EventInput[]) => void, failure: (e: Error) => void) => {
+      const visible = calendars.filter((c) => !hidden.has(c.id)).map((c) => c.id);
+      if (visible.length === 0) {
+        success([]);
+        return;
+      }
+      const colorOf = (id: string) => calendars.find((c) => c.id === id)?.color || 'var(--ky-accent)';
+      listEvents(info.start, info.end, browserZone(), visible)
+        .then((evs) => {
+          setError(null);
+          success(evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id))));
+        })
+        .catch((e: Error) => {
+          setError(e.message || 'Could not load events.');
+          failure(e);
+        });
+    },
+    [calendars, hidden],
+  );
 
   function toggle(id: string) {
     const next = new Set(hidden);

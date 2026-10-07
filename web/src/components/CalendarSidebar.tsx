@@ -20,6 +20,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
     setError(null);
     try {
       await action();
+      setError(null);
       onChanged();
       return true;
     } catch (e) {
@@ -58,7 +59,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (await run(() => patchCalendar(c.id, draft), 'Could not save the calendar')) setEditing(null);
+                  if (await run(() => patchCalendar(c.id, draft.color === (c.color || '#e8590c') ? { name: draft.name } : draft), 'Could not save the calendar')) setEditing(null);
                 }}
               >
                 <label htmlFor={`name-${c.id}`}>Name</label>

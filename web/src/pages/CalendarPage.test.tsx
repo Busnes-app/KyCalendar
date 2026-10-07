@@ -9,7 +9,7 @@ vi.mock('@fullcalendar/react', () => ({
   },
 }));
 
-import { CalendarPage, HIDDEN_KEY, toFcEvent } from './CalendarPage';
+import { CalendarPage, HIDDEN_KEY, loadHidden, toFcEvent } from './CalendarPage';
 import type { EventInfo } from '../calendarApi';
 
 const calendars = [
@@ -71,5 +71,34 @@ describe('CalendarPage', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }));
     render(<CalendarPage />);
     expect((await screen.findByRole('alert')).textContent).toMatch(/could not load/i);
+  });
+
+  it('does not request events when there are no calendars', async () => {
+    mockFetch({ '/api/calendars': () => [] });
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const success = vi.fn();
+    const fetchEvents = fcProps.at(-1)!.events as (info: { start: Date; end: Date }, ok: (e: unknown[]) => void, fail: (e: Error) => void) => void;
+    fetchEvents({ start: new Date(), end: new Date() }, success, vi.fn());
+    expect(success).toHaveBeenCalledWith([]);
+    const urls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.startsWith('/api/events'))).toBe(false);
+  });
+
+  it('keeps the same events function across unrelated renders', async () => {
+    mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [] });
+    render(<CalendarPage />);
+    await screen.findByLabelText('Show Team');
+    const first = fcProps.at(-1)!.events;
+    fireEvent.click(screen.getByLabelText('Show Team'));
+    expect(fcProps.at(-1)!.events).not.toBe(first);
+    const second = fcProps.at(-1)!.events;
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    expect(fcProps.at(-1)!.events).toBe(second);
+  });
+
+  it.each(['not json', '{}', '[1,"a"]'])('loadHidden survives %s', (raw) => {
+    localStorage.setItem(HIDDEN_KEY, raw);
+    expect([...loadHidden()]).toEqual(raw === '[1,"a"]' ? ['a'] : []);
   });
 });
