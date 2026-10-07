@@ -369,10 +369,6 @@ func TestResetAfterRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	addAppPassword(t, st, u.ID)
-	sso := &store.User{ID: "sso", Username: "sso", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-1"}
-	if err := st.Users().CreateUser(ctx, sso); err != nil {
-		t.Fatal(err)
-	}
 
 	before, err := st.Calendars().SyncEpoch(ctx)
 	if err != nil {
@@ -395,11 +391,9 @@ func TestResetAfterRestore(t *testing.T) {
 		t.Fatal("challenge survived", err)
 	}
 	checkAppPasswordsRevoked(t, st, u.ID)
-	if got, err := st.Users().GetUserByID(ctx, u.ID); err != nil || !got.MustChangePassword || got.PasswordHash != "h" {
+	// A forced change proves nothing: whoever knows a leaked restored password can satisfy it.
+	if got, err := st.Users().GetUserByID(ctx, u.ID); err != nil || got.MustChangePassword || got.PasswordHash != "h" {
 		t.Fatalf("local account after reset: %+v %v", got, err)
-	}
-	if got, err := st.Users().GetUserByID(ctx, sso.ID); err != nil || got.MustChangePassword {
-		t.Fatalf("SSO account after reset: %+v %v", got, err)
 	}
 
 	// Idempotent: an interrupted restore is finished by running it again.
@@ -415,7 +409,7 @@ func TestResetAfterRestore(t *testing.T) {
 		t.Fatal("audit", n, err)
 	}
 	for _, a := range audits {
-		if a.Action != "system.restore_reset" || a.UserID != "system" || !strings.Contains(a.Details, "1 local passwords must change") {
+		if a.Action != "system.restore_reset" || a.UserID != "system" || !strings.Contains(a.Details, "sync_epoch=") {
 			t.Fatalf("audit row %+v", a)
 		}
 	}

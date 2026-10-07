@@ -143,12 +143,12 @@ Restored 4 files from capsule cap-kycalendar-1788605720094118543
 ```
 
 Then it resets the restored database in one transaction, with no further input: sessions,
-MFA challenges and app passwords are deleted, local-password accounts must change their
-password at next sign-in (SSO accounts are untouched), a new sync epoch is written and
-`system.restore_reset` is audited. It ends with:
+MFA challenges and app passwords are deleted, a new sync epoch is written and
+`system.restore_reset` is audited. Password hashes are left as the backup had them; Step 5
+deals with them. It ends with:
 
 ```
-✓ Sessions, MFA challenges and app passwords revoked; local passwords must change at next sign-in; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
+✓ Sessions, MFA challenges and app passwords revoked; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
 ```
 
 If the reset fails, the files are in place but the credentials are still the backup's. The
@@ -238,9 +238,8 @@ start.
 
 ## Step 4: prove it
 
-1. Open the app URL and sign in. Every session was revoked, so everyone signs in again; a
-   local-password account is asked for a new password first. TOTP working proves
-   `encryption.key` is right.
+1. Open the app URL and sign in. Every session was revoked, so everyone signs in again. TOTP
+   working proves `encryption.key` is right.
 2. Open Backup & recovery. If the backup had a key, the recovery key shows as pinned with the
    same key ID as before; compare it with the ceremony card. If the backup was paired, the
    sealed token came across in the database, so the restored server can deposit again
@@ -255,25 +254,47 @@ start.
 The restore proves the service works. It does not make the restored state current or safe.
 Everything comes back as of the capsule's `created_at`: users, passwords, MFA enrolments,
 SCIM state, calendars and events. Anything you revoked or changed after that moment is undone.
-`restore` has already revoked every session, MFA challenge and app password, forced local
-accounts to change their password and started a new sync epoch.
+`restore` has already revoked every session, MFA challenge and app password and started a
+new sync epoch. It does not touch passwords: **a restore brings back every local password
+hash as it was at the backup**, so a password that leaked and was rotated after the capsule
+works again on the restored server.
 
 1. Tell users what changes:
    - Everyone signs in again; every user creates new app passwords under Phones & apps, and
      CalDAV clients resync from scratch (the epoch changes the calendar CTag).
-   - Passwords changed after the backup revert to the old ones; local accounts must change
-     them at next sign-in anyway.
+   - Local passwords changed after the backup revert to the old ones until step 2 resets them.
+     SSO accounts sign in through KyIdentity and are unaffected.
    - Recovery codes come back as they were at backup time. A user who used or regenerated
      recovery codes after the backup should regenerate them.
    - Events created after the backup are gone unless a client still holds them; the old audit
-     log in step 2 shows what happened since.
+     log in steps 2 and 3 shows what happened since.
    - The interop and real-device client checks remain an operator step: reconnect one
      iPhone, Android and Thunderbird client and confirm the calendars sync.
-2. Walk the old audit log in `old-data/kycalendar.db` from `created_at` to the moment the old
-   server was lost (the restored server's log stops at `created_at`), and re-apply what
-   happened after the capsule: disabled accounts, rotated passwords, reset
-   MFA, SCIM changes.
-3. If the reason for the restore was a suspected compromise rather than hardware loss, treat
+2. Before reopening the service, reset every local password that changed after the capsule.
+   In the old audit log (`old-data/kycalendar.db`), find the `auth.password_changed` rows
+   newer than `created_at`. The log stores UTC times as `2026-09-05 12:15:20...`, so write
+   the capsule's `created` with a space, not a `T`, and without the `Z`:
+
+   ```bash
+   sudo sqlite3 old-data/kycalendar.db "SELECT u.username, u.role, a.created_at FROM audit_records a JOIN users u ON u.id = a.user_id WHERE a.action = 'auth.password_changed' AND a.created_at > '2026-09-05 12:15:20' ORDER BY a.created_at;"
+   ```
+
+   For each **administrator** in that list, set a temporary password, which forces a change at
+   the next sign-in and revokes that account's sessions and app passwords:
+
+   ```bash
+   docker compose run --rm -T app init-admin -username <name> -password <temporary>
+   ```
+
+   It also reactivates the account if it was disabled. Hand the temporary password to the
+   account owner out of band. Do not use `init-admin` on an **everyday** account (`role` is
+   `user`): it makes the account an administrator. No command resets an everyday local account's password yet. Until one exists,
+   the restored password works for anyone who knows it: tell the owner to change it the moment
+   the service reopens.
+3. Walk the same audit log from `created_at` to the moment the old server was lost (the
+   restored server's log stops at `created_at`), and re-apply what else happened after the
+   capsule: disabled accounts, reset MFA, SCIM changes.
+4. If the reason for the restore was a suspected compromise rather than hardware loss, treat
    the restored secrets as exposed and rotate the ones that can be rotated. A restore from
    before a compromise brings the attacker's access back with the service unless you do this.
 

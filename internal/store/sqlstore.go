@@ -90,19 +90,8 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 	if n != 1 {
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
-	// The restored hashes may include ones rotated after a leak.
-	now := time.Now().UTC()
-	res, err = tx.ExecContext(ctx, s.rebind(`UPDATE users SET must_change_password = ?, updated_at = ? WHERE sso_provider = 'local' AND password_hash <> ''`), true, now)
-	if err != nil {
-		return err
-	}
-	flagged, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	details := fmt.Sprintf("sessions, MFA challenges, app passwords revoked; %d local passwords must change; sync_epoch=%s", flagged, epoch)
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", details, "", now); err != nil {
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, app passwords revoked; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()
