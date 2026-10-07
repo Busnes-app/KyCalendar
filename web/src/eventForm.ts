@@ -20,7 +20,7 @@ export function parseLocal(s: string): Date {
   return new Date(y, m - 1, d, h, mi);
 }
 
-const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
 export function validZone(zone: string | undefined): boolean {
   if (!zone) return false;

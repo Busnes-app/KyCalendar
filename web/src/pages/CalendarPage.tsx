@@ -6,11 +6,15 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
-import { browserZone, listCalendars, listEvents, type CalendarInfo, type EventInfo } from '../calendarApi';
+import { ApiError, browserZone, listCalendars, listEvents, updateEvent, type CalendarInfo, type EventInfo } from '../calendarApi';
 import { CalendarSidebar } from '../components/CalendarSidebar';
 import { EventDialog } from '../components/EventDialog';
-import { emptyForm, formFromEvent, type FormState } from '../eventForm';
+import { ScopeDialog } from '../components/ScopeDialog';
+import { addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, validZone, type FormState } from '../eventForm';
 import '../styles/calendar.css';
+
+type MoveArg = EventDropArg | EventResizeDoneArg;
+const DAY = 86_400_000;
 
 export const HIDDEN_KEY = 'kycalendar.hiddenCalendars';
 
@@ -53,6 +57,7 @@ export function CalendarPage() {
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState } | null>(null);
+  const [pending, setPending] = useState<MoveArg | null>(null);
   const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
 
@@ -68,7 +73,6 @@ export function CalendarPage() {
     void loadCalendars();
   }, [loadCalendars]);
 
-  // Task 6 also calls this after moves.
   const refetch = () => ref.current?.getApi().refetchEvents();
 
   const writable = calendars.filter((c) => c.role !== 'reader');
@@ -109,7 +113,54 @@ export function CalendarPage() {
     setDialog({ key: ++opens.current, initial: emptyForm(start, end, allDay, target.id) });
   };
   const openEvent = (ev: EventInfo) => setDialog({ key: ++opens.current, event: ev, initial: formFromEvent(ev, 'this') });
-  const onMove = (arg: EventDropArg | EventResizeDoneArg) => arg.revert();
+
+  async function saveMove(arg: MoveArg, scope: 'this' | 'all') {
+    const ev = arg.event.extendedProps.info as EventInfo;
+    const zone = validZone(ev.zone) ? ev.zone! : browserZone();
+    const allDay = arg.event.allDay;
+    // FullCalendar leaves end null for a one-day all-day event; ends here are exclusive.
+    const exclEnd = (start: Date, end: Date | null) => end ?? (allDay ? addDays(start, 1) : start);
+    const oldStart = arg.oldEvent.start!;
+    const oldEnd = exclEnd(oldStart, arg.oldEvent.end);
+    const newStart = arg.event.start!;
+    const newEnd = exclEnd(newStart, arg.event.end);
+    const base = formFromEvent(ev, scope);
+    let start = newStart;
+    let end = newEnd;
+    if (scope === 'all' && allDay === ev.all_day) {
+      // Shift the series by the drag delta; all-day deltas are whole days (DST-safe).
+      const shift = (d: Date, delta: number) => (allDay ? addDays(d, Math.round(delta / DAY)) : new Date(d.getTime() + delta));
+      start = shift(parseLocal(base.start), newStart.getTime() - oldStart.getTime());
+      end = shift(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), newEnd.getTime() - oldEnd.getTime());
+    }
+    const form = {
+      ...base,
+      allDay,
+      freq: ev.recurring && scope === 'all' ? ('custom' as const) : base.freq,
+      start: allDay ? localDate(start) : localDateTime(start),
+      end: allDay ? localDate(addDays(end, -1)) : localDateTime(end),
+    };
+    const body = bodyFromForm(form, zone, ev.recurring ? scope : 'all', ev.recurrence_id);
+    if (typeof body === 'string') {
+      arg.revert();
+      setError(body);
+      return;
+    }
+    try {
+      await updateEvent(ev, body);
+      setError(null);
+      refetch();
+    } catch (e) {
+      arg.revert();
+      setError(e instanceof ApiError && e.status === 412 ? 'This event changed elsewhere; the calendar has been reloaded.' : (e as Error).message || 'Could not move the event');
+      refetch();
+    }
+  }
+
+  const onMove = (arg: MoveArg) => {
+    if ((arg.event.extendedProps.info as EventInfo).recurring) setPending(arg);
+    else void saveMove(arg, 'all');
+  };
 
   return (
     <section className="page kc-layout">
@@ -137,6 +188,9 @@ export function CalendarPage() {
           eventDrop={onMove}
           eventResize={onMove}
         />
+        {pending && (
+          <ScopeDialog onChoose={(s) => { const p = pending; setPending(null); if (s) void saveMove(p, s); else p.revert(); }} />
+        )}
         {dialog && (
           <EventDialog
             key={dialog.key}
