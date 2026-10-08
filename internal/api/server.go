@@ -260,7 +260,7 @@ func (s *Server) routes() {
 	s.handle("/api/sso/kysignon/sync", s.requireSSO(s.handleKySignOnSyncWebhook))
 	s.handle("/saml/metadata", http.HandlerFunc(s.handleSAMLMetadata))
 
-	// Feature 0 KyBackup & Restore Drills. Capsules carry site data and keys: admins only.
+	// KyBackup and restore drills. Capsules carry site data and keys: admins only.
 	// Method patterns: only the declared method reaches a handler. Export is a POST so the
 	// CSRF check covers a download that carries the whole instance.
 	s.handle("POST /api/backup/drill", s.requireAdmin(s.handleBackupDrill))

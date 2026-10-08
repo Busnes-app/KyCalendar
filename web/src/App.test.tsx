@@ -44,7 +44,7 @@ describe('App landing', () => {
     signedInAs('user');
     render(<App />);
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
-    for (const label of ['Overview', 'People', 'Groups', 'Sign-in', 'Directory & SCIM', 'KyBackup (Feature 0)', 'Settings & DB']) {
+    for (const label of ['Overview', 'People', 'Groups', 'Sign-in', 'Directory & SCIM', 'KyBackup', 'Settings & DB']) {
       expect(within(nav).queryByRole('button', { name: label })).toBeNull();
     }
   });

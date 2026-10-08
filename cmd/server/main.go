@@ -389,7 +389,7 @@ func runBackupDrill(args []string) {
 		log.Fatalf("Drill execution error: %v", err)
 	}
 
-	fmt.Printf("\n=== Feature 0: KyBackup Restore Drill Summary ===\n")
+	fmt.Printf("\n=== KyBackup Restore Drill Summary ===\n")
 	fmt.Printf("Status:   %s\n", map[bool]string{true: "PASSED (OK)", false: "FAILED"}[result.Passed])
 	fmt.Printf("Duration: %d ms\n", result.DurationMs)
 	for _, check := range result.Checks {
