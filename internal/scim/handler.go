@@ -227,9 +227,8 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 	return userResource(user), nil
 }
 
-// save stores user through UpdateSCIMUser, row first: a role or status change revokes every grant
-// with the access write. A pure removal (deactivation, demotion) lands even if the profile write
-// then fails; anything that grants access is all or nothing.
+// save stores user through UpdateSCIMUser, row first: removals land first with the revocation;
+// grants land only with the rest of the request.
 func (h *userResourceHandler) save(r *http.Request, user *store.User) error {
 	return h.store.Users().UpdateSCIMUser(r.Context(), user)
 }

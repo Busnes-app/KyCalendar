@@ -781,6 +781,36 @@ func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
 	return tx.Commit()
 }
 
+// lockSSOAccess locks a non-local row in tx and reads its role and status.
+func (u *userStore) lockSSOAccess(ctx context.Context, tx *sql.Tx, id string, now time.Time) (role, status string, err error) {
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), now, id)
+	if err != nil {
+		return "", "", err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return "", "", err
+	} else if n == 0 {
+		return "", "", ErrNotFound
+	}
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ?`), id).Scan(&role, &status)
+	return role, status, err
+}
+
+// setSSOAccess writes role and status on a row tx has locked and, when they changed, revokes its grants.
+func (u *userStore) setSSOAccess(ctx context.Context, tx *sql.Tx, id, oldRole, oldStatus, role, status string) error {
+	if role == oldRole && status == oldStatus {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ? WHERE id = ?`), role, status, id); err != nil {
+		return err
+	}
+	return u.revokeGrants(ctx, tx, id)
+}
+
+// UpdateSCIMUser splits the change by direction. Removals (active to inactive, admin to user)
+// land first, in their own row-first transaction with the revocation, so nothing later in the
+// request can keep a departed person's grants live. Grants (inactive to active, user to admin)
+// land only together with the profile write, so a failing request never grants anything.
 func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 	user.UpdatedAt = time.Now().UTC()
 	tx, err := u.store.beginTx(ctx)
@@ -788,35 +818,21 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 		return err
 	}
 	defer tx.Rollback()
-	// Lock the row before reading its access, so the comparison is against the stored row.
-	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), user.UpdatedAt, user.ID)
+	role, status, err := u.lockSSOAccess(ctx, tx, user.ID, user.UpdatedAt)
 	if err != nil {
 		return err
 	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n == 0 {
-		return ErrNotFound
+	cutRole, cutStatus := role, status
+	if role == "admin" && user.Role != "admin" {
+		cutRole = user.Role
 	}
-	var role, status string
-	if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ?`), user.ID).Scan(&role, &status); err != nil {
-		return err
+	if status == "active" && user.Status != "active" {
+		cutStatus = user.Status
 	}
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ? WHERE id = ?`), user.Role, user.Status, user.ID); err != nil {
-		return err
-	}
-	if role != user.Role || status != user.Status {
-		if err := u.revokeGrants(ctx, tx, user.ID); err != nil {
+	if cutRole != role || cutStatus != status {
+		if err := u.setSSOAccess(ctx, tx, user.ID, role, status, cutRole, cutStatus); err != nil {
 			return err
 		}
-	}
-	// Removing access fails closed: it commits on its own, so a profile write that then fails (a
-	// username clash) can never leave a departed person's grants live. A change that grants
-	// anything (activation, promotion), mixed or not, commits only together with the profile;
-	// failing, the row keeps its previous state.
-	removes := (status == "active" && user.Status != "active") || (role == "admin" && user.Role != "admin")
-	grants := (status != "active" && user.Status == "active") || (role != "admin" && user.Role == "admin")
-	if removes && !grants {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
@@ -824,8 +840,14 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 			return err
 		}
 		defer tx.Rollback()
+		if role, status, err = u.lockSSOAccess(ctx, tx, user.ID, user.UpdatedAt); err != nil {
+			return err
+		}
 	}
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ? WHERE id = ? AND sso_provider <> 'local'`),
+	if err := u.setSSOAccess(ctx, tx, user.ID, role, status, user.Role, user.Status); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ? WHERE id = ?`),
 		user.Username, user.Email, user.DisplayName, user.ID); err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists

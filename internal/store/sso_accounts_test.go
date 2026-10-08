@@ -239,6 +239,22 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.DisplayName != "Dan D" || u.SSOProvider != "scim" {
 		t.Fatalf("after deactivation: %+v", u)
 	}
+	// Without a clash a mixed change lands whole: deactivate and promote, then reactivate and demote.
+	mixed := off
+	mixed.Role = "admin"
+	if err := st.Users().UpdateSCIMUser(ctx, &mixed); err != nil {
+		t.Fatalf("deactivate and promote: %v", err)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.Role != "admin" {
+		t.Fatalf("after deactivate and promote: %+v", u)
+	}
+	mixed.Status, mixed.Role = "active", "user"
+	if err := st.Users().UpdateSCIMUser(ctx, &mixed); err != nil {
+		t.Fatalf("reactivate and demote: %v", err)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "active" || u.Role != "user" {
+		t.Fatalf("after reactivate and demote: %+v", u)
+	}
 	localEdit := *loc
 	localEdit.Role = "admin"
 	if err := st.Users().UpdateSCIMUser(ctx, &localEdit); !errors.Is(err, store.ErrNotFound) {
