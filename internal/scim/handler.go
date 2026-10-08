@@ -143,8 +143,35 @@ func (h *userResourceHandler) Get(r *http.Request, id string) (protocol.Resource
 	return userResource(user), nil
 }
 
-// equalityFilter is the one filter shape IdPs send to look a user up: a single exact eq.
-var equalityFilter = regexp.MustCompile(`(?i)^\s*(userName|emails\.value|emails|email|displayName|externalId)\s+eq\s+"([^"]*)"\s*$`)
+// eqFilter is the one filter shape IdPs send to look a resource up: `<attr> eq "<value>"`, the
+// value escaping `"` and `\` with a backslash.
+var eqFilter = regexp.MustCompile(`^\s*([A-Za-z][\w.]*)\s+(?i:eq)\s+"((?:[^"\\]|\\.)*)"\s*$`)
+
+const maxFilterValue = 1024
+
+// parseEqFilter reads an eq filter; anything else, an escape other than `\"` or `\\`, or a
+// value over maxFilterValue bytes is invalidFilter.
+func parseEqFilter(raw string) (attr, value string, err error) {
+	m := eqFilter.FindStringSubmatch(raw)
+	if m == nil {
+		return "", "", protocolErrors.ScimErrorInvalidFilter
+	}
+	var b strings.Builder
+	for i := 0; i < len(m[2]); i++ {
+		c := m[2][i]
+		if c == '\\' {
+			i++
+			if c = m[2][i]; c != '"' && c != '\\' {
+				return "", "", protocolErrors.ScimErrorInvalidFilter
+			}
+		}
+		b.WriteByte(c)
+	}
+	if b.Len() > maxFilterValue {
+		return "", "", protocolErrors.ScimErrorInvalidFilter
+	}
+	return m[1], b.String(), nil
+}
 
 var filterFields = map[string]store.UserField{
 	"username":     store.UserFieldUsername,
@@ -157,12 +184,16 @@ var filterFields = map[string]store.UserField{
 func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
 	filter := store.UserFilter{SSOOnly: true}
 	if raw := r.URL.Query().Get("filter"); raw != "" {
-		match := equalityFilter.FindStringSubmatch(raw)
-		if len(match) != 3 {
+		attr, value, err := parseEqFilter(raw)
+		if err != nil {
+			return protocol.Page{}, err
+		}
+		field, ok := filterFields[strings.ToLower(attr)]
+		if !ok && !strings.EqualFold(attr, "externalId") {
 			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
 		}
-		filter.Field, filter.Value = filterFields[strings.ToLower(match[1])], match[2]
-		if strings.EqualFold(match[1], "externalId") {
+		filter.Field, filter.Value = field, value
+		if strings.EqualFold(attr, "externalId") {
 			// KyIdentity's lookup of the account it provisions: its user ID is the sub. Exact, and
 			// only rows SCIM may adopt (KyIdentity's providers, the current binding), so a lookup
 			// never hands KyIdentity another binding's account.
@@ -377,20 +408,18 @@ func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resourc
 	return groupResource(group), nil
 }
 
-// groupFilter is the one Groups filter: KyIdentity's lookup of a group it provisions.
-var groupFilter = regexp.MustCompile(`(?i)^\s*externalId\s+eq\s+"([^"]*)"\s*$`)
-
 func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
 	var groups []*store.Group
 	var total int
 	var err error
 	if raw := r.URL.Query().Get("filter"); raw != "" {
-		match := groupFilter.FindStringSubmatch(raw)
-		if len(match) != 2 {
+		// The one Groups filter: KyIdentity's lookup of a group it provisions.
+		attr, value, perr := parseEqFilter(raw)
+		if perr != nil || !strings.EqualFold(attr, "externalId") {
 			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
 		}
 		// Exact, SCIM groups only; a lookup is never more than a page.
-		groups, err = h.store.Groups().GroupsByExternalID(r.Context(), match[1], store.GroupSourceSCIM)
+		groups, err = h.store.Groups().GroupsByExternalID(r.Context(), value, store.GroupSourceSCIM)
 		total = len(groups)
 		if start := min(max(params.StartIndex-1, 0), len(groups)); err == nil {
 			groups = groups[start:]
