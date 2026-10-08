@@ -99,13 +99,13 @@ func signinProblem(req signinRequest, st sso.Settings) string {
 		return "The issuer and the client ID are required"
 	}
 	if _, ok := cleanName(st.DisplayName.Value); !ok {
-		return "The button label is required: 1-255 characters with no control characters"
+		return "The button label is required: 1-255 bytes with no control or invisible characters"
 	}
 	if len(st.Issuer.Value) > 2048 || strings.IndexFunc(st.Issuer.Value, unicode.IsControl) >= 0 {
 		return "The issuer is not valid"
 	}
 	if len(st.ClientID.Value) > 255 || strings.IndexFunc(st.ClientID.Value, unicode.IsControl) >= 0 {
-		return "The client ID must be 1-255 characters with no control characters"
+		return "The client ID must be 1-255 bytes with no control characters"
 	}
 	if len(req.ClientSecret) > 1024 {
 		return "The client secret is too long"
