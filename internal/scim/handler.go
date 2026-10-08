@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"slices"
@@ -101,7 +102,7 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 	if ext := stringValue(attrs, "externalId", ""); ext != "" {
 		existing, err := h.store.Users().GetUserBySSO(r.Context(), "kysignon", ext)
 		if err == nil && existing.SSOIssuer != bound {
-			return protocol.Resource{}, protocolErrors.ScimErrorUniqueness
+			return protocol.Resource{}, refusedUser(r, h.store, existing.ID, "other_binding", protocolErrors.ScimErrorUniqueness)
 		}
 		if err == nil {
 			res, err := h.Replace(r, existing.ID, attrs)
@@ -116,6 +117,9 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 	}
 	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", ""), SSOIssuer: bound}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
+		if errors.Is(err, store.ErrAlreadyExists) {
+			return protocol.Resource{}, refusedUser(r, h.store, "", "name_taken", protocolErrors.ScimErrorUniqueness)
+		}
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
 	_ = h.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: user.ID, Action: "scim.user.create", Resource: user.Username})
@@ -269,6 +273,9 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 // have made differ from the request.
 func (h *userResourceHandler) saveAndRead(r *http.Request, user *store.User, expectedRole, expectedStatus string) (protocol.Resource, error) {
 	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
+		if errors.Is(err, store.ErrAccessChanged) {
+			return protocol.Resource{}, refusedUser(r, h.store, user.ID, "access_changed", scimStoreError(err, user.ID))
+		}
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
 	stored, err := h.store.Users().GetUserByID(r.Context(), user.ID)
@@ -362,27 +369,27 @@ func (h *groupResourceHandler) scimGroup(r *http.Request, id string) (*store.Gro
 // scimMembers checks the members a SCIM request names. Each must be an account SCIM can see: a
 // local account (or none) is refused before anything is written, so SCIM never grants one a
 // group's calendars. Local memberships a group already holds are not SCIM's and stay.
-func (h *groupResourceHandler) scimMembers(r *http.Request, named []string) ([]string, error) {
+func (h *groupResourceHandler) scimMembers(r *http.Request, groupID string, named []string) ([]string, error) {
 	ids := slices.Compact(slices.Sorted(slices.Values(named)))
 	found, err := h.store.Users().SSOUserIDs(r.Context(), ids)
 	if err != nil {
 		return nil, err
 	}
 	if len(found) != len(ids) {
-		return nil, protocolErrors.ScimErrorInvalidValue
+		return nil, refusedGroup(r, h.store, groupID, "invalid_member", protocolErrors.ScimErrorInvalidValue)
 	}
 	return ids, nil
 }
 
 func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	members, err := h.scimMembers(r, memberValues(attrs["members"]))
+	members, err := h.scimMembers(r, "", memberValues(attrs["members"]))
 	if err != nil {
 		return protocol.Resource{}, err
 	}
 	group := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: stringValue(attrs, "displayName", ""), ExternalID: stringValue(attrs, "externalId", ""), Source: store.GroupSourceSCIM}
 	if err := h.store.Groups().CreateGroup(r.Context(), group); err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
-			h.flagLocalTwin(r, group.DisplayName)
+			return protocol.Resource{}, refusedGroup(r, h.store, h.flagLocalTwin(r, group.DisplayName), "name_taken", protocolErrors.ScimErrorUniqueness)
 		}
 		return protocol.Resource{}, scimStoreError(err, group.ID)
 	}
@@ -393,11 +400,17 @@ func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAt
 	return groupResource(group), nil
 }
 
-// flagLocalTwin records that a local group holds name, so SCIM could not create it.
-func (h *groupResourceHandler) flagLocalTwin(r *http.Request, name string) {
-	if g, err := h.store.Groups().GetGroupByName(r.Context(), name); err == nil && g.Source == store.GroupSourceLocal {
+// flagLocalTwin records that a local group holds name, so SCIM could not create it, and returns
+// the ID of the group holding it ("" when unknown).
+func (h *groupResourceHandler) flagLocalTwin(r *http.Request, name string) string {
+	g, err := h.store.Groups().GetGroupByName(r.Context(), name)
+	if err != nil {
+		return ""
+	}
+	if g.Source == store.GroupSourceLocal {
 		_ = h.store.Settings().SetSetting(r.Context(), ConflictKey(name), time.Now().UTC().Format(time.RFC3339))
 	}
+	return g.ID
 }
 
 func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resource, error) {
@@ -447,7 +460,7 @@ func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protoco
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	members, err := h.scimMembers(r, memberValues(attrs["members"]))
+	members, err := h.scimMembers(r, id, memberValues(attrs["members"]))
 	if err != nil {
 		return protocol.Resource{}, err
 	}
@@ -490,7 +503,7 @@ func (h *groupResourceHandler) Patch(r *http.Request, id string, operations []pr
 			return protocol.Resource{}, err
 		}
 	}
-	if _, err := h.scimMembers(r, p.named); err != nil {
+	if _, err := h.scimMembers(r, id, p.named); err != nil {
 		return protocol.Resource{}, err
 	}
 	return h.save(r, group, slices.Sorted(slices.Values(p.members)))
@@ -644,6 +657,25 @@ func statusFromActive(attrs protocol.ResourceAttributes) string {
 	}
 	return "active"
 }
+
+// refusedUser and refusedGroup log and audit a refused SCIM write with the target ID (or "")
+// and a reason code only, never the request, and return err.
+func refusedUser(r *http.Request, st store.Store, id, reason string, err error) error {
+	return refused(r, st, &store.AuditRecord{UserID: id, Action: "scim.user.refused", Resource: id, Details: "reason=" + reason}, err)
+}
+
+func refusedGroup(r *http.Request, st store.Store, id, reason string, err error) error {
+	return refused(r, st, &store.AuditRecord{Action: "scim.group.refused", Resource: id, Details: "reason=" + reason}, err)
+}
+
+func refused(r *http.Request, st store.Store, rec *store.AuditRecord, err error) error {
+	log.Printf("[SCIM] %s id=%q %s", rec.Action, rec.Resource, rec.Details)
+	if aerr := st.Audit().LogAudit(r.Context(), rec); aerr != nil {
+		log.Printf("[SCIM] audit of %s failed: %v", rec.Action, aerr)
+	}
+	return err
+}
+
 func scimStoreError(err error, id string) error {
 	if err == nil {
 		return nil
