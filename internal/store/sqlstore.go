@@ -807,11 +807,16 @@ func (u *userStore) setSSOAccess(ctx context.Context, tx *sql.Tx, id, oldRole, o
 	return u.revokeGrants(ctx, tx, id)
 }
 
-// UpdateSCIMUser splits the change by direction. Removals (active to inactive, admin to user)
-// land first, in their own row-first transaction with the revocation, so nothing later in the
-// request can keep a departed person's grants live. Grants (inactive to active, user to admin)
-// land only together with the profile write, so a failing request never grants anything.
-func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
+// betweenSCIMWrites runs between UpdateSCIMUser's removal and grant transactions; a test seam.
+var betweenSCIMWrites = func() {}
+
+// UpdateSCIMUser writes only the access the request changes relative to what SCIM read
+// (expectedRole, expectedStatus), so a request that does not change role or status never
+// overwrites a concurrent change. A removal (active to inactive, admin to user) always lands, in
+// its own row-first transaction with the revocation. A grant (inactive to active, user to admin)
+// lands only with the profile write and only if the stored value still equals what SCIM read;
+// otherwise nothing more is written and the result is ErrAccessChanged.
+func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User, expectedRole, expectedStatus string) error {
 	user.UpdatedAt = time.Now().UTC()
 	tx, err := u.store.beginTx(ctx)
 	if err != nil {
@@ -822,20 +827,23 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 	if err != nil {
 		return err
 	}
-	cutRole, cutStatus := role, status
-	if role == "admin" && user.Role != "admin" {
-		cutRole = user.Role
-	}
-	if status == "active" && user.Status != "active" {
-		cutStatus = user.Status
-	}
-	if cutRole != role || cutStatus != status {
+	demote := expectedRole == "admin" && user.Role != "admin"
+	deactivate := expectedStatus == "active" && user.Status != "active"
+	if demote || deactivate {
+		cutRole, cutStatus := role, status
+		if demote {
+			cutRole = user.Role
+		}
+		if deactivate {
+			cutStatus = user.Status
+		}
 		if err := u.setSSOAccess(ctx, tx, user.ID, role, status, cutRole, cutStatus); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		betweenSCIMWrites()
 		if tx, err = u.store.beginTx(ctx); err != nil {
 			return err
 		}
@@ -844,7 +852,20 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 			return err
 		}
 	}
-	if err := u.setSSOAccess(ctx, tx, user.ID, role, status, user.Role, user.Status); err != nil {
+	newRole, newStatus := role, status
+	if expectedRole != "admin" && user.Role == "admin" { // promotion
+		if role != expectedRole {
+			return ErrAccessChanged
+		}
+		newRole = user.Role
+	}
+	if expectedStatus != "active" && user.Status == "active" { // activation
+		if status != expectedStatus {
+			return ErrAccessChanged
+		}
+		newStatus = user.Status
+	}
+	if err := u.setSSOAccess(ctx, tx, user.ID, role, status, newRole, newStatus); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ? WHERE id = ?`),

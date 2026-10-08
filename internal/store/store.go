@@ -24,6 +24,9 @@ var (
 	// ErrAlreadyBound: ReattachSSOUser found the account already bound to the target binding and
 	// wrote nothing; its status is the identity provider's.
 	ErrAlreadyBound = errors.New("account already bound to this sign-in")
+	// ErrAccessChanged: UpdateSCIMUser would grant access to an account whose access changed since
+	// SCIM read it; the caller retries from a fresh read.
+	ErrAccessChanged = errors.New("account access changed since it was read")
 )
 
 // Actor is who makes an access write. An administrator is rechecked inside the write's
@@ -95,12 +98,14 @@ type UserStore interface {
 	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,
 	// local or missing: ErrNotFound.
 	SetSSORole(ctx context.Context, userID, role string) error
-	// UpdateSCIMUser writes a non-local account's role, status, username, email and display name,
-	// split by direction. Removals (deactivation, demotion) land first with the revocation of every
-	// grant, in their own row-first transaction; grants (activation, promotion) land only together
-	// with the profile write, with a revocation when they change access. Local or missing:
-	// ErrNotFound; a username another row holds exactly: ErrAlreadyExists.
-	UpdateSCIMUser(ctx context.Context, u *User) error
+	// UpdateSCIMUser writes a non-local account's username, email and display name and only the
+	// access the request changes relative to what SCIM read (expectedRole, expectedStatus). A
+	// removal (deactivation, demotion) always lands first, with the revocation of every grant, in
+	// its own row-first transaction. A grant (activation, promotion) lands only together with the
+	// profile write and only if the stored value still equals what SCIM read, else
+	// ErrAccessChanged and nothing more is written. Local or missing: ErrNotFound; a username
+	// another row holds exactly: ErrAlreadyExists.
+	UpdateSCIMUser(ctx context.Context, u *User, expectedRole, expectedStatus string) error
 	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and
 	// app passwords in one transaction, after setting it inactive when deactivate is true (rows
 	// first). It never sets an account active. Local or missing: ErrNotFound.

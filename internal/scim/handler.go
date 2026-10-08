@@ -178,12 +178,13 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	if err != nil {
 		return protocol.Resource{}, err
 	}
+	expectedRole, expectedStatus := user.Role, user.Status
 	user.Username, _ = attrs["userName"].(string)
 	user.Email = primaryValue(attrs["emails"])
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
 	user.Role = roleFromSCIM(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
-	if err := h.save(r, user); err != nil {
+	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
 	}
 	return userResource(user), nil
@@ -202,6 +203,7 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 	if err != nil {
 		return protocol.Resource{}, err
 	}
+	expectedRole, expectedStatus := user.Role, user.Status
 	for _, op := range operations {
 		if op.Path == nil {
 			if values, ok := op.Value.(map[string]interface{}); ok && op.Op != protocol.PatchOperationRemove {
@@ -221,16 +223,17 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 			applyUserValue(user, attr, op.Value)
 		}
 	}
-	if err := h.save(r, user); err != nil {
+	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
 	}
 	return userResource(user), nil
 }
 
-// save stores user through UpdateSCIMUser, row first: removals land first with the revocation;
-// grants land only with the rest of the request.
-func (h *userResourceHandler) save(r *http.Request, user *store.User) error {
-	return h.store.Users().UpdateSCIMUser(r.Context(), user)
+// save stores user through UpdateSCIMUser against the role and status the handler read: SCIM
+// writes only the access it changes; a removal always lands; a grant lands only if nothing changed
+// the account since SCIM read it, otherwise the IdP is asked to retry (412).
+func (h *userResourceHandler) save(r *http.Request, user *store.User, expectedRole, expectedStatus string) error {
+	return h.store.Users().UpdateSCIMUser(r.Context(), user, expectedRole, expectedStatus)
 }
 
 // roleFromSCIM is "admin" only when the IdP sends the KyCalendar app role; any other value,
@@ -487,6 +490,9 @@ func scimStoreError(err error, id string) error {
 	}
 	if errors.Is(err, store.ErrAlreadyExists) {
 		return protocolErrors.ScimErrorUniqueness
+	}
+	if errors.Is(err, store.ErrAccessChanged) { // RFC 7644 3.14: the resource changed; retry from a fresh read
+		return protocolErrors.ScimError{Status: http.StatusPreconditionFailed, Detail: "The account changed since it was read; retry the request"}
 	}
 	return err
 }

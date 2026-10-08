@@ -211,13 +211,13 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	// A profile-only change keeps the grants.
 	edited := *dan
 	edited.DisplayName = "Dan D"
-	if err := st.Users().UpdateSCIMUser(ctx, &edited); err != nil || grants(dan.ID) != 2 {
+	if err := st.Users().UpdateSCIMUser(ctx, &edited, "user", "active"); err != nil || grants(dan.ID) != 2 {
 		t.Fatalf("profile change: %v, %d grants", err, grants(dan.ID))
 	}
 	// A refused write (an exact duplicate username) changes nothing, the access change included.
 	clash := edited
 	clash.Username, clash.Role = "eve", "admin"
-	if err := st.Users().UpdateSCIMUser(ctx, &clash); !errors.Is(err, store.ErrAlreadyExists) {
+	if err := st.Users().UpdateSCIMUser(ctx, &clash, "user", "active"); !errors.Is(err, store.ErrAlreadyExists) {
 		t.Fatalf("duplicate username: %v", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Role != "user" || u.Username != "dan" || grants(dan.ID) != 2 {
@@ -226,14 +226,14 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	// A deactivation fails closed: it lands with its revocation even when the profile write fails.
 	off := edited
 	off.Status, off.Username = "inactive", "eve"
-	if err := st.Users().UpdateSCIMUser(ctx, &off); !errors.Is(err, store.ErrAlreadyExists) || grants(dan.ID) != 0 {
+	if err := st.Users().UpdateSCIMUser(ctx, &off, "user", "active"); !errors.Is(err, store.ErrAlreadyExists) || grants(dan.ID) != 0 {
 		t.Fatalf("deactivation with a clashing name: %v, %d grants left", err, grants(dan.ID))
 	}
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.Username != "dan" {
 		t.Fatalf("after the failed profile write: %+v", u)
 	}
 	off.Username = "dan"
-	if err := st.Users().UpdateSCIMUser(ctx, &off); err != nil {
+	if err := st.Users().UpdateSCIMUser(ctx, &off, "user", "inactive"); err != nil {
 		t.Fatalf("deactivation: %v", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.DisplayName != "Dan D" || u.SSOProvider != "scim" {
@@ -242,14 +242,14 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	// Without a clash a mixed change lands whole: deactivate and promote, then reactivate and demote.
 	mixed := off
 	mixed.Role = "admin"
-	if err := st.Users().UpdateSCIMUser(ctx, &mixed); err != nil {
+	if err := st.Users().UpdateSCIMUser(ctx, &mixed, "user", "inactive"); err != nil {
 		t.Fatalf("deactivate and promote: %v", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.Role != "admin" {
 		t.Fatalf("after deactivate and promote: %+v", u)
 	}
 	mixed.Status, mixed.Role = "active", "user"
-	if err := st.Users().UpdateSCIMUser(ctx, &mixed); err != nil {
+	if err := st.Users().UpdateSCIMUser(ctx, &mixed, "admin", "inactive"); err != nil {
 		t.Fatalf("reactivate and demote: %v", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "active" || u.Role != "user" {
@@ -257,7 +257,7 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	}
 	localEdit := *loc
 	localEdit.Role = "admin"
-	if err := st.Users().UpdateSCIMUser(ctx, &localEdit); !errors.Is(err, store.ErrNotFound) {
+	if err := st.Users().UpdateSCIMUser(ctx, &localEdit, "user", "active"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("UpdateSCIMUser on a local account: %v", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, loc.ID); u.Role != "user" {
