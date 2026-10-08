@@ -14,6 +14,7 @@ import (
 	protocolErrors "github.com/elimity-com/scim/errors"
 	"github.com/elimity-com/scim/optional"
 	"github.com/elimity-com/scim/schema"
+	"github.com/scim2/filter-parser/v2"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -327,11 +328,11 @@ func (h *groupResourceHandler) scimGroup(r *http.Request, id string) (*store.Gro
 	return group, nil
 }
 
-// scimMembers reads the members a SCIM request names. Each must be an account SCIM can see: a
+// scimMembers checks the members a SCIM request names. Each must be an account SCIM can see: a
 // local account (or none) is refused before anything is written, so SCIM never grants one a
 // group's calendars. Local memberships a group already holds are not SCIM's and stay.
-func (h *groupResourceHandler) scimMembers(r *http.Request, attrs protocol.ResourceAttributes) ([]string, error) {
-	ids := slices.Compact(slices.Sorted(slices.Values(memberValues(attrs["members"]))))
+func (h *groupResourceHandler) scimMembers(r *http.Request, named []string) ([]string, error) {
+	ids := slices.Compact(slices.Sorted(slices.Values(named)))
 	found, err := h.store.Users().SSOUserIDs(r.Context(), ids)
 	if err != nil {
 		return nil, err
@@ -343,7 +344,7 @@ func (h *groupResourceHandler) scimMembers(r *http.Request, attrs protocol.Resou
 }
 
 func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	members, err := h.scimMembers(r, attrs)
+	members, err := h.scimMembers(r, memberValues(attrs["members"]))
 	if err != nil {
 		return protocol.Resource{}, err
 	}
@@ -417,50 +418,143 @@ func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protoco
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	members, err := h.scimMembers(r, attrs)
+	members, err := h.scimMembers(r, memberValues(attrs["members"]))
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	old := group.Members // SCIM-visible only: local memberships are never removed here
 	group.DisplayName = stringValue(attrs, "displayName", group.DisplayName)
 	group.ExternalID = stringValue(attrs, "externalId", group.ExternalID)
-	group.Members = members
+	return h.save(r, group, members)
+}
+
+// save writes group and moves its SCIM-visible members (group.Members) to members; local
+// memberships are never in either list, so they stay.
+func (h *groupResourceHandler) save(r *http.Request, group *store.Group, members []string) (protocol.Resource, error) {
 	if err := h.store.Groups().UpdateGroup(r.Context(), group); err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
+		return protocol.Resource{}, scimStoreError(err, group.ID)
 	}
-	if err := h.replaceMembers(r, id, old, group.Members); err != nil {
+	if err := h.replaceMembers(r, group.ID, group.Members, members); err != nil {
 		return protocol.Resource{}, err
 	}
+	group.Members = members
 	return groupResource(group), nil
 }
+
 func (h *groupResourceHandler) Delete(r *http.Request, id string) error {
 	if _, err := h.scimGroup(r, id); err != nil {
 		return err
 	}
 	return scimStoreError(h.store.Groups().DeleteGroup(r.Context(), id), id)
 }
+
+// Patch applies RFC 7644 3.5.2 to members: add appends (duplicates ignored), remove with
+// `members[value eq "<id>"]` drops that member, remove of `members` drops all, replace replaces.
+// displayName and externalId are replaced; other attributes are ignored.
 func (h *groupResourceHandler) Patch(r *http.Request, id string, operations []protocol.PatchOperation) (protocol.Resource, error) {
 	group, err := h.scimGroup(r, id)
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	attrs := protocol.ResourceAttributes{"displayName": group.DisplayName, "members": memberMaps(group.Members)}
+	p := groupPatch{group: group, members: slices.Clone(group.Members)}
 	for _, op := range operations {
-		if op.Path != nil {
-			attrs[op.Path.String()] = op.Value
+		if err := p.apply(op); err != nil {
+			return protocol.Resource{}, err
 		}
 	}
-	return h.Replace(r, id, attrs)
+	if _, err := h.scimMembers(r, p.named); err != nil {
+		return protocol.Resource{}, err
+	}
+	return h.save(r, group, slices.Sorted(slices.Values(p.members)))
 }
+
+// groupPatch is a group being patched: members are the SCIM-visible ones, named every member
+// an add or replace asked for, all checked before anything is written.
+type groupPatch struct {
+	group   *store.Group
+	members []string
+	named   []string
+}
+
+func (p *groupPatch) apply(op protocol.PatchOperation) error {
+	if op.Path == nil {
+		values, _ := op.Value.(map[string]interface{})
+		for key, value := range values {
+			p.set(op.Op, strings.ToLower(key), value)
+		}
+		return nil
+	}
+	attr := strings.ToLower(op.Path.AttributePath.AttributeName)
+	if attr != "members" {
+		if op.Op != protocol.PatchOperationRemove && op.Path.ValueExpression == nil && op.Path.SubAttribute == nil && op.Path.AttributePath.SubAttribute == nil {
+			p.set(op.Op, attr, op.Value)
+		}
+		return nil
+	}
+	switch {
+	case op.Path.SubAttribute != nil || op.Path.AttributePath.SubAttribute != nil:
+		return protocolErrors.ScimErrorInvalidPath
+	case op.Path.ValueExpression != nil:
+		id, ok := memberFilterID(op.Path.ValueExpression)
+		if !ok || op.Op != protocol.PatchOperationRemove {
+			return protocolErrors.ScimErrorInvalidFilter
+		}
+		p.members = slices.DeleteFunc(p.members, func(m string) bool { return m == id })
+	case op.Op == protocol.PatchOperationRemove:
+		p.members = nil
+	default:
+		p.set(op.Op, attr, op.Value)
+	}
+	return nil
+}
+
+func (p *groupPatch) set(op, attr string, value interface{}) {
+	switch attr {
+	case "displayname":
+		if v, ok := value.(string); ok && v != "" {
+			p.group.DisplayName = v
+		}
+	case "externalid":
+		if v, ok := value.(string); ok && v != "" {
+			p.group.ExternalID = v
+		}
+	case "members":
+		ids := memberValues(value)
+		p.named = append(p.named, ids...)
+		if op == protocol.PatchOperationReplace {
+			p.members = nil
+		}
+		for _, id := range ids {
+			if !slices.Contains(p.members, id) {
+				p.members = append(p.members, id)
+			}
+		}
+	}
+}
+
+// memberFilterID reads the one member filter supported: `value eq "<id>"`.
+func memberFilterID(expr filter.Expression) (string, bool) {
+	e, ok := expr.(*filter.AttributeExpression)
+	if !ok || e.Operator != filter.EQ || !strings.EqualFold(e.AttributePath.AttributeName, "value") || e.AttributePath.SubAttribute != nil || e.AttributePath.URIPrefix != nil {
+		return "", false
+	}
+	id, ok := e.CompareValue.(string)
+	return id, ok && id != ""
+}
+
+// replaceMembers moves groupID's members from old to next, touching only the difference.
 func (h *groupResourceHandler) replaceMembers(r *http.Request, groupID string, old, next []string) error {
 	for _, id := range old {
-		if err := h.store.Groups().RemoveGroupMember(r.Context(), groupID, id); err != nil {
-			return err
+		if !slices.Contains(next, id) {
+			if err := h.store.Groups().RemoveGroupMember(r.Context(), groupID, id); err != nil {
+				return err
+			}
 		}
 	}
 	for _, id := range next {
-		if err := h.store.Groups().AddGroupMember(r.Context(), groupID, id); err != nil {
-			return err
+		if !slices.Contains(old, id) {
+			if err := h.store.Groups().AddGroupMember(r.Context(), groupID, id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

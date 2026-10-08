@@ -10,6 +10,7 @@ require (
 	github.com/emersion/go-webdav v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/scim2/filter-parser/v2 v2.3.1
 	github.com/teambition/rrule-go v1.8.2
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sys v0.48.0
@@ -27,7 +28,6 @@ require (
 	github.com/q-uint/parser v0.3.1 // indirect
 	github.com/q-uint/xsd-datetime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/scim2/filter-parser/v2 v2.3.1 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
