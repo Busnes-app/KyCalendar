@@ -106,4 +106,20 @@ describe("Groups", () => {
     render(<Groups />);
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not load/i);
   });
+
+  it("pages past 200 groups with Load more", async () => {
+    const many = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ ...crew, id: `grp_${from + i}`, display_name: `G${from + i}` }));
+    mockFetch({
+      "GET /api/admin/groups": () => ({ groups: many(0, 200), total: 201 }),
+      "GET /api/admin/groups?offset=200": () => ({ groups: many(200, 1), total: 201 }),
+    });
+    render(<Groups />);
+    expect(await screen.findByText("Showing 200 of 201")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Showing 201 of 201")).toBeTruthy();
+    expect(screen.getByText("G200")).toBeTruthy();
+    expect(screen.getByText("G0")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
 });
+

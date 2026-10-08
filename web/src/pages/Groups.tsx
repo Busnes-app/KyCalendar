@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { JSON_HEADERS, REAUTH, SourceBadge, failure, send } from "../admin";
+import { JSON_HEADERS, LoadMore, REAUTH, SourceBadge, failure, pageURL, send } from "../admin";
 
 interface Group {
   id: string;
@@ -31,17 +31,21 @@ function calendarsLosing(n: number): string {
 
 export default function Groups() {
   const [groups, setGroups] = useState<Group[]>([]);
+  const [total, setTotal] = useState(0);
   const [name, setName] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const res = await send("/api/admin/groups");
+  // offset 0 starts the list over (after a change); more appends the next page.
+  const load = useCallback(async (offset = 0) => {
+    const res = await send(pageURL("/api/admin/groups", {}, offset));
     if (!res?.ok) {
       setError("Could not load groups. Reload the page to try again.");
       return;
     }
-    setGroups((await res.json()).groups);
+    const body = await res.json();
+    setGroups((prev) => (offset ? [...prev, ...body.groups] : body.groups));
+    setTotal(body.total);
   }, []);
 
   useEffect(() => {
@@ -121,6 +125,7 @@ export default function Groups() {
           />
         ))
       )}
+      <LoadMore shown={groups.length} total={total} onMore={() => void load(groups.length)} />
     </section>
   );
 }

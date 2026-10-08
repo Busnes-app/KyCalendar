@@ -152,4 +152,30 @@ describe("People", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Reattach sam to current sign-in" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/sign in again/i);
   });
+
+  it("pages past 200 people with Load more, and a search starts over", async () => {
+    const many = (from: number, n: number) => Array.from({ length: n }, (_, i) => person({ id: `u${from + i}`, username: `p${from + i}` }));
+    const page = (list: unknown[], total: number) => ({ users: list, total, signin_binding: "" });
+    mockFetch({
+      "GET /api/admin/users": () => page(many(0, 200), 250),
+      "GET /api/admin/users?offset=200": () => page(many(200, 50), 250),
+      "GET /api/admin/users?q=p1": () => page(many(1000, 200), 201),
+      "GET /api/admin/users?q=p1&offset=200": () => page(many(1200, 1), 201),
+    });
+    render(<People me="u0" />);
+    expect(await screen.findByText("Showing 200 of 250")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Showing 250 of 250")).toBeTruthy();
+    expect(screen.getByText("p249")).toBeTruthy();
+    expect(screen.getByText("p0")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "p1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("Showing 200 of 201")).toBeTruthy();
+    expect(screen.queryByText("p0")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Showing 201 of 201")).toBeTruthy();
+    expect(screen.getByText("p1200")).toBeTruthy();
+  });
 });
