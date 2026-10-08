@@ -464,13 +464,13 @@ type failingUpdates struct{ store.Store }
 type failingUserStore struct{ store.UserStore }
 
 func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
-func (failingUserStore) UpdateUser(context.Context, *store.User) error {
+func (failingUserStore) UpdateSCIMUser(context.Context, *store.User) error {
 	return errors.New("update refused")
 }
 
-// A role or status change revokes first: when the write then fails, the user is signed out
-// and keeps the old role, so no old session ever runs under the new one.
-func TestSCIMRevokesBeforeStoringPrivilegeChange(t *testing.T) {
+// A role or status change and its revocation are one write: when it fails, the role, the status
+// and the grants are as before, so no session ever runs under the new role.
+func TestSCIMFailedPrivilegeChangeChangesNothing(t *testing.T) {
 	cases := map[string]func(id string) (string, any){
 		"put promotion": func(id string) (string, any) {
 			return "PUT", map[string]any{"schemas": []string{scim.SchemaUser}, "userName": id, "active": true,
@@ -506,12 +506,6 @@ func TestSCIMRevokesBeforeStoringPrivilegeChange(t *testing.T) {
 			method, body := req(id)
 			if w := scimDo(t, srv.AuthMiddleware(mux), token, method, "/scim/v2/Users/"+id, body); w.Code < 400 {
 				t.Fatalf("%s succeeded despite the failing write: %d", method, w.Code)
-			}
-			if _, err := real.Sessions().GetSession(ctx, "tok_"+id); !errors.Is(err, store.ErrNotFound) {
-				t.Fatalf("session survived a failed privilege change: %v", err)
-			}
-			if list, _ := real.AppPasswords().ListByUser(ctx, id); len(list) != 0 {
-				t.Fatal("app passwords survived a failed privilege change")
 			}
 			if u, _ := real.Users().GetUserByID(ctx, id); u.Role != "user" || u.Status != "active" {
 				t.Fatalf("change stored despite the failure: role %q status %q", u.Role, u.Status)

@@ -759,14 +759,62 @@ func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, emai
 }
 
 func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
-	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	tx, err := u.store.beginTx(ctx)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	defer tx.Rollback()
+	// Row first, as in changeAccess: an app-password issuance holding the row commits before the
+	// purge and is purged with the rest.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
+	user.UpdatedAt = time.Now().UTC()
+	tx, err := u.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Lock the row before reading its access, so the comparison is against the stored row.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), user.UpdatedAt, user.ID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	var role, status string
+	if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ?`), user.ID).Scan(&role, &status); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ?, role = ?, status = ? WHERE id = ?`),
+		user.Username, user.Email, user.DisplayName, user.Role, user.Status, user.ID); err != nil {
+		if isUniqueViolation(err) {
+			return ErrAlreadyExists
+		}
+		return err
+	}
+	if role != user.Role || status != user.Status {
+		if err := u.revokeGrants(ctx, tx, user.ID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (u *userStore) RevokeSSOUser(ctx context.Context, userID string, deactivate bool) error {

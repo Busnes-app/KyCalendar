@@ -74,15 +74,8 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	if user.Role == role {
 		return user, nil
 	}
-	// Revoke before storing the role: no old session runs under the new one, and a failure
-	// leaves the role unchanged so the next login revokes again.
-	if err := s.store.Sessions().DeleteUserSessions(ctx, user.ID); err != nil {
-		return nil, err
-	}
-	if err := s.store.AppPasswords().DeleteByUser(ctx, user.ID); err != nil {
-		return nil, err
-	}
-	// Role only: a status read above may be stale.
+	// Role only (a status read above may be stale), with the grants revoked in the same
+	// transaction, row first: no old session runs under the new role, and a failure changes nothing.
 	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
 		return nil, errAccountInactive
 	} else if err != nil {

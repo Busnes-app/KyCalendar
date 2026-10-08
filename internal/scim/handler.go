@@ -178,13 +178,12 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	oldRole, oldStatus := user.Role, user.Status
 	user.Username, _ = attrs["userName"].(string)
 	user.Email = primaryValue(attrs["emails"])
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
 	user.Role = roleFromSCIM(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
-	if err := h.save(r, user, oldRole, oldStatus); err != nil {
+	if err := h.save(r, user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
 	}
 	return userResource(user), nil
@@ -203,7 +202,6 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	oldRole, oldStatus := user.Role, user.Status
 	for _, op := range operations {
 		if op.Path == nil {
 			if values, ok := op.Value.(map[string]interface{}); ok && op.Op != protocol.PatchOperationRemove {
@@ -223,24 +221,16 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 			applyUserValue(user, attr, op.Value)
 		}
 	}
-	if err := h.save(r, user, oldRole, oldStatus); err != nil {
+	if err := h.save(r, user); err != nil {
 		return protocol.Resource{}, scimStoreError(err, id)
 	}
 	return userResource(user), nil
 }
 
-// save stores user. A role or status change revokes the user's sessions and app passwords
-// first, so no old session runs under the new role and a failed revocation stores nothing.
-func (h *userResourceHandler) save(r *http.Request, user *store.User, oldRole, oldStatus string) error {
-	if user.Role != oldRole || user.Status != oldStatus {
-		if err := h.store.Sessions().DeleteUserSessions(r.Context(), user.ID); err != nil {
-			return err
-		}
-		if err := h.store.AppPasswords().DeleteByUser(r.Context(), user.ID); err != nil {
-			return err
-		}
-	}
-	return h.store.Users().UpdateUser(r.Context(), user)
+// save stores user in one transaction, row first: a role or status change revokes every grant
+// with the write, so no old session runs under the new role and a failure changes nothing.
+func (h *userResourceHandler) save(r *http.Request, user *store.User) error {
+	return h.store.Users().UpdateSCIMUser(r.Context(), user)
 }
 
 // roleFromSCIM is "admin" only when the IdP sends the KyCalendar app role; any other value,

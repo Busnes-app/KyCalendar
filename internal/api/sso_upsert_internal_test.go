@@ -117,9 +117,9 @@ func (failingUserStore) SetSSORole(context.Context, string, string) error {
 	return errors.New("update failed")
 }
 
-// Revocation precedes the role write: if storing the promotion fails, the old everyday
-// session is already gone, and the next login still sees a change and revokes again.
-func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
+// The role write and its revocation are one transaction: a failed promotion leaves the role as
+// it was, the login fails, and the next login sees the change again.
+func TestUpsertSSOUserFailedRoleWriteChangesNothing(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
 	u := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e", SSOIssuer: kyBinding}
@@ -137,12 +137,6 @@ func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
 	s.store = failingUpdates{real}
 	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-e", Provider: "kysignon", Roles: []string{access.AdminAppRole}}, kyBinding); err == nil {
 		t.Fatal("want the update error")
-	}
-	if _, err := real.Sessions().GetSession(ctx, "tok_eve"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("everyday session survived a failed promotion: %v", err)
-	}
-	if list, _ := real.AppPasswords().ListByUser(ctx, u.ID); len(list) != 0 {
-		t.Fatal("app passwords survived a failed promotion")
 	}
 	if got, _ := real.Users().GetUserByID(ctx, u.ID); got.Role != "user" {
 		t.Fatalf("role stored despite the failure: %q", got.Role)

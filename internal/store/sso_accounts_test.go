@@ -178,3 +178,64 @@ func TestWebhookWritesNeverActivate(t *testing.T) {
 		t.Fatalf("local session revoked: %v", err)
 	}
 }
+
+// SetSSORole and UpdateSCIMUser revoke with the write, row first, in one transaction:
+// UpdateSCIMUser only when role or status changed; a refused write changes nothing.
+func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	eve := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "e1"}
+	dan := &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "d1"}
+	loc := &store.User{ID: "usr_loc", Username: "loc", Role: "user", Status: "active", SSOProvider: "local"}
+	seedUsers(t, st, eve, dan, loc)
+	for _, u := range []*store.User{eve, dan, loc} {
+		seedSession(t, st, u)
+	}
+	grants := func(id string) int {
+		list, _ := st.AppPasswords().ListByUser(ctx, id)
+		_, err := st.Sessions().GetSession(ctx, "tok_"+id)
+		if err == nil {
+			return len(list) + 1
+		}
+		return len(list)
+	}
+
+	if err := st.Users().SetSSORole(ctx, eve.ID, "admin"); err != nil || grants(eve.ID) != 0 {
+		t.Fatalf("SetSSORole: %v, %d grants left", err, grants(eve.ID))
+	}
+	if err := st.Users().SetSSORole(ctx, loc.ID, "admin"); !errors.Is(err, store.ErrNotFound) || grants(loc.ID) != 2 {
+		t.Fatalf("SetSSORole on a local account: %v, %d grants", err, grants(loc.ID))
+	}
+
+	// A profile-only change keeps the grants.
+	edited := *dan
+	edited.DisplayName = "Dan D"
+	if err := st.Users().UpdateSCIMUser(ctx, &edited); err != nil || grants(dan.ID) != 2 {
+		t.Fatalf("profile change: %v, %d grants", err, grants(dan.ID))
+	}
+	// A refused write (an exact duplicate username) changes nothing, the access change included.
+	clash := edited
+	clash.Username, clash.Role = "eve", "admin"
+	if err := st.Users().UpdateSCIMUser(ctx, &clash); !errors.Is(err, store.ErrAlreadyExists) {
+		t.Fatalf("duplicate username: %v", err)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Role != "user" || u.Username != "dan" || grants(dan.ID) != 2 {
+		t.Fatalf("a refused write changed %+v, %d grants", u, grants(dan.ID))
+	}
+	off := edited
+	off.Status = "inactive"
+	if err := st.Users().UpdateSCIMUser(ctx, &off); err != nil || grants(dan.ID) != 0 {
+		t.Fatalf("deactivation: %v, %d grants left", err, grants(dan.ID))
+	}
+	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.DisplayName != "Dan D" || u.SSOProvider != "scim" {
+		t.Fatalf("after deactivation: %+v", u)
+	}
+	localEdit := *loc
+	localEdit.Role = "admin"
+	if err := st.Users().UpdateSCIMUser(ctx, &localEdit); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("UpdateSCIMUser on a local account: %v", err)
+	}
+	if u, _ := st.Users().GetUserByID(ctx, loc.ID); u.Role != "user" {
+		t.Fatalf("a local account changed: %+v", u)
+	}
+}

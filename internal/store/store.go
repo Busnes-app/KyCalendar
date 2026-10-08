@@ -91,8 +91,15 @@ type UserStore interface {
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
 	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
-	// back a status it read before a concurrent deactivation. Inactive, local or missing: ErrNotFound.
+	// back a status it read before a concurrent deactivation, and in the same transaction (row
+	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,
+	// local or missing: ErrNotFound.
 	SetSSORole(ctx context.Context, userID, role string) error
+	// UpdateSCIMUser writes a non-local account's username, email, display name, role and status
+	// and, when role or status changed from the stored row, deletes its grants in the same
+	// transaction, row first. Local or missing: ErrNotFound; a username another row holds
+	// exactly: ErrAlreadyExists.
+	UpdateSCIMUser(ctx context.Context, u *User) error
 	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and
 	// app passwords in one transaction, after setting it inactive when deactivate is true (rows
 	// first). It never sets an account active. Local or missing: ErrNotFound.
