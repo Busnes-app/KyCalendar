@@ -153,45 +153,45 @@ describe("People", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/sign in again/i);
   });
 
-  it("pages past 200 people with Load more, and a search starts over", async () => {
-    const many = (from: number, n: number) => Array.from({ length: n }, (_, i) => person({ id: `u${from + i}`, username: `p${from + i}` }));
-    const page = (list: unknown[], total: number) => ({ users: list, total, signin_binding: "" });
+  // Small pages: the client pages by the rows it holds, whatever the server's page size.
+  const many = (prefix: string, from: number, n: number) =>
+    Array.from({ length: n }, (_, i) => person({ id: `${prefix}${from + i}`, username: `${prefix}${from + i}` }));
+  const page = (list: unknown[], total: number) => ({ users: list, total, signin_binding: "" });
+
+  it("pages with Load more, and a search starts over", async () => {
     mockFetch({
-      "GET /api/admin/users": () => page(many(0, 200), 250),
-      "GET /api/admin/users?offset=200": () => page(many(200, 50), 250),
-      "GET /api/admin/users?q=p1": () => page(many(1000, 200), 201),
-      "GET /api/admin/users?q=p1&offset=200": () => page(many(1200, 1), 201),
+      "GET /api/admin/users": () => page(many("p", 0, 3), 5),
+      "GET /api/admin/users?offset=3": () => page(many("p", 3, 2), 5),
+      "GET /api/admin/users?q=s": () => page(many("s", 0, 3), 4),
+      "GET /api/admin/users?q=s&offset=3": () => page(many("s", 3, 1), 4),
     });
     render(<People me="u0" />);
-    expect(await screen.findByText("Showing 200 of 250")).toBeTruthy();
+    expect(await screen.findByText("Showing 3 of 5")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("p249")).toBeTruthy();
+    expect(await screen.findByText("p4")).toBeTruthy();
     expect(screen.queryByText(/^Showing/)).toBeNull();
     expect(screen.getByText("p0")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "s" } });
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    expect(await screen.findByText("Showing 200 of 201")).toBeTruthy();
+    expect(await screen.findByText("Showing 3 of 4")).toBeTruthy();
     expect(screen.queryByText("p0")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("p1200")).toBeTruthy();
+    expect(await screen.findByText("s3")).toBeTruthy();
     expect(screen.queryByText(/^Showing/)).toBeNull();
   });
-
-  const many = (from: number, n: number) => Array.from({ length: n }, (_, i) => person({ id: `u${from + i}`, username: `p${from + i}` }));
-  const page = (list: unknown[], total: number) => ({ users: list, total, signin_binding: "" });
 
   it("appends a page once on a double click", async () => {
     let calls = 0;
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     mockFetch({
-      "GET /api/admin/users": () => page(many(0, 200), 260),
-      "GET /api/admin/users?offset=200": async () => {
+      "GET /api/admin/users": () => page(many("p", 0, 3), 7),
+      "GET /api/admin/users?offset=3": async () => {
         calls++;
         await gate;
-        return page(many(200, 10), 260);
+        return page(many("p", 3, 2), 7);
       },
     });
     render(<People me="u0" />);
@@ -200,19 +200,19 @@ describe("People", () => {
     fireEvent.click(more);
     await waitFor(() => expect((more as HTMLButtonElement).disabled).toBe(true));
     release();
-    expect(await screen.findByText("Showing 210 of 260")).toBeTruthy();
+    expect(await screen.findByText("Showing 5 of 7")).toBeTruthy();
     expect(calls).toBe(1);
-    expect(screen.getAllByText("p200")).toHaveLength(1);
+    expect(screen.getAllByText("p3")).toHaveLength(1);
   });
 
   it("drops a Load more that a search overtook", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     mockFetch({
-      "GET /api/admin/users": () => page(many(0, 200), 250),
-      "GET /api/admin/users?offset=200": async () => {
+      "GET /api/admin/users": () => page(many("p", 0, 3), 5),
+      "GET /api/admin/users?offset=3": async () => {
         await gate;
-        return page(many(200, 50), 250);
+        return page(many("p", 3, 2), 5);
       },
       "GET /api/admin/users?q=zed": () => page([person({ id: "z", username: "zed" })], 1),
     });
@@ -223,7 +223,7 @@ describe("People", () => {
     expect(await screen.findByText("zed")).toBeTruthy();
     release();
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.queryByText("p200")).toBeNull();
+    expect(screen.queryByText("p3")).toBeNull();
     expect(screen.queryByText("p0")).toBeNull();
     expect(screen.queryByText(/^Showing/)).toBeNull();
   });
