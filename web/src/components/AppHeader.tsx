@@ -20,7 +20,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         { id: 'group-calendars', label: 'Group calendars', icon: CalendarDays },
         { id: 'signin', label: 'Sign-in', icon: KeyRound },
         { id: 'scim', label: 'Directory & SCIM', icon: Users },
-        { id: 'backup', label: 'KyBackup (Feature 0)', icon: Archive },
+        { id: 'backup', label: 'KyBackup', icon: Archive },
         { id: 'settings', label: 'Settings & DB', icon: SettingsIcon },
       ]
     : [

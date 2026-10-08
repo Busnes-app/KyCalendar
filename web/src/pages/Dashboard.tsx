@@ -28,7 +28,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate
       actionLabel: 'Manage groups',
     },
     {
-      title: 'Feature 0: KyBackup & Recovery',
+      title: 'KyBackup & Recovery',
       desc: 'Encrypted capsule container generation and automated sandboxed restore drills.',
       status: 'Verified Ready',
       statusType: 'success',
