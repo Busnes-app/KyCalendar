@@ -460,55 +460,68 @@ func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
 	}
 }
 
-type failingUpdates struct{ store.Store }
-type failingUserStore struct{ store.UserStore }
-
-func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
-func (failingUserStore) UpdateSCIMUser(context.Context, *store.User) error {
-	return errors.New("update refused")
-}
-
-// A role or status change and its revocation are one write: when it fails, the role, the status
-// and the grants are as before, so no session ever runs under the new role.
-func TestSCIMFailedPrivilegeChangeChangesNothing(t *testing.T) {
-	cases := map[string]func(id string) (string, any){
-		"put promotion": func(id string) (string, any) {
-			return "PUT", map[string]any{"schemas": []string{scim.SchemaUser}, "userName": id, "active": true,
-				"roles": []any{map[string]any{"value": "kycalendar.admin"}}}
-		},
-		"patch deactivation": func(string) (string, any) {
-			return "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{{"op": "replace", "path": "active", "value": false}}}
-		},
+// Access removal fails closed: a deactivation or demotion whose profile write fails (here a
+// userName another row holds) still lands with every grant revoked, and SCIM gets the error.
+// A change that grants access is all or nothing: it fails with the profile and changes nothing.
+func TestSCIMAccessChangeWithAFailingProfileWrite(t *testing.T) {
+	user := func(active bool, roles ...string) map[string]any {
+		body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "taken", "active": active}
+		if len(roles) > 0 {
+			body["roles"] = []any{map[string]any{"value": roles[0]}}
+		}
+		return body
 	}
-	for name, req := range cases {
-		t.Run(name, func(t *testing.T) {
+	cases := []struct {
+		name, role, status string
+		method             string
+		body               any
+		wantRole, wantStat string
+		revoked            bool
+	}{
+		{"put deactivation", "user", "active", "PUT", user(false), "user", "inactive", true},
+		{"patch deactivation", "user", "active", "PATCH", map[string]any{"schemas": []string{scim.SchemaPatchOp}, "Operations": []map[string]any{
+			{"op": "replace", "path": "active", "value": false}, {"op": "replace", "path": "userName", "value": "taken"}}}, "user", "inactive", true},
+		{"put demotion", "admin", "active", "PUT", user(true), "user", "active", true},
+		{"put promotion", "user", "active", "PUT", user(true, "kycalendar.admin"), "user", "active", false},
+		{"put activation", "user", "inactive", "PUT", user(true), "user", "inactive", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, st, token := scimWithStore(t)
 			ctx := context.Background()
-			real, err := store.Open(ctx, testdb.Config(t))
-			if err != nil {
+			if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_taken", Username: "taken", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "t1"}); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = real.Close() })
-			id := "usr_" + strings.ReplaceAll(name, " ", "_")
-			if err := real.Users().CreateUser(ctx, &store.User{ID: id, Username: id, Role: "user", Status: "active", SSOProvider: "scim"}); err != nil {
+			if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_dan", Username: "dan", Role: tc.role, Status: "active", SSOProvider: "scim", SSOSubject: "d1"}); err != nil {
 				t.Fatal(err)
 			}
 			now := time.Now().UTC()
-			if err := real.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + id, UserID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+			if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_dan", UserID: "usr_dan", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
 				t.Fatal(err)
 			}
-			if err := real.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "phone", Hash: "h"}, 0); err != nil {
+			if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_dan", UserID: "usr_dan", Label: "phone", Hash: "h"}, 0); err != nil {
 				t.Fatal(err)
 			}
-			token := "scim-secret-bearer-token"
-			srv := scim.NewServer(failingUpdates{real}, config.SCIMConfig{Enabled: true, BearerToken: token}, "http://localhost:8080")
-			mux := http.NewServeMux()
-			srv.RegisterRoutes(mux.Handle)
-			method, body := req(id)
-			if w := scimDo(t, srv.AuthMiddleware(mux), token, method, "/scim/v2/Users/"+id, body); w.Code < 400 {
-				t.Fatalf("%s succeeded despite the failing write: %d", method, w.Code)
+			if tc.status != "active" {
+				if err := st.Users().RevokeSSOUser(ctx, "usr_dan", true); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if u, _ := real.Users().GetUserByID(ctx, id); u.Role != "user" || u.Status != "active" {
-				t.Fatalf("change stored despite the failure: role %q status %q", u.Role, u.Status)
+			w := scimDo(t, h, token, tc.method, "/scim/v2/Users/usr_dan", tc.body)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("%d %s, want 409 for the username clash", w.Code, w.Body.String())
+			}
+			u, _ := st.Users().GetUserByID(ctx, "usr_dan")
+			if u.Role != tc.wantRole || u.Status != tc.wantStat || u.Username != "dan" {
+				t.Fatalf("after the failed request: %s/%s %q, want %s/%s \"dan\"", u.Role, u.Status, u.Username, tc.wantRole, tc.wantStat)
+			}
+			_, sessErr := st.Sessions().GetSession(ctx, "tok_dan")
+			list, _ := st.AppPasswords().ListByUser(ctx, "usr_dan")
+			if gone := errors.Is(sessErr, store.ErrNotFound) && len(list) == 0; tc.revoked && !gone {
+				t.Fatalf("access removal left grants: session %v, %d app passwords", sessErr, len(list))
+			}
+			if tc.status == "active" && !tc.revoked && (sessErr != nil || len(list) != 1) {
+				t.Fatalf("a refused grant revoked: session %v, %d app passwords", sessErr, len(list))
 			}
 		})
 	}

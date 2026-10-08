@@ -179,8 +179,9 @@ func TestWebhookWritesNeverActivate(t *testing.T) {
 	}
 }
 
-// SetSSORole and UpdateSCIMUser revoke with the write, row first, in one transaction:
-// UpdateSCIMUser only when role or status changed; a refused write changes nothing.
+// SetSSORole and UpdateSCIMUser revoke with the write, row first: UpdateSCIMUser only when role
+// or status changed. A removal of access lands even if the profile write fails; a grant of
+// access with a failing profile write changes nothing.
 func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
@@ -222,10 +223,18 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Role != "user" || u.Username != "dan" || grants(dan.ID) != 2 {
 		t.Fatalf("a refused write changed %+v, %d grants", u, grants(dan.ID))
 	}
+	// A deactivation fails closed: it lands with its revocation even when the profile write fails.
 	off := edited
-	off.Status = "inactive"
-	if err := st.Users().UpdateSCIMUser(ctx, &off); err != nil || grants(dan.ID) != 0 {
-		t.Fatalf("deactivation: %v, %d grants left", err, grants(dan.ID))
+	off.Status, off.Username = "inactive", "eve"
+	if err := st.Users().UpdateSCIMUser(ctx, &off); !errors.Is(err, store.ErrAlreadyExists) || grants(dan.ID) != 0 {
+		t.Fatalf("deactivation with a clashing name: %v, %d grants left", err, grants(dan.ID))
+	}
+	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.Username != "dan" {
+		t.Fatalf("after the failed profile write: %+v", u)
+	}
+	off.Username = "dan"
+	if err := st.Users().UpdateSCIMUser(ctx, &off); err != nil {
+		t.Fatalf("deactivation: %v", err)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, dan.ID); u.Status != "inactive" || u.DisplayName != "Dan D" || u.SSOProvider != "scim" {
 		t.Fatalf("after deactivation: %+v", u)

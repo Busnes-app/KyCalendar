@@ -802,17 +802,32 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 	if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ?`), user.ID).Scan(&role, &status); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ?, role = ?, status = ? WHERE id = ?`),
-		user.Username, user.Email, user.DisplayName, user.Role, user.Status, user.ID); err != nil {
-		if isUniqueViolation(err) {
-			return ErrAlreadyExists
-		}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ? WHERE id = ?`), user.Role, user.Status, user.ID); err != nil {
 		return err
 	}
 	if role != user.Role || status != user.Status {
 		if err := u.revokeGrants(ctx, tx, user.ID); err != nil {
 			return err
 		}
+	}
+	// Removing access fails closed: it commits on its own, so a profile write that then fails (a
+	// username clash) can never leave a departed person's grants live. Granting access commits
+	// only together with the profile.
+	if (status == "active" && user.Status != "active") || (role == "admin" && user.Role != "admin") {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		if tx, err = u.store.beginTx(ctx); err != nil {
+			return err
+		}
+		defer tx.Rollback()
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ? WHERE id = ? AND sso_provider <> 'local'`),
+		user.Username, user.Email, user.DisplayName, user.ID); err != nil {
+		if isUniqueViolation(err) {
+			return ErrAlreadyExists
+		}
+		return err
 	}
 	return tx.Commit()
 }

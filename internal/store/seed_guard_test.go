@@ -42,13 +42,17 @@ func TestSeedGrantorIsTestOnly(t *testing.T) {
 		}
 		checked++
 		inStore := filepath.Dir(path) == storeDir
-		local := "" // the name this file imports the store package under
+		names := map[string]bool{} // every name this file imports the store package under
 		for _, imp := range f.Imports {
 			if p, _ := strconv.Unquote(imp.Path.Value); p == storeImport {
-				local = "store"
+				name := "store"
 				if imp.Name != nil {
-					local = imp.Name.Name
+					name = imp.Name.Name
 				}
+				if name == "." { // Seed would read as a bare identifier: refuse the import itself
+					t.Errorf("%s: dot import of the store package", fset.Position(imp.Pos()))
+				}
+				names[name] = true
 			}
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
@@ -58,7 +62,7 @@ func TestSeedGrantorIsTestOnly(t *testing.T) {
 					return false // the declaration itself
 				}
 			case *ast.SelectorExpr:
-				if x, ok := n.X.(*ast.Ident); ok && local != "" && x.Name == local && n.Sel.Name == "Seed" {
+				if x, ok := n.X.(*ast.Ident); ok && names[x.Name] && n.Sel.Name == "Seed" {
 					t.Errorf("%s: store.Seed outside a _test.go file", fset.Position(n.Pos()))
 				}
 			case *ast.Ident:

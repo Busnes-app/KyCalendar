@@ -194,3 +194,26 @@ func TestUpsertSSOUserRoleChangeKeepsAConcurrentDeactivation(t *testing.T) {
 		t.Fatalf("fay: %s %s, want inactive user", got.Status, got.Role)
 	}
 }
+
+// A demotion fails closed: when the role write fails, the administrator's grants are revoked
+// anyway, so the IdP's removal of the role never leaves an admin session live.
+func TestUpsertSSOUserFailedDemotionSignsOut(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	u := &store.User{ID: "usr_ada", Username: "ada", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-a", SSOIssuer: kyBinding}
+	if err := s.store.Users().CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_ada", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+		t.Fatal(err)
+	}
+	real := s.store
+	s.store = failingUpdates{real}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-a", Provider: "kysignon"}, kyBinding); err == nil {
+		t.Fatal("want the update error")
+	}
+	if _, err := real.Sessions().GetSession(ctx, "tok_ada"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("an admin session survived a failed demotion: %v", err)
+	}
+}
