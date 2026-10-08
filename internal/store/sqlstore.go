@@ -811,9 +811,12 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User) error {
 		}
 	}
 	// Removing access fails closed: it commits on its own, so a profile write that then fails (a
-	// username clash) can never leave a departed person's grants live. Granting access commits
-	// only together with the profile.
-	if (status == "active" && user.Status != "active") || (role == "admin" && user.Role != "admin") {
+	// username clash) can never leave a departed person's grants live. A change that grants
+	// anything (activation, promotion), mixed or not, commits only together with the profile;
+	// failing, the row keeps its previous state.
+	removes := (status == "active" && user.Status != "active") || (role == "admin" && user.Role != "admin")
+	grants := (status != "active" && user.Status == "active") || (role != "admin" && user.Role == "admin")
+	if removes && !grants {
 		if err := tx.Commit(); err != nil {
 			return err
 		}

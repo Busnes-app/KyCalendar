@@ -75,7 +75,8 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 		return user, nil
 	}
 	// Role only (a status read above may be stale), with the grants revoked in the same
-	// transaction, row first: no old session runs under the new role, and a failure changes nothing.
+	// transaction, row first: no old session runs under the new role. A failed promotion changes
+	// nothing; a failed demotion still revokes the grants below.
 	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
 		return nil, errAccountInactive
 	} else if err != nil {

@@ -97,9 +97,9 @@ type UserStore interface {
 	SetSSORole(ctx context.Context, userID, role string) error
 	// UpdateSCIMUser writes a non-local account's role and status and, when they changed from the
 	// stored row, deletes its grants in the same transaction, row first; then its username, email
-	// and display name. A change that removes access (deactivation, demotion) commits before the
-	// profile write, so a failed profile write never leaves the grants live; any other change is
-	// one transaction with the profile. Local or missing: ErrNotFound; a username another row
+	// and display name. A change that only removes access (deactivation, demotion) commits before
+	// the profile write, so a failed profile write never leaves the grants live; a change that
+	// grants anything, mixed or not, is one transaction with the profile. Local or missing: ErrNotFound; a username another row
 	// holds exactly: ErrAlreadyExists.
 	UpdateSCIMUser(ctx context.Context, u *User) error
 	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and

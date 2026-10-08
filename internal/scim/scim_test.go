@@ -484,6 +484,8 @@ func TestSCIMAccessChangeWithAFailingProfileWrite(t *testing.T) {
 		{"put demotion", "admin", "active", "PUT", user(true), "user", "active", true},
 		{"put promotion", "user", "active", "PUT", user(true, "kycalendar.admin"), "user", "active", false},
 		{"put activation", "user", "inactive", "PUT", user(true), "user", "inactive", false},
+		// Mixed: reactivates (a grant) and demotes (a removal): all or nothing, the row stays as it was.
+		{"put reactivation with demotion", "admin", "inactive", "PUT", user(true), "admin", "inactive", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
