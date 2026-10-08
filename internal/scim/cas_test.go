@@ -2,6 +2,7 @@ package scim_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -65,6 +66,15 @@ func TestSCIMProfilePatchNeverRestoresAccess(t *testing.T) {
 			if w.Code != http.StatusOK {
 				t.Fatalf("patch: %d %s", w.Code, w.Body.String())
 			}
+			// The response is the stored account, not the request merged into a stale read.
+			var res struct {
+				Active bool  `json:"active"`
+				Roles  []any `json:"roles"`
+			}
+			_ = json.Unmarshal(w.Body.Bytes(), &res)
+			if res.Active != (tc.wantSt == "active") || (len(res.Roles) > 0) != (tc.wantRole == "admin") {
+				t.Fatalf("response %s, want the stored %s/%s", w.Body.String(), tc.wantRole, tc.wantSt)
+			}
 			u, _ := st.Users().GetUserByID(ctx, "usr_ada")
 			if u.Role != tc.wantRole || u.Status != tc.wantSt || u.DisplayName != "Ada L" {
 				t.Fatalf("after the patch: %s/%s %q, want %s/%s \"Ada L\"", u.Role, u.Status, u.DisplayName, tc.wantRole, tc.wantSt)
@@ -91,5 +101,48 @@ func TestSCIMGrantOnAChangedAccountAsksForARetry(t *testing.T) {
 	}
 	if u, _ := st.Users().GetUserByID(ctx, "usr_bo"); u.Role != "user" || u.DisplayName == "Bo" {
 		t.Fatalf("a refused grant wrote: %+v", u)
+	}
+}
+
+// A grant needs the whole access SCIM read to be unchanged: a promotion raced by a deactivation,
+// or an activation raced by a role change, is a 412 and grants nothing.
+func TestSCIMGrantNeedsRoleAndStatusUnchanged(t *testing.T) {
+	setRole := func(role string) func(st store.Store) {
+		return func(st store.Store) {
+			u, _ := st.Users().GetUserByID(context.Background(), "usr_cy")
+			u.Role = role
+			_ = st.Users().UpdateUser(context.Background(), u)
+		}
+	}
+	for _, tc := range []struct {
+		name             string
+		role, status     string
+		race             func(st store.Store)
+		active           bool
+		roles            []any
+		wantRole, wantSt string
+	}{
+		{"promotion raced by a deactivation", "user", "active", func(st store.Store) { _ = st.Users().RevokeSSOUser(context.Background(), "usr_cy", true) },
+			true, []any{map[string]any{"value": "kycalendar.admin"}}, "user", "inactive"},
+		{"activation raced by a promotion", "user", "inactive", setRole("admin"), true, nil, "admin", "inactive"},
+		{"activation raced by a demotion", "admin", "inactive", setRole("user"), true, []any{map[string]any{"value": "kycalendar.admin"}}, "user", "inactive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, st, token := racingSCIM(t, tc.race)
+			ctx := context.Background()
+			if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_cy", Username: "cy", Role: tc.role, Status: tc.status, SSOProvider: "scim", SSOSubject: "c1"}); err != nil {
+				t.Fatal(err)
+			}
+			body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "cy", "displayName": "Cy", "active": tc.active}
+			if tc.roles != nil {
+				body["roles"] = tc.roles
+			}
+			if w := scimDo(t, h, token, "PUT", "/scim/v2/Users/usr_cy", body); w.Code != http.StatusPreconditionFailed {
+				t.Fatalf("%d %s, want 412", w.Code, w.Body.String())
+			}
+			if u, _ := st.Users().GetUserByID(ctx, "usr_cy"); u.Role != tc.wantRole || u.Status != tc.wantSt || u.DisplayName == "Cy" {
+				t.Fatalf("after the refused grant: %+v", u)
+			}
+		})
 	}
 }

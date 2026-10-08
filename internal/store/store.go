@@ -167,6 +167,8 @@ type GroupStore interface {
 	CreateGroup(ctx context.Context, g *Group) error
 	GetGroupByID(ctx context.Context, id string) (*Group, error)
 	GetGroupByName(ctx context.Context, name string) (*Group, error)
+	// GroupsByExternalID lists the groups of source whose external ID is exactly externalID.
+	GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error)
 	UpdateGroup(ctx context.Context, g *Group) error
 	DeleteGroup(ctx context.Context, id string) error
 	// ListGroups pages groups by name; source "" lists every owner.

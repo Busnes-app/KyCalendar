@@ -429,6 +429,11 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 	if filter.SSOOnly {
 		where += " AND sso_provider <> 'local'"
 	}
+	if filter.Field == UserFieldSSOSubject {
+		in, pargs := inList(filter.Providers)
+		where += " AND sso_subject = ? AND sso_issuer = ? AND sso_provider <> 'local' AND sso_provider IN (" + in + ")"
+		args = append(append(args, filter.Value, filter.Issuer), pargs...)
+	}
 
 	var total int
 	if err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users "+where), args...).Scan(&total); err != nil {
@@ -853,17 +858,26 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User, expectedRole
 		}
 	}
 	newRole, newStatus := role, status
-	if expectedRole != "admin" && user.Role == "admin" { // promotion
-		if role != expectedRole {
+	promote := expectedRole != "admin" && user.Role == "admin"
+	activate := expectedStatus != "active" && user.Status == "active"
+	if promote || activate {
+		// A grant needs the whole access SCIM read, as this request's removal left it.
+		wantRole, wantStatus := expectedRole, expectedStatus
+		if demote {
+			wantRole = user.Role
+		}
+		if deactivate {
+			wantStatus = user.Status
+		}
+		if role != wantRole || status != wantStatus {
 			return ErrAccessChanged
 		}
-		newRole = user.Role
-	}
-	if expectedStatus != "active" && user.Status == "active" { // activation
-		if status != expectedStatus {
-			return ErrAccessChanged
+		if promote {
+			newRole = user.Role
 		}
-		newStatus = user.Status
+		if activate {
+			newStatus = user.Status
+		}
 	}
 	if err := u.setSSOAccess(ctx, tx, user.ID, role, status, newRole, newStatus); err != nil {
 		return err
@@ -1215,6 +1229,31 @@ func (g *groupStore) GetGroupByID(ctx context.Context, id string) (*Group, error
 		return nil, err
 	}
 	return grp, nil
+}
+
+func (g *groupStore) GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error) {
+	rows, err := g.store.db.QueryContext(ctx, g.store.rebind("SELECT "+groupColumns+" FROM groups WHERE external_id = ? AND source = ? ORDER BY display_name"), externalID, source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Group
+	for rows.Next() {
+		grp, err := scanGroup(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, grp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, grp := range out {
+		if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func (g *groupStore) GetGroupByName(ctx context.Context, name string) (*Group, error) {

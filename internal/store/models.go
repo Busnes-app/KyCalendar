@@ -132,6 +132,9 @@ const (
 	// UserFieldSearch is a case-insensitive substring of username, email or display name, for
 	// the admin People list. SCIM filters never map to it.
 	UserFieldSearch
+	// UserFieldSSOSubject is an exact, case-sensitive sso_subject of a non-local account of one of
+	// Providers bound to Issuer: SCIM's externalId lookup.
+	UserFieldSSOSubject
 )
 
 // UserFilter is an exact, case-insensitive match on one field, except UserFieldSearch, which is a
@@ -141,6 +144,9 @@ type UserFilter struct {
 	Field   UserField
 	Value   string
 	SSOOnly bool
+	// Issuer and Providers narrow UserFieldSSOSubject; both are required with it.
+	Issuer    string
+	Providers []string
 }
 
 // OwnerLimits caps one owner's calendar objects, and MaxTotalBytes every owner's together;

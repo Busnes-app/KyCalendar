@@ -143,7 +143,7 @@ func (h *userResourceHandler) Get(r *http.Request, id string) (protocol.Resource
 }
 
 // equalityFilter is the one filter shape IdPs send to look a user up: a single exact eq.
-var equalityFilter = regexp.MustCompile(`(?i)^\s*(userName|emails\.value|emails|email|displayName)\s+eq\s+"([^"]*)"\s*$`)
+var equalityFilter = regexp.MustCompile(`(?i)^\s*(userName|emails\.value|emails|email|displayName|externalId)\s+eq\s+"([^"]*)"\s*$`)
 
 var filterFields = map[string]store.UserField{
 	"username":     store.UserFieldUsername,
@@ -161,6 +161,16 @@ func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListReques
 			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
 		}
 		filter.Field, filter.Value = filterFields[strings.ToLower(match[1])], match[2]
+		if strings.EqualFold(match[1], "externalId") {
+			// KyIdentity's lookup of the account it provisions: its user ID is the sub. Exact, and
+			// only rows SCIM may adopt (KyIdentity's providers, the current binding), so a lookup
+			// never hands KyIdentity another binding's account.
+			bound, err := sso.Bound(r.Context(), h.store.Settings())
+			if err != nil {
+				return protocol.Page{}, err
+			}
+			filter.Field, filter.Issuer, filter.Providers = store.UserFieldSSOSubject, bound, sso.AccountProviders(sso.KindKyIdentity)
+		}
 	}
 	users, total, err := h.store.Users().ListUsers(r.Context(), params.StartIndex-1, params.Count, filter)
 	if err != nil {
@@ -184,10 +194,7 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
 	user.Role = roleFromSCIM(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
-	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
-	}
-	return userResource(user), nil
+	return h.saveAndRead(r, user, expectedRole, expectedStatus)
 }
 
 // Delete checks then deletes: a row's provider never changes, so it cannot become local between.
@@ -223,10 +230,20 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 			applyUserValue(user, attr, op.Value)
 		}
 	}
+	return h.saveAndRead(r, user, expectedRole, expectedStatus)
+}
+
+// saveAndRead saves user and answers with the account as stored, which a concurrent change may
+// have made differ from the request.
+func (h *userResourceHandler) saveAndRead(r *http.Request, user *store.User, expectedRole, expectedStatus string) (protocol.Resource, error) {
 	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
+		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
-	return userResource(user), nil
+	stored, err := h.store.Users().GetUserByID(r.Context(), user.ID)
+	if err != nil {
+		return protocol.Resource{}, scimStoreError(err, user.ID)
+	}
+	return userResource(stored), nil
 }
 
 // save stores user through UpdateSCIMUser against the role and status the handler read: SCIM
@@ -358,8 +375,31 @@ func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resourc
 	}
 	return groupResource(group), nil
 }
+
+// groupFilter is the one Groups filter: KyIdentity's lookup of a group it provisions.
+var groupFilter = regexp.MustCompile(`(?i)^\s*externalId\s+eq\s+"([^"]*)"\s*$`)
+
 func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
-	groups, total, err := h.store.Groups().ListGroups(r.Context(), params.StartIndex-1, params.Count, store.GroupSourceSCIM)
+	var groups []*store.Group
+	var total int
+	var err error
+	if raw := r.URL.Query().Get("filter"); raw != "" {
+		match := groupFilter.FindStringSubmatch(raw)
+		if len(match) != 2 {
+			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
+		}
+		// Exact, SCIM groups only; a lookup is never more than a page.
+		groups, err = h.store.Groups().GroupsByExternalID(r.Context(), match[1], store.GroupSourceSCIM)
+		total = len(groups)
+		if start := min(max(params.StartIndex-1, 0), len(groups)); err == nil {
+			groups = groups[start:]
+			if params.Count >= 0 && params.Count < len(groups) {
+				groups = groups[:params.Count]
+			}
+		}
+	} else {
+		groups, total, err = h.store.Groups().ListGroups(r.Context(), params.StartIndex-1, params.Count, store.GroupSourceSCIM)
+	}
 	if err != nil {
 		return protocol.Page{}, err
 	}
