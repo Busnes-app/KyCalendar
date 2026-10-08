@@ -157,7 +157,7 @@ func TestSCIMDeactivationRevokesAppPasswords(t *testing.T) {
 	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_ap", Username: "ap_user", Role: "user", Status: "active", SSOProvider: "scim"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw1", UserID: "usr_ap", Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw1", UserID: "usr_ap", Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,7 +234,7 @@ func TestSCIMRemovingRolesDemotesAdmin(t *testing.T) {
 			if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: id, Role: "admin", Status: "active", SSOProvider: "scim"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "x", Hash: "h"}); err != nil {
+			if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "x", Hash: "h"}, 0); err != nil {
 				t.Fatal(err)
 			}
 			method, body := req(id)
@@ -355,7 +355,7 @@ func TestSCIMDeactivationKeepsCalendars(t *testing.T) {
 	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_dana", OwnerKind: "user", OwnerID: id, Slug: "default", Name: "Calendar"}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_dana", UserID: id, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_dana", UserID: id, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	patch := func(active bool) {
@@ -396,7 +396,7 @@ func TestSCIMCreateAdoptsKySignOnUser(t *testing.T) {
 	if err := st.Users().CreateUser(ctx, &store.User{ID: id, Username: "yan", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-y", SSOIssuer: "kyidentity https://a.example"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_yan", UserID: id, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_yan", UserID: id, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	body := map[string]any{"schemas": []string{scim.SchemaUser}, "userName": "yan.k", "externalId": "sub-y", "displayName": "Yan K", "active": true,
@@ -496,7 +496,7 @@ func TestSCIMRevokesBeforeStoringPrivilegeChange(t *testing.T) {
 			if err := real.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + id, UserID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
 				t.Fatal(err)
 			}
-			if err := real.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "phone", Hash: "h"}); err != nil {
+			if err := real.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_" + id, UserID: id, Label: "phone", Hash: "h"}, 0); err != nil {
 				t.Fatal(err)
 			}
 			token := "scim-secret-bearer-token"

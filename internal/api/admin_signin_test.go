@@ -198,7 +198,7 @@ func TestSignInProviderChangeNeedsConfirmationAndDisables(t *testing.T) {
 	if err := st.Users().CreateUser(ctx, carol); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "ap_carol", UserID: carol.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "ap_carol", UserID: carol.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_carol", OwnerKind: "user", OwnerID: carol.ID, Slug: "home", Name: "Home"}, 0); err != nil {

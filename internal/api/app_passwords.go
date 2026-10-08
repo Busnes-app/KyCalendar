@@ -50,7 +50,8 @@ func (s *Server) handleListAppPasswords(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request) {
-	user, _, _ := s.sessions.AuthenticateRequest(r)
+	user := sessionUser(r.Context())
+	sess, _ := r.Context().Value(sessionKey{}).(*store.Session)
 	var req struct {
 		Label string `json:"label"`
 	}
@@ -63,22 +64,22 @@ func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadRequest, "Label must be 1 to 64 characters")
 		return
 	}
-	existing, err := s.store.AppPasswords().ListByUser(r.Context(), user.ID)
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
-		return
-	}
-	if len(existing) >= maxAppPasswordsPerUser {
-		s.writeError(w, http.StatusConflict, "Revoke an app password before creating another")
-		return
-	}
 	id, token, hash, err := apppass.Generate()
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
 		return
 	}
 	p := &store.AppPassword{ID: id, UserID: user.ID, Label: label, Hash: hash}
-	if err := s.store.AppPasswords().Create(r.Context(), p); err != nil {
+	// The store rechecks the session under the user-row lock: a purge that committed since
+	// authentication (a role or status change, a reattach) refuses the credential.
+	switch err := s.store.AppPasswords().Create(r.Context(), store.SessionGrantor(sess.TokenHash, user.PasswordHash), p, maxAppPasswordsPerUser); {
+	case errors.Is(err, store.ErrSessionExpired):
+		s.writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	case errors.Is(err, store.ErrQuotaExceeded):
+		s.writeError(w, http.StatusConflict, "Revoke an app password before creating another")
+		return
+	case err != nil:
 		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
 		return
 	}

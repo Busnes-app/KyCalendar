@@ -26,10 +26,52 @@ func scanAppPassword(row interface{ Scan(...any) error }) (*AppPassword, error) 
 
 const appPasswordCols = `id, user_id, label, hash, created_at, last_used_at`
 
-func (a *appPasswordStore) Create(ctx context.Context, p *AppPassword) error {
+func (a *appPasswordStore) Create(ctx context.Context, by Grantor, p *AppPassword, max int) error {
 	p.CreatedAt = time.Now().UTC()
-	_, err := a.store.db.ExecContext(ctx, a.q(`INSERT INTO app_passwords (id, user_id, label, hash, created_at) VALUES (?, ?, ?, ?, ?)`),
-		p.ID, p.UserID, p.Label, p.Hash, p.CreatedAt)
+	insert := func(tx *sql.Tx) error {
+		if max > 0 {
+			var n int
+			if err := tx.QueryRowContext(ctx, a.q(`SELECT COUNT(1) FROM app_passwords WHERE user_id = ?`), p.UserID).Scan(&n); err != nil {
+				return err
+			}
+			if n >= max {
+				return ErrQuotaExceeded
+			}
+		}
+		_, err := tx.ExecContext(ctx, a.q(`INSERT INTO app_passwords (id, user_id, label, hash, created_at) VALUES (?, ?, ?, ?, ?)`),
+			p.ID, p.UserID, p.Label, p.Hash, p.CreatedAt)
+		return err
+	}
+	if by.seed {
+		tx, err := a.store.beginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := insert(tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if by.sessionHash == "" {
+		return ErrSessionExpired
+	}
+	// The row lock waits for any purge that updates the row first (SetRole, SetStatus,
+	// ReattachSSOUser, BindSignIn, password changes); the session recheck then sees it.
+	err := a.store.withPassword(ctx, p.UserID, by.passwordHash, func(tx *sql.Tx) error {
+		var n int
+		if err := tx.QueryRowContext(ctx, a.q(`SELECT COUNT(1) FROM sessions WHERE token_hash = ? AND user_id = ? AND expires_at > ?`),
+			by.sessionHash, p.UserID, time.Now().UTC()).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrSessionExpired
+		}
+		return insert(tx)
+	})
+	if errors.Is(err, ErrNotFound) { // inactive, or the password changed since authentication
+		return ErrSessionExpired
+	}
 	return err
 }
 

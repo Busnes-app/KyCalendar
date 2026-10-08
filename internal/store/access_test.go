@@ -27,7 +27,7 @@ func seedSession(t *testing.T, st store.Store, u *store.User) {
 	if err := st.Sessions().CreateSession(context.Background(), &store.Session{TokenHash: "tok_" + u.ID, UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.PasswordHash); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: "ap_" + u.ID, UserID: u.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(context.Background(), store.Seed, &store.AppPassword{ID: "ap_" + u.ID, UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 }

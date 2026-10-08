@@ -184,9 +184,30 @@ type SettingsStore interface {
 	GetAllSettings(ctx context.Context) (map[string]string, error)
 }
 
+// Grantor is who issues an app password: a signed-in session, rechecked inside the insert's
+// transaction, or Seed (fixtures), which is not. The zero Grantor is refused.
+type Grantor struct {
+	sessionHash, passwordHash string
+	seed                      bool
+}
+
+// Seed issues without a session: test and fixture data only.
+var Seed = Grantor{seed: true}
+
+// SessionGrantor is the session with token hash sessionHash, of a user whose password hash was
+// passwordHash when the request was authenticated.
+func SessionGrantor(sessionHash, passwordHash string) Grantor {
+	return Grantor{sessionHash: sessionHash, passwordHash: passwordHash}
+}
+
 // AppPasswordStore persists per-user app passwords for native CalDAV clients.
 type AppPasswordStore interface {
-	Create(ctx context.Context, p *AppPassword) error
+	// Create stores p in one transaction. A session grantor first locks the user row as session
+	// issuance does (active, password unchanged) and rechecks that its session is live and the
+	// user's, so a credential is never minted after a purge (role, status, reattach, password
+	// change) committed: ErrSessionExpired. Then the user's count is checked against max (0 = no
+	// limit; ErrQuotaExceeded) and p inserted.
+	Create(ctx context.Context, by Grantor, p *AppPassword, max int) error
 	Get(ctx context.Context, id string) (*AppPassword, error)
 	ListByUser(ctx context.Context, userID string) ([]*AppPassword, error)
 	Delete(ctx context.Context, userID, id string) error // ErrNotFound if not the user's

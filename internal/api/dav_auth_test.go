@@ -23,7 +23,7 @@ func davUser(t *testing.T, st store.Store, username, role string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: id, UserID: "usr_" + username, Label: "t", Hash: hash}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: id, UserID: "usr_" + username, Label: "t", Hash: hash}, 0); err != nil {
 		t.Fatal(err)
 	}
 	return token

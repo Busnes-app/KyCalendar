@@ -88,7 +88,7 @@ func newWorld(t *testing.T) *world {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: id, UserID: "usr_" + string(a), Label: "matrix", Hash: hash}); err != nil {
+		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: id, UserID: "usr_" + string(a), Label: "matrix", Hash: hash}, 0); err != nil {
 			t.Fatal(err)
 		}
 		w.tokens[a], w.passIDs[a] = token, id

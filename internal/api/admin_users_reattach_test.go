@@ -31,7 +31,7 @@ func carolOf(t *testing.T, st store.Store) *store.User {
 		t.Fatal(err)
 	}
 	sessionFor(t, st, carol)
-	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: "ap_carol", UserID: carol.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(context.Background(), store.Seed, &store.AppPassword{ID: "ap_carol", UserID: carol.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	carol.Status = "inactive" // whole-row write: the grants stay, so the reattach must revoke them

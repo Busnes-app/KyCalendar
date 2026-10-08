@@ -54,7 +54,7 @@ func TestAdminRoleAndStatusRules(t *testing.T) {
 	ctx := context.Background()
 	admin := loginAs(t, srv, st, "root", "admin")
 	bob := loginAs(t, srv, st, "bob", "user")
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "ap_bob", UserID: "usr_bob", Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "ap_bob", UserID: "usr_bob", Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 

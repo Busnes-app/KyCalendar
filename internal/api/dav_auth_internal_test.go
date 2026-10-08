@@ -70,7 +70,7 @@ func TestDAVAuthInternalAuditsIDsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, token, hash, _ := apppass.Generate()
-	if err := s.store.AppPasswords().Create(ctx, &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}); err != nil {
+	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}, 0); err != nil {
 		t.Fatal(err)
 	}
 	_, garbage, _, _ := apppass.Generate()

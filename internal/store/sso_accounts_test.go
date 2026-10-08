@@ -22,7 +22,7 @@ func TestBindSignInDisablesSSOAccounts(t *testing.T) {
 		seedSession(t, st, u)
 	}
 	// An inactive account cannot get a session, but a leftover app password must still go.
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "ap_" + off.ID, UserID: off.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "ap_" + off.ID, UserID: off.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_ky", OwnerKind: "user", OwnerID: ky.ID, Slug: "default", Name: "Calendar"}, 0); err != nil {
