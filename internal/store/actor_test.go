@@ -19,7 +19,8 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 	root := &store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"}
 	bob := &store.User{ID: "usr_bob", Username: "bob", Role: "admin", Status: "active", SSOProvider: "local"}
 	ann := &store.User{ID: "usr_ann", Username: "ann", PasswordHash: "h_ann", Role: "user", Status: "active", SSOProvider: "local"}
-	seedUsers(t, st, root, bob, ann)
+	carol := &store.User{ID: "usr_carol", Username: "carol", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s1", SSOIssuer: "kyidentity https://a.example"}
+	seedUsers(t, st, root, bob, ann, carol)
 	seedSession(t, st, bob)
 	bobActs := store.AdminActor(bob.ID, "tok_"+bob.ID)
 
@@ -31,6 +32,10 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 		"restore self": func(a store.Actor) error { return st.Users().SetRole(ctx, a, bob.ID, "admin") },
 		"enable self":  func(a store.Actor) error { return st.Users().SetStatus(ctx, a, bob.ID, "active") },
 		"demote root":  func(a store.Actor) error { return st.Users().SetRole(ctx, a, root.ID, "user") },
+		"reattach carol": func(a store.Actor) error {
+			_, err := st.Users().ReattachSSOUser(ctx, a, carol.ID, "kyidentity https://b.example")
+			return err
+		},
 		"bind sign-in": func(a store.Actor) error {
 			_, err := st.Users().BindSignIn(ctx, a, store.SignInBinding{Disable: []string{"kysignon"}}, map[string]string{"signin_provider": "oidc"})
 			return err
@@ -44,8 +49,8 @@ func TestAccessWritesRecheckTheActor(t *testing.T) {
 	}
 	unchanged := func(why string) {
 		t.Helper()
-		for _, want := range []*store.User{root, ann} {
-			if u, _ := st.Users().GetUserByID(ctx, want.ID); u.Role != want.Role || u.Status != want.Status || u.PasswordHash != want.PasswordHash {
+		for _, want := range []*store.User{root, ann, carol} {
+			if u, _ := st.Users().GetUserByID(ctx, want.ID); u.Role != want.Role || u.Status != want.Status || u.PasswordHash != want.PasswordHash || u.SSOIssuer != want.SSOIssuer {
 				t.Errorf("%s: %s changed to role=%s status=%s hash=%s", why, want.ID, u.Role, u.Status, u.PasswordHash)
 			}
 		}
@@ -198,5 +203,163 @@ func TestActorRecheckWaitsForTheAccessLock(t *testing.T) {
 				t.Fatalf("write after the demotion committed: %v, want ErrActorRevoked", err)
 			}
 		})
+	}
+}
+
+// An SSO revocation of the acting administrator and an access write by that administrator are
+// serialised on the actor's users row: the write locks it before its target, so a demotion
+// committed first refuses the write and one arriving later waits for the write to commit. Never
+// does the write land after the demotion committed.
+func TestActorRowSerialisesWithSSORevocation(t *testing.T) {
+	if testdb.Config(t).Driver != "postgres" {
+		t.Skip("postgres only: SQLite's single connection serialises the two")
+	}
+	const oldBinding, newBinding = "kyidentity https://a.example", "kyidentity https://b.example"
+	writes := map[string]struct {
+		target func(*store.User) bool // true while the target is as seeded
+		write  func(context.Context, store.Store, store.Actor) error
+	}{
+		"reattach": {
+			target: func(u *store.User) bool { return u.SSOIssuer == oldBinding && u.Status == "inactive" },
+			write: func(ctx context.Context, st store.Store, a store.Actor) error {
+				_, err := st.Users().ReattachSSOUser(ctx, a, "usr_target", newBinding)
+				return err
+			},
+		},
+		"disable": {
+			target: func(u *store.User) bool { return u.Status == "active" },
+			write: func(ctx context.Context, st store.Store, a store.Actor) error {
+				return st.Users().SetStatus(ctx, a, "usr_local", "inactive")
+			},
+		},
+	}
+	revocations := map[string]struct {
+		raw string // the revocation's row-first statement, held open by a raw transaction
+		run func(context.Context, store.Store) error
+	}{
+		"SetSSORole": {
+			raw: `UPDATE users SET role = 'user' WHERE id = 'usr_sso'`,
+			run: func(ctx context.Context, st store.Store) error { return st.Users().SetSSORole(ctx, "usr_sso", "user") },
+		},
+		"RevokeSSOUser": {
+			raw: `UPDATE users SET status = 'inactive' WHERE id = 'usr_sso'`,
+			run: func(ctx context.Context, st store.Store) error { return st.Users().RevokeSSOUser(ctx, "usr_sso", true) },
+		},
+	}
+	for wname, w := range writes {
+		for rname, r := range revocations {
+			setup := func(t *testing.T) (context.Context, store.Store, *sql.DB, func() *store.User) {
+				ctx := context.Background()
+				cfg := testdb.Config(t)
+				st, err := store.Open(ctx, cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = st.Close() })
+				sso := &store.User{ID: "usr_sso", Username: "sso", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "s0", SSOIssuer: oldBinding}
+				seedUsers(t, st, sso,
+					&store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"},
+					&store.User{ID: "usr_target", Username: "target", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s1", SSOIssuer: oldBinding},
+					&store.User{ID: "usr_local", Username: "local", Role: "user", Status: "active", SSOProvider: "local"})
+				seedSession(t, st, sso)
+				raw, err := sql.Open("pgx", cfg.DSN)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = raw.Close() })
+				target := map[string]string{"reattach": "usr_target", "disable": "usr_local"}[wname]
+				get := func() *store.User {
+					u, err := st.Users().GetUserByID(ctx, target)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return u
+				}
+				return ctx, st, raw, get
+			}
+			actor := store.AdminActor("usr_sso", "tok_usr_sso")
+
+			// The demotion holds the actor's row first: the write waits, then is refused.
+			t.Run(wname+"/after "+rname, func(t *testing.T) {
+				ctx, st, raw, target := setup(t)
+				demotion, err := raw.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer demotion.Rollback()
+				for _, q := range []string{r.raw, `DELETE FROM sessions WHERE user_id = 'usr_sso'`} {
+					if _, err := demotion.ExecContext(ctx, q); err != nil {
+						t.Fatal(err)
+					}
+				}
+				done := make(chan error, 1)
+				go func() { done <- w.write(ctx, st, actor) }()
+				waitForRowLockWaiters(t, ctx, raw, 1, done)
+				if err := demotion.Commit(); err != nil {
+					t.Fatal(err)
+				}
+				if err := <-done; !errors.Is(err, store.ErrActorRevoked) {
+					t.Fatalf("write after the demotion committed: %v, want ErrActorRevoked", err)
+				}
+				if u := target(); !w.target(u) {
+					t.Fatalf("a refused write changed the target: %+v", u)
+				}
+			})
+
+			// The write holds the actor's row while it waits on its target: the demotion waits for it.
+			t.Run(wname+"/before "+rname, func(t *testing.T) {
+				ctx, st, raw, target := setup(t)
+				hold, err := raw.BeginTx(ctx, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer hold.Rollback()
+				if _, err := hold.ExecContext(ctx, `UPDATE users SET updated_at = updated_at WHERE id IN ('usr_target', 'usr_local')`); err != nil {
+					t.Fatal(err)
+				}
+				wrote := make(chan error, 1)
+				go func() { wrote <- w.write(ctx, st, actor) }()
+				waitForRowLockWaiters(t, ctx, raw, 1, wrote)
+				revoked := make(chan error, 1)
+				go func() { revoked <- r.run(ctx, st) }()
+				waitForRowLockWaiters(t, ctx, raw, 2, revoked)
+				if err := hold.Commit(); err != nil {
+					t.Fatal(err)
+				}
+				if err := <-wrote; err != nil {
+					t.Fatalf("write ordered before the demotion: %v", err)
+				}
+				if err := <-revoked; err != nil {
+					t.Fatalf("demotion: %v", err)
+				}
+				if u := target(); w.target(u) {
+					t.Fatalf("the write did not land: %+v", u)
+				}
+			})
+		}
+	}
+}
+
+// waitForRowLockWaiters returns once n backends wait on a row lock; it fails the test if early
+// finishes first, which means that call did not wait.
+func waitForRowLockWaiters(t *testing.T, ctx context.Context, raw *sql.DB, n int, early chan error) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		select {
+		case err := <-early:
+			t.Fatalf("finished without waiting (%v)", err)
+		default:
+		}
+		var waiting int
+		if err := raw.QueryRowContext(ctx, `SELECT COUNT(1) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND wait_event IN ('transactionid', 'tuple')`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d row-lock waiters, want %d", waiting, n)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

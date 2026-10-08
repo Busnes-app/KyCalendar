@@ -938,19 +938,31 @@ func (u *userStore) SetStatus(ctx context.Context, actor Actor, userID, status s
 }
 
 // checkActor is ErrActorRevoked unless actor is System or an active administrator whose session
-// is still live. Run it inside the write's transaction, under the local-admins lock.
+// is still live. Run it inside the write's transaction, under local-admins and before touching any
+// other row: it locks the actor's users row, then that session row, until commit. Every
+// revocation updates the users row first (logout deletes only the session), so one committed
+// first refuses the write and one arriving later waits for it. Lock order: advisory keys, actor
+// row, actor session, target rows.
 func (u *userStore) checkActor(ctx context.Context, tx *sql.Tx, actor Actor) error {
 	if actor.system {
 		return nil
 	}
-	var n int
-	if err := tx.QueryRowContext(ctx, u.store.rebind(`SELECT COUNT(1) FROM sessions s JOIN users u ON u.id = s.user_id
-WHERE s.token_hash = ? AND u.id = ? AND u.role = 'admin' AND u.status = 'active' AND s.expires_at > ?`),
-		actor.sessionHash, actor.userID, time.Now().UTC()).Scan(&n); err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrActorRevoked
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`UPDATE users SET id = id WHERE id = ? AND role = 'admin' AND status = 'active'`, []any{actor.userID}},
+		{`UPDATE sessions SET token_hash = token_hash WHERE token_hash = ? AND user_id = ? AND expires_at > ?`, []any{actor.sessionHash, actor.userID, time.Now().UTC()}},
+	} {
+		res, err := tx.ExecContext(ctx, u.store.rebind(q.sql), q.args...)
+		if err != nil {
+			return err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return err
+		} else if n != 1 {
+			return ErrActorRevoked
+		}
 	}
 	return nil
 }
