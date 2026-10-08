@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { JSON_HEADERS, REAUTH, SourceBadge, failure, send } from "../admin";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { JSON_HEADERS, LoadMore, REAUTH, SourceBadge, failure, pageURL, send } from "../admin";
 
 interface Group {
   id: string;
@@ -31,17 +31,28 @@ function calendarsLosing(n: number): string {
 
 export default function Groups() {
   const [groups, setGroups] = useState<Group[]>([]);
+  const [total, setTotal] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const latest = useRef(0);
   const [name, setName] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const res = await send("/api/admin/groups");
-    if (!res?.ok) {
+  // offset 0 starts the list over (after a change); more appends the next page.
+  // Only the latest request lands: a reload replaces a Load more still in flight.
+  const load = useCallback(async (offset = 0) => {
+    const id = ++latest.current;
+    setBusy(true);
+    const res = await send(pageURL("/api/admin/groups", {}, offset));
+    const body = res?.ok ? await res.json().catch(() => null) : null;
+    if (id !== latest.current) return;
+    setBusy(false);
+    if (!body) {
       setError("Could not load groups. Reload the page to try again.");
       return;
     }
-    setGroups((await res.json()).groups);
+    setGroups((prev) => (offset ? [...prev, ...body.groups] : body.groups));
+    setTotal(body.total);
   }, []);
 
   useEffect(() => {
@@ -121,6 +132,7 @@ export default function Groups() {
           />
         ))
       )}
+      <LoadMore shown={groups.length} total={total} busy={busy} onMore={() => void load(groups.length)} />
     </section>
   );
 }

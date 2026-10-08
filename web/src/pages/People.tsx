@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { JSON_HEADERS, REAUTH, SourceBadge, failure, send } from "../admin";
+import { JSON_HEADERS, LoadMore, REAUTH, SourceBadge, failure, pageURL, send } from "../admin";
 
 interface Person {
   id: string;
@@ -31,6 +31,10 @@ async function refusal(res: Response | null, fallback: string): Promise<string> 
 
 export default function People({ me }: { me: string }) {
   const [people, setPeople] = useState<Person[]>([]);
+  const [total, setTotal] = useState(0);
+  const [shownQuery, setShownQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const latest = useRef(0);
   const [binding, setBinding] = useState("");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,14 +42,22 @@ export default function People({ me }: { me: string }) {
   const [editing, setEditing] = useState<Person | null>(null);
   const [handover, setHandover] = useState<Handover | null>(null);
 
-  const load = useCallback(async (q = "") => {
-    const res = await send(q ? `/api/admin/users?q=${encodeURIComponent(q)}` : "/api/admin/users");
-    if (!res?.ok) {
+  // offset 0 starts the list over (a search, a reload after a change); more appends the next page.
+  // Only the latest request lands: a search or reload replaces a Load more still in flight.
+  const load = useCallback(async (q = "", offset = 0) => {
+    const id = ++latest.current;
+    setBusy(true);
+    const res = await send(pageURL("/api/admin/users", { q }, offset));
+    const body = res?.ok ? await res.json().catch(() => null) : null;
+    if (id !== latest.current) return;
+    setBusy(false);
+    if (!body) {
       setError("Could not load people. Reload the page to try again.");
       return;
     }
-    const body = await res.json();
-    setPeople(body.users);
+    setPeople((prev) => (offset ? [...prev, ...body.users] : body.users));
+    setTotal(body.total);
+    setShownQuery(q);
     setBinding(body.signin_binding ?? "");
   }, []);
 
@@ -190,6 +202,7 @@ export default function People({ me }: { me: string }) {
           ))}
         </tbody>
       </table>
+      <LoadMore shown={people.length} total={total} busy={busy} onMore={() => void load(shownQuery, people.length)} />
       {adding && (
         <AddPerson
           onClose={() => setAdding(false)}

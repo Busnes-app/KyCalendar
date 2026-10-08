@@ -1,9 +1,11 @@
 package scim
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"slices"
@@ -14,6 +16,7 @@ import (
 	protocolErrors "github.com/elimity-com/scim/errors"
 	"github.com/elimity-com/scim/optional"
 	"github.com/elimity-com/scim/schema"
+	"github.com/scim2/filter-parser/v2"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -100,7 +103,7 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 	if ext := stringValue(attrs, "externalId", ""); ext != "" {
 		existing, err := h.store.Users().GetUserBySSO(r.Context(), "kysignon", ext)
 		if err == nil && existing.SSOIssuer != bound {
-			return protocol.Resource{}, protocolErrors.ScimErrorUniqueness
+			return protocol.Resource{}, refusedUser(r, h.store, existing.ID, "other_binding", protocolErrors.ScimErrorUniqueness)
 		}
 		if err == nil {
 			res, err := h.Replace(r, existing.ID, attrs)
@@ -115,6 +118,9 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 	}
 	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", ""), SSOIssuer: bound}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
+		if errors.Is(err, store.ErrAlreadyExists) {
+			return protocol.Resource{}, refusedUser(r, h.store, "", "name_taken", protocolErrors.ScimErrorUniqueness)
+		}
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
 	_ = h.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: user.ID, Action: "scim.user.create", Resource: user.Username})
@@ -142,8 +148,35 @@ func (h *userResourceHandler) Get(r *http.Request, id string) (protocol.Resource
 	return userResource(user), nil
 }
 
-// equalityFilter is the one filter shape IdPs send to look a user up: a single exact eq.
-var equalityFilter = regexp.MustCompile(`(?i)^\s*(userName|emails\.value|emails|email|displayName|externalId)\s+eq\s+"([^"]*)"\s*$`)
+// eqFilter is the one filter shape IdPs send to look a resource up: `<attr> eq "<value>"`, the
+// value escaping `"` and `\` with a backslash.
+var eqFilter = regexp.MustCompile(`^\s*([A-Za-z][\w.]*)\s+(?i:eq)\s+"((?:[^"\\]|\\.)*)"\s*$`)
+
+const maxFilterValue = 1024
+
+// parseEqFilter reads an eq filter; anything else, an escape other than `\"` or `\\`, or a
+// value over maxFilterValue bytes is invalidFilter.
+func parseEqFilter(raw string) (attr, value string, err error) {
+	m := eqFilter.FindStringSubmatch(raw)
+	if m == nil {
+		return "", "", protocolErrors.ScimErrorInvalidFilter
+	}
+	var b strings.Builder
+	for i := 0; i < len(m[2]); i++ {
+		c := m[2][i]
+		if c == '\\' {
+			i++
+			if c = m[2][i]; c != '"' && c != '\\' {
+				return "", "", protocolErrors.ScimErrorInvalidFilter
+			}
+		}
+		b.WriteByte(c)
+	}
+	if b.Len() > maxFilterValue {
+		return "", "", protocolErrors.ScimErrorInvalidFilter
+	}
+	return m[1], b.String(), nil
+}
 
 var filterFields = map[string]store.UserField{
 	"username":     store.UserFieldUsername,
@@ -156,12 +189,16 @@ var filterFields = map[string]store.UserField{
 func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
 	filter := store.UserFilter{SSOOnly: true}
 	if raw := r.URL.Query().Get("filter"); raw != "" {
-		match := equalityFilter.FindStringSubmatch(raw)
-		if len(match) != 3 {
+		attr, value, err := parseEqFilter(raw)
+		if err != nil {
+			return protocol.Page{}, err
+		}
+		field, ok := filterFields[strings.ToLower(attr)]
+		if !ok && !strings.EqualFold(attr, "externalId") {
 			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
 		}
-		filter.Field, filter.Value = filterFields[strings.ToLower(match[1])], match[2]
-		if strings.EqualFold(match[1], "externalId") {
+		filter.Field, filter.Value = field, value
+		if strings.EqualFold(attr, "externalId") {
 			// KyIdentity's lookup of the account it provisions: its user ID is the sub. Exact, and
 			// only rows SCIM may adopt (KyIdentity's providers, the current binding), so a lookup
 			// never hands KyIdentity another binding's account.
@@ -237,6 +274,9 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 // have made differ from the request.
 func (h *userResourceHandler) saveAndRead(r *http.Request, user *store.User, expectedRole, expectedStatus string) (protocol.Resource, error) {
 	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
+		if errors.Is(err, store.ErrAccessChanged) {
+			return protocol.Resource{}, refusedUser(r, h.store, user.ID, "access_changed", scimStoreError(err, user.ID))
+		}
 		return protocol.Resource{}, scimStoreError(err, user.ID)
 	}
 	stored, err := h.store.Users().GetUserByID(r.Context(), user.ID)
@@ -327,30 +367,30 @@ func (h *groupResourceHandler) scimGroup(r *http.Request, id string) (*store.Gro
 	return group, nil
 }
 
-// scimMembers reads the members a SCIM request names. Each must be an account SCIM can see: a
+// scimMembers checks the members a SCIM request names. Each must be an account SCIM can see: a
 // local account (or none) is refused before anything is written, so SCIM never grants one a
 // group's calendars. Local memberships a group already holds are not SCIM's and stay.
-func (h *groupResourceHandler) scimMembers(r *http.Request, attrs protocol.ResourceAttributes) ([]string, error) {
-	ids := slices.Compact(slices.Sorted(slices.Values(memberValues(attrs["members"]))))
+func (h *groupResourceHandler) scimMembers(r *http.Request, groupID string, named []string) ([]string, error) {
+	ids := slices.Compact(slices.Sorted(slices.Values(named)))
 	found, err := h.store.Users().SSOUserIDs(r.Context(), ids)
 	if err != nil {
 		return nil, err
 	}
 	if len(found) != len(ids) {
-		return nil, protocolErrors.ScimErrorInvalidValue
+		return nil, refusedGroup(r, h.store, groupID, "invalid_member", protocolErrors.ScimErrorInvalidValue)
 	}
 	return ids, nil
 }
 
 func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	members, err := h.scimMembers(r, attrs)
+	members, err := h.scimMembers(r, "", memberValues(attrs["members"]))
 	if err != nil {
 		return protocol.Resource{}, err
 	}
 	group := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: stringValue(attrs, "displayName", ""), ExternalID: stringValue(attrs, "externalId", ""), Source: store.GroupSourceSCIM}
 	if err := h.store.Groups().CreateGroup(r.Context(), group); err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
-			h.flagLocalTwin(r, group.DisplayName)
+			return protocol.Resource{}, refusedGroup(r, h.store, h.flagLocalTwin(r, group.DisplayName), "name_taken", protocolErrors.ScimErrorUniqueness)
 		}
 		return protocol.Resource{}, scimStoreError(err, group.ID)
 	}
@@ -361,11 +401,17 @@ func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAt
 	return groupResource(group), nil
 }
 
-// flagLocalTwin records that a local group holds name, so SCIM could not create it.
-func (h *groupResourceHandler) flagLocalTwin(r *http.Request, name string) {
-	if g, err := h.store.Groups().GetGroupByName(r.Context(), name); err == nil && g.Source == store.GroupSourceLocal {
+// flagLocalTwin records that a local group holds name, so SCIM could not create it, and returns
+// the ID of the group holding it ("" when unknown).
+func (h *groupResourceHandler) flagLocalTwin(r *http.Request, name string) string {
+	g, err := h.store.Groups().GetGroupByName(r.Context(), name)
+	if err != nil {
+		return ""
+	}
+	if g.Source == store.GroupSourceLocal {
 		_ = h.store.Settings().SetSetting(r.Context(), ConflictKey(name), time.Now().UTC().Format(time.RFC3339))
 	}
+	return g.ID
 }
 
 func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resource, error) {
@@ -376,20 +422,18 @@ func (h *groupResourceHandler) Get(r *http.Request, id string) (protocol.Resourc
 	return groupResource(group), nil
 }
 
-// groupFilter is the one Groups filter: KyIdentity's lookup of a group it provisions.
-var groupFilter = regexp.MustCompile(`(?i)^\s*externalId\s+eq\s+"([^"]*)"\s*$`)
-
 func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
 	var groups []*store.Group
 	var total int
 	var err error
 	if raw := r.URL.Query().Get("filter"); raw != "" {
-		match := groupFilter.FindStringSubmatch(raw)
-		if len(match) != 2 {
+		// The one Groups filter: KyIdentity's lookup of a group it provisions.
+		attr, value, perr := parseEqFilter(raw)
+		if perr != nil || !strings.EqualFold(attr, "externalId") {
 			return protocol.Page{}, protocolErrors.ScimErrorInvalidFilter
 		}
 		// Exact, SCIM groups only; a lookup is never more than a page.
-		groups, err = h.store.Groups().GroupsByExternalID(r.Context(), match[1], store.GroupSourceSCIM)
+		groups, err = h.store.Groups().GroupsByExternalID(r.Context(), value, store.GroupSourceSCIM)
 		total = len(groups)
 		if start := min(max(params.StartIndex-1, 0), len(groups)); err == nil {
 			groups = groups[start:]
@@ -417,50 +461,143 @@ func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protoco
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	members, err := h.scimMembers(r, attrs)
+	members, err := h.scimMembers(r, id, memberValues(attrs["members"]))
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	old := group.Members // SCIM-visible only: local memberships are never removed here
 	group.DisplayName = stringValue(attrs, "displayName", group.DisplayName)
 	group.ExternalID = stringValue(attrs, "externalId", group.ExternalID)
-	group.Members = members
+	return h.save(r, group, members)
+}
+
+// save writes group and moves its SCIM-visible members (group.Members) to members; local
+// memberships are never in either list, so they stay.
+func (h *groupResourceHandler) save(r *http.Request, group *store.Group, members []string) (protocol.Resource, error) {
 	if err := h.store.Groups().UpdateGroup(r.Context(), group); err != nil {
-		return protocol.Resource{}, scimStoreError(err, id)
+		return protocol.Resource{}, scimStoreError(err, group.ID)
 	}
-	if err := h.replaceMembers(r, id, old, group.Members); err != nil {
+	if err := h.replaceMembers(r, group.ID, group.Members, members); err != nil {
 		return protocol.Resource{}, err
 	}
+	group.Members = members
 	return groupResource(group), nil
 }
+
 func (h *groupResourceHandler) Delete(r *http.Request, id string) error {
 	if _, err := h.scimGroup(r, id); err != nil {
 		return err
 	}
 	return scimStoreError(h.store.Groups().DeleteGroup(r.Context(), id), id)
 }
+
+// Patch applies RFC 7644 3.5.2 to members: add appends (duplicates ignored), remove with
+// `members[value eq "<id>"]` drops that member, remove of `members` drops all, replace replaces.
+// displayName and externalId are replaced; other attributes are ignored.
 func (h *groupResourceHandler) Patch(r *http.Request, id string, operations []protocol.PatchOperation) (protocol.Resource, error) {
 	group, err := h.scimGroup(r, id)
 	if err != nil {
 		return protocol.Resource{}, err
 	}
-	attrs := protocol.ResourceAttributes{"displayName": group.DisplayName, "members": memberMaps(group.Members)}
+	p := groupPatch{group: group, members: slices.Clone(group.Members)}
 	for _, op := range operations {
-		if op.Path != nil {
-			attrs[op.Path.String()] = op.Value
+		if err := p.apply(op); err != nil {
+			return protocol.Resource{}, err
 		}
 	}
-	return h.Replace(r, id, attrs)
+	if _, err := h.scimMembers(r, id, p.named); err != nil {
+		return protocol.Resource{}, err
+	}
+	return h.save(r, group, slices.Sorted(slices.Values(p.members)))
 }
+
+// groupPatch is a group being patched: members are the SCIM-visible ones, named every member
+// an add or replace asked for, all checked before anything is written.
+type groupPatch struct {
+	group   *store.Group
+	members []string
+	named   []string
+}
+
+func (p *groupPatch) apply(op protocol.PatchOperation) error {
+	if op.Path == nil {
+		values, _ := op.Value.(map[string]interface{})
+		for key, value := range values {
+			p.set(op.Op, strings.ToLower(key), value)
+		}
+		return nil
+	}
+	attr := strings.ToLower(op.Path.AttributePath.AttributeName)
+	if attr != "members" {
+		if op.Op != protocol.PatchOperationRemove && op.Path.ValueExpression == nil && op.Path.SubAttribute == nil && op.Path.AttributePath.SubAttribute == nil {
+			p.set(op.Op, attr, op.Value)
+		}
+		return nil
+	}
+	switch {
+	case op.Path.SubAttribute != nil || op.Path.AttributePath.SubAttribute != nil:
+		return protocolErrors.ScimErrorInvalidPath
+	case op.Path.ValueExpression != nil:
+		id, ok := memberFilterID(op.Path.ValueExpression)
+		if !ok || op.Op != protocol.PatchOperationRemove {
+			return protocolErrors.ScimErrorInvalidFilter
+		}
+		p.members = slices.DeleteFunc(p.members, func(m string) bool { return m == id })
+	case op.Op == protocol.PatchOperationRemove:
+		p.members = nil
+	default:
+		p.set(op.Op, attr, op.Value)
+	}
+	return nil
+}
+
+func (p *groupPatch) set(op, attr string, value interface{}) {
+	switch attr {
+	case "displayname":
+		if v, ok := value.(string); ok && v != "" {
+			p.group.DisplayName = v
+		}
+	case "externalid":
+		if v, ok := value.(string); ok && v != "" {
+			p.group.ExternalID = v
+		}
+	case "members":
+		ids := memberValues(value)
+		p.named = append(p.named, ids...)
+		if op == protocol.PatchOperationReplace {
+			p.members = nil
+		}
+		for _, id := range ids {
+			if !slices.Contains(p.members, id) {
+				p.members = append(p.members, id)
+			}
+		}
+	}
+}
+
+// memberFilterID reads the one member filter supported: `value eq "<id>"`.
+func memberFilterID(expr filter.Expression) (string, bool) {
+	e, ok := expr.(*filter.AttributeExpression)
+	if !ok || e.Operator != filter.EQ || !strings.EqualFold(e.AttributePath.AttributeName, "value") || e.AttributePath.SubAttribute != nil || e.AttributePath.URIPrefix != nil {
+		return "", false
+	}
+	id, ok := e.CompareValue.(string)
+	return id, ok && id != ""
+}
+
+// replaceMembers moves groupID's members from old to next, touching only the difference.
 func (h *groupResourceHandler) replaceMembers(r *http.Request, groupID string, old, next []string) error {
 	for _, id := range old {
-		if err := h.store.Groups().RemoveGroupMember(r.Context(), groupID, id); err != nil {
-			return err
+		if !slices.Contains(next, id) {
+			if err := h.store.Groups().RemoveGroupMember(r.Context(), groupID, id); err != nil {
+				return err
+			}
 		}
 	}
 	for _, id := range next {
-		if err := h.store.Groups().AddGroupMember(r.Context(), groupID, id); err != nil {
-			return err
+		if !slices.Contains(old, id) {
+			if err := h.store.Groups().AddGroupMember(r.Context(), groupID, id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -521,6 +658,26 @@ func statusFromActive(attrs protocol.ResourceAttributes) string {
 	}
 	return "active"
 }
+
+// refusedUser and refusedGroup log and audit a refused SCIM write with the target ID (or "")
+// and a reason code only, never the request, and return err.
+func refusedUser(r *http.Request, st store.Store, id, reason string, err error) error {
+	return refused(r, st, &store.AuditRecord{UserID: id, Action: "scim.user.refused", Resource: id, Details: "reason=" + reason}, err)
+}
+
+func refusedGroup(r *http.Request, st store.Store, id, reason string, err error) error {
+	return refused(r, st, &store.AuditRecord{Action: "scim.group.refused", Resource: id, Details: "reason=" + reason}, err)
+}
+
+func refused(r *http.Request, st store.Store, rec *store.AuditRecord, err error) error {
+	log.Printf("[SCIM] %s id=%q %s", rec.Action, rec.Resource, rec.Details)
+	// Detached: a client that hangs up never drops the audit row.
+	if aerr := st.Audit().LogAudit(context.WithoutCancel(r.Context()), rec); aerr != nil {
+		log.Printf("[SCIM] audit of %s failed: %v", rec.Action, aerr)
+	}
+	return err
+}
+
 func scimStoreError(err error, id string) error {
 	if err == nil {
 		return nil

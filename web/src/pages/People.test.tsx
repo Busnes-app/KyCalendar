@@ -12,7 +12,7 @@ function mockFetch(handlers: Record<string, (init?: RequestInit) => unknown>) {
     const key = `${init?.method ?? "GET"} ${String(input)}`;
     const handler = handlers[key];
     if (!handler) throw new Error(`unexpected ${key}`);
-    const body = handler(init);
+    const body = await handler(init);
     if (body instanceof Response) return body;
     return new Response(JSON.stringify(body), { status: 200 });
   });
@@ -151,5 +151,80 @@ describe("People", () => {
     render(<People me="u0" />);
     fireEvent.click(await screen.findByRole("button", { name: "Reattach sam to current sign-in" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/sign in again/i);
+  });
+
+  // Small pages: the client pages by the rows it holds, whatever the server's page size.
+  const many = (prefix: string, from: number, n: number) =>
+    Array.from({ length: n }, (_, i) => person({ id: `${prefix}${from + i}`, username: `${prefix}${from + i}` }));
+  const page = (list: unknown[], total: number) => ({ users: list, total, signin_binding: "" });
+
+  it("pages with Load more, and a search starts over", async () => {
+    mockFetch({
+      "GET /api/admin/users": () => page(many("p", 0, 3), 5),
+      "GET /api/admin/users?offset=3": () => page(many("p", 3, 2), 5),
+      "GET /api/admin/users?q=s": () => page(many("s", 0, 3), 4),
+      "GET /api/admin/users?q=s&offset=3": () => page(many("s", 3, 1), 4),
+    });
+    render(<People me="u0" />);
+    expect(await screen.findByText("Showing 3 of 5")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("p4")).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
+    expect(screen.getByText("p0")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "s" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("Showing 3 of 4")).toBeTruthy();
+    expect(screen.queryByText("p0")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("s3")).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
+  });
+
+  it("appends a page once on a double click", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    mockFetch({
+      "GET /api/admin/users": () => page(many("p", 0, 3), 7),
+      "GET /api/admin/users?offset=3": async () => {
+        calls++;
+        await gate;
+        return page(many("p", 3, 2), 7);
+      },
+    });
+    render(<People me="u0" />);
+    const more = await screen.findByRole("button", { name: "Load more" });
+    fireEvent.click(more);
+    fireEvent.click(more);
+    await waitFor(() => expect((more as HTMLButtonElement).disabled).toBe(true));
+    release();
+    expect(await screen.findByText("Showing 5 of 7")).toBeTruthy();
+    expect(calls).toBe(1);
+    expect(screen.getAllByText("p3")).toHaveLength(1);
+  });
+
+  it("drops a Load more that a search overtook", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    mockFetch({
+      "GET /api/admin/users": () => page(many("p", 0, 3), 5),
+      "GET /api/admin/users?offset=3": async () => {
+        await gate;
+        return page(many("p", 3, 2), 5);
+      },
+      "GET /api/admin/users?q=zed": () => page([person({ id: "z", username: "zed" })], 1),
+    });
+    render(<People me="u0" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "zed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("zed")).toBeTruthy();
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("p3")).toBeNull();
+    expect(screen.queryByText("p0")).toBeNull();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
   });
 });

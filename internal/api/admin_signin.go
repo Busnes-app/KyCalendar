@@ -84,9 +84,17 @@ func (s *Server) submitted(req signinRequest) sso.Settings {
 	return st
 }
 
+// storedLabel is the saved sign-in button label, "" when none or unreadable.
+func (s *Server) storedLabel(ctx context.Context) string {
+	v, _ := s.store.Settings().GetSetting(ctx, sso.KeyDisplayName)
+	return v
+}
+
 // signinProblem is what is wrong with req resolved as st, "" when nothing is. The provider must
 // be named even when the environment fixes it, so a body without one never turns sign-in off.
-func signinProblem(req signinRequest, st sso.Settings) string {
+// A label equal to storedLabel is not revalidated, so one saved under an older rule never blocks
+// a save.
+func signinProblem(req signinRequest, st sso.Settings, storedLabel string) string {
 	switch strings.TrimSpace(req.Provider) {
 	case sso.KindNone, sso.KindKyIdentity, sso.KindOIDC:
 	default:
@@ -98,14 +106,14 @@ func signinProblem(req signinRequest, st sso.Settings) string {
 	if st.Issuer.Value == "" || st.ClientID.Value == "" {
 		return "The issuer and the client ID are required"
 	}
-	if _, ok := cleanName(st.DisplayName.Value); !ok {
-		return "The button label is required: 1-255 characters with no control characters"
+	if _, ok := cleanName(st.DisplayName.Value); !ok && (st.DisplayName.Value == "" || st.DisplayName.Value != storedLabel) {
+		return "The button label is required: 1-255 bytes with no control or invisible characters"
 	}
 	if len(st.Issuer.Value) > 2048 || strings.IndexFunc(st.Issuer.Value, unicode.IsControl) >= 0 {
 		return "The issuer is not valid"
 	}
 	if len(st.ClientID.Value) > 255 || strings.IndexFunc(st.ClientID.Value, unicode.IsControl) >= 0 {
-		return "The client ID must be 1-255 characters with no control characters"
+		return "The client ID must be 1-255 bytes with no control characters"
 	}
 	if len(req.ClientSecret) > 1024 {
 		return "The client secret is too long"
@@ -139,7 +147,7 @@ func (s *Server) handleTestSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := s.submitted(req)
-	msg := signinProblem(req, st)
+	msg := signinProblem(req, st, s.storedLabel(r.Context()))
 	if msg == "" && st.Provider.Value == sso.KindNone {
 		msg = "Choose a provider to test"
 	}
@@ -172,7 +180,7 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := s.submitted(req)
-	if msg := signinProblem(req, st); msg != "" {
+	if msg := signinProblem(req, st, s.storedLabel(r.Context())); msg != "" {
 		s.writeError(w, http.StatusBadRequest, msg)
 		return
 	}

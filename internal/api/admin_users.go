@@ -163,7 +163,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	display, ok := cleanName(cmp.Or(strings.TrimSpace(body.DisplayName), body.Username))
 	if !ok {
-		s.writeError(w, http.StatusBadRequest, "Display name must be 1-255 characters with no control characters")
+		s.writeError(w, http.StatusBadRequest, "Display name must be 1-255 bytes with no control or invisible characters")
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
@@ -243,10 +243,11 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if body.DisplayName != nil {
+	// An unchanged name is not revalidated: a name stored under an older rule never blocks an edit.
+	if body.DisplayName != nil && strings.TrimSpace(*body.DisplayName) != u.DisplayName {
 		var ok bool
 		if display, ok = cleanName(*body.DisplayName); !ok {
-			s.writeError(w, http.StatusBadRequest, "Display name must be 1-255 characters with no control characters")
+			s.writeError(w, http.StatusBadRequest, "Display name must be 1-255 bytes with no control or invisible characters")
 			return
 		}
 	}

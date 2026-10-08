@@ -34,10 +34,15 @@ type memberView struct {
 }
 
 // cleanName trims a display name; ok is false when it is empty, over 255 bytes or holds a
-// control character.
+// control character, a format character (Cf: zero-width, bidi overrides) or a line or
+// paragraph separator, any of which can make two names look alike or reorder the screen.
 func cleanName(s string) (string, bool) {
 	s = strings.TrimSpace(s)
-	return s, s != "" && len(s) <= 255 && strings.IndexFunc(s, unicode.IsControl) < 0
+	return s, s != "" && len(s) <= 255 && strings.IndexFunc(s, invisible) < 0
+}
+
+func invisible(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
 }
 
 // writeManaged answers a write to a synced person or group: its identity provider owns it.
@@ -153,7 +158,7 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	name, ok := cleanName(body.DisplayName)
 	if !ok {
-		s.writeError(w, http.StatusBadRequest, "Name must be 1-255 characters with no control characters")
+		s.writeError(w, http.StatusBadRequest, "Name must be 1-255 bytes with no control or invisible characters")
 		return
 	}
 	g := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: name, Source: store.GroupSourceLocal}
@@ -176,13 +181,14 @@ func (s *Server) handleRenameGroup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
-	name, ok := cleanName(body.DisplayName)
-	if !ok {
-		s.writeError(w, http.StatusBadRequest, "Name must be 1-255 characters with no control characters")
-		return
-	}
 	g := s.adminGroup(w, r, true)
 	if g == nil {
+		return
+	}
+	// An unchanged name is not revalidated: a name stored under an older rule stays renamable.
+	name, ok := cleanName(body.DisplayName)
+	if !ok && name != g.DisplayName {
+		s.writeError(w, http.StatusBadRequest, "Name must be 1-255 bytes with no control or invisible characters")
 		return
 	}
 	from := g.DisplayName
