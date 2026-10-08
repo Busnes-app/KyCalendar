@@ -23,17 +23,15 @@ export function pageURL(path: string, params: Record<string, string>, offset: nu
   return s ? `${path}?${s}` : path;
 }
 
-/** "Showing N of TOTAL" once a list outgrows one page (200), with Load more while rows remain. */
-export function LoadMore({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
-  if (total <= 200) return null;
+/** "Showing N of TOTAL" while the server holds more rows, with Load more (off while one is in flight). */
+export function LoadMore({ shown, total, busy, onMore }: { shown: number; total: number; busy: boolean; onMore: () => void }) {
+  if (shown >= total) return null;
   return (
     <p>
       <span>{`Showing ${shown} of ${total}`}</span>{" "}
-      {shown < total && (
-        <button type="button" onClick={onMore}>
-          Load more
-        </button>
-      )}
+      <button type="button" disabled={busy} onClick={onMore}>
+        Load more
+      </button>
     </p>
   );
 }

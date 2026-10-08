@@ -33,6 +33,8 @@ export default function People({ me }: { me: string }) {
   const [people, setPeople] = useState<Person[]>([]);
   const [total, setTotal] = useState(0);
   const [shownQuery, setShownQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const latest = useRef(0);
   const [binding, setBinding] = useState("");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +43,18 @@ export default function People({ me }: { me: string }) {
   const [handover, setHandover] = useState<Handover | null>(null);
 
   // offset 0 starts the list over (a search, a reload after a change); more appends the next page.
+  // Only the latest request lands: a search or reload replaces a Load more still in flight.
   const load = useCallback(async (q = "", offset = 0) => {
+    const id = ++latest.current;
+    setBusy(true);
     const res = await send(pageURL("/api/admin/users", { q }, offset));
-    if (!res?.ok) {
+    const body = res?.ok ? await res.json().catch(() => null) : null;
+    if (id !== latest.current) return;
+    setBusy(false);
+    if (!body) {
       setError("Could not load people. Reload the page to try again.");
       return;
     }
-    const body = await res.json();
     setPeople((prev) => (offset ? [...prev, ...body.users] : body.users));
     setTotal(body.total);
     setShownQuery(q);
@@ -195,7 +202,7 @@ export default function People({ me }: { me: string }) {
           ))}
         </tbody>
       </table>
-      <LoadMore shown={people.length} total={total} onMore={() => void load(shownQuery, people.length)} />
+      <LoadMore shown={people.length} total={total} busy={busy} onMore={() => void load(shownQuery, people.length)} />
       {adding && (
         <AddPerson
           onClose={() => setAdding(false)}

@@ -12,7 +12,7 @@ function mockFetch(handlers: Record<string, (init?: RequestInit) => unknown>) {
     const key = `${init?.method ?? "GET"} ${String(input)}`;
     const handler = handlers[key];
     if (!handler) throw new Error(`unexpected ${key}`);
-    const body = handler(init);
+    const body = await handler(init);
     if (body instanceof Response) return body;
     return new Response(JSON.stringify(body), { status: 200 });
   });
@@ -165,8 +165,8 @@ describe("People", () => {
     render(<People me="u0" />);
     expect(await screen.findByText("Showing 200 of 250")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("Showing 250 of 250")).toBeTruthy();
-    expect(screen.getByText("p249")).toBeTruthy();
+    expect(await screen.findByText("p249")).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
     expect(screen.getByText("p0")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
 
@@ -175,7 +175,56 @@ describe("People", () => {
     expect(await screen.findByText("Showing 200 of 201")).toBeTruthy();
     expect(screen.queryByText("p0")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("Showing 201 of 201")).toBeTruthy();
-    expect(screen.getByText("p1200")).toBeTruthy();
+    expect(await screen.findByText("p1200")).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
+  });
+
+  const many = (from: number, n: number) => Array.from({ length: n }, (_, i) => person({ id: `u${from + i}`, username: `p${from + i}` }));
+  const page = (list: unknown[], total: number) => ({ users: list, total, signin_binding: "" });
+
+  it("appends a page once on a double click", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    mockFetch({
+      "GET /api/admin/users": () => page(many(0, 200), 260),
+      "GET /api/admin/users?offset=200": async () => {
+        calls++;
+        await gate;
+        return page(many(200, 10), 260);
+      },
+    });
+    render(<People me="u0" />);
+    const more = await screen.findByRole("button", { name: "Load more" });
+    fireEvent.click(more);
+    fireEvent.click(more);
+    await waitFor(() => expect((more as HTMLButtonElement).disabled).toBe(true));
+    release();
+    expect(await screen.findByText("Showing 210 of 260")).toBeTruthy();
+    expect(calls).toBe(1);
+    expect(screen.getAllByText("p200")).toHaveLength(1);
+  });
+
+  it("drops a Load more that a search overtook", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    mockFetch({
+      "GET /api/admin/users": () => page(many(0, 200), 250),
+      "GET /api/admin/users?offset=200": async () => {
+        await gate;
+        return page(many(200, 50), 250);
+      },
+      "GET /api/admin/users?q=zed": () => page([person({ id: "z", username: "zed" })], 1),
+    });
+    render(<People me="u0" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "zed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("zed")).toBeTruthy();
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("p200")).toBeNull();
+    expect(screen.queryByText("p0")).toBeNull();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
   });
 });

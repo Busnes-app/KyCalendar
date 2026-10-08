@@ -116,8 +116,8 @@ describe("Groups", () => {
     render(<Groups />);
     expect(await screen.findByText("Showing 200 of 201")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("Showing 201 of 201")).toBeTruthy();
-    expect(screen.getByText("G200")).toBeTruthy();
+    expect(await screen.findByText("G200")).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
     expect(screen.getByText("G0")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
   });
