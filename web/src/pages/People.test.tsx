@@ -22,7 +22,7 @@ const person = (over: Record<string, unknown>) => ({
   id: "u1", username: "ann", display_name: "Ann", email: "", role: "user", status: "active", source: "local",
   mfa: false, must_change_password: false, last_login_at: null, ...over,
 });
-const users = (...list: unknown[]) => ({ users: list, total: list.length });
+const users = (...list: unknown[]) => ({ users: list, total: list.length, signin_binding: "kyidentity https://b.example" });
 
 describe("People", () => {
   it("shows a new person's temporary password once", async () => {
@@ -82,5 +82,74 @@ describe("People", () => {
     render(<People me="u0" />);
     fireEvent.click(await screen.findByRole("button", { name: "Disable ann" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/last active local administrator/);
+  });
+
+  it("offers reattach only on synced people who need it", async () => {
+    mockFetch({
+      "GET /api/admin/users": () =>
+        users(
+          person({ id: "u2", username: "sam", source: "kysignon", status: "inactive", bound_to: "kyidentity https://a.example", needs_reattach: true }),
+          person({ id: "u3", username: "tia", source: "scim", bound_to: "kyidentity https://b.example", needs_reattach: false }),
+          person({ id: "u4", username: "lou", needs_reattach: false }),
+        ),
+    });
+    render(<People me="u0" />);
+    expect(await screen.findByRole("button", { name: "Reattach sam to current sign-in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Reattach tia/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Reattach lou/ })).toBeNull();
+  });
+
+  it("names both bindings before reattaching, and reattaches only when confirmed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    let posts = 0;
+    let sent: unknown;
+    mockFetch({
+      "GET /api/admin/users": () => users(person({ id: "u2", username: "sam", source: "kysignon", status: "inactive", bound_to: "kyidentity https://a.example", needs_reattach: true })),
+      "POST /api/admin/users/u2/reattach": (init) => {
+        posts++;
+        sent = JSON.parse(String(init?.body));
+        return person({ id: "u2", username: "sam", source: "kysignon", bound_to: "kyidentity https://b.example" });
+      },
+    });
+    render(<People me="u0" />);
+    const button = await screen.findByRole("button", { name: "Reattach sam to current sign-in" });
+    fireEvent.click(button);
+    const text = String(confirm.mock.calls[0][0]);
+    expect(text).toContain("kyidentity https://a.example");
+    expect(text).toContain("kyidentity https://b.example");
+    expect(text).toMatch(/same person/);
+    expect(text).toMatch(/signs in with this account's subject gets this account and its calendars/);
+    expect(posts).toBe(0);
+    fireEvent.click(button);
+    await waitFor(() => expect(posts).toBe(1));
+    expect(sent).toEqual({ binding: "kyidentity https://b.example" });
+  });
+
+  it("reloads with an alert when the sign-in changed since the confirm", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    let loads = 0;
+    mockFetch({
+      "GET /api/admin/users": () => {
+        loads++;
+        return users(person({ id: "u2", username: "sam", source: "kysignon", bound_to: "kyidentity https://a.example", needs_reattach: true }));
+      },
+      "POST /api/admin/users/u2/reattach": () =>
+        new Response(JSON.stringify({ error: "The sign-in provider changed since you confirmed; review the person again", code: "binding_changed" }), { status: 409 }),
+    });
+    render(<People me="u0" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reattach sam to current sign-in" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/sign-in provider changed/);
+    await waitFor(() => expect(loads).toBe(2));
+  });
+
+  it("asks for a fresh sign-in when a reattach needs step-up", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockFetch({
+      "GET /api/admin/users": () => users(person({ id: "u2", username: "sam", source: "scim", bound_to: "", needs_reattach: true })),
+      "POST /api/admin/users/u2/reattach": () => new Response(JSON.stringify({ error: "Sign in again to reattach a person", code: "reauth_required" }), { status: 403 }),
+    });
+    render(<People me="u0" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reattach sam to current sign-in" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/sign in again/i);
   });
 });

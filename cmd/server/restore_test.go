@@ -35,7 +35,7 @@ func restorableDB(t *testing.T) ([]byte, string) {
 	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "s", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, "h"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: "ap", UserID: u.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "ap", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	epoch, err := st.Calendars().SyncEpoch(ctx)

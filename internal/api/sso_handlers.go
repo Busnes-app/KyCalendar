@@ -27,7 +27,7 @@ var (
 // upsertSSOUser maps a verified login through the provider bound as binding onto a local user,
 // which must carry that binding (new rows are stamped with it). A KyIdentity login's admin grant
 // follows the token's `roles` claim on every login; any other provider's users are everyday. A
-// change revokes the user's sessions and app passwords first.
+// change revokes every grant in the role write's own transaction (SetSSORole).
 func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, binding string) (*store.User, error) {
 	role := "user"
 	if claims.Provider == "kysignon" && access.IsAdmin(claims.Roles) {
@@ -74,18 +74,18 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	if user.Role == role {
 		return user, nil
 	}
-	// Revoke before storing the role: no old session runs under the new one, and a failure
-	// leaves the role unchanged so the next login revokes again.
-	if err := s.store.Sessions().DeleteUserSessions(ctx, user.ID); err != nil {
-		return nil, err
-	}
-	if err := s.store.AppPasswords().DeleteByUser(ctx, user.ID); err != nil {
-		return nil, err
-	}
-	// Role only: a status read above may be stale.
+	// Role only (a status read above may be stale), with the grants revoked in the same
+	// transaction, row first: no old session runs under the new role. A failed promotion changes
+	// nothing; a failed demotion still revokes the grants below.
 	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
 		return nil, errAccountInactive
 	} else if err != nil {
+		// A demotion fails closed: the role stays, but the administrator's grants do not.
+		if user.Role == "admin" {
+			if rerr := s.store.Users().RevokeSSOUser(ctx, user.ID, false); rerr != nil {
+				log.Printf("sso: revoking %s after a failed demotion: %v", user.ID, rerr)
+			}
+		}
 		return nil, err
 	}
 	from := user.Role

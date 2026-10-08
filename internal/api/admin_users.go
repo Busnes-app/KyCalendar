@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/password"
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -27,11 +30,27 @@ type userView struct {
 	MFA                bool       `json:"mfa"`
 	MustChangePassword bool       `json:"must_change_password"`
 	LastLoginAt        *time.Time `json:"last_login_at"`
+	// BoundTo is an SSO account's sign-in binding (`<kind> <issuer>`, "" when unstamped).
+	BoundTo string `json:"bound_to,omitempty"`
+	// NeedsReattach: an SSO account the live sign-in reaches by kind but refuses, because it is
+	// bound to another issuer (or none). One disabled under the live binding is the IdP's.
+	NeedsReattach bool `json:"needs_reattach"`
 }
 
 func userViewOf(u *store.User) userView {
-	return userView{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email, Role: u.Role, Status: u.Status,
+	v := userView{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email, Role: u.Role, Status: u.Status,
 		Source: u.SSOProvider, MFA: u.TOTPEnabled, MustChangePassword: u.MustChangePassword, LastLoginAt: u.LastLoginAt}
+	if u.SSOProvider != "local" {
+		v.BoundTo = u.SSOIssuer
+	}
+	return v
+}
+
+// viewWithSignIn is userViewOf plus whether p, the live provider (nil: none), needs a reattach.
+func viewWithSignIn(u *store.User, p *sso.Provider) userView {
+	v := userViewOf(u)
+	v.NeedsReattach = p != nil && slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider) && u.SSOIssuer != p.Binding
+	return v
 }
 
 // handleListUsers pages people, newest first; q is a case-insensitive substring of username,
@@ -51,11 +70,16 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to list people")
 		return
 	}
+	p := s.signin.Load()
 	out := make([]userView, 0, len(users))
 	for _, u := range users {
-		out = append(out, userViewOf(u))
+		out = append(out, viewWithSignIn(u, p))
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"users": out, "total": total})
+	binding := ""
+	if p != nil {
+		binding = p.Binding
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"users": out, "total": total, "signin_binding": binding})
 }
 
 // newTemporaryPassword returns a one-time password (120 random bits, 20 characters) and its
@@ -269,7 +293,7 @@ func (s *Server) writeUser(w http.ResponseWriter, r *http.Request, id string) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to load the person")
 		return
 	}
-	s.writeJSON(w, http.StatusOK, userViewOf(u))
+	s.writeJSON(w, http.StatusOK, viewWithSignIn(u, s.signin.Load()))
 }
 
 // writeAccessError answers a refused SetRole or SetStatus.
@@ -361,5 +385,85 @@ func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, a
 		}
 		s.auditAction(r.Context(), r, action, u.ID, "")
 	}
+	s.writeUser(w, r, u.ID)
+}
+
+// answerBound answers a reattach of a person already bound to the live sign-in, writing nothing:
+// 200 when active; 409 managed_externally when inactive, since their IdP disabled and restores them.
+func (s *Server) answerBound(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if u.Status != "active" {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Your identity provider disabled this person; restore them there", "code": "managed_externally"})
+		return
+	}
+	s.writeUser(w, r, u.ID)
+}
+
+// handleReattachUser binds an SSO person bound to another issuer to the live sign-in and
+// reactivates them, revoking every grant so they sign in fresh: the one admin write on an identity
+// provider's account. The admin vouches it is the same person and names the binding they
+// confirmed; the role is re-proven at the next sign-in. A person disabled under the live binding
+// was disabled by the IdP, which restores them.
+func (s *Server) handleReattachUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireStepUp(w, r, "reattach a person") {
+		return
+	}
+	var body struct {
+		Binding string `json:"binding"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Binding == "" {
+		s.writeError(w, http.StatusBadRequest, "Name the sign-in binding you confirmed")
+		return
+	}
+	r = r.WithContext(context.WithoutCancel(r.Context()))
+	// A save holds the write lock through its binding commit: the binding cannot move under us.
+	s.signinMu.RLock()
+	defer s.signinMu.RUnlock()
+	u := s.adminUser(w, r, false)
+	if u == nil {
+		return
+	}
+	if u.SSOProvider == "local" {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Local accounts sign in with a password; there is nothing to reattach", "code": "local_account"})
+		return
+	}
+	p := s.signin.Load()
+	if p == nil {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "No sign-in provider is live; set one up under Sign-in first", "code": "no_signin"})
+		return
+	}
+	if body.Binding != p.Binding {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "The sign-in provider changed since you confirmed; review the person again", "code": "binding_changed"})
+		return
+	}
+	if !slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider) {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "The current sign-in provider never signs this account in", "code": "other_provider"})
+		return
+	}
+	if u.SSOIssuer == p.Binding {
+		s.answerBound(w, r, u)
+		return
+	}
+	from, err := s.store.Users().ReattachSSOUser(r.Context(), actorOf(r.Context()), u.ID, p.Binding)
+	if errors.Is(err, store.ErrAlreadyBound) {
+		// Bound by a concurrent reattach since we read it: answer as if we had read it bound.
+		if u, err = s.store.Users().GetUserByID(r.Context(), u.ID); err != nil {
+			s.writeError(w, http.StatusInternalServerError, "Failed to load the person")
+			return
+		}
+		s.answerBound(w, r, u)
+		return
+	}
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		s.writeError(w, http.StatusNotFound, "No such person")
+		return
+	case errors.Is(err, store.ErrActorRevoked):
+		s.writeActorRevoked(w)
+		return
+	case err != nil:
+		s.writeError(w, http.StatusInternalServerError, "Failed to reattach the person")
+		return
+	}
+	s.auditAction(r.Context(), r, "admin.user_reattach", u.ID, fmt.Sprintf("from=%q to=%q", from, p.Binding))
 	s.writeUser(w, r, u.ID)
 }

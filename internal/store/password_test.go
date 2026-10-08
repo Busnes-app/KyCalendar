@@ -125,7 +125,7 @@ func TestAdminPasswordResetRevokesGrants(t *testing.T) {
 // addAppPassword gives the user a CalDAV app password; checkAppPasswordsRevoked asserts it is gone.
 func addAppPassword(t *testing.T, st store.Store, userID string) {
 	t.Helper()
-	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: "ap_" + userID, UserID: userID, Label: "phone", Hash: "h"}); err != nil {
+	if err := st.AppPasswords().Create(context.Background(), store.Seed, &store.AppPassword{ID: "ap_" + userID, UserID: userID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 }

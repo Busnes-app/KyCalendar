@@ -88,7 +88,7 @@ func newWorld(t *testing.T) *world {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.AppPasswords().Create(ctx, &store.AppPassword{ID: id, UserID: "usr_" + string(a), Label: "matrix", Hash: hash}); err != nil {
+		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: id, UserID: "usr_" + string(a), Label: "matrix", Hash: hash}, 0); err != nil {
 			t.Fatal(err)
 		}
 		w.tokens[a], w.passIDs[a] = token, id
@@ -105,6 +105,9 @@ func newWorld(t *testing.T) *world {
 		{ID: "usr_promotee", Username: "promotee", Role: "user", Status: "active", SSOProvider: "local"},
 		{ID: "usr_disablee", Username: "disablee", Role: "user", Status: "active", SSOProvider: "local"},
 		{ID: "usr_enablee", Username: "enablee", Role: "user", Status: "inactive", SSOProvider: "local"},
+		// The reattach row's SSO account: no sign-in is live, so an admin's call is a 409 and
+		// changes nothing, whatever order the rows run in.
+		{ID: "usr_reattachee", Username: "reattachee", Role: "user", Status: "inactive", SSOProvider: "scim", SSOSubject: "matrix-sub"},
 	} {
 		if err := st.Users().CreateUser(ctx, u); err != nil {
 			t.Fatal(err)
@@ -204,6 +207,7 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/users/{id}/role":                {method: "POST", path: "/api/admin/users/usr_promotee/role", body: `{"role":"admin"}`, want: adminOnly},
 		"POST /api/admin/users/{id}/disable":             {method: "POST", path: "/api/admin/users/usr_disablee/disable", want: adminOnly},
 		"POST /api/admin/users/{id}/enable":              {method: "POST", path: "/api/admin/users/usr_enablee/enable", want: adminOnly},
+		"POST /api/admin/users/{id}/reattach":            {method: "POST", path: "/api/admin/users/usr_reattachee/reattach", body: `{"binding":"kyidentity https://matrix.example"}`, want: adminOnly},
 		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
 		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},

@@ -21,6 +21,12 @@ var (
 	// ErrActorRevoked refuses an administrator's write once they are no longer an active
 	// administrator or their session is gone.
 	ErrActorRevoked = errors.New("acting administrator revoked")
+	// ErrAlreadyBound: ReattachSSOUser found the account already bound to the target binding and
+	// wrote nothing; its status is the identity provider's.
+	ErrAlreadyBound = errors.New("account already bound to this sign-in")
+	// ErrAccessChanged: UpdateSCIMUser would grant access to an account whose access changed since
+	// SCIM read it; the caller retries from a fresh read.
+	ErrAccessChanged = errors.New("account access changed since it was read")
 )
 
 // Actor is who makes an access write. An administrator is rechecked inside the write's
@@ -88,8 +94,18 @@ type UserStore interface {
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
 	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
-	// back a status it read before a concurrent deactivation. Inactive, local or missing: ErrNotFound.
+	// back a status it read before a concurrent deactivation, and in the same transaction (row
+	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,
+	// local or missing: ErrNotFound.
 	SetSSORole(ctx context.Context, userID, role string) error
+	// UpdateSCIMUser writes a non-local account's username, email and display name and only the
+	// access the request changes relative to what SCIM read (expectedRole, expectedStatus). A
+	// removal (deactivation, demotion) always lands first, with the revocation of every grant, in
+	// its own row-first transaction. A grant (activation, promotion) lands only together with the
+	// profile write and only if the stored value still equals what SCIM read, else
+	// ErrAccessChanged and nothing more is written. Local or missing: ErrNotFound; a username
+	// another row holds exactly: ErrAlreadyExists.
+	UpdateSCIMUser(ctx context.Context, u *User, expectedRole, expectedStatus string) error
 	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and
 	// app passwords in one transaction, after setting it inactive when deactivate is true (rows
 	// first). It never sets an account active. Local or missing: ErrNotFound.
@@ -105,6 +121,13 @@ type UserStore interface {
 	// unstamped account of b.StampProviders; then settings are written, an empty value deleting
 	// its key. It returns how many accounts it deactivated. Any failure writes nothing.
 	BindSignIn(ctx context.Context, actor Actor, b SignInBinding, settings map[string]string) (int, error)
+	// ReattachSSOUser is the admin's one write on an SSO account, under the local-admins lock:
+	// ErrActorRevoked unless actor is still an active administrator with a live session; then the
+	// account's sso_issuer becomes binding and its status active, and its sessions, MFA challenges,
+	// device pairings and app passwords are deleted. The role is untouched. It returns the previous
+	// sso_issuer. Local or missing: ErrNotFound. Already bound to binding: ErrAlreadyBound, and
+	// nothing is written or revoked.
+	ReattachSSOUser(ctx context.Context, actor Actor, userID, binding string) (string, error)
 	// CountSSOAccounts counts the active accounts BindSignIn would deactivate.
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
@@ -114,6 +137,8 @@ type UserStore interface {
 	SpendTOTPCounter(ctx context.Context, userID string, counter int64) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
+	// SSOUserIDs returns those of ids that name an existing non-local account, in any order.
+	SSOUserIDs(ctx context.Context, ids []string) ([]string, error)
 	CountUsers(ctx context.Context) (int, error)
 }
 
@@ -142,6 +167,8 @@ type GroupStore interface {
 	CreateGroup(ctx context.Context, g *Group) error
 	GetGroupByID(ctx context.Context, id string) (*Group, error)
 	GetGroupByName(ctx context.Context, name string) (*Group, error)
+	// GroupsByExternalID lists the groups of source whose external ID is exactly externalID.
+	GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error)
 	UpdateGroup(ctx context.Context, g *Group) error
 	DeleteGroup(ctx context.Context, id string) error
 	// ListGroups pages groups by name; source "" lists every owner.
@@ -172,9 +199,30 @@ type SettingsStore interface {
 	GetAllSettings(ctx context.Context) (map[string]string, error)
 }
 
+// Grantor is who issues an app password: a signed-in session, rechecked inside the insert's
+// transaction, or Seed (fixtures), which is not. The zero Grantor is refused.
+type Grantor struct {
+	sessionHash, passwordHash string
+	seed                      bool
+}
+
+// Seed issues without a session: test and fixture data only.
+var Seed = Grantor{seed: true}
+
+// SessionGrantor is the session with token hash sessionHash, of a user whose password hash was
+// passwordHash when the request was authenticated.
+func SessionGrantor(sessionHash, passwordHash string) Grantor {
+	return Grantor{sessionHash: sessionHash, passwordHash: passwordHash}
+}
+
 // AppPasswordStore persists per-user app passwords for native CalDAV clients.
 type AppPasswordStore interface {
-	Create(ctx context.Context, p *AppPassword) error
+	// Create stores p in one transaction. A session grantor first locks the user row as session
+	// issuance does (active, password unchanged) and rechecks that its session is live and the
+	// user's, so a credential is never minted after a purge (role, status, reattach, password
+	// change) committed: ErrSessionExpired. Then the user's count is checked against max (0 = no
+	// limit; ErrQuotaExceeded) and p inserted.
+	Create(ctx context.Context, by Grantor, p *AppPassword, max int) error
 	Get(ctx context.Context, id string) (*AppPassword, error)
 	ListByUser(ctx context.Context, userID string) ([]*AppPassword, error)
 	Delete(ctx context.Context, userID, id string) error // ErrNotFound if not the user's

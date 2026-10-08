@@ -195,7 +195,7 @@ func TestCalDAVTokenFromBeforeRestoreRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AppPasswords().Create(context.Background(), &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}); err != nil {
+	if err := st.AppPasswords().Create(context.Background(), store.Seed, &store.AppPassword{ID: id, UserID: "usr_alice", Label: "t", Hash: hash}, 0); err != nil {
 		t.Fatal(err)
 	}
 	// Same seq as before the reset: a ctag of seq alone would equal the cached one and the

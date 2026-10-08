@@ -29,7 +29,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	if err := s.store.Calendars().CreateCalendar(ctx, cal, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_carol", UserID: u.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_carol", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,9 +117,9 @@ func (failingUserStore) SetSSORole(context.Context, string, string) error {
 	return errors.New("update failed")
 }
 
-// Revocation precedes the role write: if storing the promotion fails, the old everyday
-// session is already gone, and the next login still sees a change and revokes again.
-func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
+// The role write and its revocation are one transaction: a failed promotion leaves the role as
+// it was, the login fails, and the next login sees the change again.
+func TestUpsertSSOUserFailedRoleWriteChangesNothing(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
 	u := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e", SSOIssuer: kyBinding}
@@ -130,19 +130,13 @@ func TestUpsertSSOUserRevokesBeforeStoringRole(t *testing.T) {
 	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_eve", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.AppPasswords().Create(ctx, &store.AppPassword{ID: "pw_eve", UserID: u.ID, Label: "phone", Hash: "h"}); err != nil {
+	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_eve", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store
 	s.store = failingUpdates{real}
 	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-e", Provider: "kysignon", Roles: []string{access.AdminAppRole}}, kyBinding); err == nil {
 		t.Fatal("want the update error")
-	}
-	if _, err := real.Sessions().GetSession(ctx, "tok_eve"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("everyday session survived a failed promotion: %v", err)
-	}
-	if list, _ := real.AppPasswords().ListByUser(ctx, u.ID); len(list) != 0 {
-		t.Fatal("app passwords survived a failed promotion")
 	}
 	if got, _ := real.Users().GetUserByID(ctx, u.ID); got.Role != "user" {
 		t.Fatalf("role stored despite the failure: %q", got.Role)
@@ -198,5 +192,28 @@ func TestUpsertSSOUserRoleChangeKeepsAConcurrentDeactivation(t *testing.T) {
 	}
 	if got, _ := real.Users().GetUserByID(ctx, "usr_fay"); got.Status != "inactive" || got.Role != "user" {
 		t.Fatalf("fay: %s %s, want inactive user", got.Status, got.Role)
+	}
+}
+
+// A demotion fails closed: when the role write fails, the administrator's grants are revoked
+// anyway, so the IdP's removal of the role never leaves an admin session live.
+func TestUpsertSSOUserFailedDemotionSignsOut(t *testing.T) {
+	s, _ := davInternalServer(t)
+	ctx := context.Background()
+	u := &store.User{ID: "usr_ada", Username: "ada", Role: "admin", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-a", SSOIssuer: kyBinding}
+	if err := s.store.Users().CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_ada", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+		t.Fatal(err)
+	}
+	real := s.store
+	s.store = failingUpdates{real}
+	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Subject: "sub-a", Provider: "kysignon"}, kyBinding); err == nil {
+		t.Fatal("want the update error")
+	}
+	if _, err := real.Sessions().GetSession(ctx, "tok_ada"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("an admin session survived a failed demotion: %v", err)
 	}
 }

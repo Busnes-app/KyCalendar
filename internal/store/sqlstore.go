@@ -418,13 +418,21 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 		offset = 0
 	}
 
-	where, args := "", []any{}
+	where, args := "WHERE 1 = 1", []any{}
 	if col, ok := userFilterColumns[filter.Field]; ok {
-		where, args = "WHERE LOWER("+col+") = LOWER(?)", []any{filter.Value}
+		where, args = where+" AND LOWER("+col+") = LOWER(?)", []any{filter.Value}
 	} else if filter.Field == UserFieldSearch {
 		p := "%" + likeEscaper.Replace(filter.Value) + "%"
-		where = `WHERE LOWER(username) LIKE LOWER(?) ESCAPE '\' OR LOWER(email) LIKE LOWER(?) ESCAPE '\' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '\'`
+		where += ` AND (LOWER(username) LIKE LOWER(?) ESCAPE '\' OR LOWER(email) LIKE LOWER(?) ESCAPE '\' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '\')`
 		args = []any{p, p, p}
+	}
+	if filter.SSOOnly {
+		where += " AND sso_provider <> 'local'"
+	}
+	if filter.Field == UserFieldSSOSubject {
+		in, pargs := inList(filter.Providers)
+		where += " AND sso_subject = ? AND sso_issuer = ? AND sso_provider <> 'local' AND sso_provider IN (" + in + ")"
+		args = append(append(args, filter.Value, filter.Issuer), pargs...)
 	}
 
 	var total int
@@ -456,6 +464,27 @@ ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	}
 
 	return users, total, rows.Err()
+}
+
+func (u *userStore) SSOUserIDs(ctx context.Context, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	in, args := inList(ids)
+	rows, err := u.store.db.QueryContext(ctx, u.store.rebind("SELECT id FROM users WHERE sso_provider <> 'local' AND id IN ("+in+")"), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 func (u *userStore) CountUsers(ctx context.Context) (int, error) {
@@ -679,6 +708,40 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 	return int(n), tx.Commit()
 }
 
+func (u *userStore) ReattachSSOUser(ctx context.Context, actor Actor, userID, binding string) (string, error) {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return "", err
+	}
+	var from string
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT sso_issuer FROM users WHERE id = ? AND sso_provider <> 'local'`), userID).Scan(&from)
+	if errorsIs(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	} else if err != nil {
+		return "", err
+	}
+	// Row first, as in changeAccess: no grant is issued between the purge and the change. Only a
+	// row bound elsewhere: one already on binding (a concurrent reattach the IdP then disabled)
+	// keeps the status its IdP gave it.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET sso_issuer = ?, status = 'active', updated_at = ? WHERE id = ? AND sso_provider <> 'local' AND sso_issuer <> ?`), binding, time.Now().UTC(), userID, binding)
+	if err != nil {
+		return "", err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return "", err
+	} else if n == 0 {
+		return "", ErrAlreadyBound
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return "", err
+	}
+	return from, tx.Commit()
+}
+
 func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (int, error) {
 	if len(providers) == 0 {
 		return 0, nil
@@ -701,14 +764,132 @@ func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, emai
 }
 
 func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
-	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	tx, err := u.store.beginTx(ctx)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	defer tx.Rollback()
+	// Row first, as in changeAccess: an app-password issuance holding the row commits before the
+	// purge and is purged with the rest.
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// lockSSOAccess locks a non-local row in tx and reads its role and status.
+func (u *userStore) lockSSOAccess(ctx context.Context, tx *sql.Tx, id string, now time.Time) (role, status string, err error) {
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), now, id)
+	if err != nil {
+		return "", "", err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return "", "", err
+	} else if n == 0 {
+		return "", "", ErrNotFound
+	}
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ?`), id).Scan(&role, &status)
+	return role, status, err
+}
+
+// setSSOAccess writes role and status on a row tx has locked and, when they changed, revokes its grants.
+func (u *userStore) setSSOAccess(ctx context.Context, tx *sql.Tx, id, oldRole, oldStatus, role, status string) error {
+	if role == oldRole && status == oldStatus {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, status = ? WHERE id = ?`), role, status, id); err != nil {
+		return err
+	}
+	return u.revokeGrants(ctx, tx, id)
+}
+
+// betweenSCIMWrites runs between UpdateSCIMUser's removal and grant transactions; a test seam.
+var betweenSCIMWrites = func() {}
+
+// UpdateSCIMUser writes only the access the request changes relative to what SCIM read
+// (expectedRole, expectedStatus), so a request that does not change role or status never
+// overwrites a concurrent change. A removal (active to inactive, admin to user) always lands, in
+// its own row-first transaction with the revocation. A grant (inactive to active, user to admin)
+// lands only with the profile write and only if the stored value still equals what SCIM read;
+// otherwise nothing more is written and the result is ErrAccessChanged.
+func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User, expectedRole, expectedStatus string) error {
+	user.UpdatedAt = time.Now().UTC()
+	tx, err := u.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	role, status, err := u.lockSSOAccess(ctx, tx, user.ID, user.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	demote := expectedRole == "admin" && user.Role != "admin"
+	deactivate := expectedStatus == "active" && user.Status != "active"
+	if demote || deactivate {
+		cutRole, cutStatus := role, status
+		if demote {
+			cutRole = user.Role
+		}
+		if deactivate {
+			cutStatus = user.Status
+		}
+		if err := u.setSSOAccess(ctx, tx, user.ID, role, status, cutRole, cutStatus); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		betweenSCIMWrites()
+		if tx, err = u.store.beginTx(ctx); err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if role, status, err = u.lockSSOAccess(ctx, tx, user.ID, user.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	newRole, newStatus := role, status
+	promote := expectedRole != "admin" && user.Role == "admin"
+	activate := expectedStatus != "active" && user.Status == "active"
+	if promote || activate {
+		// A grant needs the whole access SCIM read, as this request's removal left it.
+		wantRole, wantStatus := expectedRole, expectedStatus
+		if demote {
+			wantRole = user.Role
+		}
+		if deactivate {
+			wantStatus = user.Status
+		}
+		if role != wantRole || status != wantStatus {
+			return ErrAccessChanged
+		}
+		if promote {
+			newRole = user.Role
+		}
+		if activate {
+			newStatus = user.Status
+		}
+	}
+	if err := u.setSSOAccess(ctx, tx, user.ID, role, status, newRole, newStatus); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET username = ?, email = ?, display_name = ? WHERE id = ?`),
+		user.Username, user.Email, user.DisplayName, user.ID); err != nil {
+		if isUniqueViolation(err) {
+			return ErrAlreadyExists
+		}
+		return err
+	}
+	return tx.Commit()
 }
 
 func (u *userStore) RevokeSSOUser(ctx context.Context, userID string, deactivate bool) error {
@@ -1048,6 +1229,31 @@ func (g *groupStore) GetGroupByID(ctx context.Context, id string) (*Group, error
 		return nil, err
 	}
 	return grp, nil
+}
+
+func (g *groupStore) GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error) {
+	rows, err := g.store.db.QueryContext(ctx, g.store.rebind("SELECT "+groupColumns+" FROM groups WHERE external_id = ? AND source = ? ORDER BY display_name"), externalID, source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Group
+	for rows.Next() {
+		grp, err := scanGroup(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, grp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, grp := range out {
+		if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func (g *groupStore) GetGroupByName(ctx context.Context, name string) (*Group, error) {
