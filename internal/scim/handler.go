@@ -1,6 +1,7 @@
 package scim
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -670,7 +671,8 @@ func refusedGroup(r *http.Request, st store.Store, id, reason string, err error)
 
 func refused(r *http.Request, st store.Store, rec *store.AuditRecord, err error) error {
 	log.Printf("[SCIM] %s id=%q %s", rec.Action, rec.Resource, rec.Details)
-	if aerr := st.Audit().LogAudit(r.Context(), rec); aerr != nil {
+	// Detached: a client that hangs up never drops the audit row.
+	if aerr := st.Audit().LogAudit(context.WithoutCancel(r.Context()), rec); aerr != nil {
 		log.Printf("[SCIM] audit of %s failed: %v", rec.Action, aerr)
 	}
 	return err

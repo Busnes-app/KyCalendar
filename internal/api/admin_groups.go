@@ -181,13 +181,14 @@ func (s *Server) handleRenameGroup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
-	name, ok := cleanName(body.DisplayName)
-	if !ok {
-		s.writeError(w, http.StatusBadRequest, "Name must be 1-255 bytes with no control or invisible characters")
-		return
-	}
 	g := s.adminGroup(w, r, true)
 	if g == nil {
+		return
+	}
+	// An unchanged name is not revalidated: a name stored under an older rule stays renamable.
+	name, ok := cleanName(body.DisplayName)
+	if !ok && name != g.DisplayName {
+		s.writeError(w, http.StatusBadRequest, "Name must be 1-255 bytes with no control or invisible characters")
 		return
 	}
 	from := g.DisplayName
