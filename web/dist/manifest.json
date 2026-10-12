@@ -1,6 +1,6 @@
 {
-  "short_name": "BusnesApp",
-  "name": "Busnes.app Base Platform",
+  "short_name": "KyCalendar",
+  "name": "KyCalendar",
   "icons": [
     {
       "src": "/app-icon-192.png",

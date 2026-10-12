@@ -46,7 +46,7 @@ export function managedBy(source: string): string | null {
     case "scim":
       return "Managed by SCIM";
     case "kysignon":
-      return "Managed by KyIdentity";
+      return "Managed by Single Sign On";
     case "oidc":
       return "Managed by the sign-in provider";
     default:

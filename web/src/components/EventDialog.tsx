@@ -97,21 +97,23 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
           <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
-          <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
+          <div className="kc-actions">
+            <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
+          </div>
         </div>
       ) : (
-        <form onSubmit={save}>
+        <form className="kc-form" onSubmit={save}>
           {choose && (
             <fieldset>
               <legend>Change</legend>
-              <label><input type="radio" name="scope" checked={scope === 'this'} onChange={() => chooseScope('this')} /> This event</label>
-              <label><input type="radio" name="scope" checked={scope === 'all'} onChange={() => chooseScope('all')} /> All events</label>
+              <label className="kc-check"><input type="radio" name="scope" checked={scope === 'this'} onChange={() => chooseScope('this')} /> This event</label>
+              <label className="kc-check"><input type="radio" name="scope" checked={scope === 'all'} onChange={() => chooseScope('all')} /> All events</label>
             </fieldset>
           )}
           {event?.recurring && scope === 'all' && <p>{MOVE_ALL_WARNING}</p>}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
-          <label><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
+          <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
           <label htmlFor="kc-start">Start</label>
           <input id="kc-start" type={form.allDay ? 'date' : 'datetime-local'} value={form.start} required onChange={(e) => set({ start: e.target.value })} />
           <label htmlFor="kc-end">End</label>
@@ -141,7 +143,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
                   <fieldset>
                     <legend>On</legend>
                     {WEEKDAYS.map((d) => (
-                      <label key={d}>
+                      <label key={d} className="kc-check">
                         <input type="checkbox" checked={form.weekdays.includes(d)} onChange={(e) => set({ weekdays: e.target.checked ? [...form.weekdays, d] : form.weekdays.filter((x) => x !== d) })} /> {d}
                       </label>
                     ))}
@@ -151,9 +153,11 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
             )
           )}
           {scope === 'this' && event && form.freq === 'custom' && <p>Repeats: <span>Custom (edit on your device)</span></p>}
-          <button type="submit" disabled={busy}>Save</button>
-          {event && <button type="button" disabled={busy} onClick={remove}>Delete</button>}
-          <button type="button" onClick={onClose}>Cancel</button>
+          <div className="kc-actions">
+            <button type="submit" disabled={busy}>Save</button>
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            {event && <button type="button" className="btn-danger kc-push" disabled={busy} onClick={remove}>Delete</button>}
+          </div>
         </form>
       )}
     </dialog>
