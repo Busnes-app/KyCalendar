@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 
+	"errors"
+	"github.com/Busnes-app/ky-primitives/applysetup"
 	"github.com/Busnes-app/ky-primitives/capsule"
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
@@ -96,6 +98,7 @@ func Checks(dir string, opened capsule.Manifest) []recoveryclient.Check {
 	}
 	full, _ := drillPath(dir, DatabaseMember)
 	checks = append(checks, calendarChecks(full, wantCalendars, wantObjects)...)
+	checks = append(checks, installerCredentialCheck(dir, required))
 	for _, name := range env {
 		_, found := os.LookupEnv(name)
 		message := "Missing"
@@ -267,3 +270,42 @@ func drillPath(root, name string) (string, bool) {
 
 // DrillRoot keeps opened instance data beneath the deployment's data directory.
 func DrillRoot(cfg *config.Config) string { return filepath.Join(cfg.Database.DataDir, "drill") }
+
+func installerCredentialCheck(dir string, required []string) recoveryclient.Check {
+	c := recoveryclient.Check{Name: "Installer Credentials"}
+	u := url.URL{Scheme: "file", Path: filepath.Join(dir, "data", "kycalendar.db")}
+	q := u.Query()
+	q.Set("mode", "ro")
+	u.RawQuery = q.Encode()
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		c.Message = "Cannot inspect restored database"
+		return c
+	}
+	defer db.Close()
+	var raw string
+	err = db.QueryRow("SELECT value FROM server_settings WHERE key='installer.config'").Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		c.Passed = true
+		c.Message = "Unmanaged configuration"
+		return c
+	}
+	if err != nil {
+		c.Message = "Cannot inspect restored configuration"
+		return c
+	}
+	var b applysetup.Common
+	if applysetup.DecodeRaw([]byte(raw), &b) != nil || b.Validate("kycalendar", "/api/sso/kysignon/callback") != nil || b.SSO == nil {
+		c.Message = "Invalid retained installer configuration"
+		return c
+	}
+	for _, name := range []string{"installer/client.secret", "installer/directory.secret", "installer/credential-paths.json"} {
+		if !slices.Contains(required, name) {
+			c.Message = "Required managed credential omitted"
+			return c
+		}
+	}
+	c.Passed = true
+	c.Message = "Managed credential members required"
+	return c
+}

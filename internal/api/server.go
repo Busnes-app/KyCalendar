@@ -245,6 +245,8 @@ func (s *Server) handle(pattern string, h http.Handler) {
 }
 
 func (s *Server) routes() {
+	s.handle("GET /api/installer/network", http.HandlerFunc(s.handleInstallerNetwork))
+	s.handle("POST /api/installer/directory", http.HandlerFunc(s.handleInstallerDirectory))
 	// Auth
 	s.handle("/api/auth/pow-challenge", http.HandlerFunc(s.handlePoWChallenge))
 	s.handle("/api/auth/login", http.HandlerFunc(s.handleLogin))

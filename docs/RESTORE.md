@@ -34,6 +34,13 @@ Everything a fresh server needs to be the old one:
 | `data/recovery.pub` | The suite recovery public key, so the restored server comes back pinned (present when the backup had a key) |
 | `config/settings.json` | App name, URL, port, database driver. For your reference when re-deploying; nothing reads it |
 
+Installer-managed instances additionally carry `installer/client.secret`,
+`installer/directory.secret` and `installer/credential-paths.json`. Before starting the server,
+restore the credentials to the absolute paths recorded in that map, process-owned and 0600.
+Keep those paths outside the restored application tree only when the original deployment
+used them there; the database retains their references. Missing credentials close sign-in.
+The drill requires these members independently of the recipe; it does not contact KyIdentity.
+
 The restored directory is the live directory in the clear. Treat it like the running server's
 `data/`.
 

@@ -27,17 +27,24 @@ type signingIdP struct {
 	*httptest.Server
 	sub, nonce string
 	onToken    func()
+	roles      []string
 }
 
-func newSigningIdP(t *testing.T) *signingIdP {
+func newSigningIdP(t *testing.T) *signingIdP { return signingIdPFixture(t, false) }
+
+func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b64 := base64.RawURLEncoding.EncodeToString
-	idp := &signingIdP{}
-	idp.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idp := &signingIdP{roles: []string{access.AdminAppRole}}
+	newServer := httptest.NewServer
+	if tls {
+		newServer = httptest.NewTLSServer
+	}
+	idp.Server = newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/keys":
@@ -52,7 +59,7 @@ func newSigningIdP(t *testing.T) *signingIdP {
 			head, _ := json.Marshal(map[string]string{"alg": "RS256", "kid": "k1", "typ": "JWT"})
 			body, _ := json.Marshal(map[string]any{
 				"iss": idp.URL, "aud": "kc", "sub": idp.sub, "nonce": idp.nonce, "preferred_username": "user-" + idp.sub,
-				"roles": []string{access.AdminAppRole}, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(),
+				"roles": idp.roles, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(),
 			})
 			signing := b64(head) + "." + b64(body)
 			sum := sha256.Sum256([]byte(signing))

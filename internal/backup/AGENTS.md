@@ -49,6 +49,8 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
   package's wiring buys: `KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY` admits RFC1918 and CGNAT and
   nothing else.
 
+- Managed payloads require private OIDC and directory credentials, sealed as `installer/client.secret` and `installer/directory.secret` with `installer/credential-paths.json`. `Members` includes all three. The drill reads retained setup from restored SQLite and requires these members independently of the recipe, preserving native calendar count and object checks.
+
 ## Verification
 - `go test -v ./internal/backup/...` covers decoded seal/open checks, malformed recipes,
   subprocess lock contention/exit, scratch cleanup and the synthetic v0.5.0 pairing fixture

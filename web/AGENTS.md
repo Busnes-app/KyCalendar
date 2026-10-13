@@ -32,6 +32,8 @@ Owns user interface components, service worker caching, PWA installation manifes
 - `Backup.tsx` shows `last_run` under the schedule, as an alert when it failed, so a failing scheduled backup is visible on screen.
 - `Backup.tsx` warns for as long as `database_driver` from `/api/backup/status` is not `sqlite`: only the SQLite path can snapshot a database into a capsule, so a Postgres deployment makes no capsules at all.
 
+- Sign-in responses are validated at the HTTP boundary. A `managed` response disables configuration, Test and Save, explains KyQuickStart ownership and leaves callback Copy available. Source `installer` is distinct from environment and saved settings.
+
 ## Verification
 - Browser setup: build the frontend, run `go build -o .browser/server ./cmd/server` at the repo root, then `cd web && npx playwright install chromium && npm run test:browser`. CI also installs browser OS dependencies.
 - `make test-web` or `cd web && npm ci && npm test`, then `npm run build` (vitest with jsdom; `src/pages/Backup.test.tsx` renders the recovery screen against a stubbed status route). Commit `web/dist` after a build; CI diffs it.

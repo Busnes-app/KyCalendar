@@ -405,6 +405,10 @@ func (s *Server) answerBound(w http.ResponseWriter, r *http.Request, u *store.Us
 // confirmed; the role is re-proven at the next sign-in. A person disabled under the live binding
 // was disabled by the IdP, which restores them.
 func (s *Server) handleReattachUser(w http.ResponseWriter, r *http.Request) {
+	if s.config.InstallerSSO != nil {
+		s.writeJSON(w, 409, map[string]string{"error": "Installer-owned identities cannot be reattached", "code": "managed_externally"})
+		return
+	}
 	if !s.requireStepUp(w, r, "reattach a person") {
 		return
 	}

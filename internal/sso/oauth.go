@@ -105,5 +105,5 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 		username = raw.Sub
 	}
 	// The global `role` claim is deliberately not read: it is never a KyCalendar admin.
-	return &IdentityClaims{Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles)}, nil
+	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles)}, nil
 }

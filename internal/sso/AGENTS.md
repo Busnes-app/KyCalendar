@@ -18,6 +18,8 @@ Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 sign
 - `Discover` is what an admin-entered issuer must pass: https with no user, query or fragment; the discovery document names exactly that issuer; its `authorization_endpoint`, `token_endpoint` and `jwks_uri` are https; `S256` is in `code_challenge_methods_supported`. `NewGuardedClient` refuses non-https requests (endpoints a discovery document names included), redirects and proxies, caps bodies at 1 MiB, and applies its `AddrPolicy` to the unmapped address actually dialled, after DNS. `RefuseLocal` refuses loopback, link-local (cloud metadata), unspecified and multicast addresses plus the metadata services at `fd00:ec2::254` and `100.100.100.200`, and admits private LAN ones. Error text never carries the provider's response; only an issuer-mismatch quotes the discovered issuer (at most 256 bytes, `%q`).
 - A capsule restore brings sign-in settings back: the settings rows travel in `data/kycalendar.db` and the data-volume key that opens the sealed secret in `data/encryption.key`. Not drill-checked.
 
+- Verified claims retain the ID token issuer. An installer-built `Provider` rereads its protected client credential for authorization and exchange while keeping the provider ID stable; unavailable credentials close sign-in. Installer fields report source `installer`; ordinary saved/environment provider behavior remains unchanged.
+
 ## Verification
 - `go test -v ./internal/sso/...`
 

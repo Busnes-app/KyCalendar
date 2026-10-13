@@ -161,6 +161,8 @@ type apiRow struct {
 func apiRows(w *world) map[string]apiRow {
 	g := "/api/calendars/" + w.group.ID + "/grants"
 	return map[string]apiRow{
+		"GET /api/installer/network":      {want: public},
+		"POST /api/installer/directory":   {want: public},
 		"/api/auth/pow-challenge":         {want: public},
 		"/api/auth/login":                 {want: public},
 		"/api/auth/mfa/totp":              {want: public},

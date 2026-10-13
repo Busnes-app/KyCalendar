@@ -50,7 +50,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// By prefix, not by literal: the lib owns the token's key name, and a future
 		// spelling must not leak by default. The sign-in client secret never leaves either.
 		for k := range settings {
-			if strings.HasPrefix(k, "kyrecovery_token") || strings.HasPrefix(k, "signin_client_secret") {
+			if strings.HasPrefix(k, "installer.") || strings.HasPrefix(k, "kyrecovery_token") || strings.HasPrefix(k, "signin_client_secret") {
 				delete(settings, k)
 			}
 		}

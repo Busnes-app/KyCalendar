@@ -43,6 +43,9 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - Recovery-code hash updates use optimistic concurrency so simultaneous redemption cannot reuse a code.
 - `CreateSession` stamps `users.last_login_at` with the session's `CreatedAt` in the same transaction; the People list shows it.
 
+- `ApplyInstaller` commits immutable configuration, `signin_bound`, new issuer-bound accounts and native audit together under `local-admins`, then `user-names`; inspection is read-only. Retained drift and existing names or sign-in settings fail instead of being adopted. Native account and sign-in writers refuse owned authority; native sign-in setting writes share the `local-admins` lock with first setup.
+- `ApplyInstallerDirectory` fences positive canonical revisions with a retained digest, preserves assigned roles, and atomically changes active status, revokes every `grantTables` row and audits. Deleted directory identities are deactivated, preserving calendars. Owned-session checks verify the exact local ID, issuer/subject, role and binding.
+
 ## Verification
 - `go test -v ./internal/store/...`
 

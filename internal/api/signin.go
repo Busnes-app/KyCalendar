@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Busnes-app/ky-primitives/applysetup"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -23,7 +24,11 @@ func (s *Server) buildProvider(st sso.Settings) *sso.Provider {
 	if st.Issuer.Source == sso.SourceEnvironment {
 		client = nil
 	}
-	return sso.NewProvider(st.Provider.Value, st.DisplayName.Value, st.Issuer.Value, st.ClientID.Value, st.Secret.Value, client)
+	p := sso.NewProvider(st.Provider.Value, st.DisplayName.Value, st.Issuer.Value, st.ClientID.Value, st.Secret.Value, client)
+	if s.config.InstallerSSO != nil {
+		p.CredentialFile = s.config.InstallerSSO.ClientSecretFile
+	}
+	return p
 }
 
 // signInSettings resolves the saved settings under the environment and opens a saved secret.
@@ -31,6 +36,14 @@ func (s *Server) signInSettings(ctx context.Context) (sso.Settings, error) {
 	saved, err := s.store.Settings().GetAllSettings(ctx)
 	if err != nil {
 		return sso.Settings{}, err
+	}
+	if managed := s.config.InstallerSSO; managed != nil {
+		secret, err := applysetup.Secret(managed.ClientSecretFile)
+		if err != nil {
+			return sso.Settings{}, err
+		}
+		field := func(value string) sso.Field { return sso.Field{Value: value, Source: sso.SourceInstaller} }
+		return sso.Settings{Provider: field(sso.KindKyIdentity), DisplayName: field("KyIdentity"), Issuer: field(managed.IssuerURL), ClientID: field(managed.ClientID), Secret: sso.SecretField{Value: secret, Source: sso.SourceInstaller}}, nil
 	}
 	st := sso.Resolve(s.config.SSO, saved)
 	if st.Secret.Source == sso.SourceSaved {
