@@ -3,7 +3,7 @@ import { JSON_HEADERS, REAUTH, failure, send } from "../admin";
 
 interface Field {
   value: string;
-  source: "environment" | "saved" | "unset";
+  source: "environment" | "saved" | "unset" | "installer";
 }
 
 interface View {
@@ -15,6 +15,28 @@ interface View {
   callback_url: string;
   sso_enabled: boolean;
   live: boolean;
+  managed: boolean;
+}
+
+function isField(value: unknown): value is Field {
+  return typeof value === "object" && value !== null && "value" in value && typeof value.value === "string" &&
+    "source" in value && ["environment", "saved", "unset", "installer"].some((source) => source === value.source);
+}
+
+function isView(value: unknown): value is View {
+  if (typeof value !== "object" || value === null) return false;
+  return "provider" in value && isField(value.provider) && "display_name" in value && isField(value.display_name) &&
+    "issuer" in value && isField(value.issuer) && "client_id" in value && isField(value.client_id) &&
+    "client_secret" in value && typeof value.client_secret === "object" && value.client_secret !== null &&
+    "set" in value.client_secret && typeof value.client_secret.set === "boolean" &&
+    "source" in value.client_secret && typeof value.client_secret.source === "string" &&
+    "callback_url" in value && typeof value.callback_url === "string" &&
+    "sso_enabled" in value && typeof value.sso_enabled === "boolean" && "live" in value && typeof value.live === "boolean" &&
+    "managed" in value && typeof value.managed === "boolean";
+}
+
+async function readView(res: Response): Promise<View | null> {
+  try { const value: unknown = await res.json(); return isView(value) ? value : null; } catch { return null; }
 }
 
 interface Form {
@@ -46,7 +68,8 @@ export default function SignIn() {
         setError("Could not load the sign-in settings. Reload the page to try again.");
         return;
       }
-      const v: View = await res.json();
+      const v = await readView(res);
+      if (!v) { setError("Invalid sign-in settings response. Reload the page to try again."); return; }
       setView(v);
       setForm(formOf(v));
     })();
@@ -81,6 +104,7 @@ export default function SignIn() {
   }
 
   async function test() {
+    if (view?.managed) return;
     setError(null);
     setNotice(null);
     const res = await send("/api/admin/signin/test", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(form) });
@@ -92,6 +116,7 @@ export default function SignIn() {
   }
 
   async function save(confirmed = 0) {
+    if (view?.managed) return;
     setError(null);
     setNotice(null);
     const res = await send("/api/admin/signin", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ ...form, confirm_disable: confirmed }) });
@@ -107,7 +132,8 @@ export default function SignIn() {
       setError(f.code === "reauth_required" ? REAUTH : (f.error ?? "Could not save the sign-in settings"));
       return;
     }
-    const v: View = await res.json();
+    const v = await readView(res);
+    if (!v) { setError("Invalid sign-in settings response. Reload the page to try again."); return; }
     setView(v);
     setForm(formOf(v));
     setNotice(v.live ? `Saved. The login page now offers “Continue with ${v.display_name.value}”.` : "Saved. Single sign-on is off.");
@@ -122,6 +148,7 @@ export default function SignIn() {
         the previous provider's accounts.
       </p>
       {!view.sso_enabled && <p role="status">KY_SSO_ENABLED=false: single sign-on stays off whatever you save here.</p>}
+      {view.managed && <p role="status">Sign-in is managed by KyQuickStart. Change it through the installer.</p>}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -129,7 +156,7 @@ export default function SignIn() {
         }}
       >
         <label htmlFor="signin-provider">Provider</label>
-        <select id="signin-provider" value={form.provider} onChange={set("provider")} disabled={env(view.provider)}>
+        <select id="signin-provider" value={form.provider} onChange={set("provider")} disabled={view.managed || env(view.provider)}>
           <option value="none">None (passwords only)</option>
           <option value="kyidentity">Single Sign On</option>
           <option value="oidc">Another OpenID Connect provider</option>
@@ -138,20 +165,20 @@ export default function SignIn() {
         {form.provider !== "none" && (
           <>
             <label htmlFor="signin-name">Button label</label>
-            <input id="signin-name" value={form.display_name} onChange={set("display_name")} maxLength={255} required={form.provider === "oidc"} />
+            <input id="signin-name" disabled={view.managed} value={form.display_name} onChange={set("display_name")} maxLength={255} required={form.provider === "oidc"} />
             <label htmlFor="signin-issuer">Issuer URL</label>
             <input
               id="signin-issuer"
               type="url"
               value={form.issuer}
               onChange={set("issuer")}
-              disabled={env(view.issuer)}
+              disabled={view.managed || env(view.issuer)}
               placeholder="https://id.example.com"
               required
             />
             {env(view.issuer) && <EnvNote name="KY_KYSIGNON_ISSUER" />}
             <label htmlFor="signin-client">Client ID</label>
-            <input id="signin-client" value={form.client_id} onChange={set("client_id")} disabled={env(view.client_id)} required />
+            <input id="signin-client" value={form.client_id} onChange={set("client_id")} disabled={view.managed || env(view.client_id)} required />
             {env(view.client_id) && <EnvNote name="KY_KYSIGNON_CLIENT_ID" />}
             <label htmlFor="signin-secret">Client secret</label>
             <input
@@ -160,7 +187,7 @@ export default function SignIn() {
               autoComplete="off"
               value={form.client_secret}
               onChange={set("client_secret")}
-              disabled={secretLocked}
+              disabled={view.managed || secretLocked}
               required={!secretLocked && !keepsSecret}
               placeholder={keepsSecret ? "Stored; leave blank to keep it" : "Required"}
             />
@@ -171,14 +198,14 @@ export default function SignIn() {
                 Copy
               </button>
             </p>
-            <button type="button" onClick={() => void test()}>
+            <button type="button" disabled={view.managed} onClick={() => void test()}>
               Test
             </button>
           </>
         )}
         {error && <p role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
-        <button type="submit">Save</button>
+        <button type="submit" disabled={view.managed}>Save</button>
       </form>
     </section>
   );

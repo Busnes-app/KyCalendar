@@ -6,6 +6,8 @@ passwords. Built on the suite server base: Go backend, embedded React PWA, SQLit
 PostgreSQL, local and federated sign-in (KyIdentity or any OpenID Connect provider), SCIM provisioning, and
 disaster recovery through the suite's KyRecovery.
 
+Installer integration: [product-owned setup contract](docs/INSTALLER_SETUP.md).
+
 Published image:
 
 ```bash

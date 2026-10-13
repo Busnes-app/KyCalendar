@@ -28,6 +28,7 @@ const saved = {
   callback_url: "https://cal.example/api/sso/kysignon/callback",
   sso_enabled: true,
   live: true,
+  managed: false,
 };
 
 describe("SignIn", () => {
@@ -162,4 +163,22 @@ describe("SignIn", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/Could not copy/);
   });
+});
+
+it("keeps installer-managed sign-in read-only", async () => {
+  mockFetch({ "GET /api/admin/signin": () => ({ ...saved, managed: true, provider: field("kyidentity", "installer") }) });
+  render(<SignIn />);
+  expect((await screen.findByLabelText<HTMLSelectElement>("Provider")).disabled).toBe(true);
+  for (const name of ["Button label", "Issuer URL", "Client ID", "Client secret"]) expect(screen.getByLabelText<HTMLInputElement>(name).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save" }).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Test" }).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Copy" }).disabled).toBe(false);
+  expect(screen.getByRole("status").textContent).toMatch(/managed by KyQuickStart/);
+});
+
+it("rejects malformed sign-in data at the HTTP boundary", async () => {
+  mockFetch({ "GET /api/admin/signin": () => ({ ...saved, issuer: { value: 123, source: "saved" } }) });
+  render(<SignIn />);
+  expect((await screen.findByRole("alert")).textContent).toMatch(/Invalid sign-in settings/);
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 });

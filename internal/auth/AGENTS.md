@@ -17,6 +17,8 @@ Owns session issuance and verification, TOTP token generation/validation, recove
 - Single-use recovery codes are invalidated immediately upon redemption.
 - `ClientIP` is the one client-address helper: the rate limiter and session binding both use it. `X-Forwarded-For` is honoured only when the peer is in `KY_TRUSTED_PROXIES`, walking the chain from the right past trusted hops; `X-Real-IP` is ignored. Each entry may be a bare IP or `ip:port` (Azure App Service/Application Gateway append the port); anything else ends the walk and falls back to the peer.
 
+- Cookie/Bearer authentication rechecks installer-owned identity authority on each request. `TrustedPeer` exposes the same peer allowlist decision used by `ClientIP` for the installer's public network self-check.
+
 ## Verification
 - `go test -v ./internal/auth/...`
 

@@ -165,6 +165,10 @@ func (s *Server) resolveAppPassword(ctx context.Context, username, token string)
 	if err != nil || !strings.EqualFold(user.Username, username) {
 		return nil, false
 	}
+	allowed, ownershipErr := s.store.InstallerUserAllowed(ctx, user)
+	if ownershipErr != nil || !allowed {
+		return user, false
+	}
 	if !apppass.Matches(p.Hash, secret) {
 		return user, false
 	}

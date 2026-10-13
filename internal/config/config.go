@@ -11,19 +11,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Busnes-app/ky-primitives/applysetup"
 	"github.com/Busnes-app/ky-primitives/keyfile"
 )
 
 // Config encapsulates all runtime configuration for kycalendar.
 type Config struct {
-	Server   ServerConfig   `json:"server"`
-	Database DatabaseConfig `json:"database"`
-	Security SecurityConfig `json:"security"`
-	SSO      SSOConfig      `json:"sso"`
-	SCIM     SCIMConfig     `json:"scim"`
-	Backup   BackupConfig   `json:"backup"`
-	Captcha  CaptchaConfig  `json:"captcha"`
-	Calendar CalendarConfig `json:"calendar"`
+	InstallerSSO *applysetup.SSO `json:"-"`
+	Server       ServerConfig    `json:"server"`
+	Database     DatabaseConfig  `json:"database"`
+	Security     SecurityConfig  `json:"security"`
+	SSO          SSOConfig       `json:"sso"`
+	SCIM         SCIMConfig      `json:"scim"`
+	Backup       BackupConfig    `json:"backup"`
+	Captcha      CaptchaConfig   `json:"captcha"`
+	Calendar     CalendarConfig  `json:"calendar"`
 }
 
 // CalendarConfig bounds per-user calendar storage, and MaxBytesTotal (0 = off) every user's.

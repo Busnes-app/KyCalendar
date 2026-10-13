@@ -86,3 +86,9 @@ func isTrusted(addr netip.Addr, trusted []netip.Prefix) bool {
 	}
 	return false
 }
+
+// TrustedPeer shares the transport peer resolution used by ClientIP.
+func TrustedPeer(r *http.Request, trusted []netip.Prefix) bool {
+	addr, err := netip.ParseAddr(peerIP(r))
+	return err == nil && isTrusted(addr, trusted)
+}

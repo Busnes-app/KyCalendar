@@ -2,6 +2,7 @@ package sso
 
 import (
 	"context"
+	"github.com/Busnes-app/ky-primitives/applysetup"
 	"net/http"
 
 	"github.com/Busnes-app/kycalendar/internal/crypto"
@@ -10,11 +11,12 @@ import (
 // Provider is the live sign-in provider. Saving sign-in settings replaces it whole; ID is new on
 // every build, so a login started under one provider cannot finish under the next.
 type Provider struct {
-	Kind        string // KindKyIdentity or KindOIDC
-	DisplayName string
-	ID          string
-	Binding     string // Settings.Identity: what the accounts it signs in are stamped with
-	flow        *oauthFlow
+	CredentialFile string // immutable after construction; managed credentials are re-read per flow
+	Kind           string // KindKyIdentity or KindOIDC
+	DisplayName    string
+	ID             string
+	Binding        string // Settings.Identity: what the accounts it signs in are stamped with
+	flow           *oauthFlow
 }
 
 // NewProvider builds a provider; a nil client uses the default transport.
@@ -24,12 +26,20 @@ func NewProvider(kind, displayName, issuer, clientID, secret string, client *htt
 
 // AuthURL is the authorization request with PKCE S256 and the nonce.
 func (p *Provider) AuthURL(ctx context.Context, redirectURI, state, verifier, nonce string) (string, error) {
-	return p.flow.authCodeURL(ctx, redirectURI, state, verifier, nonce)
+	flow, err := p.currentFlow()
+	if err != nil {
+		return "", err
+	}
+	return flow.authCodeURL(ctx, redirectURI, state, verifier, nonce)
 }
 
 // Exchange redeems the code and returns the verified claims, labelled with the account provider.
 func (p *Provider) Exchange(ctx context.Context, code, verifier, redirectURI, nonce string) (*IdentityClaims, error) {
-	claims, err := p.flow.exchange(ctx, code, verifier, redirectURI, nonce)
+	flow, err := p.currentFlow()
+	if err != nil {
+		return nil, err
+	}
+	claims, err := flow.exchange(ctx, code, verifier, redirectURI, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -45,4 +55,15 @@ func (p *Provider) stamp(c *IdentityClaims) *IdentityClaims {
 	}
 	c.Provider, c.Roles = "oidc", nil
 	return c
+}
+
+func (p *Provider) currentFlow() (*oauthFlow, error) {
+	if p.CredentialFile == "" {
+		return p.flow, nil
+	}
+	secret, err := applysetup.Secret(p.CredentialFile)
+	if err != nil {
+		return nil, err
+	}
+	return newOAuthFlow(p.flow.issuer, p.flow.clientID, secret, p.flow.client), nil
 }

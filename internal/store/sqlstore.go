@@ -208,6 +208,16 @@ INSERT INTO users (
 		return err
 	}
 	defer tx.Rollback()
+	if user.SSOProvider != "local" {
+		var managed int
+		if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM server_settings WHERE key='installer.config'").Scan(&managed); err != nil {
+			return err
+		}
+		if managed != 0 {
+			return errors.New("managed identities require installer assignment")
+		}
+	}
+
 	if err := u.checkActor(ctx, tx, actor); err != nil {
 		return err
 	}
@@ -327,7 +337,7 @@ UPDATE users SET
     totp_secret_enc = ?, totp_enabled = ?, recovery_codes_hash = ?,
     push_device_id = ?, must_change_password = ?, updated_at = ?,
     last_login_at = ?
-WHERE id = ?
+WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)
 `)
 
 	res, err := u.store.db.ExecContext(ctx, q,
@@ -390,7 +400,7 @@ func (u *userStore) DeleteUser(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM calendars WHERE owner_kind = 'user' AND owner_id = ?"), id); err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ?"), id)
+	res, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)"), id)
 	if err != nil {
 		return err
 	}
@@ -667,6 +677,19 @@ func (u *userStore) BindSignIn(ctx context.Context, actor Actor, b SignInBinding
 		return 0, err
 	}
 	defer tx.Rollback()
+	var managed int
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM server_settings WHERE key='installer.config'").Scan(&managed); err != nil {
+		return 0, err
+	}
+	if managed != 0 {
+		return 0, errors.New("installer-managed sign-in binding")
+	}
+	for key := range settings {
+		if strings.HasPrefix(key, "installer.") {
+			return 0, errors.New("installer-owned setting")
+		}
+	}
+
 	if err := u.checkActor(ctx, tx, actor); err != nil {
 		return 0, err
 	}
@@ -714,6 +737,14 @@ func (u *userStore) ReattachSSOUser(ctx context.Context, actor Actor, userID, bi
 		return "", err
 	}
 	defer tx.Rollback()
+	var owned int
+	if err = tx.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(*) FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = ?"), userID).Scan(&owned); err != nil {
+		return "", err
+	}
+	if owned != 0 {
+		return "", errors.New("installer-owned identity")
+	}
+
 	if err := u.checkActor(ctx, tx, actor); err != nil {
 		return "", err
 	}
@@ -771,7 +802,7 @@ func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
 	defer tx.Rollback()
 	// Row first, as in changeAccess: an app-password issuance holding the row commits before the
 	// purge and is purged with the rest.
-	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
 	if err != nil {
 		return err
 	}
@@ -788,7 +819,7 @@ func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
 
 // lockSSOAccess locks a non-local row in tx and reads its role and status.
 func (u *userStore) lockSSOAccess(ctx context.Context, tx *sql.Tx, id string, now time.Time) (role, status string, err error) {
-	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND sso_provider <> 'local'`), now, id)
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND sso_provider <> 'local'`), now, id)
 	if err != nil {
 		return "", "", err
 	}
@@ -797,7 +828,7 @@ func (u *userStore) lockSSOAccess(ctx context.Context, tx *sql.Tx, id string, no
 	} else if n == 0 {
 		return "", "", ErrNotFound
 	}
-	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ?`), id).Scan(&role, &status)
+	err = tx.QueryRowContext(ctx, u.store.rebind(`SELECT role, status FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)`), id).Scan(&role, &status)
 	return role, status, err
 }
 
@@ -914,6 +945,15 @@ func (u *userStore) RevokeSSOUser(ctx context.Context, userID string, deactivate
 	}
 	if err := u.revokeGrants(ctx, tx, userID); err != nil {
 		return err
+	}
+	var managed int
+	if err = tx.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(*) FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = ?"), userID).Scan(&managed); err != nil {
+		return err
+	}
+	if managed != 0 {
+		if _, err = tx.ExecContext(ctx, u.store.rebind("INSERT INTO audit_records(user_id,action,resource,details,ip_address,created_at) VALUES(?,?,?,?,?,?)"), userID, "installer.authority_revoked", userID, "native verified authority removal", "", time.Now().UTC()); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -1500,19 +1540,58 @@ func (s *settingsStore) GetSetting(ctx context.Context, key string) (string, err
 }
 
 func (s *settingsStore) SetSetting(ctx context.Context, key, val string) error {
+	if strings.HasPrefix(key, "installer.") {
+		return errors.New("installer-owned setting")
+	}
 	now := time.Now().UTC()
-	q := s.store.rebind(`
-INSERT INTO server_settings (key, value, updated_at)
-VALUES (?, ?, ?)
-ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-`)
-	_, err := s.store.db.ExecContext(ctx, q, key, val, now)
-	return err
+	q := s.store.rebind(`INSERT INTO server_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`)
+	if !strings.HasPrefix(key, "signin_") {
+		_, err := s.store.db.ExecContext(ctx, q, key, val, now)
+		return err
+	}
+	tx, err := s.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owned int
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM server_settings WHERE key='installer.config'").Scan(&owned); err != nil {
+		return err
+	}
+	if owned != 0 {
+		return errors.New("installer-owned sign-in setting")
+	}
+	if _, err = tx.ExecContext(ctx, q, key, val, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *settingsStore) DeleteSetting(ctx context.Context, key string) error {
-	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM server_settings WHERE key = ?`), key)
-	return err
+	if strings.HasPrefix(key, "installer.") {
+		return errors.New("installer-owned setting")
+	}
+	q := s.store.rebind(`DELETE FROM server_settings WHERE key=?`)
+	if !strings.HasPrefix(key, "signin_") {
+		_, err := s.store.db.ExecContext(ctx, q, key)
+		return err
+	}
+	tx, err := s.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owned int
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM server_settings WHERE key='installer.config'").Scan(&owned); err != nil {
+		return err
+	}
+	if owned != 0 {
+		return errors.New("installer-owned sign-in setting")
+	}
+	if _, err = tx.ExecContext(ctx, q, key); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *settingsStore) GetAllSettings(ctx context.Context) (map[string]string, error) {

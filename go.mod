@@ -3,7 +3,7 @@ module github.com/Busnes-app/kycalendar
 go 1.26.9
 
 require (
-	github.com/Busnes-app/ky-primitives v0.9.0
+	github.com/Busnes-app/ky-primitives v0.10.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/elimity-com/scim v0.0.0-20260728105928-2641426a1539
 	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
@@ -28,9 +28,9 @@ require (
 	github.com/q-uint/parser v0.3.1 // indirect
 	github.com/q-uint/xsd-datetime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect

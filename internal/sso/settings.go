@@ -38,6 +38,7 @@ const SecretLabel = "kycalendar:setting:signin_client_secret"
 
 // Where a field's value comes from.
 const (
+	SourceInstaller   = "installer"
 	SourceEnvironment = "environment"
 	SourceSaved       = "saved"
 	SourceUnset       = "unset"

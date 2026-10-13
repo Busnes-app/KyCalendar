@@ -42,6 +42,7 @@ type signinView struct {
 	CallbackURL  string     `json:"callback_url"`
 	SSOEnabled   bool       `json:"sso_enabled"`
 	Live         bool       `json:"live"`
+	Managed      bool       `json:"managed"`
 }
 
 func (s *Server) signinViewOf(st sso.Settings) signinView {
@@ -51,16 +52,28 @@ func (s *Server) signinViewOf(st sso.Settings) signinView {
 		CallbackURL:  s.config.Server.AppURL + "/api/sso/kysignon/callback",
 		SSOEnabled:   s.config.SSO.Enabled,
 		Live:         s.signin.Load() != nil,
+		Managed:      s.config.InstallerSSO != nil,
 	}
 }
 
 func (s *Server) handleGetSignIn(w http.ResponseWriter, r *http.Request) {
-	saved, err := s.store.Settings().GetAllSettings(r.Context())
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "Failed to load sign-in settings")
-		return
+	var st sso.Settings
+	if s.config.InstallerSSO != nil {
+		var err error
+		st, err = s.signInSettings(r.Context())
+		if err != nil {
+			s.writeError(w, 500, "Sign-in settings unavailable")
+			return
+		}
+	} else {
+		saved, err := s.store.Settings().GetAllSettings(r.Context())
+		if err != nil {
+			s.writeError(w, 500, "Failed to load sign-in settings")
+			return
+		}
+		st = sso.Resolve(s.config.SSO, saved)
 	}
-	s.writeJSON(w, http.StatusOK, s.signinViewOf(sso.Resolve(s.config.SSO, saved)))
+	s.writeJSON(w, 200, s.signinViewOf(st))
 }
 
 // submitted is req resolved under the environment: a field the environment sets keeps its value
@@ -141,6 +154,14 @@ func (s *Server) discover(ctx context.Context, st sso.Settings) error {
 
 // handleTestSignIn runs discovery for the submitted values without saving anything.
 func (s *Server) handleTestSignIn(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.store.Settings().GetSetting(r.Context(), store.InstallerConfigKey); err == nil {
+		s.writeError(w, 409, "Installer-managed sign-in settings")
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, 503, "Sign-in configuration unavailable")
+		return
+	}
+
 	var req signinRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
@@ -171,6 +192,13 @@ func (s *Server) handleTestSignIn(w http.ResponseWriter, r *http.Request) {
 // disable, record the binding and write the settings, or write nothing. A failed commit closes
 // sign-in (nil provider) and a retry asks for the same confirmation.
 func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.store.Settings().GetSetting(r.Context(), store.InstallerConfigKey); err == nil {
+		s.writeError(w, 409, "Installer-managed sign-in settings")
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, 503, "Sign-in configuration unavailable")
+		return
+	}
 	if !s.requireStepUp(w, r, "change sign-in settings") {
 		return
 	}
@@ -187,6 +215,14 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithoutCancel(r.Context())
 	s.signinMu.Lock()
 	defer s.signinMu.Unlock()
+
+	if _, err := s.store.Settings().GetSetting(r.Context(), store.InstallerConfigKey); err == nil {
+		s.writeError(w, 409, "Installer-managed sign-in settings")
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, 503, "Sign-in configuration unavailable")
+		return
+	}
 
 	saved, err := s.store.Settings().GetAllSettings(ctx)
 	if err != nil {

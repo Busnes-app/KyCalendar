@@ -29,6 +29,29 @@ var (
 // follows the token's `roles` claim on every login; any other provider's users are everyday. A
 // change revokes every grant in the role write's own transaction (SetSSORole).
 func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, binding string) (*store.User, error) {
+	managed, allowed, ownershipErr := s.store.InstallerIdentity(ctx, claims.Issuer, claims.Subject)
+	if ownershipErr != nil {
+		return nil, ownershipErr
+	}
+	if managed {
+		if !allowed || claims.Provider != "kysignon" {
+			return nil, errNotProvisioned
+		}
+		user, err := s.store.Users().GetUserBySSO(ctx, "kysignon", claims.Subject)
+		if err != nil {
+			return nil, err
+		}
+		if user.SSOIssuer != binding {
+			return nil, errOtherIssuer
+		}
+		if (user.Role == "admin") != access.IsAdmin(claims.Roles) {
+			if err = s.store.Users().RevokeSSOUser(ctx, user.ID, true); err != nil {
+				return nil, err
+			}
+			return nil, errNotProvisioned
+		}
+		return user, nil
+	}
 	role := "user"
 	if claims.Provider == "kysignon" && access.IsAdmin(claims.Roles) {
 		role = "admin"
@@ -217,6 +240,13 @@ func (s *Server) handleKySignOnSyncWebhook(w http.ResponseWriter, r *http.Reques
 		sig = r.Header.Get("X-Signature-SHA256")
 	}
 
+	if _, err := s.store.Settings().GetSetting(r.Context(), store.InstallerConfigKey); err == nil {
+		s.handleInstallerDirectory(w, r)
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		s.writeError(w, 503, "Directory unavailable")
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "Failed to read request body")
