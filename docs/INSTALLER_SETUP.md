@@ -42,5 +42,6 @@ as native calendar counts, objects and integrity checks.
 
 Installer recovery enrollment, central client/app-role/group composition, existing mixed-use
 migration, real-device interop and image/library provenance remain deployment gates. The
-shared setup package is unpublished; source checks use the explicit Go workspace. This
+shared setup package is `ky-primitives/applysetup`, published in v0.10.0 and pinned in
+`go.mod`. This
 adapter changes no live installation and does not claim a complete deployed suite.
