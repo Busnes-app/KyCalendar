@@ -33,7 +33,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
       <header className="app-header">
         <div className="app-brand">
             <img src="/app-icon.png" width={28} height={28} alt="" />
-            <span>{appName || 'Busnes.app'}</span>
+            <span>{appName || 'KyCalendar'}</span>
           </div>
 
           <nav className="app-nav" aria-label="Primary">

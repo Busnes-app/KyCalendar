@@ -117,7 +117,7 @@ export default function SignIn() {
     <section className="page">
       <h1>Sign-in</h1>
       <p>
-        Let people sign in with KyIdentity or another OpenID Connect provider. Only KyIdentity's <code>kycalendar.admin</code>{" "}
+        Let people sign in with Single Sign On or another OpenID Connect provider. Only Single Sign On's <code>kycalendar.admin</code>{" "}
         role makes an administrator; everyone from another provider is an everyday user. Switching provider or issuer disables
         the previous provider's accounts.
       </p>
@@ -131,7 +131,7 @@ export default function SignIn() {
         <label htmlFor="signin-provider">Provider</label>
         <select id="signin-provider" value={form.provider} onChange={set("provider")} disabled={env(view.provider)}>
           <option value="none">None (passwords only)</option>
-          <option value="kyidentity">KyIdentity</option>
+          <option value="kyidentity">Single Sign On</option>
           <option value="oidc">Another OpenID Connect provider</option>
         </select>
         {env(view.provider) && <EnvNote name="the KY_KYSIGNON_ variables" />}

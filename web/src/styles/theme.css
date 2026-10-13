@@ -132,6 +132,11 @@ body {
 .app-user-copy > div:last-child { color: var(--ink); font-size: .7rem; }
 .app-logout { padding: .45rem; color: var(--danger); }
 .app-main { min-width: 0; }
+.page { padding: 1.5rem 2rem; }
+.page h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+.page h2 { font-size: 1.1rem; margin: 1.25rem 0 .5rem; }
+/* The reset above strips the UA margin that centres modal dialogs. */
+dialog { margin: auto; }
 @media (max-width: 720px) { .app-shell { display: block; } .app-header { position: sticky; height: auto; padding: .75rem 1rem; border-right: 0; border-bottom: 1px solid var(--line); } .app-brand { padding: 0; } .app-nav { flex-direction: row; overflow-x: auto; } .app-nav button { width: auto; flex: 0 0 auto; border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; } .app-nav button.active { border-bottom-color: var(--accent); } .app-header-actions { flex-direction: row; margin-top: 0; align-items: center; } .app-user { border-top: 0; border-left: 1px solid var(--line); padding: 0 0 0 .65rem; } .app-user-copy { display: none; } }
 
 code, pre, .font-mono {
@@ -206,6 +211,8 @@ input, select, textarea {
   font-size: 14px;
   width: 100%;
 }
+input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--accent); }
+@media (max-width: 720px) { .page { padding: 1rem; } }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
