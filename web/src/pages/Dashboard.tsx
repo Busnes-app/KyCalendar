@@ -47,7 +47,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate
     },
     {
       title: 'Sign-in',
-      desc: 'KyIdentity or any OpenID Connect provider, set here or locked by environment variables.',
+      desc: 'Single Sign On or any OpenID Connect provider, set here or locked by environment variables.',
       status: settings?.signin_name ? `Continue with ${settings.signin_name}` : 'Passwords only',
       statusType: settings?.signin_name ? 'success' : 'neutral',
       icon: Key,
@@ -72,7 +72,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate
           Welcome, {user?.display_name || user?.username}!
         </h1>
         <p style={{ color: 'var(--ink)', fontSize: '15px' }}>
-          {settings?.app_name || 'Busnes.app'} is initialized on the Ky Server Base platform.
+          {settings?.app_name || 'KyCalendar'} is initialized on the Ky Server Base platform.
         </p>
       </div>
 

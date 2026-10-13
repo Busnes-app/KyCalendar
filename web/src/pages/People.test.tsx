@@ -49,7 +49,7 @@ describe("People", () => {
   it("shows synced people with a badge and no actions", async () => {
     mockFetch({ "GET /api/admin/users": () => users(person({ id: "u2", username: "sam", source: "kysignon" })) });
     render(<People me="u0" />);
-    const row = (await screen.findByText("Managed by KyIdentity")).closest("tr")!;
+    const row = (await screen.findByText("Managed by Single Sign On")).closest("tr")!;
     expect(within(row).queryAllByRole("button")).toHaveLength(0);
   });
 

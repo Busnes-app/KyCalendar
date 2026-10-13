@@ -114,7 +114,7 @@ const MinDepositInterval = 15 * time.Minute
 
 // DefaultAppName is the display name an unconfigured instance runs under. Capsules are sealed
 // under backup.ServiceName, not this.
-const DefaultAppName = "Busnes.app"
+const DefaultAppName = "KyCalendar"
 
 // SQLiteDSN is the DSN for the SQLite database at path, with the pragmas every opener needs.
 func SQLiteDSN(path string) string {

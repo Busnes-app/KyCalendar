@@ -36,19 +36,20 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
       <ul>
         {calendars.map((c) => (
           <li key={c.id}>
-            <label>
+            <label className="kc-cal-name">
               <input type="checkbox" aria-label={`Show ${c.name}`} checked={!hidden.has(c.id)} onChange={() => onToggle(c.id)} />
               <span className="kc-swatch" style={{ background: c.color || 'var(--ky-accent)' }} aria-hidden="true" />
-              {c.name}
+              <span>{c.name}</span>
             </label>
             {canManage(c) && editing !== c.id && (
-              <button type="button" aria-label={`Edit ${c.name}`} onClick={() => { setEditing(c.id); setDraft({ name: c.name, color: c.color || '#e8590c' }); }}>
+              <button type="button" className="btn-secondary kc-small" aria-label={`Edit ${c.name}`} onClick={() => { setEditing(c.id); setDraft({ name: c.name, color: c.color || '#e8590c' }); }}>
                 Edit
               </button>
             )}
             {c.kind === 'personal' && c.role === 'owner' && (
               <button
                 type="button"
+                className="btn-secondary kc-small"
                 aria-label={`Delete ${c.name}`}
                 onClick={() => window.confirm(`Delete ${c.name} and every event in it?`) && void run(() => deleteCalendar(c.id), 'Could not delete the calendar')}
               >
@@ -57,6 +58,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
             )}
             {editing === c.id && (
               <form
+                className="kc-form kc-cal-edit"
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (await run(() => patchCalendar(c.id, draft.color === (c.color || '#e8590c') ? { name: draft.name } : draft), 'Could not save the calendar')) setEditing(null);
@@ -66,14 +68,17 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
                 <input id={`name-${c.id}`} value={draft.name} maxLength={255} required onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
                 <label htmlFor={`color-${c.id}`}>Colour</label>
                 <input id={`color-${c.id}`} type="color" value={draft.color} onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
-                <button type="submit">Save</button>
-                <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+                <div className="kc-actions">
+                  <button type="submit">Save</button>
+                  <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
+                </div>
               </form>
             )}
           </li>
         ))}
       </ul>
       <form
+        className="kc-form"
         onSubmit={async (e) => {
           e.preventDefault();
           if (await run(() => createCalendar({ name }), 'Could not create the calendar')) setName('');
@@ -81,7 +86,9 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
       >
         <label htmlFor="kc-new-calendar">New calendar name</label>
         <input id="kc-new-calendar" value={name} maxLength={255} required onChange={(e) => setName(e.target.value)} />
-        <button type="submit">Add calendar</button>
+        <div className="kc-actions">
+          <button type="submit">Add calendar</button>
+        </div>
       </form>
     </aside>
   );

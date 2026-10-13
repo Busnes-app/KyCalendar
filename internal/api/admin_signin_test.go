@@ -217,7 +217,7 @@ func TestSignInProviderChangeNeedsConfirmationAndDisables(t *testing.T) {
 		}
 	}
 	if v := setting(t, st, sso.KeyDisplayName); v != "" {
-		t.Fatalf("the default KyIdentity label was stored as %q", v)
+		t.Fatalf("the default Single Sign On label was stored as %q", v)
 	}
 	if u, _ := st.Users().GetUserByID(ctx, carol.ID); u.Status != "active" {
 		t.Fatal("an unconfirmed change disabled an account")

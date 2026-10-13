@@ -74,7 +74,7 @@ export const App: React.FC = () => {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', color: 'var(--ink)' }}>
-        Loading {settings?.app_name || 'Busnes.app'}...
+        Loading {settings?.app_name || 'KyCalendar'}...
       </div>
     );
   }
@@ -84,7 +84,7 @@ export const App: React.FC = () => {
       <>
       {notice && <p role="status" style={{ padding: 16 }}>{notice}</p>}
       <Login
-        appName={settings?.app_name || 'Busnes.app'}
+        appName={settings?.app_name || 'KyCalendar'}
         signinName={settings?.signin_name}
         onSuccess={(u) => {
           setNotice('');
@@ -109,7 +109,7 @@ export const App: React.FC = () => {
   return (
     <div className="app-shell">
       <AppHeader
-        appName={settings?.app_name || 'Busnes.app'}
+        appName={settings?.app_name || 'KyCalendar'}
         activeTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab)}
         user={user}

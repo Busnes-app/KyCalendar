@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build Go Standalone Binary
-FROM golang:1.27.1-alpine AS backend-builder
+FROM golang:1.27.2-alpine AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 # go.mod replaces go-webdav with this vendored fork; it must exist before download.

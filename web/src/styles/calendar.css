@@ -1,7 +1,24 @@
-.kc-layout { display: grid; grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.kc-layout { display: grid; grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 @media (max-width: 720px) { .kc-layout { grid-template-columns: minmax(0, 1fr); } }
-.kc-sidebar ul { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.5rem; }
-.kc-swatch { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; margin: 0 0.4rem; vertical-align: middle; }
+.kc-sidebar { padding: 1rem; background: var(--ky-panel); border: 1px solid var(--ky-line); border-radius: var(--ky-radius); }
+.kc-sidebar h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+.kc-sidebar ul { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
+.kc-sidebar li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.kc-cal-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.kc-cal-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kc-cal-edit { flex-basis: 100%; }
+.kc-swatch { flex: none; width: 0.75rem; height: 0.75rem; border-radius: 50%; }
+.kc-small { padding: 0.2rem 0.5rem; font-size: 0.75rem; font-weight: 500; }
+.kc-form { display: grid; gap: 0.35rem; }
+.kc-form > label:not(.kc-check) { margin-top: 0.4rem; font-size: 0.85rem; font-weight: 600; color: var(--ky-ink-strong); }
+.kc-form fieldset { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0.5rem 0.75rem; border: 1px solid var(--ky-line); border-radius: var(--ky-radius); }
+.kc-form textarea { min-height: 5rem; resize: vertical; }
+.kc-form input[type='color'] { height: 2.25rem; padding: 0.15rem; }
+.kc-check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; font-size: 0.9rem; }
+.kc-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.kc-push { margin-left: auto; }
+.kc-new { display: flex; margin: 0 0 0.75rem auto; }
+.kc-layout [role='alert'] { color: var(--ky-danger); margin-bottom: 0.5rem; }
 .kc-calendar {
   min-width: 0;
   color: var(--ky-ink);
@@ -25,6 +42,9 @@
 }
 .kc-calendar .fc .fc-toolbar { flex-wrap: wrap; gap: 0.5rem; }
 .kc-calendar .fc .fc-toolbar-title { font-size: 1.1rem; }
+.kc-calendar .fc .fc-button-primary:not(:disabled).fc-button-active { color: var(--ky-button-text); }
+.kc-calendar .fc .fc-button { font-weight: 500; text-transform: capitalize; }
+.kc-dialog h2 { font-size: 1.2rem; margin: 0 0 0.5rem; }
 .kc-dialog { color: var(--ky-ink); box-sizing: border-box; width: min(32rem, 100vw - 2rem); max-width: min(32rem, 100vw - 2rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; background: var(--ky-panel); border: 1px solid var(--ky-line); border-radius: var(--ky-radius); }
 .kc-dialog input:not([type='checkbox']):not([type='radio']), .kc-dialog select, .kc-dialog textarea { display: block; width: 100%; box-sizing: border-box; }
 .kc-dialog::backdrop { background: rgb(0 0 0 / 0.5); }
