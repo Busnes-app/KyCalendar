@@ -13,7 +13,7 @@ require (
 	github.com/scim2/filter-parser/v2 v2.3.1
 	github.com/teambition/rrule-go v1.8.2
 	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.60.1
 )
 
