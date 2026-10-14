@@ -187,7 +187,6 @@ func LoadFromEnv() (*Config, error) {
 	calCfg := CalendarConfig{
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
-		MaxBytesPerUser:     int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", 16<<20)),
 	}
 	// The SQLite snapshot is one capsule member, capped at 64 MiB; leave room for everything else.
 	defaultTotal := 0
@@ -197,6 +196,13 @@ func LoadFromEnv() (*Config, error) {
 	if calCfg.MaxBytesTotal = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_TOTAL", defaultTotal)); calCfg.MaxBytesTotal < 0 {
 		return nil, fmt.Errorf("KY_CALENDAR_MAX_BYTES_TOTAL must not be negative")
 	}
+	// Under an instance cap one owner (a user or a group calendar) gets a tenth of it by default,
+	// so no single owner can fill the instance for everyone.
+	defaultPerUser := int64(16 << 20)
+	if calCfg.MaxBytesTotal > 0 {
+		defaultPerUser = min(defaultPerUser, max(calCfg.MaxBytesTotal/10, 1))
+	}
+	calCfg.MaxBytesPerUser = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", int(defaultPerUser)))
 	for key, v := range map[string]int64{
 		"KY_CALENDAR_MAX_OBJECTS_PER_USER":   int64(calCfg.MaxObjectsPerUser),
 		"KY_CALENDAR_MAX_CALENDARS_PER_USER": int64(calCfg.MaxCalendarsPerUser),

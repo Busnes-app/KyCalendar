@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -149,8 +150,17 @@ func TestCalendarMaxObjectsPerUser(t *testing.T) {
 func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	cfg, err := config.LoadFromEnv()
-	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 16<<20 || cfg.Calendar.MaxBytesTotal != 40<<20 {
+	// One owner gets a tenth of the instance cap, so no single user fills the instance.
+	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 4<<20 || cfg.Calendar.MaxBytesTotal != 40<<20 {
 		t.Fatalf("defaults: %+v %v", cfg, err)
+	}
+	t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", strconv.Itoa(100<<20))
+	if cfg, err := config.LoadFromEnv(); err != nil || cfg.Calendar.MaxBytesPerUser != 10<<20 {
+		t.Fatalf("per-user default under a 100 MiB cap: %+v %v", cfg, err)
+	}
+	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", strconv.Itoa(30<<20))
+	if cfg, err := config.LoadFromEnv(); err != nil || cfg.Calendar.MaxBytesPerUser != 30<<20 {
+		t.Fatalf("explicit per-user cap: %+v %v", cfg, err)
 	}
 	for _, key := range []string{"KY_CALENDAR_MAX_CALENDARS_PER_USER", "KY_CALENDAR_MAX_BYTES_PER_USER"} {
 		t.Run(key, func(t *testing.T) {
@@ -167,7 +177,7 @@ func TestCalendarInstanceCap(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	t.Setenv("KY_DB_DRIVER", "postgres")
 	cfg, err := config.LoadFromEnv()
-	if err != nil || cfg.Calendar.MaxBytesTotal != 0 {
+	if err != nil || cfg.Calendar.MaxBytesTotal != 0 || cfg.Calendar.MaxBytesPerUser != 16<<20 {
 		t.Fatalf("postgres default: %+v %v", cfg, err)
 	}
 	t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", "-1")

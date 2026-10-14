@@ -244,6 +244,24 @@ func TestSatisfiable(t *testing.T) {
 	}
 }
 
+// rrule-go steps a sub-daily clock in an endless loop when the interval never lands on BYHOUR.
+func TestExpandUnreachableClockIsPartial(t *testing.T) {
+	for rule, partial := range map[string]bool{
+		"FREQ=HOURLY;INTERVAL=2;BYHOUR=10":  true,
+		"FREQ=HOURLY;INTERVAL=24;BYHOUR=8":  true,
+		"FREQ=HOURLY;INTERVAL=2;BYHOUR=11":  false,
+		"FREQ=HOURLY;INTERVAL=10;BYHOUR=11": false, // 09:00 + 50h
+	} {
+		cal := parse(t, calendarOf(event("UID:c\nDTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:"+rule)))
+		var got []Instance
+		var err error
+		within(t, 500*time.Millisecond, func() { got, err = Expand(cal, day(2026, 10, 1), day(2026, 10, 20), time.UTC, 5000) })
+		if err != nil || len(got) == 0 || got[0].Partial != partial || partial && len(got) != 1 || !partial && len(got) < 2 {
+			t.Errorf("%s: %d instances, partial=%v, %v", rule, len(got), len(got) > 0 && got[0].Partial, err)
+		}
+	}
+}
+
 func TestExpandOutOfRangeOrdinalIsPartial(t *testing.T) {
 	cal := parse(t, calendarOf(event("UID:o\nDTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:FREQ=MONTHLY;BYDAY=6MO")))
 	got, err := Expand(cal, day(2026, 10, 1), day(2026, 12, 1), time.UTC, 5000)

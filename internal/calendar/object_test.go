@@ -331,3 +331,66 @@ func TestInspectHourlyMinutesStillBounded(t *testing.T) {
 		t.Fatalf("%+v", o)
 	}
 }
+
+func TestInspectRefusesRuleInsideVEVENT(t *testing.T) {
+	for _, alarm := range []string{"RRULE:FREQ=MINUTELY;BYSETPOS=2", "rrule:FREQ=DAILY", "RDATE:20261008T090000Z"} {
+		body := "DTSTART:20261007T090000Z\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT5M\n" + alarm + "\nEND:VALARM\n"
+		if _, err := Inspect(decode(t, ev(body))); !errors.Is(err, ErrInvalidData) {
+			t.Errorf("%s on VALARM: %v", alarm, err)
+		}
+	}
+}
+
+func TestRecurringReadsDecodedNames(t *testing.T) {
+	tz := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VTIMEZONE\nTZID:X\nBEGIN:STANDARD\nDTSTART:19701025T030000\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\nTZOFFSETFROM:+0200\nTZOFFSETTO:+0100\nEND:STANDARD\nEND:VTIMEZONE\n"
+	for body, want := range map[string]bool{
+		ev("DTSTART:20261007T090000Z\n"):                                                                            false,
+		ev("DTSTART:20261007T090000Z\nrrule:FREQ=DAILY\n"):                                                          true,
+		ev("DTSTART:20261007T090000Z\nRR\n ULE:FREQ=DAILY\n"):                                                       true,
+		ev("DTSTART:20261007T090000Z\nrdate:20261008T090000Z\n"):                                                    true,
+		ev("DTSTART:20261007T090000Z\nBEGIN:VALARM\nTRIGGER:-PT5M\nRRULE:FREQ=DAILY\nEND:VALARM\n"):                 true,
+		strings.Replace(ev("DTSTART:20261007T090000Z\n"), "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\n", tz, 1): false,
+	} {
+		if got := Recurring(decode(t, body)); got != want {
+			t.Errorf("Recurring = %v, want %v:\n%s", got, want, body)
+		}
+	}
+}
+
+// neverYielding rules: rrule-go checks UNTIL only on a matching candidate, so one next() scans
+// every period to year 9999 (or, for an unreachable sub-daily clock, loops forever).
+var neverYielding = []string{
+	"FREQ=HOURLY;BYSETPOS=2;UNTIL=20900101T000000Z",
+	"FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30;UNTIL=20900101T000000Z",
+	"FREQ=MONTHLY;BYDAY=6MO;COUNT=3",
+	// From DTSTART 09:00 these step through odd hours only, or 09:00 only.
+	"FREQ=HOURLY;INTERVAL=2;BYHOUR=10;UNTIL=20900101T000000Z",
+	"FREQ=HOURLY;INTERVAL=24;BYHOUR=8;COUNT=3",
+}
+
+// within runs f, failing the test when it has not returned after d (f may never return).
+func within(t *testing.T, d time.Duration, f func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { f(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(d):
+		t.Fatalf("did not return within %s", d)
+	}
+}
+
+func TestInspectNeverYieldingRuleIsUnboundedFast(t *testing.T) {
+	for _, rule := range neverYielding {
+		cal := decode(t, ev("DTSTART:20261007T090000Z\nDTEND:20261007T100000Z\nRRULE:"+rule+"\n"))
+		var o Object
+		var err error
+		within(t, 500*time.Millisecond, func() { o, err = Inspect(cal) })
+		if err != nil {
+			t.Fatalf("%s: %v", rule, err)
+		}
+		if o.LastEnd != nil {
+			t.Errorf("%s: want unbounded, got %d", rule, *o.LastEnd)
+		}
+	}
+}

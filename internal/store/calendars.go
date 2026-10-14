@@ -225,9 +225,11 @@ func (c *calendarStore) ListObjects(ctx context.Context, calendarID string) ([]*
 	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects WHERE calendar_id = ? ORDER BY name`, calendarID)
 }
 
+// ListObjectsInRange is a superset of the objects overlapping [start, end): last_end equal to start
+// keeps a zero-length event at start (RFC 4791 §9.9); callers apply the exact overlap.
 func (c *calendarStore) ListObjectsInRange(ctx context.Context, calendarID string, start, end int64) ([]*CalendarObject, error) {
 	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects
-WHERE calendar_id = ? AND first_start < ? AND (last_end IS NULL OR last_end > ?) ORDER BY name`, calendarID, end, start)
+WHERE calendar_id = ? AND first_start < ? AND (last_end IS NULL OR last_end >= ?) ORDER BY name`, calendarID, end, start)
 }
 
 // bump advances the calendar sequence and logs one change, inside tx.
@@ -322,9 +324,10 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name 
 		}
 	}
 	if lim.MaxTotalBytes > 0 {
+		// calendar_usage is kept by triggers in each writing transaction (migration 12).
 		var used int64
-		err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(data)), 0) FROM calendar_objects WHERE NOT (calendar_id = ? AND name = ?)`),
-			o.CalendarID, o.Name).Scan(&used)
+		err := tx.QueryRowContext(ctx, c.q(`SELECT bytes - COALESCE((SELECT LENGTH(data) FROM calendar_objects WHERE calendar_id = ? AND name = ?), 0)
+FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
 		if err != nil {
 			return false, err
 		}

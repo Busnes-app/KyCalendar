@@ -399,7 +399,53 @@ CREATE INDEX idx_calendar_grants_group ON calendar_grants(group_id);`,
 		SQLite:   userSSOIssuer,
 		Postgres: userSSOIssuer,
 	},
+	{
+		// One row holding the bytes of every calendar object, kept by triggers in the writing
+		// transaction, so the instance cap is checked without summing every object. Triggers also
+		// cover cascades (calendar and user deletion).
+		Version: 12,
+		Name:    "calendar_usage",
+		SQLite: calendarUsageTable + `
+CREATE TRIGGER calendar_usage_insert AFTER INSERT ON calendar_objects
+BEGIN UPDATE calendar_usage SET bytes = bytes + LENGTH(NEW.data) WHERE id = 1; END;
+CREATE TRIGGER calendar_usage_update AFTER UPDATE OF data ON calendar_objects
+BEGIN UPDATE calendar_usage SET bytes = bytes - LENGTH(OLD.data) + LENGTH(NEW.data) WHERE id = 1; END;
+CREATE TRIGGER calendar_usage_delete AFTER DELETE ON calendar_objects
+BEGIN UPDATE calendar_usage SET bytes = bytes - LENGTH(OLD.data) WHERE id = 1; END;`,
+		Postgres: calendarUsageTable + `
+CREATE FUNCTION calendar_usage_track() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d BIGINT;
+BEGIN
+    IF TG_OP = 'INSERT' THEN d := LENGTH(NEW.data);
+    ELSIF TG_OP = 'UPDATE' THEN d := LENGTH(NEW.data) - LENGTH(OLD.data);
+    ELSE d := -LENGTH(OLD.data);
+    END IF;
+    UPDATE calendar_usage SET bytes = bytes + d WHERE id = 1;
+    RETURN NULL;
+END $$;
+CREATE TRIGGER calendar_usage_track AFTER INSERT OR UPDATE OF data OR DELETE ON calendar_objects
+FOR EACH ROW EXECUTE FUNCTION calendar_usage_track();`,
+	},
+	{
+		// Case-insensitive login lookups, per-request grant loading and per-user revocation.
+		Version:  13,
+		Name:     "lookup_indexes",
+		SQLite:   lookupIndexes,
+		Postgres: lookupIndexes,
+	},
 }
+
+const calendarUsageTable = `CREATE TABLE calendar_usage (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    bytes BIGINT NOT NULL
+);
+INSERT INTO calendar_usage (id, bytes) SELECT 1, COALESCE(SUM(LENGTH(data)), 0) FROM calendar_objects;`
+
+const lookupIndexes = `CREATE INDEX idx_users_username_lower ON users (LOWER(username));
+CREATE INDEX idx_users_email_lower ON users (LOWER(email));
+CREATE INDEX idx_group_members_user ON group_members (user_id);
+CREATE INDEX idx_mfa_challenges_user ON mfa_challenges (user_id);
+CREATE INDEX idx_pairings_user ON device_pairings (user_id);`
 
 const groupSource = `ALTER TABLE groups ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
 UPDATE groups SET source = 'scim';`

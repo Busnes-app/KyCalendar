@@ -132,8 +132,8 @@ func (b *Backend) toDAV(ctx context.Context, c *store.Calendar, role access.Role
 		Name:                  c.Name,
 		Description:           c.Description,
 		Color:                 c.Color,
-		CTag:                  calendar.FormatSyncToken(epoch, c.Seq), // seq alone repeats after a restore
-		SyncToken:             calendar.FormatSyncToken(epoch, c.Seq),
+		CTag:                  calendar.FormatSyncToken(epoch, c.ID, c.Seq), // seq alone repeats after a restore or a recreate
+		SyncToken:             calendar.FormatSyncToken(epoch, c.ID, c.Seq),
 		MaxResourceSize:       calendar.MaxObjectSize,
 		SupportedComponentSet: []string{ical.CompEvent},
 		ReadOnly:              !role.CanWrite(),
@@ -344,12 +344,17 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 	for _, o := range list {
 		co := b.toObject(slug, o)
 		// A time-range query never expands a recurring or unbounded object: the index already counts it as overlapping.
-		if ranged && (o.LastEnd == nil || bytes.Contains(o.Data, []byte("RRULE")) || bytes.Contains(o.Data, []byte("RDATE"))) {
+		if ranged && o.LastEnd == nil {
 			out = append(out, co)
 			continue
 		}
 		if co.Data, err = ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err != nil {
 			return nil, fmt.Errorf("stored object %s/%s does not parse: %w", slug, o.Name, err)
+		}
+		if ranged && calendar.Recurring(co.Data) {
+			co.Data = nil
+			out = append(out, co)
+			continue
 		}
 		// Keep an object when matching errors (e.g. an unknown TZID): an extra result is harmless, a missing one is not.
 		if ok, err := caldav.Match(q.CompFilter, &co); ok || err != nil {
@@ -456,21 +461,21 @@ func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.Sy
 	}
 	since := int64(0)
 	if token != "" {
-		tokEpoch, seq, err := calendar.ParseSyncToken(token)
-		if err != nil || tokEpoch != epoch || seq > c.Seq {
+		tokEpoch, tokCal, seq, err := calendar.ParseSyncToken(token)
+		if err != nil || tokEpoch != epoch || tokCal != c.ID || seq > c.Seq {
 			return nil, caldav.ErrInvalidSyncToken
 		}
 		since = seq
 	}
 
-	res := &caldav.SyncResult{SyncToken: calendar.FormatSyncToken(epoch, since)}
+	res := &caldav.SyncResult{SyncToken: calendar.FormatSyncToken(epoch, c.ID, since)}
 	if token == "" {
 		list, err := b.Store.Calendars().ListObjects(ctx, c.ID)
 		if err != nil {
 			return nil, err
 		}
 		res.Updated = b.convert(slug, list)
-		res.SyncToken = calendar.FormatSyncToken(epoch, c.Seq)
+		res.SyncToken = calendar.FormatSyncToken(epoch, c.ID, c.Seq)
 		return res, nil
 	}
 
@@ -503,6 +508,6 @@ func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.Sy
 		}
 		res.Updated = append(res.Updated, b.toObject(slug, o))
 	}
-	res.SyncToken = calendar.FormatSyncToken(epoch, maxSeq)
+	res.SyncToken = calendar.FormatSyncToken(epoch, c.ID, maxSeq)
 	return res, nil
 }
