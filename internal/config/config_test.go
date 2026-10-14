@@ -241,3 +241,55 @@ func TestEmptyRetiredBackupEnvIsAccepted(t *testing.T) {
 		t.Fatalf("empty retired name refused: %v", err)
 	}
 }
+
+// A bare binary is reachable only from this host until KY_HOST says otherwise.
+func TestHostDefaultsToLoopback(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Host != "127.0.0.1" {
+		t.Errorf("default KY_HOST %q, want 127.0.0.1", cfg.Server.Host)
+	}
+	t.Setenv("KY_HOST", "0.0.0.0")
+	if cfg, err = config.LoadFromEnv(); err != nil || cfg.Server.Host != "0.0.0.0" {
+		t.Errorf("explicit KY_HOST: %v", err)
+	}
+}
+
+// Production refuses a plain-HTTP KY_APP_URL unless the operator opts out by name.
+func TestProductionRequiresHTTPSAppURL(t *testing.T) {
+	for _, tc := range []struct {
+		url, allow string
+		ok         bool
+	}{
+		{"", "", false}, // the default, http://localhost:8080
+		{"http://cal.example.com", "", false},
+		{"http://cal.example.com", "false", false},
+		{"https://cal.example.com", "", true},
+		{"HTTPS://cal.example.com", "", true},
+		{"http://cal.example.com", "true", true},
+	} {
+		t.Run(tc.url+"|"+tc.allow, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			t.Setenv("KY_ENV", "production")
+			t.Setenv("KY_SESSION_SECRET", strings.Repeat("s", 64))
+			t.Setenv("KY_APP_URL", tc.url)
+			t.Setenv("KY_ALLOW_INSECURE_HTTP", tc.allow)
+			_, err := config.LoadFromEnv()
+			if (err == nil) != tc.ok {
+				t.Fatalf("err %v, want ok=%v", err, tc.ok)
+			}
+			if err != nil && !strings.Contains(err.Error(), "KY_ALLOW_INSECURE_HTTP") {
+				t.Errorf("refusal must name the opt-out: %v", err)
+			}
+		})
+	}
+	// Outside production plain HTTP stays the zero-config default.
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	t.Setenv("KY_APP_URL", "http://localhost:8080")
+	if _, err := config.LoadFromEnv(); err != nil {
+		t.Fatalf("development with http: %v", err)
+	}
+}

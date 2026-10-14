@@ -106,30 +106,8 @@ func runServer() {
 		log.Fatalf("Installer configuration unavailable: %v", err)
 	}
 
-	// Ensure default admin user exists if database is empty
-	count, _ := st.Users().CountUsers(ctx)
-	if count == 0 {
-		adminPass := os.Getenv("KY_ADMIN_PASSWORD")
-		if adminPass == "" {
-			adminPass = crypto.RandomHex(12)
-			log.Printf("[SECURITY] Initial bootstrap: Created admin account. Username: admin | Password: %s", adminPass)
-		}
-		hash, err := password.Hash(adminPass)
-		if err != nil {
-			log.Fatalf("Failed to hash bootstrap admin password: %v", err)
-		}
-		if err := st.Users().CreateUser(ctx, &store.User{
-			ID:                 fmt.Sprintf("usr_%s", crypto.RandomHex(12)),
-			Username:           "admin",
-			DisplayName:        "Administrator",
-			PasswordHash:       hash,
-			Role:               "admin",
-			Status:             "active",
-			SSOProvider:        "local",
-			MustChangePassword: true,
-		}); err != nil {
-			log.Fatalf("Failed to create bootstrap admin: %v", err)
-		}
+	if err := bootstrapAdmin(ctx, st, cfg.Database.DataDir); err != nil {
+		log.Fatalf("Failed to bootstrap the admin account: %v", err)
 	}
 
 	go func() {

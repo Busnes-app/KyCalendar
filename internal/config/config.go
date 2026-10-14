@@ -131,10 +131,14 @@ func LoadFromEnv() (*Config, error) {
 		}
 	}
 	port := getEnvInt("KY_PORT", getEnvInt("PORT", 8080))
-	host := getEnv("KY_HOST", "0.0.0.0")
+	// Loopback unless told otherwise; the image sets 0.0.0.0, where a container must listen.
+	host := getEnv("KY_HOST", "127.0.0.1")
 	appURL := getEnv("KY_APP_URL", fmt.Sprintf("http://localhost:%d", port))
 	appName := getEnv("KY_APP_NAME", DefaultAppName)
 	env := getEnv("KY_ENV", "development")
+	if env == "production" && !strings.HasPrefix(strings.ToLower(appURL), "https://") && !getEnvBool("KY_ALLOW_INSECURE_HTTP", false) {
+		return nil, fmt.Errorf("KY_APP_URL must be https:// in production (got %q); put a TLS proxy in front, or set KY_ALLOW_INSECURE_HTTP=true to accept plain HTTP", appURL)
+	}
 
 	driver := strings.ToLower(getEnv("KY_DB_DRIVER", "sqlite"))
 	dataDir := getEnv("KY_DATA_DIR", "./data")

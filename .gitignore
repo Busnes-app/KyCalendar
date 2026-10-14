@@ -5,9 +5,10 @@ kycalendar
 *.so
 *.dylib
 
-# Data & Backups
+# Data & Backups (`make run` uses .dev-data/)
 /data/
 /backups/
+/.dev-data/
 *.db
 *.db-wal
 *.db-shm
@@ -15,6 +16,7 @@ kycalendar
 
 # Frontend
 web/node_modules/
+web/tsconfig.tsbuildinfo
 web/test-results/
 web/playwright-report/
 .browser/

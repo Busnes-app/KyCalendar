@@ -206,7 +206,9 @@ jobs:
           check-latest: true
           cache: true
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        # Pinned, not @latest: a new release must not change what this gate runs unseen.
+        # Dependabot does not see this line; bump it by hand.
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   smoke:
     name: End-to-end smoke test

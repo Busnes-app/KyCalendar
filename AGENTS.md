@@ -246,6 +246,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 #### Operating rules
 
+- On an empty database `cmd/server` (`bootstrap.go`) creates local admin `admin` with `KY_ADMIN_PASSWORD`, or writes a generated password to `<DataDir>/initial-admin-password` (0600, `O_EXCL`; a leftover file from a start that died before the account was written is reused) and logs only the path, never the password. A failed user count is fatal, never read as empty.
 - Bootstrap passwords and passwords installed by `init-admin` must be replaced before privileged use. Operator resets and forced password changes atomically revoke sessions, MFA challenges and app passwords. Untouched existing accounts are not retroactively flagged.
 
 - `init-admin [-username <name>]` makes the named local account a break-glass admin (created if absent, promoted and reactivated if present) and resets its password; password from stdin, never argv (a `-password` flag is refused).
@@ -253,6 +254,8 @@ Inherited from the scaffold; these rules apply to the server code.
 - `rename-user -username <name> -to <new>` renames a local account (exact name; SSO accounts, taken names and case twins refused), keeping password, role, MFA and sessions; audited `user.renamed`. Use it when an IdP username collides with a local one.
 - `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
 
+- Deployment defaults: the image runs as UID/GID 10001 and sets `KY_HOST=0.0.0.0`; `docker-compose.yml` runs it `read_only` (tmpfs `/tmp`), `cap_drop: [ALL]`, `no-new-privileges`, and publishes `${KY_BIND_ADDRESS:-127.0.0.1}:8080`. The image embeds the committed `web/dist` (no frontend build stage) and pins base images by digest. `TestComposeAndImageAreHardenedByDefault` pins these. Host bind mounts `./data` and `./backups` must be owned by 10001 (README).
+- `make run` uses `./.dev-data` and `make clean` removes build output only: never `data/`, `backups/` or tracked files.
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.
   Preserve existing overlays when updating `COMPOSE_FILE`; the base keeps automatic addressing.
@@ -263,7 +266,7 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `make lint` equivalent: gofmt, `go vet`, `go mod tidy`/`verify`
 - `go test -race` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17
 - Frontend vitest suite, then typecheck/build plus a check that committed `web/dist` matches source (it is embedded in the binary)
-- `govulncheck` and `npm audit --audit-level=high`
+- `govulncheck` (pinned version in `ci.yml`, bumped by hand) and `npm audit --audit-level=high`
 - The authorization matrix (`internal/api/authz_matrix_test.go`) runs inside `go test` and fails when a registered route has no row.
 - `scripts/smoke-test.sh`: runs the built binary and asserts CLI, auth, session, and SPA behavior
 - Docker image build and container HTTP check
@@ -311,7 +314,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - The service name, claimed and sealed, is `kycalendar` (`backup.ServiceName`); `KY_APP_NAME` is display only. The capsule database member `data/kycalendar.db` (`backup.DatabaseMember`) equals the file the default DSN opens, so a restored tree starts on restored data; `Collect` refuses a `KY_DB_DSN` that opens any other file.
 - Backup variables are `KYCALENDAR_BACKUP_DIR`, `_KEEP`, `_DEPOSIT_INTERVAL`, `_ALLOW_PRIVATE_RECOVERY` and `KYCALENDAR_DNS`; the server refuses the retired `KY_BACKUP_*` names at startup when non-empty, compose included; the retired `KY_DNS` is compose-only and is simply no longer read.
 - The drill compares the snapshot's calendar and object counts with the restored database and parses up to 50 objects; messages carry IDs only.
-- Unpair requires a sign-in younger than the step-up window (403 `reauth_required`).
+- Unpair, pairing, pinning a key and exporting a capsule require a sign-in younger than the step-up window (403 `reauth_required`).
 - `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges, device pairings and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it. Both refuse a target containing `?` or `#`, which the SQLite DSN would cut.
 - Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
 - The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.

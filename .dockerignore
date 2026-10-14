@@ -6,6 +6,7 @@
 **/.env.local
 /data/
 /backups/
+/.dev-data/
 /restored/
 /old-data/
 **/*.db

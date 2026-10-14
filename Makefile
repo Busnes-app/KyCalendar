@@ -49,11 +49,14 @@ smoke: build
 ci: tidy-check lint test-race test-fork test-web smoke
 	@echo "==> Local CI checks passed"
 
+# Its own data directory: ./data is the container's live database and keys.
 run: build
-	@./kycalendar
+	@KY_DATA_DIR=./.dev-data ./kycalendar
 
 docker-build:
 	@docker build -t kycalendar .
 
+# Build output only. Never data/, backups/ or .dev-data/ (live databases, keys, capsules) or
+# tracked files such as web/dist.
 clean:
-	@rm -rf kycalendar web/dist web/node_modules data/ backups/ coverage.out
+	@rm -rf kycalendar web/node_modules coverage.out
