@@ -25,9 +25,9 @@ func TestAppPasswords(t *testing.T) {
 	}
 	ap := st.AppPasswords()
 	for _, p := range []*store.AppPassword{
-		{ID: "p1", UserID: "usr_a", Label: "phone", Hash: "h1"},
-		{ID: "p2", UserID: "usr_a", Label: "laptop", Hash: "h2"},
-		{ID: "p3", UserID: "usr_b", Label: "phone", Hash: "h3"},
+		{Scope: store.ScopeDAV, ID: "p1", UserID: "usr_a", Label: "phone", Hash: "h1"},
+		{Scope: store.ScopeDAV, ID: "p2", UserID: "usr_a", Label: "laptop", Hash: "h2"},
+		{Scope: store.ScopeDAV, ID: "p3", UserID: "usr_b", Label: "phone", Hash: "h3"},
 	} {
 		if err := ap.Create(ctx, store.Seed, p, 0); err != nil {
 			t.Fatal(err)
@@ -70,7 +70,7 @@ func TestAppPasswordIssuanceRechecksTheSession(t *testing.T) {
 	try := func(name string, by store.Grantor, max int, want error) {
 		t.Helper()
 		before, _ := ap.ListByUser(ctx, ann.ID)
-		err := ap.Create(ctx, by, &store.AppPassword{ID: "new_" + name, UserID: ann.ID, Label: "phone", Hash: "h"}, max)
+		err := ap.Create(ctx, by, &store.AppPassword{Scope: store.ScopeDAV, ID: "new_" + name, UserID: ann.ID, Label: "phone", Hash: "h"}, max)
 		if !errors.Is(err, want) {
 			t.Errorf("%s: %v, want %v", name, err, want)
 		}
@@ -144,7 +144,7 @@ func TestAppPasswordIssuanceWaitsForThePurge(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- st.AppPasswords().Create(ctx, store.SessionGrantor("tok_usr_carol", ""), &store.AppPassword{ID: "late", UserID: carol.ID, Label: "phone", Hash: "h"}, 20)
+		done <- st.AppPasswords().Create(ctx, store.SessionGrantor("tok_usr_carol", ""), &store.AppPassword{Scope: store.ScopeDAV, ID: "late", UserID: carol.ID, Label: "phone", Hash: "h"}, 20)
 	}()
 	for deadline := time.Now().Add(10 * time.Second); ; {
 		var waiting int

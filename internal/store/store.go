@@ -30,6 +30,8 @@ var (
 	ErrAccessChanged = errors.New("account access changed since it was read")
 	// ErrInvalidMember: a SCIM group write named a member outside the SCIM scope.
 	ErrInvalidMember = errors.New("member outside the SCIM scope")
+	// ErrInvalidScope: an app password scope outside the known set.
+	ErrInvalidScope = errors.New("invalid app password scope")
 )
 
 // Actor is who makes an access write. An administrator is rechecked inside the write's
@@ -251,6 +253,17 @@ type AppPasswordStore interface {
 	Delete(ctx context.Context, userID, id string) error // ErrNotFound if not the user's
 	DeleteByUser(ctx context.Context, userID string) error
 	TouchLastUsed(ctx context.Context, id string, at time.Time) error
+	// SetScope moves the user's token id between MCP scopes. A missing token, another user's,
+	// or a dav token is ErrNotFound; a scope that is not an MCP scope is ErrInvalidScope.
+	SetScope(ctx context.Context, userID, id, scope string) error
+	// ExpireIdle deletes MCP tokens last used (or, never used, created) before before and
+	// returns them. A non-empty id limits it to that token. dav tokens are never expired.
+	ExpireIdle(ctx context.Context, before time.Time, id string) ([]*AppPassword, error)
+	// RecordMCPEvent marks the event as created by token tokenID; ForgetMCPEvent undoes it.
+	RecordMCPEvent(ctx context.Context, tokenID, calendarID, uid string) error
+	ForgetMCPEvent(ctx context.Context, tokenID, calendarID, uid string) error
+	// MCPEvents is every event token tokenID created, keyed calendarID + "/" + uid.
+	MCPEvents(ctx context.Context, tokenID string) (map[string]bool, error)
 }
 
 // CalendarStore persists calendars, their objects and the per-calendar change log.

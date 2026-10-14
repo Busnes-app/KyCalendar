@@ -27,7 +27,7 @@ func doJSON(t *testing.T, srv *api.Server, method, path string, cookie *http.Coo
 func TestAppPasswordLifecycle(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	alice := loginAs(t, srv, st, "alice", "user")
-	w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "iPhone"})
+	w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "iPhone", "scope": "dav"})
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
@@ -50,17 +50,17 @@ func TestAppPasswordLifecycle(t *testing.T) {
 func TestAppPasswordRules(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	admin := loginAs(t, srv, st, "root", "admin")
-	if w := doJSON(t, srv, "POST", "/api/app-passwords", admin, map[string]string{"label": "x"}); w.Code != http.StatusForbidden {
+	if w := doJSON(t, srv, "POST", "/api/app-passwords", admin, map[string]string{"label": "x", "scope": "dav"}); w.Code != http.StatusForbidden {
 		t.Fatalf("admin must be refused: %d", w.Code)
 	}
 	alice := loginAs(t, srv, st, "alice", "user")
-	if w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "  "}); w.Code != http.StatusBadRequest {
+	if w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "  ", "scope": "dav"}); w.Code != http.StatusBadRequest {
 		t.Fatalf("blank label: %d", w.Code)
 	}
 	for i := 0; i < 20; i++ {
-		doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "d"})
+		doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "d", "scope": "dav"})
 	}
-	if w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "21st"}); w.Code != http.StatusConflict {
+	if w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "21st", "scope": "dav"}); w.Code != http.StatusConflict {
 		t.Fatalf("21st password: %d", w.Code)
 	}
 	bob := loginAs(t, srv, st, "bob", "user")

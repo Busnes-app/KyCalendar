@@ -24,7 +24,7 @@ describe("AppPasswords", () => {
     mockFetch({
       "GET /api/app-passwords": () => list,
       "POST /api/app-passwords": () => {
-        list = [{ id: "p1", label: "iPhone", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
+        list = [{ id: "p1", label: "iPhone", scope: "dav", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
         return { id: "p1", label: "iPhone", password: "kc_p1_secret", created_at: "2026-10-06T00:00:00Z" };
       },
     });
@@ -37,7 +37,7 @@ describe("AppPasswords", () => {
   });
 
   it("revokes a password", async () => {
-    let list: unknown[] = [{ id: "p1", label: "iPhone", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
+    let list: unknown[] = [{ id: "p1", label: "iPhone", scope: "dav", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
     const del = vi.fn(() => {
       list = [];
       return null;
@@ -65,7 +65,7 @@ describe("AppPasswords", () => {
   });
 
   it("says so when revoking fails and keeps the device listed", async () => {
-    const list = [{ id: "p1", label: "iPhone", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
+    const list = [{ id: "p1", label: "iPhone", scope: "dav", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
     mockFetch({
       "GET /api/app-passwords": () => list,
       "DELETE /api/app-passwords/p1": () => new Response(JSON.stringify({ error: "nope" }), { status: 500 }),
@@ -77,7 +77,7 @@ describe("AppPasswords", () => {
   });
 
   it("says so when revoking fails on the network", async () => {
-    const list = [{ id: "p1", label: "iPhone", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
+    const list = [{ id: "p1", label: "iPhone", scope: "dav", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
     mockFetch({
       "GET /api/app-passwords": () => list,
       "DELETE /api/app-passwords/p1": () => {
@@ -87,6 +87,102 @@ describe("AppPasswords", () => {
     render(<AppPasswords username="alice" />);
     fireEvent.click(await screen.findByRole("button", { name: /revoke iphone/i }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not revoke/i);
+  });
+
+  it("creates a calendar app password with the dav scope", async () => {
+    const post = vi.fn((init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ label: "iPhone", scope: "dav" });
+      return { id: "p1", password: "kc_p1_secret" };
+    });
+    mockFetch({ "GET /api/app-passwords": () => [], "POST /api/app-passwords": post });
+    render(<AppPasswords username="alice" />);
+    fireEvent.change(screen.getByLabelText(/device name/i), { target: { value: "iPhone" } });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    expect(await screen.findByText("kc_p1_secret")).toBeTruthy();
+    expect(post).toHaveBeenCalled();
+    expect(screen.queryByText(/openclaw\.json/)).toBeNull();
+  });
+
+  it("creates a read-only agent token by default and shows its setup once", async () => {
+    let sent: unknown;
+    mockFetch({
+      "GET /api/app-passwords": () => [],
+      "POST /api/app-passwords": (init) => {
+        sent = JSON.parse(String(init?.body));
+        return { id: "a1", password: "kc_a1_secret" };
+      },
+    });
+    render(<AppPasswords username="alice" />);
+    fireEvent.click(screen.getByLabelText(/ai agent/i));
+    fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "Hermes" } });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    expect(await screen.findByText("kc_a1_secret")).toBeTruthy();
+    expect(sent).toEqual({ label: "Hermes", scope: "mcp:read" });
+    const status = screen.getByRole("status").textContent ?? "";
+    expect(status).toContain(`${window.location.origin}/mcp`);
+    expect(status).toContain("Bearer ${KYCAL_TOKEN}");
+    expect(status).toContain(`hermes skills install ${window.location.origin}/agent/skills/kycalendar/SKILL.md`);
+    expect(status).not.toMatch(/Bearer kc_/); // the token never goes into a config snippet
+  });
+
+  it("asks before letting an agent change events it did not create", async () => {
+    let sent: { scope?: string } = {};
+    mockFetch({
+      "GET /api/app-passwords": () => [],
+      "POST /api/app-passwords": (init) => {
+        sent = JSON.parse(String(init?.body));
+        return { id: "a1", password: "kc_a1_secret" };
+      },
+    });
+    render(<AppPasswords username="alice" />);
+    fireEvent.click(screen.getByLabelText(/ai agent/i));
+    fireEvent.click(screen.getByLabelText(/read and write/i));
+    const any = screen.getByLabelText(/can also change events it did not create/i) as HTMLInputElement;
+    expect(any.checked).toBe(false);
+    fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "Claw" } });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    await screen.findByText("kc_a1_secret");
+    expect(sent.scope).toBe("mcp:write-own");
+
+    fireEvent.click(screen.getByRole("button", { name: /done/i }));
+    fireEvent.click(screen.getByLabelText(/can also change events it did not create/i));
+    expect(screen.getByText(/move or rewrite any of your appointments/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "Claw 2" } });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    await screen.findByText("kc_a1_secret");
+    expect(sent.scope).toBe("mcp:write-any");
+  });
+
+  it("changes an agent's access and shows when it is revoked if unused", async () => {
+    let list = [
+      { id: "a1", label: "Hermes", scope: "mcp:read", created_at: "2026-10-06T00:00:00Z", last_used_at: null, revoke_after: "2027-01-04T00:00:00Z" },
+      { id: "p1", label: "iPhone", scope: "dav", created_at: "2026-10-06T00:00:00Z", last_used_at: null },
+    ];
+    const patch = vi.fn((init?: RequestInit) => {
+      const { scope } = JSON.parse(String(init?.body));
+      list = list.map((p) => (p.id === "a1" ? { ...p, scope } : p));
+      return list[0];
+    });
+    mockFetch({ "GET /api/app-passwords": () => list, "PATCH /api/app-passwords/a1": patch });
+    render(<AppPasswords username="alice" />);
+    const select = (await screen.findByLabelText(/access for hermes/i)) as HTMLSelectElement;
+    expect(screen.queryByLabelText(/access for iphone/i)).toBeNull();
+    expect(screen.getByText(/revoked if unused by/i)).toBeTruthy();
+    fireEvent.change(select, { target: { value: "mcp:write-any" } });
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    await waitFor(() => expect((screen.getByLabelText(/access for hermes/i) as HTMLSelectElement).value).toBe("mcp:write-any"));
+  });
+
+  it("asks for a fresh sign-in when changing an agent's access needs step-up", async () => {
+    const list = [{ id: "a1", label: "Hermes", scope: "mcp:read", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
+    mockFetch({
+      "GET /api/app-passwords": () => list,
+      "PATCH /api/app-passwords/a1": () =>
+        new Response(JSON.stringify({ error: "Sign in again to change an agent's access", code: "reauth_required" }), { status: 403 }),
+    });
+    render(<AppPasswords username="alice" />);
+    fireEvent.change(await screen.findByLabelText(/access for hermes/i), { target: { value: "mcp:write-own" } });
+    expect(await screen.findByText(/sign in again, then try again within 10 minutes/i)).toBeTruthy();
   });
 
   it("asks for a fresh sign-in when creating needs step-up", async () => {

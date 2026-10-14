@@ -47,7 +47,7 @@ func TestAppPasswordCreatedAcrossAReattachIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 	}}})
-	w := doJSON(t, srv, "POST", "/api/app-passwords", cookie, map[string]string{"label": "stale phone"})
+	w := doJSON(t, srv, "POST", "/api/app-passwords", cookie, map[string]string{"label": "stale phone", "scope": "dav"})
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("create across a reattach: %d %s, want 401", w.Code, w.Body.String())
 	}
@@ -70,16 +70,16 @@ func TestAppPasswordCapCountsWritesInFlight(t *testing.T) {
 	}
 	cookie := sessionFor(t, st, ann)
 	for i := range 19 {
-		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "ap_" + string(rune('a'+i)), UserID: ann.ID, Label: "x", Hash: "h"}, 0); err != nil {
+		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "ap_" + string(rune('a'+i)), UserID: ann.ID, Label: "x", Hash: "h"}, 0); err != nil {
 			t.Fatal(err)
 		}
 	}
 	srv := api.NewServer(cfg, pausingStore{Store: st, ap: pauseBeforeInsert{AppPasswordStore: st.AppPasswords(), pause: func() {
-		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "ap_racer", UserID: ann.ID, Label: "x", Hash: "h"}, 0); err != nil {
+		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "ap_racer", UserID: ann.ID, Label: "x", Hash: "h"}, 0); err != nil {
 			t.Fatal(err)
 		}
 	}}})
-	if w := doJSON(t, srv, "POST", "/api/app-passwords", cookie, map[string]string{"label": "21st"}); w.Code != http.StatusConflict {
+	if w := doJSON(t, srv, "POST", "/api/app-passwords", cookie, map[string]string{"label": "21st", "scope": "dav"}); w.Code != http.StatusConflict {
 		t.Errorf("21st password while one was in flight: %d %s, want 409", w.Code, w.Body.String())
 	}
 	if list, _ := st.AppPasswords().ListByUser(ctx, ann.ID); len(list) != 20 {

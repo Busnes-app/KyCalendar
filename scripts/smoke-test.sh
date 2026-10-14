@@ -202,6 +202,37 @@ check "people list carries no hashes or secrets" \
 check "people list never carries the temporary password" \
   "$(if [ -n "$TEMP_PASS" ] && printf '%s' "$PEOPLE_JSON" | grep -qF -e "$TEMP_PASS"; then echo leaked; else echo clean; fi)" "clean"
 check "anonymous cannot list people" "$(status "$BASE/api/admin/users")" "401"
+# AI agents: the person replaces the temporary password, creates a read-only agent token and an
+# agent uses it over MCP. The token never works over CalDAV, a browser Origin never reaches /mcp.
+PJAR="$WORK/person.cookies"
+curl -s -c "$PJAR" -H 'Content-Type: application/json' -d '{"username":"smoke-person","password":"'"$TEMP_PASS"'"}' "$BASE/api/auth/login" >/dev/null
+PCSRF="$(awk '$6 == "ky_csrf" { print $7 }' "$PJAR")"
+curl -s -b "$PJAR" -H "X-CSRF-Token: $PCSRF" -H 'Content-Type: application/json' \
+  -d '{"current_password":"'"$TEMP_PASS"'","new_password":"PersonSmokePass123!"}' "$BASE/api/auth/change-password" >/dev/null
+curl -s -c "$PJAR" -H 'Content-Type: application/json' -d '{"username":"smoke-person","password":"PersonSmokePass123!"}' "$BASE/api/auth/login" >/dev/null
+PCSRF="$(awk '$6 == "ky_csrf" { print $7 }' "$PJAR")"
+check "an app password needs a scope" \
+  "$(status -b "$PJAR" -H "X-CSRF-Token: $PCSRF" -H 'Content-Type: application/json' -d '{"label":"agent"}' -X POST "$BASE/api/app-passwords")" "400"
+AGENT_TOKEN="$(curl -s -b "$PJAR" -H "X-CSRF-Token: $PCSRF" -H 'Content-Type: application/json' \
+  -d '{"label":"agent","scope":"mcp:read"}' -X POST "$BASE/api/app-passwords" | sed -n 's/.*"password":"\([^"]*\)".*/\1/p')"
+check "an agent token was issued" "$(if [ -n "$AGENT_TOKEN" ]; then echo present; else echo empty; fi)" "present"
+mcp() { curl -s -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' "$@" "$BASE/mcp"; }
+TOOLS_LIST='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+contains "the agent skill is served" "$(curl -s "$BASE/agent/skills/kycalendar/SKILL.md")" "name: kycalendar"
+check "/mcp refuses no credentials" "$(status -X POST -H 'Content-Type: application/json' -d "$TOOLS_LIST" "$BASE/mcp")" "401"
+check "/mcp refuses a browser Origin" \
+  "$(status -X POST -H "Authorization: Bearer $AGENT_TOKEN" -H "Origin: $BASE" -H 'Content-Type: application/json' -d "$TOOLS_LIST" "$BASE/mcp")" "403"
+check "/mcp refuses a session cookie" \
+  "$(status -b "$PJAR" -H "X-CSRF-Token: $PCSRF" -X POST -H 'Content-Type: application/json' -d "$TOOLS_LIST" "$BASE/mcp")" "401"
+TOOLS="$(mcp -H "Authorization: Bearer $AGENT_TOKEN" -d "$TOOLS_LIST")"
+contains "an agent lists the tools" "$TOOLS" '"name":"update_event"'
+check "no tool deletes" "$(if printf '%s' "$TOOLS" | grep -q 'delete'; then echo present; else echo absent; fi)" "absent"
+contains "an agent reads the personal calendars" \
+  "$(mcp -H "Authorization: Bearer $AGENT_TOKEN" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_calendars","arguments":{}}}')" '"calendars"'
+contains "a read-only agent cannot create" \
+  "$(mcp -H "Authorization: Bearer $AGENT_TOKEN" -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_event","arguments":{"calendar_id":"x","title":"t","start":"2026-10-20T14:00:00Z","end":"2026-10-20T15:00:00Z"}}}')" 'read-only token'
+check "an agent token never works over CalDAV" \
+  "$(status -u "smoke-person:$AGENT_TOKEN" -X PROPFIND -H 'Depth: 0' "$BASE/.well-known/caldav")" "401"
 check "cookie write rejects missing CSRF" "$(status -b "$WORK/cookies" -H 'Content-Type: application/json' -d '{"interval_sec":0}' -X PUT "$BASE/api/backup/schedule")" "403"
 # Device pairing was removed (R27): no route may hand out a pairing secret.
 check "device pairing init is gone" \

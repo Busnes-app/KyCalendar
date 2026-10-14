@@ -69,3 +69,10 @@ func SetSignInHTTPClientForTest(s *Server, c *http.Client) { s.signinHTTP = c }
 
 // SetSignInForTest makes p the live sign-in provider (nil closes sign-in). Test-only.
 func SetSignInForTest(s *Server, p *sso.Provider) { s.signin.Store(p) }
+
+// MCP tool errors the skill must name, and the app version its frontmatter must carry.
+const (
+	MCPReadOnlyForTest = msgReadOnly
+	MCPNotOwnForTest   = msgNotOwn
+	AppVersionForTest  = appVersion
+)

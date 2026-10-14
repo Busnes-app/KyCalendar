@@ -159,23 +159,34 @@ func (s *Server) davLimited(w http.ResponseWriter, key string, limit int, now ti
 }
 
 // resolveAppPassword returns the owner of token ID id when it exists and belongs to the named
-// user (case-insensitively), and whether the secret matches. It touches last-used on a match.
+// user (case-insensitively), and whether the secret matches a dav token. An MCP token's right
+// secret is refused like a wrong one. It touches last-used on a match.
 func (s *Server) resolveAppPassword(ctx context.Context, username, id, secret string) (*store.User, bool) {
-	p, err := s.store.AppPasswords().Get(ctx, id)
-	if err != nil {
+	p, user, ok := s.appPasswordOwner(ctx, id, secret)
+	if user == nil || !strings.EqualFold(user.Username, username) {
 		return nil, false
 	}
-	user, err := s.store.Users().GetUserByID(ctx, p.UserID)
-	if err != nil || !strings.EqualFold(user.Username, username) {
-		return nil, false
-	}
-	allowed, ownershipErr := s.store.InstallerUserAllowed(ctx, user)
-	if ownershipErr != nil || !allowed {
-		return user, false
-	}
-	if !apppass.Matches(p.Hash, secret) {
+	if !ok || p.Scope != store.ScopeDAV {
 		return user, false
 	}
 	_ = s.store.AppPasswords().TouchLastUsed(ctx, p.ID, time.Now())
 	return user, true
+}
+
+// appPasswordOwner loads token ID id and its owner, and reports whether secret matches and the
+// owner may sign in. It writes nothing.
+func (s *Server) appPasswordOwner(ctx context.Context, id, secret string) (*store.AppPassword, *store.User, bool) {
+	p, err := s.store.AppPasswords().Get(ctx, id)
+	if err != nil {
+		return nil, nil, false
+	}
+	user, err := s.store.Users().GetUserByID(ctx, p.UserID)
+	if err != nil {
+		return nil, nil, false
+	}
+	allowed, ownershipErr := s.store.InstallerUserAllowed(ctx, user)
+	if ownershipErr != nil || !allowed {
+		return p, user, false
+	}
+	return p, user, apppass.Matches(p.Hash, secret)
 }

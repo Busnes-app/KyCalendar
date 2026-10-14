@@ -56,8 +56,9 @@ CREATE TABLE mcp_events (
 - Existing rows become `dav`, so every CalDAV device keeps working.
 - `store.AppPassword` gains `Scope string`. Allowed values: `dav`, `mcp:read`,
   `mcp:write-own`, `mcp:write-any`; the store rejects anything else.
-- `create_event` inserts its `mcp_events` row in the same transaction as the event. The
-  existing event write paths (web, CalDAV) are untouched. An edit from the user's phone keeps
+- `create_event` inserts its `mcp_events` row before writing the event and deletes it if the
+  write fails, so the existing event write path (web, CalDAV) is untouched. A crash between
+  the two leaves a row naming a random UID that never exists: harmless. An edit from the user's phone keeps
   the event the agent's; deleting it leaves a harmless orphan row.
 - The record belongs to the token. A replacement token, including one created after the
   90-day revocation, cannot edit the old token's events under `mcp:write-own`.
@@ -65,8 +66,9 @@ CREATE TABLE mcp_events (
   never in the token, so a token cannot claim a scope.
 - The 20-per-user cap covers all scopes together.
 - Every existing revocation path (role change, disable, reattach, provider switch, operator
-  password reset) already deletes app passwords and so revokes MCP tokens too. A test pins
-  that for each path.
+  password reset) already deletes app passwords through one helper (`grantTables`), so it
+  revokes MCP tokens too; their `mcp_events` rows cascade. The existing tests pin each path for
+  app passwords; one store test pins an MCP token through the shared helper.
 - Capsule backups carry the column and `mcp_events`; a restore restores the tokens with their
   scopes and records.
 
@@ -88,7 +90,8 @@ unknown) so no client silently gets a default. `GET` lists `scope` and, for MCP 
 
 `PATCH /api/app-passwords/{id}` takes `{scope}` and changes an MCP token between the three
 MCP scopes. `dav` to MCP or back is 400: a phone's password never becomes an agent's.
-Everyday session, scoped to the caller (another user's ID is 404). Audits
+Everyday session with step-up, as for creating a token (widening an agent's access is as
+sensitive as minting one), scoped to the caller (another user's ID is 404). Audits
 `app_password.scope_change` with old and new scope. A route-table row and an authz matrix
 row come with it.
 
@@ -134,6 +137,9 @@ file that may be committed or synced.
 2. **Credential.** Only `Authorization: Bearer kc_…`. No Basic, no query parameter, and
    cookies are ignored: a session cookie never authenticates `/mcp`, so CSRF does not apply.
    Missing or malformed → 401 with `WWW-Authenticate: Bearer`.
+   The SDK's own localhost protection is turned off: it refuses a loopback connection with a
+   public `Host`, which is every reverse proxy on the same machine. The Origin refusal and the
+   bearer token already stop DNS rebinding.
 3. **Lookup.** `resolveAppPassword` logic by token ID, constant-time secret compare, owner
    `Status == "active"`, owner not an admin (403).
 4. **Scope.** The row's scope must be one of the three MCP scopes. A `dav` token here is 401
@@ -151,7 +157,7 @@ The authenticated user, token ID and scope go on the request context for the too
 
 Four tools. Each re-checks the scope itself rather than relying on registration, and every
 calendar lookup filters on `OwnerKind == "user" && OwnerID == caller`. A group calendar ID,
-or another user's, is answered exactly like an unknown ID ("calendar not found").
+or another user's, is answered exactly like an unknown ID ("No such calendar").
 
 | Tool | Scope | Annotations | Reuses |
 |---|---|---|---|
@@ -172,20 +178,33 @@ from `mcp_events`.
 repeat?}` → `{calendar_id, uid, etag}`. Same validation as `eventBody` (title and location
 1000 bytes, description 64 KiB, storage quota).
 
-**`update_event`** `{calendar_id, uid, etag, scope, recurrence_id?, …fields}` → `{etag}`.
-`etag` is required (the REST `If-Match`), so an agent cannot overwrite an event it has not
-just read; a stale etag returns "event changed, read it again". `scope` is `this` or `all`
-(which occurrences to change, not the token's scope). Under `mcp:write-own` the
+**`update_event`** `{calendar_id, uid, etag, scope?, recurrence_id?, …fields}` →
+`{calendar_id, uid, etag}`. `etag` is required (the REST `If-Match`; `*` is refused), so an
+agent cannot overwrite an event it has not just read; a stale etag returns "The event changed
+elsewhere; reload it". `scope` is `all` (default) or `this` with `recurrence_id` (which
+occurrences to change, not the token's scope). Under `mcp:write-own` the
 `(token, calendar, uid)` row must exist in `mcp_events`, else "this agent can only change
-events it created". The check runs inside the update's transaction.
+events it created". The check runs just before the write; a token revoked in between can land
+that one write.
+
+Every field left out keeps its value. Agents send partial updates, and the web edit path
+would otherwise turn a series into a one-off (no `repeat`) or drop its one-off changes (an
+instance's start sent as the series start):
+
+- Text only (no time field): `calendar.EditText` changes title, location and description on
+  the series or one occurrence. Times, the rule and other occurrences stay.
+- A time change needs `start` and `end` together and goes through the web path. An omitted
+  `repeat` keeps the stored rule, and omitted text keeps its current value (`calendar.TextOf`).
+  As on the web, moving a whole series' start drops its one-off changes; the skill tells the
+  agent to confirm that.
 
 There is no delete, and `update_event` cannot be used as one. `eventBody` has no status or
 exception-date field, so it cannot cancel an occurrence (no EXDATE, no `STATUS:CANCELLED`).
 `eventInput` accepts an empty title today, so the MCP tools add their own check and refuse a
 blank title on create and update. Tests pin both for MCP.
 
-Errors are tool results with `isError: true` and the same short messages as the REST API;
-internal errors are logged server-side and reported as "internal error". A write tool called
+Errors are tool results with `isError: true` and the same short messages as the REST API,
+which never carry internal detail. A write tool called
 with an `mcp:read` token returns "read-only token". The skill's error table (appendix) lists
 these messages, and a test pins them.
 
@@ -353,7 +372,8 @@ unused. The user creates a new one the same way.
    false, you cannot change it; tell the user why (see Errors) instead of trying.
 2. If it is recurring (`recurring: true`), ask whether to change only this occurrence
    (`scope: "this"` with its `recurrence_id`) or the whole series (`scope: "all"`).
-3. Call `update_event` with the `etag` you just read.
+3. Call `update_event` with the `etag` you just read and only the fields that change.
+   Moving a whole series' start drops its one-off changes: say so before confirming.
 4. If the result says the event changed, someone else edited it. Read it again, show the user
    what changed and confirm again. Never retry with the old values blindly.
 
@@ -363,8 +383,9 @@ unused. The user creates a new one the same way.
 |---|---|---|
 | read-only token | The token cannot write | Tell the user. Write access is a setting on the token in KyCalendar |
 | this agent can only change events it created | The token may edit only its own events | Tell the user. They can change the event themselves, or allow it with the token setting "Can also change events it did not create" |
-| calendar not found / event not found | Wrong ID, or not a personal calendar | Run `list_calendars` or `list_events` again |
-| event changed | Stale `etag` | Re-read and re-confirm (above) |
+| No such calendar | Wrong ID, or not a personal calendar | Run `list_calendars` again |
+| No such event | Wrong ID, or the event was deleted | Run `list_events` again |
+| The event changed elsewhere; reload it | Stale `etag` | Re-read and re-confirm (above) |
 | Calendar storage is full | Quota reached | Tell the user |
 | anything else | Server problem | Report it; do not retry more than once |
 ~~~

@@ -104,8 +104,22 @@ type Setting struct {
 
 type AppPassword struct {
 	ID, UserID, Label, Hash string
+	Scope                   string // one of the Scope constants
 	CreatedAt               time.Time
 	LastUsedAt              *time.Time
+}
+
+// App password scopes. A dav token logs in over CalDAV only; MCP tokens reach /mcp only.
+const (
+	ScopeDAV         = "dav"
+	ScopeMCPRead     = "mcp:read"
+	ScopeMCPWriteOwn = "mcp:write-own" // create, and update only events this token created
+	ScopeMCPWriteAny = "mcp:write-any" // create, and update any personal event
+)
+
+// IsMCPScope reports whether scope is one of the MCP scopes.
+func IsMCPScope(scope string) bool {
+	return scope == ScopeMCPRead || scope == ScopeMCPWriteOwn || scope == ScopeMCPWriteAny
 }
 
 type Calendar struct {
