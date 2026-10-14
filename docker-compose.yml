@@ -68,7 +68,8 @@ services:
       # which trusts every other container). 0.0.0.0/0 and ::/0 are refused at startup.
       # - KY_TRUSTED_PROXIES=172.18.0.2/32
       - KY_SSO_ENABLED=true
-      - KY_SCIM_ENABLED=true
+      # SCIM provisioning is on only when KY_SCIM_TOKEN (32+ characters) is set in .env.
+      - KY_SCIM_TOKEN=${KY_SCIM_TOKEN:-}
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups

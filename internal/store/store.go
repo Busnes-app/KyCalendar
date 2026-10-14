@@ -28,6 +28,8 @@ var (
 	// ErrAccessChanged: UpdateSCIMUser would grant access to an account whose access changed since
 	// SCIM read it; the caller retries from a fresh read.
 	ErrAccessChanged = errors.New("account access changed since it was read")
+	// ErrInvalidMember: a SCIM group write named a member outside the SCIM scope.
+	ErrInvalidMember = errors.New("member outside the SCIM scope")
 )
 
 // Actor is who makes an access write. An administrator is rechecked inside the write's
@@ -104,14 +106,16 @@ type UserStore interface {
 	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,
 	// local or missing: ErrNotFound.
 	SetSSORole(ctx context.Context, userID, role string) error
-	// UpdateSCIMUser writes a non-local account's username, email and display name and only the
-	// access the request changes relative to what SCIM read (expectedRole, expectedStatus). A
+	// UpdateSCIMUser writes the username, email and display name of an account in scope and only
+	// the access the request changes relative to what SCIM read (expectedRole, expectedStatus). A
 	// removal (deactivation, demotion) always lands first, with the revocation of every grant, in
 	// its own row-first transaction. A grant (activation, promotion) lands only together with the
 	// profile write and only if the stored value still equals what SCIM read, else
-	// ErrAccessChanged and nothing more is written. Local or missing: ErrNotFound; a username
-	// another row holds exactly: ErrAlreadyExists.
-	UpdateSCIMUser(ctx context.Context, u *User, expectedRole, expectedStatus string) error
+	// ErrAccessChanged and nothing more is written. Outside scope or missing: ErrNotFound; a
+	// username another row holds exactly: ErrAlreadyExists.
+	UpdateSCIMUser(ctx context.Context, scope SCIMScope, u *User, expectedRole, expectedStatus string) error
+	// DeleteSCIMUser is DeleteUser for an account in scope; outside scope or missing: ErrNotFound.
+	DeleteSCIMUser(ctx context.Context, scope SCIMScope, id string) error
 	// RevokeSSOUser deletes a non-local account's sessions, MFA challenges, device pairings and
 	// app passwords in one transaction, after setting it inactive when deactivate is true (rows
 	// first). It never sets an account active. Local or missing: ErrNotFound.
@@ -143,8 +147,8 @@ type UserStore interface {
 	SpendTOTPCounter(ctx context.Context, userID string, counter int64) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
-	// SSOUserIDs returns those of ids that name an existing non-local account, in any order.
-	SSOUserIDs(ctx context.Context, ids []string) ([]string, error)
+	// SCIMUserIDs returns those of ids that name an account in scope, in any order.
+	SCIMUserIDs(ctx context.Context, scope SCIMScope, ids []string) ([]string, error)
 	CountUsers(ctx context.Context) (int, error)
 }
 
@@ -176,6 +180,17 @@ type GroupStore interface {
 	// GroupsByExternalID lists the groups of source whose external ID is exactly externalID.
 	GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error)
 	UpdateGroup(ctx context.Context, g *Group) error
+	// CreateSCIMGroup inserts g as a SCIM group with g.Members in one transaction under the
+	// group-names lock: a taken name is ErrAlreadyExists, a member outside scope
+	// ErrInvalidMember, and either writes nothing.
+	CreateSCIMGroup(ctx context.Context, scope SCIMScope, g *Group) error
+	// UpdateSCIMGroup reads SCIM group id with Members its in-scope members, lets change edit the
+	// name, external ID and Members, and writes the result, in one transaction under the
+	// group-names lock and the group row. Only the in-scope membership difference is written;
+	// other memberships stay. change must not use the store. Missing or local: ErrNotFound; a
+	// member outside scope: ErrInvalidMember; a taken name: ErrAlreadyExists; any error, or
+	// change's, writes nothing.
+	UpdateSCIMGroup(ctx context.Context, scope SCIMScope, id string, change func(*Group) error) (*Group, error)
 	DeleteGroup(ctx context.Context, id string) error
 	// ListGroups pages groups by name; source "" lists every owner.
 	ListGroups(ctx context.Context, offset, limit int, source string) ([]*Group, int, error)

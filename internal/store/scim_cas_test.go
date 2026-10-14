@@ -26,7 +26,7 @@ func TestUpdateSCIMUserComparesAccessBeforeGranting(t *testing.T) {
 		// PATCH remove roles: the snapshot still says active.
 		req := *ada
 		req.Role = "user"
-		if err := st.Users().UpdateSCIMUser(ctx, &req, "admin", "active"); err != nil {
+		if err := st.Users().UpdateSCIMUser(ctx, unbound, &req, "admin", "active"); err != nil {
 			t.Fatal(err)
 		}
 		if u, _ := st.Users().GetUserByID(ctx, ada.ID); u.Role != "user" || u.Status != "inactive" {
@@ -46,7 +46,7 @@ func TestUpdateSCIMUserComparesAccessBeforeGranting(t *testing.T) {
 		defer restore()
 		req := *bo
 		req.Role, req.Status, req.DisplayName = "user", "active", "Bo"
-		if err := st.Users().UpdateSCIMUser(ctx, &req, "admin", "inactive"); !errors.Is(err, store.ErrAccessChanged) {
+		if err := st.Users().UpdateSCIMUser(ctx, unbound, &req, "admin", "inactive"); !errors.Is(err, store.ErrAccessChanged) {
 			t.Fatalf("activation on a changed account: %v, want ErrAccessChanged", err)
 		}
 		if u, _ := st.Users().GetUserByID(ctx, bo.ID); u.Role != "user" || u.DisplayName == "Bo" {

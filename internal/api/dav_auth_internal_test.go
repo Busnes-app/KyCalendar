@@ -19,6 +19,7 @@ func davInternalServer(t *testing.T) (*Server, http.Handler) {
 	t.Helper()
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	cfg, _ := config.LoadFromEnv()
+	cfg.SCIM = config.SCIMConfig{Enabled: true, BearerToken: "test-scim-bearer-token-of-32-chars"}
 	db := testdb.Config(t)
 	db.DataDir = cfg.Database.DataDir
 	cfg.Database = db

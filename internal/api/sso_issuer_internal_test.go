@@ -30,6 +30,19 @@ func scimUser(name, sub string) map[string]any {
 	return map[string]any{"schemas": []string{"urn:ietf:params:scim:schemas:core:2.0:User"}, "userName": name, "externalId": sub, "active": true}
 }
 
+// reactivate sets accounts active without touching their binding, as nothing in the product
+// does for another binding's row: the login check must hold regardless.
+func reactivate(t *testing.T, s *Server, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		u := issuerOf(t, s, id)
+		u.Status = "active"
+		if err := s.store.Users().UpdateUser(context.Background(), u); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func issuerOf(t *testing.T, s *Server, id string) *store.User {
 	t.Helper()
 	u, err := s.store.Users().GetUserByID(context.Background(), id)
@@ -39,8 +52,8 @@ func issuerOf(t *testing.T, s *Server, id string) *store.User {
 	return u
 }
 
-// An issuer change disables the old issuer's accounts; SCIM, still the old directory, then
-// re-activates them by replace (create never adopts across issuers: 409). The new issuer's colliding subs stay
+// An issuer change disables the old issuer's accounts and SCIM no longer reaches them: a replace
+// is 404 and create never adopts across issuers (409). The new issuer's colliding subs stay
 // refused, on the kysignon row and through the kysignon-to-scim adoption, and no row is restamped.
 func TestSCIMReactivationAfterIssuerChangeStaysRefused(t *testing.T) {
 	s, _ := davInternalServer(t)
@@ -68,21 +81,23 @@ func TestSCIMReactivationAfterIssuerChangeStaysRefused(t *testing.T) {
 		t.Fatalf("issuer change: %d %v", n, err)
 	}
 
-	if w := scimCall(t, s, "PUT", "/scim/v2/Users/"+dave.ID, scimUser("dave", "s2")); w.Code != http.StatusOK {
-		t.Fatalf("scim replace: %d %s", w.Code, w.Body.String())
+	if w := scimCall(t, s, "PUT", "/scim/v2/Users/"+dave.ID, scimUser("dave", "s2")); w.Code != http.StatusNotFound {
+		t.Fatalf("scim replace of the old binding's row: %d %s, want 404", w.Code, w.Body.String())
 	}
-	// SCIM never adopts the old issuer's kysignon row by sub; a replace by ID re-activates it.
+	// SCIM never adopts the old issuer's kysignon row by sub, nor reaches it by ID.
 	if w := scimCall(t, s, "POST", "/scim/v2/Users", scimUser("carol", "s1")); w.Code != http.StatusConflict {
 		t.Fatalf("scim adopt across issuers: %d %s, want 409", w.Code, w.Body.String())
 	}
-	if w := scimCall(t, s, "PUT", "/scim/v2/Users/"+carol.ID, scimUser("carol", "s1")); w.Code != http.StatusOK {
-		t.Fatalf("scim replace carol: %d %s", w.Code, w.Body.String())
+	if w := scimCall(t, s, "PUT", "/scim/v2/Users/"+carol.ID, scimUser("carol", "s1")); w.Code != http.StatusNotFound {
+		t.Fatalf("scim replace carol: %d %s, want 404", w.Code, w.Body.String())
 	}
 	for _, id := range []string{carol.ID, dave.ID} {
-		if u := issuerOf(t, s, id); u.Status != "active" {
-			t.Fatalf("%s not re-activated by SCIM: %s", u.Username, u.Status)
+		if u := issuerOf(t, s, id); u.Status != "inactive" {
+			t.Fatalf("%s re-activated by SCIM: %s", u.Username, u.Status)
 		}
 	}
+	// Even active, a's rows never sign in through b.
+	reactivate(t, s, carol.ID, dave.ID)
 
 	for _, sub := range []string{"s1", "s2"} {
 		_, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: sub, PreferredUsername: "mallory-" + sub}, b.Identity())
@@ -151,9 +166,10 @@ func TestUnstampedRowIsRefusedAfterAChange(t *testing.T) {
 	if u := issuerOf(t, s, "usr_k"); u.SSOIssuer != "" {
 		t.Fatalf("a change stamped the old row with %q", u.SSOIssuer)
 	}
-	if w := scimCall(t, s, "PUT", "/scim/v2/Users/usr_k", scimUser("k", "s1")); w.Code != http.StatusOK {
-		t.Fatalf("scim replace: %d %s", w.Code, w.Body.String())
+	if w := scimCall(t, s, "PUT", "/scim/v2/Users/usr_k", scimUser("k", "s1")); w.Code != http.StatusNotFound {
+		t.Fatalf("scim replace of an unstamped row: %d %s, want 404", w.Code, w.Body.String())
 	}
+	reactivate(t, s, "usr_k")
 	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s1"}, b.Identity()); !errors.Is(err, errOtherIssuer) {
 		t.Fatalf("unstamped row through b: %v, want errOtherIssuer", err)
 	}
@@ -200,8 +216,8 @@ func TestTrailingSlashIsAProviderChange(t *testing.T) {
 	}
 }
 
-// On an install bound before migration 11, an inactive row stays unstamped: SCIM re-activating
-// it does not let the bound provider sign in as it. The active row keeps signing in.
+// On an install bound before migration 11, an inactive row stays unstamped: SCIM cannot reach it,
+// and even re-activated the bound provider never signs in as it. The active row keeps signing in.
 func TestMigration11InactiveRowStaysRefused(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
@@ -232,9 +248,10 @@ func TestMigration11InactiveRowStaysRefused(t *testing.T) {
 	}
 	_ = migrated.Close()
 
-	if w := scimCall(t, s, "PUT", "/scim/v2/Users/usr_off", scimUser("off", "s2")); w.Code != http.StatusOK {
-		t.Fatalf("scim replace: %d %s", w.Code, w.Body.String())
+	if w := scimCall(t, s, "PUT", "/scim/v2/Users/usr_off", scimUser("off", "s2")); w.Code != http.StatusNotFound {
+		t.Fatalf("scim replace of an unstamped row: %d %s, want 404", w.Code, w.Body.String())
 	}
+	reactivate(t, s, "usr_off")
 	if _, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "kysignon", Subject: "s2"}, identity); !errors.Is(err, errOtherIssuer) {
 		t.Fatalf("re-activated unstamped row: %v, want errOtherIssuer", err)
 	}

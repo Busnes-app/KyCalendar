@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"time"
 )
 
@@ -132,21 +133,29 @@ const (
 	// UserFieldSearch is a case-insensitive substring of username, email or display name, for
 	// the admin People list. SCIM filters never map to it.
 	UserFieldSearch
-	// UserFieldSSOSubject is an exact, case-sensitive sso_subject of a non-local account of one of
-	// Providers bound to Issuer: SCIM's externalId lookup.
+	// UserFieldSSOSubject is an exact, case-sensitive sso_subject: SCIM's externalId lookup.
 	UserFieldSSOSubject
 )
 
 // UserFilter is an exact, case-insensitive match on one field, except UserFieldSearch, which is a
 // substring match across username, email and display name; UserFieldNone lists everyone.
-// SSOOnly leaves local accounts out of the rows and the total.
+// SCIM, when set, leaves every account outside that scope out of the rows and the total.
 type UserFilter struct {
-	Field   UserField
-	Value   string
-	SSOOnly bool
-	// Issuer and Providers narrow UserFieldSSOSubject; both are required with it.
+	Field UserField
+	Value string
+	SCIM  *SCIMScope
+}
+
+// SCIMScope is the accounts SCIM may reach: non-local rows of Providers bound to Issuer, the
+// rows a SCIM create under that binding would make or adopt. No provider reaches nothing.
+type SCIMScope struct {
 	Issuer    string
 	Providers []string
+}
+
+// Contains reports whether u is in the scope; the store's SCIM writes check the same in SQL.
+func (s SCIMScope) Contains(u *User) bool {
+	return u.SSOProvider != "local" && u.SSOIssuer == s.Issuer && slices.Contains(s.Providers, u.SSOProvider)
 }
 
 // OwnerLimits caps one owner's calendar objects, and MaxTotalBytes every owner's together;

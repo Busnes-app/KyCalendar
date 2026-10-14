@@ -18,9 +18,9 @@ type raceBeforeWrite struct {
 	race func()
 }
 
-func (u raceBeforeWrite) UpdateSCIMUser(ctx context.Context, user *store.User, role, status string) error {
+func (u raceBeforeWrite) UpdateSCIMUser(ctx context.Context, scope store.SCIMScope, user *store.User, role, status string) error {
 	u.race()
-	return u.UserStore.UpdateSCIMUser(ctx, user, role, status)
+	return u.UserStore.UpdateSCIMUser(ctx, scope, user, role, status)
 }
 
 type racingStore struct {
@@ -87,7 +87,7 @@ func TestSCIMProfilePatchNeverRestoresAccess(t *testing.T) {
 // nothing: here another request activated the person between this PUT's read and its write.
 func TestSCIMGrantOnAChangedAccountAsksForARetry(t *testing.T) {
 	h, st, token := racingSCIM(t, func(st store.Store) {
-		_ = st.Users().UpdateSCIMUser(context.Background(), &store.User{ID: "usr_bo", Username: "bo", Role: "user", Status: "active"}, "user", "inactive")
+		_ = st.Users().UpdateSCIMUser(context.Background(), unbound, &store.User{ID: "usr_bo", Username: "bo", Role: "user", Status: "active"}, "user", "inactive")
 	})
 	ctx := context.Background()
 	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_bo", Username: "bo", Role: "user", Status: "inactive", SSOProvider: "scim", SSOSubject: "b1"}); err != nil {

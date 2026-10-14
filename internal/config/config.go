@@ -81,6 +81,9 @@ type SSOConfig struct {
 	AutoProvision      bool   `json:"auto_provision"`
 }
 
+// MinSCIMTokenLength is the shortest KY_SCIM_TOKEN accepted.
+const MinSCIMTokenLength = 32
+
 // SCIMConfig holds settings for RFC 7643/7644 inbound user provisioning.
 type SCIMConfig struct {
 	Enabled     bool   `json:"enabled"`
@@ -214,6 +217,16 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("KY_TRUSTED_PROXIES: %w", err)
 	}
 
+	// SCIM is on only with a token the operator chose and gave the IdP.
+	scimToken := getEnv("KY_SCIM_TOKEN", "")
+	scimOn := getEnv("KY_SCIM_ENABLED", "") == "" || getEnvBool("KY_SCIM_ENABLED", true)
+	if scimToken == "" && getEnvBool("KY_SCIM_ENABLED", false) {
+		return nil, fmt.Errorf("KY_SCIM_ENABLED is true but KY_SCIM_TOKEN is not set")
+	}
+	if scimToken != "" && len(scimToken) < MinSCIMTokenLength {
+		return nil, fmt.Errorf("KY_SCIM_TOKEN must be at least %d characters", MinSCIMTokenLength)
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
 			Host:         host,
@@ -251,8 +264,8 @@ func LoadFromEnv() (*Config, error) {
 			AutoProvision:      getEnvBool("KY_SSO_AUTO_PROVISION", true),
 		},
 		SCIM: SCIMConfig{
-			Enabled:     getEnvBool("KY_SCIM_ENABLED", true),
-			BearerToken: getEnv("KY_SCIM_TOKEN", generateRandomHex(24)),
+			Enabled:     scimToken != "" && scimOn,
+			BearerToken: scimToken,
 		},
 		Backup: BackupConfig{
 			Dir:                  getEnv("KYCALENDAR_BACKUP_DIR", ""),

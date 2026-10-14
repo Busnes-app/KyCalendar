@@ -47,6 +47,7 @@ start_server() { # start_server <captcha-provider>
     KY_ADMIN_PASSWORD="$ADMIN_PASS" \
     KY_CAPTCHA_PROVIDER="$1" \
     KY_SCIM_ENABLED=true \
+    KY_SCIM_TOKEN=smoke-scim-token-0123456789abcdef \
     "$BIN" >"$WORK/server.log" 2>&1 &
   SERVER_PID=$!
   curl -s -o /dev/null --retry 30 --retry-delay 1 --retry-all-errors "$BASE/" ||

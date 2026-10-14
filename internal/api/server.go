@@ -319,6 +319,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/users/{id}/enable", s.tracked(s.requireAdmin(s.handleEnableUser)))
 	s.handle("POST /api/admin/users/{id}/reattach", s.tracked(s.requireAdmin(s.handleReattachUser)))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
+	s.handle("GET /api/admin/scim", s.requireAdmin(s.handleSCIMStatus))
 	s.handle("GET /api/admin/signin", s.requireAdmin(s.handleGetSignIn))
 	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
 	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))

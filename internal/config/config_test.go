@@ -293,3 +293,39 @@ func TestProductionRequiresHTTPSAppURL(t *testing.T) {
 		t.Fatalf("development with http: %v", err)
 	}
 }
+
+// SCIM is on only with an operator-chosen token: a random per-boot default is a token nobody
+// knows, so it served no IdP and only widened the surface.
+func TestSCIMNeedsAnExplicitToken(t *testing.T) {
+	token := strings.Repeat("k", 32)
+	for _, tc := range []struct {
+		name, enabled, token string
+		want, wantErr        bool
+	}{
+		{"default is off", "", "", false, false},
+		{"a token turns it on", "", token, true, false},
+		{"explicitly on with a token", "true", token, true, false},
+		{"explicitly off with a token", "false", token, false, false},
+		{"explicitly on without a token", "true", "", false, true},
+		{"a short token", "", "short-token", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			t.Setenv("KY_SCIM_ENABLED", tc.enabled)
+			t.Setenv("KY_SCIM_TOKEN", tc.token)
+			cfg, err := config.LoadFromEnv()
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "KY_SCIM_TOKEN") {
+					t.Fatalf("err = %v, want one naming KY_SCIM_TOKEN", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.SCIM.Enabled != tc.want || cfg.SCIM.BearerToken != tc.token {
+				t.Fatalf("SCIM = enabled %v token %q, want %v %q", cfg.SCIM.Enabled, cfg.SCIM.BearerToken, tc.want, tc.token)
+			}
+		})
+	}
+}
