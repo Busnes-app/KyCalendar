@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,26 +35,28 @@ type repeatView struct {
 }
 
 type eventView struct {
-	CalendarID   string     `json:"calendar_id"`
-	UID          string     `json:"uid"`
-	RecurrenceID string     `json:"recurrence_id,omitempty"`
-	ETag         string     `json:"etag"`
-	Title        string     `json:"title"`
-	Location     string     `json:"location,omitempty"`
-	Description  string     `json:"description,omitempty"`
-	Start        string     `json:"start"`
-	End          string     `json:"end"`
-	SeriesStart  string     `json:"series_start"`
-	SeriesEnd    string     `json:"series_end"`
-	AllDay       bool       `json:"all_day"`
-	Recurring    bool       `json:"recurring"`
-	Override     bool       `json:"override,omitempty"`
-	Repeat       repeatView `json:"repeat"`
-	Floating     bool       `json:"floating,omitempty"`
-	UnknownZone  bool       `json:"unknown_zone,omitempty"`
-	Partial      bool       `json:"partial,omitempty"`
-	Zone         string     `json:"zone,omitempty"`
-	Editable     bool       `json:"editable"`
+	CalendarID   string `json:"calendar_id"`
+	UID          string `json:"uid"`
+	RecurrenceID string `json:"recurrence_id,omitempty"`
+	ETag         string `json:"etag"`
+	Title        string `json:"title"`
+	Location     string `json:"location,omitempty"`
+	Description  string `json:"description,omitempty"`
+	// DescriptionTruncated: MCP results cap descriptions; the calendar keeps them whole.
+	DescriptionTruncated bool       `json:"description_truncated,omitempty"`
+	Start                string     `json:"start"`
+	End                  string     `json:"end"`
+	SeriesStart          string     `json:"series_start"`
+	SeriesEnd            string     `json:"series_end"`
+	AllDay               bool       `json:"all_day"`
+	Recurring            bool       `json:"recurring"`
+	Override             bool       `json:"override,omitempty"`
+	Repeat               repeatView `json:"repeat"`
+	Floating             bool       `json:"floating,omitempty"`
+	UnknownZone          bool       `json:"unknown_zone,omitempty"`
+	Partial              bool       `json:"partial,omitempty"`
+	Zone                 string     `json:"zone,omitempty"`
+	Editable             bool       `json:"editable"`
 }
 
 var weekdayCodes = []string{"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
@@ -69,7 +72,11 @@ func repeatViewOf(r calendar.Repeat) repeatView {
 // viewerZone reads the tz query parameter: an IANA name, default UTC. "Local" is refused: it
 // would be the server's zone, not the viewer's.
 func viewerZone(r *http.Request) (*time.Location, bool) {
-	name := r.URL.Query().Get("tz")
+	return zoneNamed(r.URL.Query().Get("tz"))
+}
+
+// zoneNamed is the IANA zone name, default UTC; "Local" is refused.
+func zoneNamed(name string) (*time.Location, bool) {
 	if name == "" {
 		return time.UTC, true
 	}
@@ -137,42 +144,63 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 			cals = append(cals, c)
 		}
 	}
+	out, apiErr := s.expandEvents(r.Context(), user, cals, grants, start, end, viewer)
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, out)
+}
+
+// apiError is a failure the REST handlers write as JSON and the MCP tools return as text.
+type apiError struct {
+	status    int
+	msg, code string
+}
+
+func (e *apiError) Error() string { return e.msg }
+
+func (s *Server) writeAPIError(w http.ResponseWriter, e *apiError) {
+	if e.code == "" {
+		s.writeError(w, e.status, e.msg)
+		return
+	}
+	s.writeJSON(w, e.status, map[string]string{"error": e.msg, "code": e.code})
+}
+
+// expandEvents expands every instance of cals between start and end, as viewer sees them.
+func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*store.Calendar, grants []store.CalendarGrant, start, end time.Time, viewer *time.Location) ([]eventView, *apiError) {
 	begun := time.Now()
 	out := []eventView{}
 	tooSlow := func() bool {
 		if time.Since(begun) <= maxExpandTime {
 			return false
 		}
-		s.writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "This range takes too long to show; choose a shorter range", "code": "too_many_instances"})
 		return true
 	}
 	for _, c := range cals {
 		if tooSlow() {
-			return
+			return nil, errTooSlow
 		}
 		role := access.Resolve(user, c, grants)
-		objs, err := s.store.Calendars().ListObjectsInRange(r.Context(), c.ID, start.Unix(), end.Unix())
+		objs, err := s.store.Calendars().ListObjectsInRange(ctx, c.ID, start.Unix(), end.Unix())
 		if err != nil {
-			s.writeError(w, http.StatusInternalServerError, "Failed to load events")
-			return
+			return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load events"}
 		}
 		for _, o := range objs {
 			cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
 			if err != nil {
-				s.writeError(w, http.StatusInternalServerError, "A stored event does not parse")
-				return
+				return nil, &apiError{status: http.StatusInternalServerError, msg: "A stored event does not parse"}
 			}
 			insts, err := calendar.Expand(cal, start, end, viewer, maxEventInstances-len(out))
 			if errors.Is(err, calendar.ErrTooManyInstances) {
-				s.writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Too many events in this range; choose a shorter range", "code": "too_many_instances"})
-				return
+				return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "Too many events in this range; choose a shorter range", code: "too_many_instances"}
 			}
 			if err != nil {
-				s.writeError(w, http.StatusInternalServerError, "A stored event does not expand")
-				return
+				return nil, &apiError{status: http.StatusInternalServerError, msg: "A stored event does not expand"}
 			}
 			if tooSlow() {
-				return
+				return nil, errTooSlow
 			}
 			var repeat repeatView
 			var zone string
@@ -195,8 +223,10 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
+
+var errTooSlow = &apiError{status: http.StatusUnprocessableEntity, msg: "This range takes too long to show; choose a shorter range", code: "too_many_instances"}
 
 const (
 	maxTitleBytes       = 1000
@@ -219,18 +249,25 @@ type eventBody struct {
 
 var errBadEvent = errors.New("bad event")
 
+// checkText bounds an event's text and refuses control characters other than newline and tab.
+func checkText(title, location, description string) error {
+	if len(title) > maxTitleBytes || len(location) > maxLocationBytes || len(description) > maxDescriptionBytes {
+		return fmt.Errorf("%w: text too long", errBadEvent)
+	}
+	for _, text := range []string{title, location, description} {
+		if strings.ContainsFunc(text, func(c rune) bool { return unicode.IsControl(c) && c != '\n' && c != '\t' }) {
+			return fmt.Errorf("%w: text contains control characters", errBadEvent)
+		}
+	}
+	return nil
+}
+
 // eventInput validates a body at the boundary. allowCustom is true for edits, where "custom"
 // keeps the stored rule.
 func eventInput(b eventBody, allowCustom bool) (calendar.EventInput, error) {
 	in := calendar.EventInput{Title: b.Title, Location: b.Location, Description: b.Description, AllDay: b.AllDay}
-	switch {
-	case len(b.Title) > maxTitleBytes, len(b.Location) > maxLocationBytes, len(b.Description) > maxDescriptionBytes:
-		return in, fmt.Errorf("%w: text too long", errBadEvent)
-	}
-	for _, text := range []string{b.Title, b.Location, b.Description} {
-		if strings.ContainsFunc(text, func(c rune) bool { return unicode.IsControl(c) && c != '\n' && c != '\t' }) {
-			return in, fmt.Errorf("%w: text contains control characters", errBadEvent)
-		}
+	if err := checkText(b.Title, b.Location, b.Description); err != nil {
+		return in, err
 	}
 	if b.AllDay {
 		s, err1 := time.Parse(time.DateOnly, b.Start)
@@ -311,34 +348,44 @@ func ifMatch(r *http.Request) (etag string, present, ok bool) {
 	return etag, true, true
 }
 
-// writeEvent stores cal through the one write path and maps its errors to JSON.
+// writeEvent stores cal through the one write path and writes any error as JSON.
 func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, bool) {
-	var buf bytes.Buffer
-	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
-		s.writeError(w, http.StatusInternalServerError, "The event cannot be encoded")
+	o, apiErr := s.saveEvent(r.Context(), c, name, cal, etag, create)
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
 		return nil, false
 	}
-	o, err := davbackend.Write(r.Context(), s.store, c.ID, name, cal, buf.Bytes(), etag, create, s.objectLimits())
+	return o, true
+}
+
+// saveEvent stores cal through the one write path and maps its errors.
+func (s *Server) saveEvent(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, *apiError) {
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
+		return nil, &apiError{status: http.StatusInternalServerError, msg: "The event cannot be encoded"}
+	}
+	o, err := davbackend.Write(ctx, s.store, c.ID, name, cal, buf.Bytes(), etag, create, s.objectLimits())
 	switch {
 	case err == nil:
-		return o, true
+		return o, nil
 	case errors.Is(err, store.ErrPreconditionFailed):
-		s.writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "The event changed elsewhere; reload it", "code": "conflict"})
+		return nil, errEventChanged
 	case errors.Is(err, davbackend.ErrTooLarge):
-		s.writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "The event is too large", "code": "too_large"})
+		return nil, &apiError{status: http.StatusRequestEntityTooLarge, msg: "The event is too large", code: "too_large"}
 	case errors.Is(err, store.ErrNotFound):
-		s.writeError(w, http.StatusNotFound, "No such calendar")
+		return nil, &apiError{status: http.StatusNotFound, msg: "No such calendar"}
 	case errors.Is(err, store.ErrUIDConflict):
-		s.writeError(w, http.StatusConflict, "An event with this UID already exists")
+		return nil, &apiError{status: http.StatusConflict, msg: "An event with this UID already exists"}
 	case errors.Is(err, store.ErrQuotaExceeded):
-		s.writeJSON(w, http.StatusInsufficientStorage, map[string]string{"error": "Calendar storage is full", "code": "quota"})
+		return nil, &apiError{status: http.StatusInsufficientStorage, msg: "Calendar storage is full", code: "quota"}
 	case errors.Is(err, davbackend.ErrInvalidResource), errors.Is(err, calendar.ErrInvalidData), errors.Is(err, calendar.ErrUnsupportedComponent):
-		s.writeError(w, http.StatusUnprocessableEntity, "The event is not valid")
+		return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "The event is not valid"}
 	default:
-		s.writeError(w, http.StatusInternalServerError, "Failed to save the event")
+		return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to save the event"}
 	}
-	return nil, false
 }
+
+var errEventChanged = &apiError{status: http.StatusPreconditionFailed, msg: "The event changed elsewhere; reload it", code: "conflict"}
 
 func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	c, role := s.calendarFor(w, r, r.PathValue("id"))
@@ -386,31 +433,42 @@ func (s *Server) loadEvent(w http.ResponseWriter, r *http.Request) (*store.Calen
 		s.writeError(w, http.StatusBadRequest, "If-Match must be one strong ETag")
 		return nil, nil, nil, "", false
 	}
-	o, err := s.store.Calendars().GetObjectByUID(r.Context(), c.ID, r.PathValue("uid"))
-	if errors.Is(err, store.ErrNotFound) {
-		s.writeError(w, http.StatusNotFound, "No such event")
-		return nil, nil, nil, "", false
-	}
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "Failed to load the event")
-		return nil, nil, nil, "", false
-	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "The stored event does not parse")
+	o, cal, apiErr := s.loadObject(r.Context(), c, r.PathValue("uid"))
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
 		return nil, nil, nil, "", false
 	}
 	return c, o, cal, etag, true
 }
 
+// loadObject loads event uid of c and decodes it.
+func (s *Server) loadObject(ctx context.Context, c *store.Calendar, uid string) (*store.CalendarObject, *ical.Calendar, *apiError) {
+	o, err := s.store.Calendars().GetObjectByUID(ctx, c.ID, uid)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil, &apiError{status: http.StatusNotFound, msg: "No such event"}
+	}
+	if err != nil {
+		return nil, nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load the event"}
+	}
+	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	if err != nil {
+		return nil, nil, &apiError{status: http.StatusInternalServerError, msg: "The stored event does not parse"}
+	}
+	return o, cal, nil
+}
+
 func (s *Server) editError(w http.ResponseWriter, err error) {
+	s.writeAPIError(w, editFailure(err))
+}
+
+func editFailure(err error) *apiError {
 	switch {
 	case errors.Is(err, calendar.ErrNotRecurring):
-		s.writeError(w, http.StatusBadRequest, "This event does not repeat")
+		return &apiError{status: http.StatusBadRequest, msg: "This event does not repeat"}
 	case errors.Is(err, calendar.ErrNoSuchOccurrence):
-		s.writeError(w, http.StatusBadRequest, "No such occurrence")
+		return &apiError{status: http.StatusBadRequest, msg: "No such occurrence"}
 	default:
-		s.writeError(w, http.StatusUnprocessableEntity, "The stored event cannot be edited")
+		return &apiError{status: http.StatusUnprocessableEntity, msg: "The stored event cannot be edited"}
 	}
 }
 
@@ -424,10 +482,20 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
+	if apiErr := applyEdit(cal, b); apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	if saved, ok := s.writeEvent(w, r, c, o.Name, cal, etag, false); ok {
+		s.writeJSON(w, http.StatusOK, map[string]string{"etag": saved.ETag})
+	}
+}
+
+// applyEdit validates b and applies it to cal, to the whole series or one occurrence.
+func applyEdit(cal *ical.Calendar, b eventBody) *apiError {
 	in, err := eventInput(b, true)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
-		return
+		return &apiError{status: http.StatusBadRequest, msg: err.Error()}
 	}
 	switch b.Scope {
 	case "", "all":
@@ -435,16 +503,12 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	case "this":
 		err = calendar.EditOne(cal, b.RecurrenceID, in, time.Now())
 	default:
-		s.writeError(w, http.StatusBadRequest, "scope must be this or all")
-		return
+		return &apiError{status: http.StatusBadRequest, msg: "scope must be this or all"}
 	}
 	if err != nil {
-		s.editError(w, err)
-		return
+		return editFailure(err)
 	}
-	if saved, ok := s.writeEvent(w, r, c, o.Name, cal, etag, false); ok {
-		s.writeJSON(w, http.StatusOK, map[string]string{"etag": saved.ETag})
-	}
+	return nil
 }
 
 func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
@@ -458,7 +522,7 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		err := s.store.Calendars().DeleteObject(r.Context(), c.ID, o.Name, etag)
 		switch {
 		case errors.Is(err, store.ErrPreconditionFailed):
-			s.writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "The event changed elsewhere; reload it", "code": "conflict"})
+			s.writeAPIError(w, errEventChanged)
 		case errors.Is(err, store.ErrNotFound):
 			s.writeError(w, http.StatusNotFound, "No such event")
 		case err != nil:
