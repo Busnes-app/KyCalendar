@@ -13,13 +13,13 @@
     "pretest": "node src/ky-ui/check-vendor.mjs"
   },
   "dependencies": {
-    "@fullcalendar/core": "6.1.21",
+    "@fullcalendar/core": "7.1.1",
     "@fullcalendar/daygrid": "6.1.21",
     "@fullcalendar/interaction": "6.1.21",
     "@fullcalendar/list": "6.1.21",
-    "@fullcalendar/react": "6.1.21",
+    "@fullcalendar/react": "7.1.1",
     "@fullcalendar/timegrid": "6.1.21",
-    "lucide-react": "^1.51.0",
+    "lucide-react": "^1.55.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
