@@ -52,6 +52,7 @@ type Server struct {
 	attempts   map[string]attemptWindow
 	accounts   map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
 	davFails   davFailures
+	powSpent   auth.PoWSpent
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
@@ -189,6 +190,17 @@ func (s *Server) allowAccountAttempt(key string, limit int, window time.Duration
 	entry := bumpWindow(s.accounts[key], now, window)
 	s.accounts[key] = entry
 	return entry.count <= limit
+}
+
+// refundAccountAttempt takes back one attempt allowAccountAttempt counted, for a limit that
+// counts failures only: counting before the check keeps concurrent guesses from all passing.
+func (s *Server) refundAccountAttempt(key string) {
+	s.attemptsMu.Lock()
+	defer s.attemptsMu.Unlock()
+	if entry, ok := s.accounts[key]; ok && entry.count > 0 {
+		entry.count--
+		s.accounts[key] = entry
+	}
 }
 
 // makeRoom frees a slot for a new key: it drops every expired window, and if the map is still

@@ -278,11 +278,12 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 #### Plan 1 CalDAV contracts
 
 - DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; PROPFIND, REPORT and OPTIONS on the bare `/` answer 308 there (308 keeps the method; a 301 may become GET and hit the SPA). Any other user's home is 403.
-- App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
-- DAV login failures: 10 per IP per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
+- App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation, which requires step-up. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
+- DAV login failures: 10 per IP (IPv6 per /64) per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
 - Inherited QR device pairing (`/api/devices/pair/*`, `internal/devices`, header Pair Device) is removed (R27): it minted full sessions and no KyCalendar client uses it. The `device_pairings` table and migrations stay; never edit existing migrations.
 - Administrators (`kycalendar.admin`, see Plan 2) are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
 - VEVENT only. PUT bodies are stored and served as the raw bytes received; the parsed form is used only for validation, indexing and filter matching.
+- Audit records older than 365 days are pruned daily by `cmd/server`, beside the change rows.
 - Change rows older than 90 days are pruned daily by `cmd/server`; a sync token older than the prune horizon gets `ErrSyncTokenExpired` and the client resyncs.
 - Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
 

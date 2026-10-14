@@ -1518,6 +1518,11 @@ ORDER BY created_at DESC LIMIT ? OFFSET ?
 	return records, count, rows.Err()
 }
 
+func (a *auditStore) PruneAudit(ctx context.Context, before time.Time) error {
+	_, err := a.store.db.ExecContext(ctx, a.store.rebind("DELETE FROM audit_records WHERE created_at < ?"), before.UTC())
+	return err
+}
+
 // ---------------------------------------------------------------------
 // Settings Store
 // ---------------------------------------------------------------------

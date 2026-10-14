@@ -63,29 +63,36 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Verify PoW CAPTCHA if enabled
 	if s.config.Captcha.Provider == "pow" {
-		if req.CaptchaToken == "" || !auth.VerifyPoWSolution(req.CaptchaToken, s.config.Security.SessionSecret) {
+		if req.CaptchaToken == "" || !auth.VerifyPoWSolution(req.CaptchaToken, s.config.Security.SessionSecret, &s.powSpent) {
 			s.writeError(w, http.StatusForbidden, "Security check failed. Please complete the CAPTCHA puzzle.")
 			return
 		}
 	}
 
 	user, err := s.store.Users().GetUserByUsername(r.Context(), req.Username)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
-			return
-		}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusInternalServerError, "Authentication error")
 		return
 	}
-
-	if user.Status != "active" {
-		s.writeError(w, http.StatusForbidden, "Account is disabled or inactive")
+	// Every failure is the same 401 and costs one password derivation, so neither body nor time
+	// tells an unknown, password-less or disabled account from a wrong password.
+	if err != nil || user.PasswordHash == "" {
+		password.DummyVerify()
+		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
-
-	ok, err := password.Verify(req.Password, user.PasswordHash)
-	if err != nil || !ok {
+	// Failures per account from any address; a correct password is refunded.
+	accountKey := "login:" + user.ID
+	if !s.allowAccountAttempt(accountKey, 10, 15*time.Minute) {
+		s.writeError(w, http.StatusTooManyRequests, "Too many login attempts")
+		return
+	}
+	if ok, err := password.Verify(req.Password, user.PasswordHash); err != nil || !ok {
+		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+	s.refundAccountAttempt(accountKey)
+	if user.Status != "active" {
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}

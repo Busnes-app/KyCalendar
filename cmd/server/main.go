@@ -117,6 +117,10 @@ func runServer() {
 			if err := st.Calendars().PruneChanges(ctx, time.Now().Add(-90*24*time.Hour)); err != nil {
 				log.Printf("calendar change prune failed: %v", err)
 			}
+			// A year of audit: covers an annual access review and a late-found incident.
+			if err := st.Audit().PruneAudit(ctx, time.Now().Add(-365*24*time.Hour)); err != nil {
+				log.Printf("audit prune failed: %v", err)
+			}
 			select {
 			case <-ctx.Done():
 				return

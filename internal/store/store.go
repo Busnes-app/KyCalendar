@@ -188,6 +188,8 @@ type GroupStore interface {
 type AuditStore interface {
 	LogAudit(ctx context.Context, r *AuditRecord) error
 	ListAuditRecords(ctx context.Context, offset, limit int) ([]*AuditRecord, int, error)
+	// PruneAudit deletes records created before before.
+	PruneAudit(ctx context.Context, before time.Time) error
 }
 
 // SignInBinding is what BindSignIn applies to SSO accounts.
