@@ -17,10 +17,12 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 - Per-user caps answer 507 (`store.ErrQuotaExceeded`): objects on create, calendars on MKCALENDAR and default creation, stored bytes on every PUT (total minus the replaced object plus the new body). The store enforces them atomically; the backend only passes the limits.
 - Calendar properties are bounded at this boundary (`calendar.CheckProps`): `calendar-color` empty or `#RRGGBB`/`#RRGGBBAA`, `displayname` at most 255 bytes, `calendar-description` at most 4096 bytes. MKCALENDAR over a bound is 400; PROPPATCH is 403 for the whole request, nothing is stored.
 - Calendars cannot be deleted over CalDAV (403).
-- Query results keep objects whose filter match errors. In a query with a VEVENT time range, objects indexed unbounded (`LastEnd == nil`) or whose raw bytes contain `RRULE` or `RDATE` (R29, `bytes.Contains`, never decoded) skip `caldav.Match` and are returned, so the index alone decides overlap and a large series costs no expansion per query; other queries match every object.
+- Query results keep objects whose filter match errors. In a query with a VEVENT time range, objects indexed unbounded (`LastEnd == nil`, not decoded) or for which `calendar.Recurring` holds on the decoded object (any spelling or folding of RRULE/RDATE, on any component) skip `caldav.Match` and are returned, so the index alone decides overlap and a series costs no expansion per query; other queries match every object.
+- `SyncCalendar` refuses (`caldav.ErrInvalidSyncToken`, client resyncs) a token whose epoch or calendar ID differs from the calendar's, or whose seq is past it.
 - DELETE `If-Match` reaches the backend through `WithIfMatch`. Any `If-Match` (including `*`) on a missing object is 412 for PUT and DELETE; `*` is passed to the store, which checks it inside the write transaction.
 
 ## Verification
+- `go test ./internal/davbackend/`
 - `go test ./internal/api/ -run 'CalDAV|DAV|GroupCalendar|MembershipRemoval|GroupSegment'`
 
 ## Child DOX Index

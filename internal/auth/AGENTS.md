@@ -12,7 +12,7 @@ Owns session issuance and verification, TOTP token generation/validation, recove
 - `Session.CreatedAt` is the credential time; `IssueSession` stamps now. No route mints a session from another session.
 - Active sessions are stored with SHA-256 hashed tokens and verified against secure HttpOnly / SameSite cookies or Bearer headers.
 - Session authentication rejects inactive accounts and deletes their presented session.
-- PoW solutions must carry unexpired server-signed challenge metadata.
+- PoW solutions must carry unexpired server-signed challenge metadata, signed under `DeriveKey(sessionSecret, "kycalendar:pow")`, never the bare session secret. Each solution verifies once: `VerifyPoWSolution` records its salt in the caller's `PoWSpent` until the challenge expires. At 100 000 entries it drops expired, then random live entries rather than refusing, so a flood cannot fail every login.
 - Password verification creates a five-minute opaque MFA transaction; MFA endpoints never accept a user ID and consume the transaction once.
 - Single-use recovery codes are invalidated immediately upon redemption.
 - `ClientIP` is the one client-address helper: the rate limiter and session binding both use it. `X-Forwarded-For` is honoured only when the peer is in `KY_TRUSTED_PROXIES`, walking the chain from the right past trusted hops; `X-Real-IP` is ignored. Each entry may be a bare IP or `ip:port` (Azure App Service/Application Gateway append the port); anything else ends the walk and falls back to the peer.

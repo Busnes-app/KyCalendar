@@ -204,13 +204,14 @@ restored one at first open, mixing two databases.
 
 ```bash
 docker compose down
-ls -A data | wc -l
+sudo ls -A data | wc -l
 ```
 
 That must print `0`. If it does not, the old directory still holds data, and you keep a copy
 of it before anything else: it holds every change made after the capsule was sealed, and it
-is the only record Steps 3 and 5 can walk. The container runs as root, so the files are
-root-owned; copy as root into a directory you create at mode 700:
+is the only record Steps 3 and 5 can walk. The files belong to the container's UID 10001
+(root, on an install older than the non-root image); copy as root into a directory you create
+at mode 700:
 
 ```bash
 mkdir -m 700 old-data
@@ -225,14 +226,14 @@ old disk is gone), there is no old audit log; the password step below says what 
 Only with the copy confirmed, empty the directory. This is irreversible:
 
 ```bash
-sudo rm -rf data/* data/.[!.]*
-ls -A data | wc -l
+sudo sh -c 'rm -rf data/* data/.[!.]*'
+sudo ls -A data | wc -l
 ```
 
 With `0` confirmed, copy the restored files in. Do not start the server yet:
 
 ```bash
-sudo cp -a restored/data/. data/ && sudo chmod 600 data/*
+sudo sh -c 'cp -a restored/data/. data/ && find data -type f -exec chmod 600 {} + && chown -R 10001:10001 data'
 ```
 
 **Reset rotated local passwords before the server starts.** A restore brings back every local
@@ -362,7 +363,7 @@ would work again; Step 3 reset those before the service opened.
 
 - Delete the `restored/` directory once the server runs from its own copy, and `old-data/`
   once Step 5 is done. Both are the live directory in the clear, key included. Files in
-  `old-data/` are root-owned after the copy, so `sudo rm -rf old-data`.
+  `old-data/` keep the container's ownership after the copy, so `sudo rm -rf old-data`.
 - The custodians' cards are unchanged; a restore does not consume them. If a card was
   exposed during the restore (read aloud, photographed, pasted anywhere shared), that is a
   key compromise for the whole suite, not for one server: run a new ceremony.

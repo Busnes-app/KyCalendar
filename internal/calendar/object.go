@@ -87,6 +87,10 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 			return Object{}, fmt.Errorf("%w: conflicting UIDs", ErrInvalidData)
 		}
 		o.UID = uid
+		if recurs(comp.Children) {
+			// VALARM repeats with REPEAT/DURATION; a rule there is never indexed, only expanded by queries.
+			return Object{}, fmt.Errorf("%w: RRULE or RDATE inside VEVENT", ErrInvalidData)
+		}
 
 		start, end, slack, err := eventSpan(comp)
 		if err != nil {
@@ -131,6 +135,24 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 	return o, nil
 }
 
+// Recurring reports an RRULE or RDATE on any component outside VTIMEZONE. It reads the decoded
+// object, so neither a lowercase name nor a line folded inside it hides one.
+func Recurring(cal *ical.Calendar) bool {
+	return recurs(cal.Children)
+}
+
+func recurs(comps []*ical.Component) bool {
+	for _, c := range comps {
+		if c.Name == ical.CompTimezone {
+			continue
+		}
+		if len(c.Props[ical.PropRecurrenceRule]) > 0 || len(c.Props[ical.PropRecurrenceDates]) > 0 || recurs(c.Children) {
+			return true
+		}
+	}
+	return false
+}
+
 // ruleLast returns the last occurrence of the component's RRULE, spending from budget.
 // ok is false (index as unbounded) when the rule has neither COUNT nor UNTIL, runs past the
 // horizon, is unparseable, or exhausts the budget. EXDATE is ignored: it can only narrow.
@@ -150,7 +172,8 @@ func ruleLast(comp *ical.Component, start time.Time, budget *int) (last time.Tim
 	case opt.Until.IsZero():
 		opt.Until, cut = limit, true
 	}
-	if wideTimeSet(opt) {
+	// One next() on a rule that never yields scans every period to year 9999: refuse it first.
+	if wideTimeSet(opt) || !ordinalsInRange(opt) || !satisfiable(opt) || !yields(opt, start) {
 		return time.Time{}, false
 	}
 	opt.Dtstart = start

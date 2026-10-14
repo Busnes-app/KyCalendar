@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -149,8 +150,17 @@ func TestCalendarMaxObjectsPerUser(t *testing.T) {
 func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	cfg, err := config.LoadFromEnv()
-	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 16<<20 || cfg.Calendar.MaxBytesTotal != 40<<20 {
+	// One owner gets a tenth of the instance cap, so no single user fills the instance.
+	if err != nil || cfg.Calendar.MaxCalendarsPerUser != 50 || cfg.Calendar.MaxBytesPerUser != 4<<20 || cfg.Calendar.MaxBytesTotal != 40<<20 {
 		t.Fatalf("defaults: %+v %v", cfg, err)
+	}
+	t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", strconv.Itoa(100<<20))
+	if cfg, err := config.LoadFromEnv(); err != nil || cfg.Calendar.MaxBytesPerUser != 10<<20 {
+		t.Fatalf("per-user default under a 100 MiB cap: %+v %v", cfg, err)
+	}
+	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", strconv.Itoa(30<<20))
+	if cfg, err := config.LoadFromEnv(); err != nil || cfg.Calendar.MaxBytesPerUser != 30<<20 {
+		t.Fatalf("explicit per-user cap: %+v %v", cfg, err)
 	}
 	for _, key := range []string{"KY_CALENDAR_MAX_CALENDARS_PER_USER", "KY_CALENDAR_MAX_BYTES_PER_USER"} {
 		t.Run(key, func(t *testing.T) {
@@ -167,7 +177,7 @@ func TestCalendarInstanceCap(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	t.Setenv("KY_DB_DRIVER", "postgres")
 	cfg, err := config.LoadFromEnv()
-	if err != nil || cfg.Calendar.MaxBytesTotal != 0 {
+	if err != nil || cfg.Calendar.MaxBytesTotal != 0 || cfg.Calendar.MaxBytesPerUser != 16<<20 {
 		t.Fatalf("postgres default: %+v %v", cfg, err)
 	}
 	t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", "-1")
@@ -239,5 +249,93 @@ func TestEmptyRetiredBackupEnvIsAccepted(t *testing.T) {
 	t.Setenv("KY_BACKUP_DIR", "")
 	if _, err := config.LoadFromEnv(); err != nil {
 		t.Fatalf("empty retired name refused: %v", err)
+	}
+}
+
+// A bare binary is reachable only from this host until KY_HOST says otherwise.
+func TestHostDefaultsToLoopback(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Host != "127.0.0.1" {
+		t.Errorf("default KY_HOST %q, want 127.0.0.1", cfg.Server.Host)
+	}
+	t.Setenv("KY_HOST", "0.0.0.0")
+	if cfg, err = config.LoadFromEnv(); err != nil || cfg.Server.Host != "0.0.0.0" {
+		t.Errorf("explicit KY_HOST: %v", err)
+	}
+}
+
+// Production refuses a plain-HTTP KY_APP_URL unless the operator opts out by name.
+func TestProductionRequiresHTTPSAppURL(t *testing.T) {
+	for _, tc := range []struct {
+		url, allow string
+		ok         bool
+	}{
+		{"", "", false}, // the default, http://localhost:8080
+		{"http://cal.example.com", "", false},
+		{"http://cal.example.com", "false", false},
+		{"https://cal.example.com", "", true},
+		{"HTTPS://cal.example.com", "", true},
+		{"http://cal.example.com", "true", true},
+	} {
+		t.Run(tc.url+"|"+tc.allow, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			t.Setenv("KY_ENV", "production")
+			t.Setenv("KY_SESSION_SECRET", strings.Repeat("s", 64))
+			t.Setenv("KY_APP_URL", tc.url)
+			t.Setenv("KY_ALLOW_INSECURE_HTTP", tc.allow)
+			_, err := config.LoadFromEnv()
+			if (err == nil) != tc.ok {
+				t.Fatalf("err %v, want ok=%v", err, tc.ok)
+			}
+			if err != nil && !strings.Contains(err.Error(), "KY_ALLOW_INSECURE_HTTP") {
+				t.Errorf("refusal must name the opt-out: %v", err)
+			}
+		})
+	}
+	// Outside production plain HTTP stays the zero-config default.
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	t.Setenv("KY_APP_URL", "http://localhost:8080")
+	if _, err := config.LoadFromEnv(); err != nil {
+		t.Fatalf("development with http: %v", err)
+	}
+}
+
+// SCIM is on only with an operator-chosen token: a random per-boot default is a token nobody
+// knows, so it served no IdP and only widened the surface.
+func TestSCIMNeedsAnExplicitToken(t *testing.T) {
+	token := strings.Repeat("k", 32)
+	for _, tc := range []struct {
+		name, enabled, token string
+		want, wantErr        bool
+	}{
+		{"default is off", "", "", false, false},
+		{"a token turns it on", "", token, true, false},
+		{"explicitly on with a token", "true", token, true, false},
+		{"explicitly off with a token", "false", token, false, false},
+		{"explicitly on without a token", "true", "", false, true},
+		{"a short token", "", "short-token", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			t.Setenv("KY_SCIM_ENABLED", tc.enabled)
+			t.Setenv("KY_SCIM_TOKEN", tc.token)
+			cfg, err := config.LoadFromEnv()
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "KY_SCIM_TOKEN") {
+					t.Fatalf("err = %v, want one naming KY_SCIM_TOKEN", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.SCIM.Enabled != tc.want || cfg.SCIM.BearerToken != tc.token {
+				t.Fatalf("SCIM = enabled %v token %q, want %v %q", cfg.SCIM.Enabled, cfg.SCIM.BearerToken, tc.want, tc.token)
+			}
+		})
 	}
 }

@@ -73,6 +73,9 @@ func probeYears(f rrule.Frequency) int {
 // yields probes a BYSETPOS or BYWEEKNO rule, or an ordinal BYDAY with a day filter, with
 // rrule-go itself: it must produce an occurrence before rrule-go stops at year 9999.
 func yields(opt *rrule.ROption, start time.Time) bool {
+	if !clockReachable(opt, start) {
+		return false
+	}
 	if len(opt.Bysetpos) == 0 && len(opt.Byweekno) == 0 && !ordinalWithDayFilter(opt) {
 		return true
 	}
@@ -86,6 +89,56 @@ func yields(opt *rrule.ROption, start time.Time) bool {
 	}
 	_, ok := r.Iterator()()
 	return ok
+}
+
+// clockReachable reports whether an HOURLY, MINUTELY or SECONDLY rule's steps from DTSTART can
+// land on its BYHOUR/BYMINUTE/BYSECOND clock: rrule-go loops without end until one does (e.g.
+// FREQ=HOURLY;INTERVAL=2;BYHOUR=1 from an even hour). Steps reach exactly the seconds of the day
+// congruent to DTSTART's modulo gcd(step, 86400).
+func clockReachable(opt *rrule.ROption, start time.Time) bool {
+	const day = 86400
+	unit := map[rrule.Frequency]int{rrule.HOURLY: 3600, rrule.MINUTELY: 60, rrule.SECONDLY: 1}[opt.Freq]
+	if unit == 0 {
+		return true
+	}
+	g := gcd(max(opt.Interval, 1)%day*unit%day, day)
+	h0, m0, s0 := start.Clock()
+	hours, minutes, seconds := orAll(opt.Byhour, 24), []int{m0}, []int{s0}
+	if opt.Freq != rrule.HOURLY {
+		minutes = orAll(opt.Byminute, 60)
+	}
+	if opt.Freq == rrule.SECONDLY {
+		seconds = orAll(opt.Bysecond, 60)
+	}
+	for _, h := range hours {
+		for _, m := range minutes {
+			for _, s := range seconds {
+				if ((h-h0)*3600+(m-m0)*60+s-s0)%g == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// orAll is set, or every value below n when set is empty.
+func orAll(set []int, n int) []int {
+	if len(set) > 0 {
+		return set
+	}
+	all := make([]int, n)
+	for i := range all {
+		all[i] = i
+	}
+	return all
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 // ordinalWithDayFilter: satisfiable ignores BYDAY ordinals, so "1MO" with BYMONTHDAY=15 passes it.

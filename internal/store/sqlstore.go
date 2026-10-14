@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -392,20 +393,32 @@ func (u *userStore) SpendTOTPCounter(ctx context.Context, userID string, counter
 // DeleteUser also deletes the user's calendars (objects and changes cascade): calendars.owner_id
 // has no foreign key, and orphaned bytes would count against the instance cap forever.
 func (u *userStore) DeleteUser(ctx context.Context, id string) error {
+	return u.deleteUser(ctx, id, "1 = 1")
+}
+
+func (u *userStore) DeleteSCIMUser(ctx context.Context, scope SCIMScope, id string) error {
+	clause, args := scope.where()
+	return u.deleteUser(ctx, id, clause, args...)
+}
+
+// deleteUser deletes the user id if it matches the users clause.
+func (u *userStore) deleteUser(ctx context.Context, id, clause string, args ...any) error {
 	tx, err := u.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM calendars WHERE owner_kind = 'user' AND owner_id = ?"), id); err != nil {
-		return err
-	}
-	res, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)"), id)
+	res, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ? AND "+clause+" AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)"), append([]any{id}, args...)...)
 	if err != nil {
 		return err
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
+	if rows, err := res.RowsAffected(); err != nil {
+		return err
+	} else if rows == 0 {
 		return ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM calendars WHERE owner_kind = 'user' AND owner_id = ?"), id); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -436,13 +449,12 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 		where += ` AND (LOWER(username) LIKE LOWER(?) ESCAPE '\' OR LOWER(email) LIKE LOWER(?) ESCAPE '\' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '\')`
 		args = []any{p, p, p}
 	}
-	if filter.SSOOnly {
-		where += " AND sso_provider <> 'local'"
-	}
 	if filter.Field == UserFieldSSOSubject {
-		in, pargs := inList(filter.Providers)
-		where += " AND sso_subject = ? AND sso_issuer = ? AND sso_provider <> 'local' AND sso_provider IN (" + in + ")"
-		args = append(append(args, filter.Value, filter.Issuer), pargs...)
+		where, args = where+" AND sso_subject = ?", []any{filter.Value}
+	}
+	if filter.SCIM != nil {
+		clause, sargs := filter.SCIM.where()
+		where, args = where+" AND "+clause, append(args, sargs...)
 	}
 
 	var total int
@@ -476,12 +488,23 @@ ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	return users, total, rows.Err()
 }
 
-func (u *userStore) SSOUserIDs(ctx context.Context, ids []string) ([]string, error) {
+func (u *userStore) SCIMUserIDs(ctx context.Context, scope SCIMScope, ids []string) ([]string, error) {
+	return u.store.scimUserIDs(ctx, u.store.db, scope, ids)
+}
+
+// queryer is a database or a transaction.
+type queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+// scimUserIDs is SCIMUserIDs through q.
+func (s *SQLStore) scimUserIDs(ctx context.Context, q queryer, scope SCIMScope, ids []string) ([]string, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	in, args := inList(ids)
-	rows, err := u.store.db.QueryContext(ctx, u.store.rebind("SELECT id FROM users WHERE sso_provider <> 'local' AND id IN ("+in+")"), args...)
+	clause, sargs := scope.where()
+	rows, err := q.QueryContext(ctx, s.rebind("SELECT id FROM users WHERE "+clause+" AND id IN ("+in+")"), append(sargs, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -661,6 +684,15 @@ func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID
 	return err
 }
 
+// where is SCIMScope.Contains as SQL on the users table, with its arguments.
+func (s SCIMScope) where() (string, []any) {
+	if len(s.Providers) == 0 {
+		return "1 = 0", nil
+	}
+	in, args := inList(s.Providers)
+	return "sso_provider <> 'local' AND sso_issuer = ? AND sso_provider IN (" + in + ")", append([]any{s.Issuer}, args...)
+}
+
 // inList is "?, ?, ..." for values, with the values as query arguments.
 func inList(values []string) (string, []any) {
 	args := make([]any, len(values))
@@ -817,9 +849,10 @@ func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
 	return tx.Commit()
 }
 
-// lockSSOAccess locks a non-local row in tx and reads its role and status.
-func (u *userStore) lockSSOAccess(ctx context.Context, tx *sql.Tx, id string, now time.Time) (role, status string, err error) {
-	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND sso_provider <> 'local'`), now, id)
+// lockSSOAccess locks a row of scope in tx and reads its role and status.
+func (u *userStore) lockSSOAccess(ctx context.Context, tx *sql.Tx, scope SCIMScope, id string, now time.Time) (role, status string, err error) {
+	clause, args := scope.where()
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND `+clause), append([]any{now, id}, args...)...)
 	if err != nil {
 		return "", "", err
 	}
@@ -852,14 +885,14 @@ var betweenSCIMWrites = func() {}
 // its own row-first transaction with the revocation. A grant (inactive to active, user to admin)
 // lands only with the profile write and only if the stored value still equals what SCIM read;
 // otherwise nothing more is written and the result is ErrAccessChanged.
-func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User, expectedRole, expectedStatus string) error {
+func (u *userStore) UpdateSCIMUser(ctx context.Context, scope SCIMScope, user *User, expectedRole, expectedStatus string) error {
 	user.UpdatedAt = time.Now().UTC()
 	tx, err := u.store.beginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	role, status, err := u.lockSSOAccess(ctx, tx, user.ID, user.UpdatedAt)
+	role, status, err := u.lockSSOAccess(ctx, tx, scope, user.ID, user.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -884,7 +917,7 @@ func (u *userStore) UpdateSCIMUser(ctx context.Context, user *User, expectedRole
 			return err
 		}
 		defer tx.Rollback()
-		if role, status, err = u.lockSSOAccess(ctx, tx, user.ID, user.UpdatedAt); err != nil {
+		if role, status, err = u.lockSSOAccess(ctx, tx, scope, user.ID, user.UpdatedAt); err != nil {
 			return err
 		}
 	}
@@ -1244,6 +1277,99 @@ func (g *groupStore) refuseTwin(ctx context.Context, tx *sql.Tx, id, name string
 }
 
 func (g *groupStore) CreateGroup(ctx context.Context, group *Group) error {
+	return g.create(ctx, group, func(*sql.Tx) error { return nil })
+}
+
+func (g *groupStore) CreateSCIMGroup(ctx context.Context, scope SCIMScope, group *Group) error {
+	group.Source = GroupSourceSCIM
+	group.Members = slices.Compact(slices.Sorted(slices.Values(group.Members)))
+	return g.create(ctx, group, func(tx *sql.Tx) error {
+		return g.setSCIMMembers(ctx, tx, scope, group.ID, nil, group.Members)
+	})
+}
+
+// UpdateSCIMGroup holds the group-names lock and the group row from the read to the commit, so
+// SCIM writes to one group apply in turn, each to what the previous one left.
+func (g *groupStore) UpdateSCIMGroup(ctx context.Context, scope SCIMScope, id string, change func(*Group) error) (*Group, error) {
+	tx, err := g.store.lockedTx(ctx, "group-names")
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, g.store.rebind("UPDATE groups SET updated_at = ? WHERE id = ? AND source = ?"), time.Now().UTC(), id, GroupSourceSCIM)
+	if err != nil {
+		return nil, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, err
+	} else if n == 0 {
+		return nil, ErrNotFound
+	}
+	grp, err := scanGroup(tx.QueryRowContext(ctx, g.store.rebind("SELECT "+groupColumns+" FROM groups WHERE id = ?"), id))
+	if err != nil {
+		return nil, err
+	}
+	all, err := g.getMembers(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	old, err := g.store.scimUserIDs(ctx, tx, scope, all)
+	if err != nil {
+		return nil, err
+	}
+	slices.Sort(old)
+	name := grp.DisplayName
+	grp.Members = slices.Clone(old)
+	if err := change(grp); err != nil {
+		return nil, err
+	}
+	grp.Members = slices.Compact(slices.Sorted(slices.Values(grp.Members)))
+	if !strings.EqualFold(name, grp.DisplayName) {
+		if err := g.refuseTwin(ctx, tx, id, grp.DisplayName); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, g.store.rebind("UPDATE groups SET display_name = ?, external_id = ? WHERE id = ?"), grp.DisplayName, grp.ExternalID, id); err != nil {
+		if isUniqueViolation(err) {
+			return nil, ErrAlreadyExists
+		}
+		return nil, err
+	}
+	if err := g.setSCIMMembers(ctx, tx, scope, id, old, grp.Members); err != nil {
+		return nil, err
+	}
+	return grp, tx.Commit()
+}
+
+// setSCIMMembers moves groupID's in-scope members from old to next in tx, writing only the
+// difference; next must all be in scope (ErrInvalidMember).
+func (g *groupStore) setSCIMMembers(ctx context.Context, tx *sql.Tx, scope SCIMScope, groupID string, old, next []string) error {
+	found, err := g.store.scimUserIDs(ctx, tx, scope, next)
+	if err != nil {
+		return err
+	}
+	if len(found) != len(next) {
+		return ErrInvalidMember
+	}
+	for _, id := range old {
+		if !slices.Contains(next, id) {
+			if _, err := tx.ExecContext(ctx, g.store.rebind("DELETE FROM group_members WHERE group_id = ? AND user_id = ?"), groupID, id); err != nil {
+				return err
+			}
+		}
+	}
+	for _, id := range next {
+		if !slices.Contains(old, id) {
+			if _, err := tx.ExecContext(ctx, g.store.rebind("INSERT INTO group_members (group_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING"), groupID, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// create inserts group under the group-names lock and runs then in the same transaction.
+func (g *groupStore) create(ctx context.Context, group *Group, then func(*sql.Tx) error) error {
 	now := time.Now().UTC()
 	if group.CreatedAt.IsZero() {
 		group.CreatedAt = now
@@ -1269,6 +1395,9 @@ func (g *groupStore) CreateGroup(ctx context.Context, group *Group) error {
 		}
 		return err
 	}
+	if err := then(tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -1277,7 +1406,7 @@ func (g *groupStore) GetGroupByID(ctx context.Context, id string) (*Group, error
 	if err != nil {
 		return nil, err
 	}
-	if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+	if grp.Members, err = g.getMembers(ctx, g.store.db, grp.ID); err != nil {
 		return nil, err
 	}
 	return grp, nil
@@ -1301,7 +1430,7 @@ func (g *groupStore) GroupsByExternalID(ctx context.Context, externalID, source 
 		return nil, err
 	}
 	for _, grp := range out {
-		if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+		if grp.Members, err = g.getMembers(ctx, g.store.db, grp.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -1313,15 +1442,14 @@ func (g *groupStore) GetGroupByName(ctx context.Context, name string) (*Group, e
 	if err != nil {
 		return nil, err
 	}
-	if grp.Members, err = g.getMembers(ctx, grp.ID); err != nil {
+	if grp.Members, err = g.getMembers(ctx, g.store.db, grp.ID); err != nil {
 		return nil, err
 	}
 	return grp, nil
 }
 
-func (g *groupStore) getMembers(ctx context.Context, groupID string) ([]string, error) {
-	q := g.store.rebind("SELECT user_id FROM group_members WHERE group_id = ?")
-	rows, err := g.store.db.QueryContext(ctx, q, groupID)
+func (g *groupStore) getMembers(ctx context.Context, q queryer, groupID string) ([]string, error) {
+	rows, err := q.QueryContext(ctx, g.store.rebind("SELECT user_id FROM group_members WHERE group_id = ?"), groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -1330,9 +1458,10 @@ func (g *groupStore) getMembers(ctx context.Context, groupID string) ([]string, 
 	var members []string
 	for rows.Next() {
 		var uid string
-		if err := rows.Scan(&uid); err == nil {
-			members = append(members, uid)
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
 		}
+		members = append(members, uid)
 	}
 	return members, rows.Err()
 }
@@ -1418,8 +1547,9 @@ func (g *groupStore) ListGroups(ctx context.Context, offset, limit int, source s
 	}
 
 	for _, grp := range groups {
-		members, _ := g.getMembers(ctx, grp.ID)
-		grp.Members = members
+		if grp.Members, err = g.getMembers(ctx, g.store.db, grp.ID); err != nil {
+			return nil, 0, err
+		}
 	}
 
 	return groups, count, nil
@@ -1518,6 +1648,11 @@ ORDER BY created_at DESC LIMIT ? OFFSET ?
 	return records, count, rows.Err()
 }
 
+func (a *auditStore) PruneAudit(ctx context.Context, before time.Time) error {
+	_, err := a.store.db.ExecContext(ctx, a.store.rebind("DELETE FROM audit_records WHERE created_at < ?"), before.UTC())
+	return err
+}
+
 // ---------------------------------------------------------------------
 // Settings Store
 // ---------------------------------------------------------------------
@@ -1604,9 +1739,10 @@ func (s *settingsStore) GetAllSettings(ctx context.Context) (map[string]string, 
 	settings := make(map[string]string)
 	for rows.Next() {
 		var k, v string
-		if err := rows.Scan(&k, &v); err == nil {
-			settings[k] = v
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
 		}
+		settings[k] = v
 	}
 	return settings, rows.Err()
 }

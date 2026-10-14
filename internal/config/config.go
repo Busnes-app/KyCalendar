@@ -81,6 +81,9 @@ type SSOConfig struct {
 	AutoProvision      bool   `json:"auto_provision"`
 }
 
+// MinSCIMTokenLength is the shortest KY_SCIM_TOKEN accepted.
+const MinSCIMTokenLength = 32
+
 // SCIMConfig holds settings for RFC 7643/7644 inbound user provisioning.
 type SCIMConfig struct {
 	Enabled     bool   `json:"enabled"`
@@ -131,10 +134,14 @@ func LoadFromEnv() (*Config, error) {
 		}
 	}
 	port := getEnvInt("KY_PORT", getEnvInt("PORT", 8080))
-	host := getEnv("KY_HOST", "0.0.0.0")
+	// Loopback unless told otherwise; the image sets 0.0.0.0, where a container must listen.
+	host := getEnv("KY_HOST", "127.0.0.1")
 	appURL := getEnv("KY_APP_URL", fmt.Sprintf("http://localhost:%d", port))
 	appName := getEnv("KY_APP_NAME", DefaultAppName)
 	env := getEnv("KY_ENV", "development")
+	if env == "production" && !strings.HasPrefix(strings.ToLower(appURL), "https://") && !getEnvBool("KY_ALLOW_INSECURE_HTTP", false) {
+		return nil, fmt.Errorf("KY_APP_URL must be https:// in production (got %q); put a TLS proxy in front, or set KY_ALLOW_INSECURE_HTTP=true to accept plain HTTP", appURL)
+	}
 
 	driver := strings.ToLower(getEnv("KY_DB_DRIVER", "sqlite"))
 	dataDir := getEnv("KY_DATA_DIR", "./data")
@@ -180,7 +187,6 @@ func LoadFromEnv() (*Config, error) {
 	calCfg := CalendarConfig{
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
-		MaxBytesPerUser:     int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", 16<<20)),
 	}
 	// The SQLite snapshot is one capsule member, capped at 64 MiB; leave room for everything else.
 	defaultTotal := 0
@@ -190,6 +196,13 @@ func LoadFromEnv() (*Config, error) {
 	if calCfg.MaxBytesTotal = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_TOTAL", defaultTotal)); calCfg.MaxBytesTotal < 0 {
 		return nil, fmt.Errorf("KY_CALENDAR_MAX_BYTES_TOTAL must not be negative")
 	}
+	// Under an instance cap one owner (a user or a group calendar) gets a tenth of it by default,
+	// so no single owner can fill the instance for everyone.
+	defaultPerUser := int64(16 << 20)
+	if calCfg.MaxBytesTotal > 0 {
+		defaultPerUser = min(defaultPerUser, max(calCfg.MaxBytesTotal/10, 1))
+	}
+	calCfg.MaxBytesPerUser = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_PER_USER", int(defaultPerUser)))
 	for key, v := range map[string]int64{
 		"KY_CALENDAR_MAX_OBJECTS_PER_USER":   int64(calCfg.MaxObjectsPerUser),
 		"KY_CALENDAR_MAX_CALENDARS_PER_USER": int64(calCfg.MaxCalendarsPerUser),
@@ -208,6 +221,16 @@ func LoadFromEnv() (*Config, error) {
 	trustedProxies, err := ParseTrustedProxies(getEnv("KY_TRUSTED_PROXIES", ""))
 	if err != nil {
 		return nil, fmt.Errorf("KY_TRUSTED_PROXIES: %w", err)
+	}
+
+	// SCIM is on only with a token the operator chose and gave the IdP.
+	scimToken := getEnv("KY_SCIM_TOKEN", "")
+	scimOn := getEnv("KY_SCIM_ENABLED", "") == "" || getEnvBool("KY_SCIM_ENABLED", true)
+	if scimToken == "" && getEnvBool("KY_SCIM_ENABLED", false) {
+		return nil, fmt.Errorf("KY_SCIM_ENABLED is true but KY_SCIM_TOKEN is not set")
+	}
+	if scimToken != "" && len(scimToken) < MinSCIMTokenLength {
+		return nil, fmt.Errorf("KY_SCIM_TOKEN must be at least %d characters", MinSCIMTokenLength)
 	}
 
 	cfg := &Config{
@@ -247,8 +270,8 @@ func LoadFromEnv() (*Config, error) {
 			AutoProvision:      getEnvBool("KY_SSO_AUTO_PROVISION", true),
 		},
 		SCIM: SCIMConfig{
-			Enabled:     getEnvBool("KY_SCIM_ENABLED", true),
-			BearerToken: getEnv("KY_SCIM_TOKEN", generateRandomHex(24)),
+			Enabled:     scimToken != "" && scimOn,
+			BearerToken: scimToken,
 		},
 		Backup: BackupConfig{
 			Dir:                  getEnv("KYCALENDAR_BACKUP_DIR", ""),

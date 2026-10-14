@@ -79,7 +79,9 @@ func TestProofOfWorkChallenge(t *testing.T) {
 	}
 
 	// Solve challenge client-side
+	var spent auth.PoWSpent
 	var winningNumber int = -1
+	var winning string
 	for i := 1; i <= challenge.MaxNumber; i++ {
 		sol := auth.PoWSolution{
 			Algorithm: challenge.Algorithm,
@@ -92,18 +94,21 @@ func TestProofOfWorkChallenge(t *testing.T) {
 		}
 		solBytes, _ := json.Marshal(sol)
 		solB64 := base64.StdEncoding.EncodeToString(solBytes)
-		if auth.VerifyPoWSolution(solB64, secret) {
-			winningNumber = i
+		if auth.VerifyPoWSolution(solB64, secret, &spent) {
+			winningNumber, winning = i, solB64
 			break
 		}
 	}
 
 	if winningNumber == -1 {
-		t.Errorf("failed to solve PoW within max iterations")
+		t.Fatalf("failed to solve PoW within max iterations")
+	}
+	if auth.VerifyPoWSolution(winning, secret, &spent) {
+		t.Fatal("accepted a spent solution")
 	}
 	forged := auth.PoWSolution{Algorithm: "SHA-256", Salt: "mine", Challenge: "fake", Number: 1, MaxNumber: 1, ExpiresAt: challenge.ExpiresAt, Signature: challenge.Signature}
 	forgedJSON, _ := json.Marshal(forged)
-	if auth.VerifyPoWSolution(base64.StdEncoding.EncodeToString(forgedJSON), secret) {
+	if auth.VerifyPoWSolution(base64.StdEncoding.EncodeToString(forgedJSON), secret, &spent) {
 		t.Fatal("accepted forged challenge metadata")
 	}
 }

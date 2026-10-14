@@ -135,6 +135,9 @@ func (s *Server) handleExportCapsule(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	if !s.requireStepUp(w, r, "export a capsule") {
+		return
+	}
 	ctx := r.Context()
 	actor := s.actorID(r)
 	settings := backup.Settings(ctx, s.store.Settings())
@@ -193,6 +196,9 @@ type RemotePairRequest struct {
 func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if !s.requireStepUp(w, r, "pair with KyRecovery") {
 		return
 	}
 	var req RemotePairRequest
@@ -397,6 +403,9 @@ type PinKeyRequest struct {
 func (s *Server) handlePinKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if !s.requireStepUp(w, r, "pin a recovery key") {
 		return
 	}
 	var req PinKeyRequest

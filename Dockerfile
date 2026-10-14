@@ -1,34 +1,28 @@
-# Multi-stage build for kycalendar
+# Multi-stage build for kycalendar. The web UI is the committed web/dist that CI rebuilds and
+# diff-checks, so the image embeds exactly the verified bundle; there is no frontend stage.
+# Base images are pinned by digest; Dependabot (docker ecosystem) proposes the bumps.
 
-# Stage 1: Build React PWA Frontend
-FROM node:26-alpine AS frontend-builder
-WORKDIR /app/web
-COPY web/package*.json ./
-RUN npm install
-COPY web/ ./
-RUN npm run build
-
-# Stage 2: Build Go Standalone Binary
-FROM golang:1.27.2-alpine AS backend-builder
+FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 # go.mod replaces go-webdav with this vendored fork; it must exist before download.
 COPY third_party/ ./third_party/
 RUN go mod download
 COPY . ./
-COPY --from=frontend-builder /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o kycalendar ./cmd/server
 
-# Stage 3: Minimal Production Container
-FROM alpine:3.24
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 COPY --from=backend-builder /app/kycalendar /app/kycalendar
 # /app/backups is the optional mount for sealed local capsules; KYCALENDAR_BACKUP_DIR is set
 # by the operator (compose does), so an image run bare keeps no local copies.
-RUN mkdir -p /app/data /app/backups
+# UID/GID 10001 owns both; a bind-mounted host directory must be owned by it too (README).
+RUN mkdir -p /app/data /app/backups && chown 10001:10001 /app/data /app/backups && chmod 700 /app/data /app/backups
+USER 10001:10001
 
 ENV KY_PORT=8080
+# A container must listen on every interface; publish the port on loopback (compose does).
 ENV KY_HOST=0.0.0.0
 ENV KY_DATA_DIR=/app/data
 

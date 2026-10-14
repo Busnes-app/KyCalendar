@@ -36,7 +36,7 @@ type appPasswordView struct {
 }
 
 func (s *Server) handleListAppPasswords(w http.ResponseWriter, r *http.Request) {
-	user, _, _ := s.sessions.AuthenticateRequest(r)
+	user := sessionUser(r.Context())
 	list, err := s.store.AppPasswords().ListByUser(r.Context(), user.ID)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Could not list app passwords")
@@ -50,6 +50,10 @@ func (s *Server) handleListAppPasswords(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request) {
+	// The credential outlives the session, so a stolen session must not mint one.
+	if !s.requireStepUp(w, r, "create an app password") {
+		return
+	}
 	user := sessionUser(r.Context())
 	sess, _ := r.Context().Value(sessionKey{}).(*store.Session)
 	var req struct {
@@ -88,7 +92,7 @@ func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleDeleteAppPassword(w http.ResponseWriter, r *http.Request) {
-	user, _, _ := s.sessions.AuthenticateRequest(r)
+	user := sessionUser(r.Context())
 	id := r.PathValue("id")
 	if err := s.store.AppPasswords().Delete(r.Context(), user.ID, id); err != nil {
 		if errors.Is(err, store.ErrNotFound) {

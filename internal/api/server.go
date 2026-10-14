@@ -52,6 +52,7 @@ type Server struct {
 	attempts   map[string]attemptWindow
 	accounts   map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
 	davFails   davFailures
+	powSpent   auth.PoWSpent
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
@@ -191,6 +192,17 @@ func (s *Server) allowAccountAttempt(key string, limit int, window time.Duration
 	return entry.count <= limit
 }
 
+// refundAccountAttempt takes back one attempt allowAccountAttempt counted, for a limit that
+// counts failures only: counting before the check keeps concurrent guesses from all passing.
+func (s *Server) refundAccountAttempt(key string) {
+	s.attemptsMu.Lock()
+	defer s.attemptsMu.Unlock()
+	if entry, ok := s.accounts[key]; ok && entry.count > 0 {
+		entry.count--
+		s.accounts[key] = entry
+	}
+}
+
 // makeRoom frees a slot for a new key: it drops every expired window, and if the map is still
 // full it drops one live entry chosen at random, never the one nearest expiry. Caller holds
 // attemptsMu. The scan is O(attemptsCap) and only runs for a new key while the map is full;
@@ -307,6 +319,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/users/{id}/enable", s.tracked(s.requireAdmin(s.handleEnableUser)))
 	s.handle("POST /api/admin/users/{id}/reattach", s.tracked(s.requireAdmin(s.handleReattachUser)))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
+	s.handle("GET /api/admin/scim", s.requireAdmin(s.handleSCIMStatus))
 	s.handle("GET /api/admin/signin", s.requireAdmin(s.handleGetSignIn))
 	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
 	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))

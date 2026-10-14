@@ -91,7 +91,7 @@ func TestSCIMRefusalsAreAudited(t *testing.T) {
 // A 412 (the account changed since SCIM read it) is audited too.
 func TestSCIMAccessChangedRefusalIsAudited(t *testing.T) {
 	h, st, token := racingSCIM(t, func(st store.Store) {
-		_ = st.Users().UpdateSCIMUser(context.Background(), &store.User{ID: "usr_bo", Username: "bo", Role: "user", Status: "active"}, "user", "inactive")
+		_ = st.Users().UpdateSCIMUser(context.Background(), unbound, &store.User{ID: "usr_bo", Username: "bo", Role: "user", Status: "active"}, "user", "inactive")
 	})
 	if err := st.Users().CreateUser(context.Background(), &store.User{ID: "usr_bo", Username: "bo", Role: "user", Status: "inactive", SSOProvider: "scim", SSOSubject: "b1"}); err != nil {
 		t.Fatal(err)

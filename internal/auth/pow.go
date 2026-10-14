@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/crypto"
@@ -33,6 +34,51 @@ type PoWSolution struct {
 	MaxNumber int    `json:"maxnumber"`
 	ExpiresAt int64  `json:"expires_at"`
 	Signature string `json:"signature"`
+}
+
+// powKey separates the PoW signing key from the session secret it is derived from.
+func powKey(secret string) string {
+	return string(crypto.DeriveKey([]byte(secret), "kycalendar:pow"))
+}
+
+// powSpentCap bounds PoWSpent. Entries live at most five minutes and each costs a login past
+// the per-IP limiter, so only a flood from many addresses reaches it.
+const powSpentCap = 100000
+
+// PoWSpent records verified solutions until their challenge expires, so each solution admits
+// one request. The zero value is ready to use.
+type PoWSpent struct {
+	mu    sync.Mutex
+	salts map[string]int64 // salt -> challenge ExpiresAt
+}
+
+// spend reports whether salt was unspent and records it. When full it drops expired entries,
+// then live ones at random. Refusing instead would let a flood fail every login; eviction only
+// lets one already-solved puzzle be presented again, still behind every login limiter.
+func (p *PoWSpent) spend(salt string, expiresAt, now int64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.salts == nil {
+		p.salts = map[string]int64{}
+	}
+	if _, used := p.salts[salt]; used {
+		return false
+	}
+	if len(p.salts) >= powSpentCap {
+		for s, exp := range p.salts {
+			if exp < now {
+				delete(p.salts, s)
+			}
+		}
+		for s := range p.salts {
+			if len(p.salts) < powSpentCap {
+				break
+			}
+			delete(p.salts, s)
+		}
+	}
+	p.salts[salt] = expiresAt
+	return true
 }
 
 // GeneratePoWChallenge creates a puzzle of given difficulty (e.g. 5000 to 50000 max iterations).
@@ -66,12 +112,13 @@ func GeneratePoWChallenge(difficulty int, signingSecret string) (*PoWChallenge, 
 		Challenge: challenge,
 		MaxNumber: difficulty,
 		ExpiresAt: challengeExpires,
-		Signature: crypto.ComputeHMACSHA256([]byte(signaturePayload), signingSecret),
+		Signature: crypto.ComputeHMACSHA256([]byte(signaturePayload), powKey(signingSecret)),
 	}, nil
 }
 
-// VerifyPoWSolution decodes and validates the client's base64-encoded JSON solution.
-func VerifyPoWSolution(solutionBase64, signingSecret string) bool {
+// VerifyPoWSolution decodes and validates the client's base64-encoded JSON solution and spends
+// it in spent, so presenting it again fails.
+func VerifyPoWSolution(solutionBase64, signingSecret string, spent *PoWSpent) bool {
 	data, err := base64.StdEncoding.DecodeString(solutionBase64)
 	if err != nil {
 		data, err = base64.RawStdEncoding.DecodeString(solutionBase64)
@@ -85,12 +132,13 @@ func VerifyPoWSolution(solutionBase64, signingSecret string) bool {
 		return false
 	}
 
+	now := time.Now().Unix()
 	if sol.Algorithm != "SHA-256" || sol.Salt == "" || sol.Challenge == "" || sol.Signature == "" ||
-		sol.Number < 1 || sol.MaxNumber < 1 || sol.Number > sol.MaxNumber || sol.ExpiresAt < time.Now().Unix() {
+		sol.Number < 1 || sol.MaxNumber < 1 || sol.Number > sol.MaxNumber || sol.ExpiresAt < now {
 		return false
 	}
 	signaturePayload := sol.Salt + ":" + sol.Challenge + ":" + strconv.Itoa(sol.MaxNumber) + ":" + strconv.FormatInt(sol.ExpiresAt, 10)
-	if !crypto.VerifyHMACSHA256([]byte(signaturePayload), signingSecret, sol.Signature) {
+	if !crypto.VerifyHMACSHA256([]byte(signaturePayload), powKey(signingSecret), sol.Signature) {
 		return false
 	}
 
@@ -98,5 +146,5 @@ func VerifyPoWSolution(solutionBase64, signingSecret string) bool {
 	h := sha256.Sum256([]byte(targetStr))
 	actualChallenge := hex.EncodeToString(h[:])
 
-	return actualChallenge == sol.Challenge
+	return actualChallenge == sol.Challenge && spent.spend(sol.Salt, sol.ExpiresAt, now)
 }

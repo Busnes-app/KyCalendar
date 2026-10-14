@@ -261,6 +261,52 @@ func TestUnpairNeedsRecentSignIn(t *testing.T) {
 	}
 }
 
+// Pairing and pinning are write-once and a capsule is a copy of everything: a stale session
+// does none of them, and nothing is written or audited.
+func TestIrreversibleBackupActionsNeedRecentSignIn(t *testing.T) {
+	srv, st, cfg := setupSQLiteServer(t)
+	priv, _ := recoverykey.Generate()
+	var claim [2]string
+	api.SetRecoveryClientForTest(srv, fakePairer{claim: &claim, result: recoveryclient.PairingResult{
+		APIToken: "kyrec_live_t",
+		Key:      recoveryclient.RecoveryKey{Public: priv.Public(), Threshold: 2, TotalShares: 3},
+	}})
+	session := loginAs(t, srv, st, "alice", "admin")
+	restore := api.SetStepUpWindowForTest(0)
+	defer restore()
+	for _, tc := range []struct {
+		path string
+		body any
+	}{
+		{"/api/backup/pin-key", pinBody(priv.Public(), 2, 3)},
+		{"/api/backup/pair-remote", map[string]string{"recovery_url": "https://recovery.busnes.app", "pairing_code": "123456"}},
+	} {
+		w := adminDo(t, srv, session, "POST", tc.path, tc.body)
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauth_required"`) || w.Header().Get("Content-Disposition") != "" {
+			t.Errorf("%s with a stale session: got %d %v: %s", tc.path, w.Code, w.Header(), w.Body.String())
+		}
+	}
+	if claim != [2]string{} {
+		t.Errorf("a refused pairing reached KyRecovery: %v", claim)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Database.DataDir, "recovery.pub")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused action pinned a key: %v", err)
+	}
+	// Export needs a pinned key to produce anything, so pin one directly.
+	if err := recoveryclient.StoreRecoveryKey(cfg.Database.DataDir, backupSettings(context.Background(), st), recoveryclient.RecoveryKey{Public: priv.Public(), Threshold: 2, TotalShares: 3}); err != nil {
+		t.Fatal(err)
+	}
+	w := adminDo(t, srv, session, "POST", "/api/backup/export-capsule", nil)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauth_required"`) || w.Header().Get("Content-Disposition") != "" {
+		t.Errorf("export with a stale session: got %d %v", w.Code, w.Header())
+	}
+	for _, action := range []string{"admin.backup_key_pin", "backup.paired", "backup.pair_failed", "admin.backup_export"} {
+		if rows := auditRows(t, st, action); len(rows) != 0 {
+			t.Errorf("a refused action audited %s: %+v", action, rows)
+		}
+	}
+}
+
 func TestScheduleBounds(t *testing.T) {
 	srv, st, _ := setupSQLiteServer(t)
 	session := loginAs(t, srv, st, "alice", "admin")

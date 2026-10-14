@@ -12,7 +12,8 @@ Published image:
 
 ```bash
 make ci        # gofmt, vet, race tests, smoke test
-make run       # build and start on :8080; first start prints the bootstrap admin password
+make run       # build and start on 127.0.0.1:8080 with its own data in .dev-data/
+mkdir -p -m 700 data backups && sudo chown 10001:10001 data backups   # the container's UID
 docker compose up -d
 ```
 
@@ -24,12 +25,13 @@ this block once and confirm with `docker compose config --images`, which must pr
 
 ```bash
 make ci        # gofmt, vet, race tests, smoke test
-make run       # build and start on :8080; first start prints the bootstrap admin password
+make run       # build and start on 127.0.0.1:8080 with its own data in .dev-data/
 (umask 077; t=$(mktemp ./.env.XXXXXX) && touch .env \
   && cf=$({ grep '^COMPOSE_FILE=' .env || [ $? -eq 1 ]; } | tail -n1 | cut -d= -f2-) && cf=${cf:-docker-compose.yml} \
   && case ":$cf:" in *:docker-compose.build.yml:*) ;; *) cf="$cf:docker-compose.build.yml";; esac \
   && { grep -v -e '^COMPOSE_FILE=' .env || [ $? -eq 1 ]; } > "$t" \
   && printf 'COMPOSE_FILE=%s\n' "$cf" >> "$t" && mv "$t" .env)
+mkdir -p -m 700 data backups && sudo chown 10001:10001 data backups   # the container's UID
 docker compose up -d
 ```
 
@@ -43,6 +45,33 @@ A digest-pinned install (`KY_IMAGE` in `.env`) gets nothing from `pull`: re-run 
 `docker-compose.yml` with the commit sha you want first, or delete that line to follow `:latest` again.
 
 `AGENTS.md` is the contract for working in this repository.
+
+`make run` never touches `./data` or `./backups`, which hold the container's live database,
+key and capsules, and `make clean` removes only build output.
+
+## Network and container defaults
+
+- A bare binary listens on `127.0.0.1`; set `KY_HOST=0.0.0.0` to listen on every interface.
+  The image sets `KY_HOST=0.0.0.0`, because a container must.
+- Compose publishes port 8080 on `127.0.0.1` only. Put a TLS reverse proxy on the same host in
+  front of it and set `KY_APP_URL=https://<your host>` in `.env`. Only when the proxy runs on
+  another machine, publish on the LAN with `KY_BIND_ADDRESS=0.0.0.0` (or one LAN address) in
+  `.env`. The static-IP overlay below gives a proxy on a Docker network a fixed target and
+  publishes nothing itself; the LAN-DNS overlay changes only name resolution.
+- With `KY_ENV=production` the server refuses to start unless `KY_APP_URL` is `https://`.
+  `KY_ALLOW_INSECURE_HTTP=true` accepts plain HTTP anyway; sessions and app passwords then
+  cross the network in the clear.
+- The container runs as UID/GID 10001 on a read-only root filesystem with no capabilities;
+  only `/app/data`, `/app/backups` and a `/tmp` tmpfs are writable. An install from before
+  this change has `./data` and `./backups` owned by root, and the server cannot open its
+  database. Fix the ownership once, with the stack down:
+
+  ```bash
+  docker compose down && sudo chown -R 10001:10001 data backups && docker compose up -d
+  ```
+
+  A new install creates both before its first `up -d` (the quick start above does); a
+  directory Docker creates for a missing bind mount is owned by root.
 
 ## Container IP address
 
@@ -65,6 +94,13 @@ then `docker compose up -d` to recreate the network (brief downtime; omit `-v` t
 database volumes). For a new deployment, just run `docker compose up -d`.
 
 ## First sign-in
+
+On an empty database the server creates the local administrator `admin`. Its password is
+`KY_ADMIN_PASSWORD` when set; otherwise a generated one is written to
+`<data dir>/initial-admin-password` (mode 0600; `docker compose exec app cat
+/app/data/initial-admin-password`) and the log names only the file. Delete the file once you
+have changed the password. A database that cannot be read stops startup rather than
+bootstrapping a second administrator.
 
 Every bootstrap or `init-admin` password must be replaced, including when
 `KY_ADMIN_PASSWORD` supplies it. Operator resets revoke existing sessions, MFA challenges
@@ -126,7 +162,8 @@ A member's phone shows every group calendar they can read under the same app pas
 - **Make admin / Make user** and **Disable** sign the person out everywhere. Administrators never see calendars. You cannot demote or disable yourself, and nobody can demote or disable the last active local administrator: that account is the way back in when single sign-on is down.
 - **Reattach to current sign-in** appears on a single sign-on account bound to an earlier provider or issuer, which the current provider therefore refuses. It binds the account to the current provider and issuer, enables it and signs it out everywhere, keeping its calendars; the person's next sign-in through the provider decides their role. Use it only when you are sure the new provider's account is the same person: whoever the new provider signs in with that account's subject gets the account and its calendars. The confirm names the old and the new binding; if the sign-in settings change before you confirm, KyCalendar refuses and shows the list again. An account your identity provider disabled (through SCIM or the directory webhook) under the current issuer is not offered: restore it in the identity provider. That includes accounts of an issuer you switched away from and back to: they belong to the current issuer again, and SCIM restores them. This is the one change the People screen makes to a synced account.
 - Adding an administrator, resetting, changing a role, disabling, enabling and reattaching need a sign-in from the last 10 minutes. There is no delete: disabling keeps the person's calendars.
-- SCIM never sees local accounts: it cannot list, change, disable or delete them, cannot create a synced account with a local account's username (in any case), and cannot add a local account to a synced group.
+- SCIM is off until you set `KY_SCIM_TOKEN` (at least 32 characters) in `.env`; that token is the bearer your identity provider's SCIM connector uses. The SCIM screen shows whether one is set, never the token.
+- SCIM never sees local accounts, OpenID Connect accounts or accounts of an earlier provider binding: it cannot list, change, disable or delete them, cannot create a synced account with a local account's username (in any case), and cannot add a local account to a synced group.
 
 ## Sign-in
 
@@ -157,7 +194,7 @@ positive or startup fails.
 |---|---|---|
 | `KY_CALENDAR_MAX_OBJECTS_PER_USER` | `20000` | Events across all of a user's calendars. |
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
-| `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB) | Stored event bytes across all of a user's calendars. |
+| `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB), capped at a tenth of `KY_CALENDAR_MAX_BYTES_TOTAL` when that is set (4 MiB on SQLite) | Stored event bytes across all of a user's calendars, and separately per group calendar, so no single owner can fill the instance. |
 | `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite, `0` (off) on Postgres | Stored event bytes across every user. |
 
 The instance cap exists because a capsule carries the SQLite database as one file and refuses a

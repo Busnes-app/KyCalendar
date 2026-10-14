@@ -96,11 +96,16 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			return
 		}
 		now := time.Now()
-		ipKey := "ip:" + s.requestIP(r)
+		ipKey := "ip:" + s.limitIP(r)
 		if s.davLimited(w, ipKey, davFailsPerIP, now) {
 			return
 		}
-		user, secretOK := s.resolveAppPassword(r.Context(), username, token)
+		id, secret, parsed := apppass.Parse(token)
+		var user *store.User
+		var secretOK bool
+		if parsed {
+			user, secretOK = s.resolveAppPassword(r.Context(), username, id, secret)
+		}
 		// Only a holder of one of the user's token IDs can count against them (R28).
 		resource := "user:unknown"
 		if user != nil {
@@ -114,7 +119,10 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			if user != nil && !secretOK {
 				s.davFails.fail("user:"+user.ID, now)
 			}
-			_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: resource, IPAddress: s.requestIP(r)})
+			// Not shaped like an app password (an account password, a probe): no row to flood with.
+			if parsed {
+				_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: resource, IPAddress: s.requestIP(r)})
+			}
 			davChallenge(w)
 			return
 		}
@@ -150,13 +158,9 @@ func (s *Server) davLimited(w http.ResponseWriter, key string, limit int, now ti
 	return blocked
 }
 
-// resolveAppPassword returns the token's owner when its ID exists and belongs to the named
+// resolveAppPassword returns the owner of token ID id when it exists and belongs to the named
 // user (case-insensitively), and whether the secret matches. It touches last-used on a match.
-func (s *Server) resolveAppPassword(ctx context.Context, username, token string) (*store.User, bool) {
-	id, secret, ok := apppass.Parse(token)
-	if !ok {
-		return nil, false
-	}
+func (s *Server) resolveAppPassword(ctx context.Context, username, id, secret string) (*store.User, bool) {
 	p, err := s.store.AppPasswords().Get(ctx, id)
 	if err != nil {
 		return nil, false

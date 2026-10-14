@@ -40,12 +40,17 @@ func openSQLite(ctx context.Context, dsn string) (Store, error) {
 		}
 	}
 
-	if !strings.Contains(dsn, "_pragma") {
-		delim := "?"
-		if strings.Contains(dsn, "?") {
-			delim = "&"
+	// Each default the DSN does not set itself; foreign keys always, last, so they win: every
+	// ON DELETE CASCADE depends on them.
+	for _, p := range []string{"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(NORMAL)", "foreign_keys(ON)"} {
+		name := p[:strings.Index(p, "(")]
+		if name == "foreign_keys" || !strings.Contains(strings.ToLower(dsn), "_pragma="+name) {
+			delim := "?"
+			if strings.Contains(dsn, "?") {
+				delim = "&"
+			}
+			dsn += delim + "_pragma=" + p
 		}
-		dsn = fmt.Sprintf("%s%s_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)", dsn, delim)
 	}
 
 	db, err := sql.Open("sqlite", dsn)
@@ -56,9 +61,14 @@ func openSQLite(ctx context.Context, dsn string) (Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	if err := db.PingContext(ctx); err != nil {
+	var fk int
+	if err := db.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&fk); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping sqlite database: %w", err)
+	}
+	if fk != 1 {
+		_ = db.Close()
+		return nil, fmt.Errorf("sqlite foreign keys are off; every ON DELETE CASCADE depends on them")
 	}
 
 	return newSQLStore(ctx, db, "sqlite")

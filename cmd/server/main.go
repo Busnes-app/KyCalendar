@@ -106,30 +106,8 @@ func runServer() {
 		log.Fatalf("Installer configuration unavailable: %v", err)
 	}
 
-	// Ensure default admin user exists if database is empty
-	count, _ := st.Users().CountUsers(ctx)
-	if count == 0 {
-		adminPass := os.Getenv("KY_ADMIN_PASSWORD")
-		if adminPass == "" {
-			adminPass = crypto.RandomHex(12)
-			log.Printf("[SECURITY] Initial bootstrap: Created admin account. Username: admin | Password: %s", adminPass)
-		}
-		hash, err := password.Hash(adminPass)
-		if err != nil {
-			log.Fatalf("Failed to hash bootstrap admin password: %v", err)
-		}
-		if err := st.Users().CreateUser(ctx, &store.User{
-			ID:                 fmt.Sprintf("usr_%s", crypto.RandomHex(12)),
-			Username:           "admin",
-			DisplayName:        "Administrator",
-			PasswordHash:       hash,
-			Role:               "admin",
-			Status:             "active",
-			SSOProvider:        "local",
-			MustChangePassword: true,
-		}); err != nil {
-			log.Fatalf("Failed to create bootstrap admin: %v", err)
-		}
+	if err := bootstrapAdmin(ctx, st, cfg.Database.DataDir); err != nil {
+		log.Fatalf("Failed to bootstrap the admin account: %v", err)
 	}
 
 	go func() {
@@ -138,6 +116,10 @@ func runServer() {
 		for {
 			if err := st.Calendars().PruneChanges(ctx, time.Now().Add(-90*24*time.Hour)); err != nil {
 				log.Printf("calendar change prune failed: %v", err)
+			}
+			// A year of audit: covers an annual access review and a late-found incident.
+			if err := st.Audit().PruneAudit(ctx, time.Now().Add(-365*24*time.Hour)); err != nil {
+				log.Printf("audit prune failed: %v", err)
 			}
 			select {
 			case <-ctx.Done():

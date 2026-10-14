@@ -143,6 +143,9 @@ func TestSCIMAccessChangeWaitsForAnIssuanceInFlight(t *testing.T) {
 		t.Skip("postgres only: SQLite's single connection serialises the two")
 	}
 	ctx := context.Background()
+	if err := s.store.Settings().SetSetting(ctx, sso.KeyBound, kyBinding); err != nil {
+		t.Fatal(err)
+	}
 	createUsers(t, s, &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "d1", SSOIssuer: kyBinding})
 	raw, held := heldIssuance(t, s.config.Database.DSN, "usr_dan")
 	done := make(chan int, 1)
@@ -168,6 +171,9 @@ func TestSCIMAccessChangeWaitsForAnIssuanceInFlight(t *testing.T) {
 func TestAppPasswordCreatedAcrossASCIMRoleChangeIsRefused(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
+	if err := s.store.Settings().SetSetting(ctx, sso.KeyBound, kyBinding); err != nil {
+		t.Fatal(err)
+	}
 	dan := &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "d1", SSOIssuer: kyBinding}
 	createUsers(t, s, dan)
 	now := time.Now().UTC()

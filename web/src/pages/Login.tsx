@@ -18,6 +18,8 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) 
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
+  // A solved captcha is single-use: a failed attempt remounts the widget for a fresh one.
+  const [captchaKey, setCaptchaKey] = useState<number>(0);
   const [mfaChallenge, setMfaChallenge] = useState<MFAChallenge | null>(null);
   const [mfaCode, setMfaCode] = useState<string>('');
   const [isRecoveryCode, setIsRecoveryCode] = useState<boolean>(false);
@@ -55,6 +57,8 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) 
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
+      setCaptchaToken('');
+      setCaptchaKey((k) => k + 1);
     } finally {
       setLoading(false);
     }
@@ -209,7 +213,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) 
                 />
               </div>
 
-              <CaptchaWidget onToken={(tok) => setCaptchaToken(tok)} />
+              <CaptchaWidget key={captchaKey} onToken={(tok) => setCaptchaToken(tok)} />
 
               <button type="submit" style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }} disabled={loading}>
                 <LogIn size={16} />

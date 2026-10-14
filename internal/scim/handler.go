@@ -89,12 +89,20 @@ func writeAuthError(w http.ResponseWriter, status int, detail string) {
 	_ = json.NewEncoder(w).Encode(protocolErrors.ScimError{Status: status, Detail: detail})
 }
 
+// Scope is every account SCIM reaches: KyIdentity's providers (a SCIM row is signed in by a
+// KyIdentity login with its sub) bound to the stored sign-in binding, the rows a create under it
+// makes or adopts. Another binding's rows, an OIDC login's included, are another directory's.
+func Scope(ctx context.Context, settings store.SettingsStore) (store.SCIMScope, error) {
+	bound, err := sso.Bound(ctx, settings)
+	return store.SCIMScope{Issuer: bound, Providers: sso.AccountProviders(sso.KindKyIdentity)}, err
+}
+
 type userResourceHandler struct{ store store.Store }
 
 func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
 	username, _ := attrs["userName"].(string)
 	// A new row belongs to the current binding; replace and patch never move it to another.
-	bound, err := sso.Bound(r.Context(), h.store.Settings())
+	scope, err := Scope(r.Context(), h.store.Settings())
 	if err != nil {
 		return protocol.Resource{}, err
 	}
@@ -102,7 +110,7 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 	// they signed in through the bound issuer. Another issuer's row is never adopted (409).
 	if ext := stringValue(attrs, "externalId", ""); ext != "" {
 		existing, err := h.store.Users().GetUserBySSO(r.Context(), "kysignon", ext)
-		if err == nil && existing.SSOIssuer != bound {
+		if err == nil && !scope.Contains(existing) {
 			return protocol.Resource{}, refusedUser(r, h.store, existing.ID, "other_binding", protocolErrors.ScimErrorUniqueness)
 		}
 		if err == nil {
@@ -116,7 +124,7 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 			return protocol.Resource{}, err
 		}
 	}
-	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", ""), SSOIssuer: bound}
+	user := &store.User{ID: "usr_" + crypto.RandomHex(12), Username: username, Email: primaryValue(attrs["emails"]), DisplayName: stringValue(attrs, "displayName", username), Role: roleFromSCIM(attrs["roles"]), Status: statusFromActive(attrs), SSOProvider: "scim", SSOSubject: stringValue(attrs, "externalId", ""), SSOIssuer: scope.Issuer}
 	if err := h.store.Users().CreateUser(r.Context(), user); err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
 			return protocol.Resource{}, refusedUser(r, h.store, "", "name_taken", protocolErrors.ScimErrorUniqueness)
@@ -127,21 +135,26 @@ func (h *userResourceHandler) Create(r *http.Request, attrs protocol.ResourceAtt
 	return userResource(user), nil
 }
 
-// scimUser loads an account SCIM may see. A local account is not the IdP's: it reads as
-// missing, so a reconciling IdP never demotes, disables or deletes the way back in.
-func (h *userResourceHandler) scimUser(r *http.Request, id string) (*store.User, error) {
+// scimUser loads an account in SCIM's scope with the scope. Any other account (a local one, an
+// OIDC login's, another binding's) is not this IdP's: it reads as missing, so a reconciling IdP
+// never demotes, disables or deletes it.
+func (h *userResourceHandler) scimUser(r *http.Request, id string) (*store.User, store.SCIMScope, error) {
+	scope, err := Scope(r.Context(), h.store.Settings())
+	if err != nil {
+		return nil, scope, err
+	}
 	user, err := h.store.Users().GetUserByID(r.Context(), id)
-	if err == nil && user.SSOProvider == "local" {
+	if err == nil && !scope.Contains(user) {
 		err = store.ErrNotFound
 	}
 	if err != nil {
-		return nil, scimStoreError(err, id)
+		return nil, scope, scimStoreError(err, id)
 	}
-	return user, nil
+	return user, scope, nil
 }
 
 func (h *userResourceHandler) Get(r *http.Request, id string) (protocol.Resource, error) {
-	user, err := h.scimUser(r, id)
+	user, _, err := h.scimUser(r, id)
 	if err != nil {
 		return protocol.Resource{}, err
 	}
@@ -187,7 +200,11 @@ var filterFields = map[string]store.UserField{
 }
 
 func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListRequestParams) (protocol.Page, error) {
-	filter := store.UserFilter{SSOOnly: true}
+	scope, err := Scope(r.Context(), h.store.Settings())
+	if err != nil {
+		return protocol.Page{}, err
+	}
+	filter := store.UserFilter{SCIM: &scope}
 	if raw := r.URL.Query().Get("filter"); raw != "" {
 		attr, value, err := parseEqFilter(raw)
 		if err != nil {
@@ -199,14 +216,8 @@ func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListReques
 		}
 		filter.Field, filter.Value = field, value
 		if strings.EqualFold(attr, "externalId") {
-			// KyIdentity's lookup of the account it provisions: its user ID is the sub. Exact, and
-			// only rows SCIM may adopt (KyIdentity's providers, the current binding), so a lookup
-			// never hands KyIdentity another binding's account.
-			bound, err := sso.Bound(r.Context(), h.store.Settings())
-			if err != nil {
-				return protocol.Page{}, err
-			}
-			filter.Field, filter.Issuer, filter.Providers = store.UserFieldSSOSubject, bound, sso.AccountProviders(sso.KindKyIdentity)
+			// KyIdentity's lookup of the account it provisions: its user ID is the sub. Exact.
+			filter.Field = store.UserFieldSSOSubject
 		}
 	}
 	users, total, err := h.store.Users().ListUsers(r.Context(), params.StartIndex-1, params.Count, filter)
@@ -221,7 +232,7 @@ func (h *userResourceHandler) GetAll(r *http.Request, params protocol.ListReques
 }
 
 func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	user, err := h.scimUser(r, id)
+	user, scope, err := h.scimUser(r, id)
 	if err != nil {
 		return protocol.Resource{}, err
 	}
@@ -231,19 +242,19 @@ func (h *userResourceHandler) Replace(r *http.Request, id string, attrs protocol
 	user.DisplayName = stringValue(attrs, "displayName", user.Username)
 	user.Role = roleFromSCIM(attrs["roles"]) // PUT replaces: no roles means no admin grant
 	user.Status = statusFromActive(attrs)
-	return h.saveAndRead(r, user, expectedRole, expectedStatus)
+	return h.saveAndRead(r, scope, user, expectedRole, expectedStatus)
 }
 
-// Delete checks then deletes: a row's provider never changes, so it cannot become local between.
 func (h *userResourceHandler) Delete(r *http.Request, id string) error {
-	if _, err := h.scimUser(r, id); err != nil {
+	scope, err := Scope(r.Context(), h.store.Settings())
+	if err != nil {
 		return err
 	}
-	return scimStoreError(h.store.Users().DeleteUser(r.Context(), id), id)
+	return scimStoreError(h.store.Users().DeleteSCIMUser(r.Context(), scope, id), id)
 }
 
 func (h *userResourceHandler) Patch(r *http.Request, id string, operations []protocol.PatchOperation) (protocol.Resource, error) {
-	user, err := h.scimUser(r, id)
+	user, scope, err := h.scimUser(r, id)
 	if err != nil {
 		return protocol.Resource{}, err
 	}
@@ -267,13 +278,13 @@ func (h *userResourceHandler) Patch(r *http.Request, id string, operations []pro
 			applyUserValue(user, attr, op.Value)
 		}
 	}
-	return h.saveAndRead(r, user, expectedRole, expectedStatus)
+	return h.saveAndRead(r, scope, user, expectedRole, expectedStatus)
 }
 
 // saveAndRead saves user and answers with the account as stored, which a concurrent change may
 // have made differ from the request.
-func (h *userResourceHandler) saveAndRead(r *http.Request, user *store.User, expectedRole, expectedStatus string) (protocol.Resource, error) {
-	if err := h.save(r, user, expectedRole, expectedStatus); err != nil {
+func (h *userResourceHandler) saveAndRead(r *http.Request, scope store.SCIMScope, user *store.User, expectedRole, expectedStatus string) (protocol.Resource, error) {
+	if err := h.save(r, scope, user, expectedRole, expectedStatus); err != nil {
 		if errors.Is(err, store.ErrAccessChanged) {
 			return protocol.Resource{}, refusedUser(r, h.store, user.ID, "access_changed", scimStoreError(err, user.ID))
 		}
@@ -288,9 +299,10 @@ func (h *userResourceHandler) saveAndRead(r *http.Request, user *store.User, exp
 
 // save stores user through UpdateSCIMUser against the role and status the handler read: SCIM
 // writes only the access it changes; a removal always lands; a grant lands only if nothing changed
-// the account since SCIM read it, otherwise the IdP is asked to retry (412).
-func (h *userResourceHandler) save(r *http.Request, user *store.User, expectedRole, expectedStatus string) error {
-	return h.store.Users().UpdateSCIMUser(r.Context(), user, expectedRole, expectedStatus)
+// the account since SCIM read it, otherwise the IdP is asked to retry (412). The store rechecks
+// scope in the write, so a row that left it since the read is 404.
+func (h *userResourceHandler) save(r *http.Request, scope store.SCIMScope, user *store.User, expectedRole, expectedStatus string) error {
+	return h.store.Users().UpdateSCIMUser(r.Context(), scope, user, expectedRole, expectedStatus)
 }
 
 // roleFromSCIM is "admin" only when the IdP sends the KyCalendar app role; any other value,
@@ -361,44 +373,48 @@ func (h *groupResourceHandler) scimGroup(r *http.Request, id string) (*store.Gro
 	if err != nil {
 		return nil, scimStoreError(err, id)
 	}
-	if group.Members, err = h.store.Users().SSOUserIDs(r.Context(), group.Members); err != nil {
+	if err := h.visibleMembers(r, group); err != nil {
 		return nil, err
 	}
 	return group, nil
 }
 
-// scimMembers checks the members a SCIM request names. Each must be an account SCIM can see: a
-// local account (or none) is refused before anything is written, so SCIM never grants one a
-// group's calendars. Local memberships a group already holds are not SCIM's and stay.
-func (h *groupResourceHandler) scimMembers(r *http.Request, groupID string, named []string) ([]string, error) {
-	ids := slices.Compact(slices.Sorted(slices.Values(named)))
-	found, err := h.store.Users().SSOUserIDs(r.Context(), ids)
+// visibleMembers narrows group.Members to SCIM's scope. A membership of any other account is
+// not SCIM's: it is neither reported nor removed.
+func (h *groupResourceHandler) visibleMembers(r *http.Request, group *store.Group) error {
+	scope, err := Scope(r.Context(), h.store.Settings())
+	if err == nil {
+		group.Members, err = h.store.Users().SCIMUserIDs(r.Context(), scope, group.Members)
+	}
+	return err
+}
+
+// write runs a SCIM group write. A member outside SCIM's scope refuses the whole request before
+// anything is written, so SCIM never grants another directory's account a group's calendars.
+func (h *groupResourceHandler) write(r *http.Request, id string, write func(store.SCIMScope) (*store.Group, error)) (protocol.Resource, error) {
+	scope, err := Scope(r.Context(), h.store.Settings())
 	if err != nil {
-		return nil, err
+		return protocol.Resource{}, err
 	}
-	if len(found) != len(ids) {
-		return nil, refusedGroup(r, h.store, groupID, "invalid_member", protocolErrors.ScimErrorInvalidValue)
+	group, err := write(scope)
+	if errors.Is(err, store.ErrInvalidMember) {
+		return protocol.Resource{}, refusedGroup(r, h.store, id, "invalid_member", protocolErrors.ScimErrorInvalidValue)
 	}
-	return ids, nil
+	if err != nil {
+		return protocol.Resource{}, scimStoreError(err, id)
+	}
+	return groupResource(group), nil
 }
 
 func (h *groupResourceHandler) Create(r *http.Request, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	members, err := h.scimMembers(r, "", memberValues(attrs["members"]))
-	if err != nil {
-		return protocol.Resource{}, err
+	group := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: stringValue(attrs, "displayName", ""), ExternalID: stringValue(attrs, "externalId", ""), Members: memberValues(attrs["members"])}
+	res, err := h.write(r, "", func(scope store.SCIMScope) (*store.Group, error) {
+		return group, h.store.Groups().CreateSCIMGroup(r.Context(), scope, group)
+	})
+	if errors.Is(err, protocolErrors.ScimErrorUniqueness) {
+		return protocol.Resource{}, refusedGroup(r, h.store, h.flagLocalTwin(r, group.DisplayName), "name_taken", err)
 	}
-	group := &store.Group{ID: "grp_" + crypto.RandomHex(12), DisplayName: stringValue(attrs, "displayName", ""), ExternalID: stringValue(attrs, "externalId", ""), Source: store.GroupSourceSCIM}
-	if err := h.store.Groups().CreateGroup(r.Context(), group); err != nil {
-		if errors.Is(err, store.ErrAlreadyExists) {
-			return protocol.Resource{}, refusedGroup(r, h.store, h.flagLocalTwin(r, group.DisplayName), "name_taken", protocolErrors.ScimErrorUniqueness)
-		}
-		return protocol.Resource{}, scimStoreError(err, group.ID)
-	}
-	if err := h.replaceMembers(r, group.ID, nil, members); err != nil {
-		return protocol.Resource{}, err
-	}
-	group.Members = members
-	return groupResource(group), nil
+	return res, err
 }
 
 // flagLocalTwin records that a local group holds name, so SCIM could not create it, and returns
@@ -449,38 +465,24 @@ func (h *groupResourceHandler) GetAll(r *http.Request, params protocol.ListReque
 	}
 	resources := make([]protocol.Resource, 0, len(groups))
 	for _, group := range groups {
-		if group.Members, err = h.store.Users().SSOUserIDs(r.Context(), group.Members); err != nil {
+		if err := h.visibleMembers(r, group); err != nil {
 			return protocol.Page{}, err
 		}
 		resources = append(resources, groupResource(group))
 	}
 	return protocol.Page{TotalResults: total, Resources: resources}, nil
 }
-func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
-	group, err := h.scimGroup(r, id)
-	if err != nil {
-		return protocol.Resource{}, err
-	}
-	members, err := h.scimMembers(r, id, memberValues(attrs["members"]))
-	if err != nil {
-		return protocol.Resource{}, err
-	}
-	group.DisplayName = stringValue(attrs, "displayName", group.DisplayName)
-	group.ExternalID = stringValue(attrs, "externalId", group.ExternalID)
-	return h.save(r, group, members)
-}
 
-// save writes group and moves its SCIM-visible members (group.Members) to members; local
-// memberships are never in either list, so they stay.
-func (h *groupResourceHandler) save(r *http.Request, group *store.Group, members []string) (protocol.Resource, error) {
-	if err := h.store.Groups().UpdateGroup(r.Context(), group); err != nil {
-		return protocol.Resource{}, scimStoreError(err, group.ID)
-	}
-	if err := h.replaceMembers(r, group.ID, group.Members, members); err != nil {
-		return protocol.Resource{}, err
-	}
-	group.Members = members
-	return groupResource(group), nil
+// Replace sets the name, external ID and SCIM-visible members; other memberships stay.
+func (h *groupResourceHandler) Replace(r *http.Request, id string, attrs protocol.ResourceAttributes) (protocol.Resource, error) {
+	return h.write(r, id, func(scope store.SCIMScope) (*store.Group, error) {
+		return h.store.Groups().UpdateSCIMGroup(r.Context(), scope, id, func(g *store.Group) error {
+			g.DisplayName = stringValue(attrs, "displayName", g.DisplayName)
+			g.ExternalID = stringValue(attrs, "externalId", g.ExternalID)
+			g.Members = memberValues(attrs["members"])
+			return nil
+		})
+	})
 }
 
 func (h *groupResourceHandler) Delete(r *http.Request, id string) error {
@@ -493,29 +495,26 @@ func (h *groupResourceHandler) Delete(r *http.Request, id string) error {
 // Patch applies RFC 7644 3.5.2 to members: add appends (duplicates ignored), remove with
 // `members[value eq "<id>"]` drops that member, remove of `members` drops all, replace replaces.
 // displayName and externalId are replaced; other attributes are ignored.
+// The operations apply to the group as stored when the write begins, inside its transaction.
 func (h *groupResourceHandler) Patch(r *http.Request, id string, operations []protocol.PatchOperation) (protocol.Resource, error) {
-	group, err := h.scimGroup(r, id)
-	if err != nil {
-		return protocol.Resource{}, err
-	}
-	p := groupPatch{group: group, members: slices.Clone(group.Members)}
-	for _, op := range operations {
-		if err := p.apply(op); err != nil {
-			return protocol.Resource{}, err
-		}
-	}
-	if _, err := h.scimMembers(r, id, p.named); err != nil {
-		return protocol.Resource{}, err
-	}
-	return h.save(r, group, slices.Sorted(slices.Values(p.members)))
+	return h.write(r, id, func(scope store.SCIMScope) (*store.Group, error) {
+		return h.store.Groups().UpdateSCIMGroup(r.Context(), scope, id, func(g *store.Group) error {
+			p := groupPatch{group: g, members: g.Members}
+			for _, op := range operations {
+				if err := p.apply(op); err != nil {
+					return err
+				}
+			}
+			g.Members = p.members
+			return nil
+		})
+	})
 }
 
-// groupPatch is a group being patched: members are the SCIM-visible ones, named every member
-// an add or replace asked for, all checked before anything is written.
+// groupPatch is a group being patched; members are the SCIM-visible ones.
 type groupPatch struct {
 	group   *store.Group
 	members []string
-	named   []string
 }
 
 func (p *groupPatch) apply(op protocol.PatchOperation) error {
@@ -562,7 +561,6 @@ func (p *groupPatch) set(op, attr string, value interface{}) {
 		}
 	case "members":
 		ids := memberValues(value)
-		p.named = append(p.named, ids...)
 		if op == protocol.PatchOperationReplace {
 			p.members = nil
 		}
@@ -582,25 +580,6 @@ func memberFilterID(expr filter.Expression) (string, bool) {
 	}
 	id, ok := e.CompareValue.(string)
 	return id, ok && id != ""
-}
-
-// replaceMembers moves groupID's members from old to next, touching only the difference.
-func (h *groupResourceHandler) replaceMembers(r *http.Request, groupID string, old, next []string) error {
-	for _, id := range old {
-		if !slices.Contains(next, id) {
-			if err := h.store.Groups().RemoveGroupMember(r.Context(), groupID, id); err != nil {
-				return err
-			}
-		}
-	}
-	for _, id := range next {
-		if !slices.Contains(old, id) {
-			if err := h.store.Groups().AddGroupMember(r.Context(), groupID, id); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func groupResource(group *store.Group) protocol.Resource {

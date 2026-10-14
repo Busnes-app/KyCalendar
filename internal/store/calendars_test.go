@@ -118,6 +118,17 @@ func TestListObjectsInRange(t *testing.T) {
 	}
 }
 
+// RFC 4791 §9.9: a zero-length event matches when DTSTART equals the range start.
+func TestListObjectsInRangeKeepsZeroLengthAtStart(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	cs.PutObject(ctx, obj(c.ID, "point.ics", "p", "x", 150, i64(150)), "", false, store.OwnerLimits{})
+	got, err := cs.ListObjectsInRange(ctx, c.ID, 150, 500)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %d objects, %v", len(got), err)
+	}
+}
+
 func TestChangesSinceExpired(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
@@ -374,6 +385,11 @@ func concurrentQuota(t *testing.T, st store.Store) {
 	errs = concurrently(20, func(i int) error { return put(cals[4+i%4], i, store.OwnerLimits{MaxBytes: 25}) })
 	if ok, q := tally(t, errs); ok != 5 || q != 15 {
 		t.Fatalf("bytes: %d ok, %d quota", ok, q)
+	}
+	// 50 bytes stored; the instance cap leaves room for five more 5-byte objects across owners.
+	errs = concurrently(20, func(i int) error { return put(cals[i%8], 100+i, store.OwnerLimits{MaxTotalBytes: 75}) })
+	if ok, q := tally(t, errs); ok != 5 || q != 15 {
+		t.Fatalf("instance bytes: %d ok, %d quota", ok, q)
 	}
 	errs = concurrently(10, func(i int) error {
 		n := strconv.Itoa(i)

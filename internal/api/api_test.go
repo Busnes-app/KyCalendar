@@ -37,6 +37,7 @@ func setupTestServer(t *testing.T) (*api.Server, store.Store, *config.Config) {
 	t.Helper()
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	cfg, _ := config.LoadFromEnv()
+	cfg.SCIM = config.SCIMConfig{Enabled: true, BearerToken: "test-scim-bearer-token-of-32-chars"}
 	db := testdb.Config(t)
 	db.DataDir = cfg.Database.DataDir // testdb only picks the backend; keep the temp data dir
 	if db.Driver == "sqlite" {
