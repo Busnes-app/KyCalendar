@@ -162,7 +162,8 @@ A member's phone shows every group calendar they can read under the same app pas
 - **Make admin / Make user** and **Disable** sign the person out everywhere. Administrators never see calendars. You cannot demote or disable yourself, and nobody can demote or disable the last active local administrator: that account is the way back in when single sign-on is down.
 - **Reattach to current sign-in** appears on a single sign-on account bound to an earlier provider or issuer, which the current provider therefore refuses. It binds the account to the current provider and issuer, enables it and signs it out everywhere, keeping its calendars; the person's next sign-in through the provider decides their role. Use it only when you are sure the new provider's account is the same person: whoever the new provider signs in with that account's subject gets the account and its calendars. The confirm names the old and the new binding; if the sign-in settings change before you confirm, KyCalendar refuses and shows the list again. An account your identity provider disabled (through SCIM or the directory webhook) under the current issuer is not offered: restore it in the identity provider. That includes accounts of an issuer you switched away from and back to: they belong to the current issuer again, and SCIM restores them. This is the one change the People screen makes to a synced account.
 - Adding an administrator, resetting, changing a role, disabling, enabling and reattaching need a sign-in from the last 10 minutes. There is no delete: disabling keeps the person's calendars.
-- SCIM never sees local accounts: it cannot list, change, disable or delete them, cannot create a synced account with a local account's username (in any case), and cannot add a local account to a synced group.
+- SCIM is off until you set `KY_SCIM_TOKEN` (at least 32 characters) in `.env`; that token is the bearer your identity provider's SCIM connector uses. The SCIM screen shows whether one is set, never the token.
+- SCIM never sees local accounts, OpenID Connect accounts or accounts of an earlier provider binding: it cannot list, change, disable or delete them, cannot create a synced account with a local account's username (in any case), and cannot add a local account to a synced group.
 
 ## Sign-in
 
@@ -193,7 +194,7 @@ positive or startup fails.
 |---|---|---|
 | `KY_CALENDAR_MAX_OBJECTS_PER_USER` | `20000` | Events across all of a user's calendars. |
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
-| `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB) | Stored event bytes across all of a user's calendars. |
+| `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB), capped at a tenth of `KY_CALENDAR_MAX_BYTES_TOTAL` when that is set (4 MiB on SQLite) | Stored event bytes across all of a user's calendars, and separately per group calendar, so no single owner can fill the instance. |
 | `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite, `0` (off) on Postgres | Stored event bytes across every user. |
 
 The instance cap exists because a capsule carries the SQLite database as one file and refuses a

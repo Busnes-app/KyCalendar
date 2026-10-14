@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { secureFetch } from "../api";
+import { REAUTH } from "../admin";
 
 interface AppPassword {
   id: string;
@@ -39,7 +40,8 @@ export default function AppPasswords({ username }: { username: string }) {
       body: JSON.stringify({ label }),
     });
     if (!res?.ok) {
-      setError((await res?.json().catch(() => null))?.error ?? "Could not create the app password");
+      const body = await res?.json().catch(() => null);
+      setError(body?.code === "reauth_required" ? REAUTH : (body?.error ?? "Could not create the app password"));
       return;
     }
     setCreated((await res.json()).password);

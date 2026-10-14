@@ -88,4 +88,16 @@ describe("AppPasswords", () => {
     fireEvent.click(await screen.findByRole("button", { name: /revoke iphone/i }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not revoke/i);
   });
+
+  it("asks for a fresh sign-in when creating needs step-up", async () => {
+    mockFetch({
+      "GET /api/app-passwords": () => [],
+      "POST /api/app-passwords": () =>
+        new Response(JSON.stringify({ error: "Sign in again to create an app password", code: "reauth_required" }), { status: 403 }),
+    });
+    render(<AppPasswords username="alice" />);
+    fireEvent.change(screen.getByLabelText(/device name/i), { target: { value: "iPhone" } });
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+    expect(await screen.findByText(/sign in again, then try again within 10 minutes/i)).toBeTruthy();
+  });
 });
