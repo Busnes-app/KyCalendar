@@ -6,7 +6,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
-import { ApiError, browserZone, listCalendars, listEvents, updateEvent, type CalendarInfo, type EventInfo } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, listCalendars, listEvents, updateEvent, type CalendarInfo, type EventInfo } from '../calendarApi';
 import { CalendarSidebar } from '../components/CalendarSidebar';
 import { EventDialog } from '../components/EventDialog';
 import { ScopeDialog } from '../components/ScopeDialog';
@@ -113,7 +113,7 @@ export function CalendarPage() {
     refetch();
   };
 
-  const writable = calendars.filter((c) => c.role !== 'reader');
+  const writable = calendars.filter(canAddEvents);
 
   // Stable identity: FullCalendar re-fetches whenever this function changes.
   const fetchEvents = useCallback(

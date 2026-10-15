@@ -7,6 +7,9 @@
 .kc-cal-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 .kc-cal-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kc-cal-edit { flex-basis: 100%; }
+.kc-sub { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; font-size: 0.8rem; color: var(--ky-ink-muted); }
+.kc-sub .kc-actions { flex-basis: 100%; margin-top: 0.25rem; }
+.kc-hint { font-size: 0.8rem; color: var(--ky-ink-muted); }
 .kc-swatch { flex: none; width: 0.75rem; height: 0.75rem; border-radius: 50%; }
 .kc-small { padding: 0.2rem 0.5rem; font-size: 0.75rem; font-weight: 500; }
 .kc-form { display: grid; gap: 0.35rem; }

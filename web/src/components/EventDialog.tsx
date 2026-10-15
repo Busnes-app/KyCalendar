@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, browserZone, createEvent, deleteEvent, updateEvent, type CalendarInfo, type EventInfo, type Freq } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, updateEvent, type CalendarInfo, type EventInfo, type Freq } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { linkify } from '../linkify';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
@@ -48,7 +48,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
     };
   }, [readOnly]);
 
-  const writable = calendars.filter((c) => c.role !== 'reader');
+  const writable = calendars.filter(canAddEvents);
   const zone = validZone(event?.zone) ? event!.zone! : browserZone();
   const set = (patch: Partial<FormState>) => setForm({ ...form, ...patch });
 
