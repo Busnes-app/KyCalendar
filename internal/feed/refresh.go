@@ -18,6 +18,10 @@ type Refresher struct {
 	Limits store.OwnerLimits
 }
 
+// slots caps fetches and parses running at once across the whole server (routes and the refresh
+// loop alike): each holds up to MaxBody of download and maxParsed of objects.
+var slots = make(chan struct{}, 4)
+
 // backoff is the wait after the nth failure in a row.
 func backoff(n int) time.Duration {
 	switch n {
@@ -55,6 +59,12 @@ func (r *Refresher) Check(ctx context.Context, sub *store.Subscription, now time
 // Load fetches link and parses it into calendarID's objects. objs is nil when the server
 // answered 304 Not Modified.
 func (r *Refresher) Load(ctx context.Context, calendarID, host, link, etag, lastModified string) (*Fetched, []*store.CalendarObject, error) {
+	select {
+	case slots <- struct{}{}:
+		defer func() { <-slots }()
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	}
 	f, err := Fetch(ctx, r.Client, link, etag, lastModified)
 	if err != nil || f.Body == nil {
 		return f, nil, err

@@ -33,6 +33,12 @@ const (
 	maxURL       = 2048
 	maxRedirects = 3
 	urlLabel     = "kycalendar:calendar-subscription-url"
+	// maxParsed caps the objects one feed may produce. Time zones are copied into every object
+	// that names them, so the output can far outgrow the 10 MiB download.
+	maxParsed = 32 << 20
+	// maxParams caps a content line's name and parameters. go-ical builds parameter values a byte
+	// at a time, which is quadratic in their length; real ones are a few dozen bytes.
+	maxParams = 8 << 10
 )
 
 // userError is a failure shown to the user as is. It never carries the response body.
@@ -45,7 +51,7 @@ var (
 	errGone        = userError("the link no longer works; publish the calendar again and update the link")
 	errStatus      = userError("the server refused the link")
 	errNotCalendar = userError("the link did not return a calendar")
-	errTooLarge    = userError("the calendar is larger than 10 MiB")
+	errTooLarge    = userError("the calendar is too large")
 	errTooMany     = userError("the calendar has more than 5000 events")
 	errRedirects   = userError("the link redirected too many times")
 	errRefused     = userError("the link points at a private or local address, which is refused")
@@ -173,6 +179,16 @@ func Fetch(ctx context.Context, client *http.Client, link, etag, lastModified st
 // and the time zones they name. Alarms are dropped, so a work calendar never rings the phone.
 // Objects that fail the CalDAV write checks are skipped and counted.
 func Parse(calendarID string, body []byte) (objs []*store.CalendarObject, skipped int, err error) {
+	// go-ical panics on some malformed parameters; refreshes run outside any HTTP recovery, so a
+	// panic here would take the server down.
+	defer func() {
+		if recover() != nil {
+			objs, skipped, err = nil, 0, errNotCalendar
+		}
+	}()
+	if longParams(body) {
+		return nil, 0, errNotCalendar
+	}
 	src, err := ical.NewDecoder(bytes.NewReader(body)).Decode()
 	if err != nil || src.Name != ical.CompCalendar {
 		return nil, 0, errNotCalendar
@@ -201,15 +217,49 @@ func Parse(calendarID string, body []byte) (objs []*store.CalendarObject, skippe
 	if len(order) > MaxObjects {
 		return nil, 0, errTooMany
 	}
+	total := 0
 	for _, uid := range order {
 		o, err := object(calendarID, uid, byUID[uid], zones)
 		if err != nil {
 			skipped++
 			continue
 		}
+		if total += len(o.Data); total > maxParsed {
+			return nil, 0, errTooLarge
+		}
 		objs = append(objs, o)
 	}
 	return objs, skipped, nil
+}
+
+// longParams reports a content line whose name and parameters (the text before the first
+// unquoted colon, folded lines joined) exceed maxParams. It runs in one linear pass.
+func longParams(body []byte) bool {
+	n, quoted, value := 0, false, false
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if c == '\n' {
+			if i+1 < len(body) && (body[i+1] == ' ' || body[i+1] == '\t') {
+				i++ // a fold: the line continues
+				continue
+			}
+			n, quoted, value = 0, false, false
+			continue
+		}
+		if value || c == '\r' {
+			continue
+		}
+		switch {
+		case c == '"':
+			quoted = !quoted
+		case c == ':' && !quoted:
+			value = true
+		}
+		if n++; n > maxParams {
+			return true
+		}
+	}
+	return false
 }
 
 func object(calendarID, uid string, events []*ical.Component, zones map[string]*ical.Component) (*store.CalendarObject, error) {
