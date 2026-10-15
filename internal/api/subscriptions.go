@@ -189,13 +189,22 @@ func (s *Server) handleRefreshSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	now := time.Now().UTC()
-	if sub.CheckedAt != nil && now.Sub(*sub.CheckedAt) < refreshSpacing {
+	// Claimed in the store, so parallel requests cannot all pass the spacing and each fetch.
+	claimed, err := s.store.Calendars().ClaimSubscriptionCheck(r.Context(), c.ID, now, now.Add(-refreshSpacing))
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Failed to refresh the subscription")
+		return
+	}
+	if !claimed {
 		w.Header().Set("Retry-After", "60")
 		s.writeError(w, http.StatusTooManyRequests, "Refreshed less than a minute ago")
 		return
 	}
-	// The outcome, failure included, is recorded on sub and shown in the view.
-	_ = s.feed.Check(context.WithoutCancel(r.Context()), sub, now)
+	// Detached so a dropped connection still records the outcome, but bounded: it may wait for a
+	// fetch slot. The outcome, failure included, is recorded on sub and shown in the view.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), time.Minute)
+	defer cancel()
+	_ = s.feed.Check(ctx, sub, now)
 	v := s.viewOf(sessionUser(r.Context()), c, access.Owner)
 	v.Subscription = subscriptionViewOf(sub)
 	s.writeJSON(w, http.StatusOK, v)

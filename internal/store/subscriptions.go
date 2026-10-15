@@ -107,6 +107,16 @@ etag = '', last_modified = '', failures = 0, error = '' WHERE calendar_id = ?`),
 	return nil
 }
 
+func (c *calendarStore) ClaimSubscriptionCheck(ctx context.Context, calendarID string, now, notAfter time.Time) (bool, error) {
+	res, err := c.store.db.ExecContext(ctx, c.q(`UPDATE calendar_subscriptions SET checked_at = ?
+WHERE calendar_id = ? AND (checked_at IS NULL OR checked_at <= ?)`), now.UTC(), calendarID, notAfter.UTC())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func (c *calendarStore) RecordSubscriptionCheck(ctx context.Context, s *Subscription) error {
 	res, err := c.store.db.ExecContext(ctx, c.q(`UPDATE calendar_subscriptions SET etag = ?, last_modified = ?,
 refreshed_at = ?, checked_at = ?, next_check_at = ?, failures = ?, error = ? WHERE calendar_id = ?`),

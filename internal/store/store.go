@@ -306,6 +306,9 @@ type CalendarStore interface {
 	DueSubscriptions(ctx context.Context, now time.Time, limit int) ([]*Subscription, error)
 	// SetSubscriptionSource replaces the link and forgets the old link's validators and failures.
 	SetSubscriptionSource(ctx context.Context, calendarID, urlSealed, urlHost string) error
+	// ClaimSubscriptionCheck sets checked_at to now only when the last check is older than
+	// notAfter (or there was none), and reports whether it did: one caller per window wins.
+	ClaimSubscriptionCheck(ctx context.Context, calendarID string, now, notAfter time.Time) (bool, error)
 	// RecordSubscriptionCheck stores the outcome of one fetch: validators, times, failures, error.
 	RecordSubscriptionCheck(ctx context.Context, sub *Subscription) error
 	// ReplaceSubscriptionObjects makes objs the calendar's whole content in one transaction, with
