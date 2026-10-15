@@ -47,6 +47,11 @@ func RefuseLocal(a netip.Addr) error {
 // (after DNS), so a name that resolves to the metadata service is refused too. nil roots means
 // the system pool.
 func NewGuardedClient(policy AddrPolicy, roots *x509.CertPool) *http.Client {
+	return NewGuardedClientLimit(policy, roots, 1<<20)
+}
+
+// NewGuardedClientLimit is NewGuardedClient with bodies capped at maxBody bytes.
+func NewGuardedClientLimit(policy AddrPolicy, roots *x509.CertPool, maxBody int64) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
@@ -67,7 +72,7 @@ func NewGuardedClient(policy AddrPolicy, roots *x509.CertPool) *http.Client {
 		MaxResponseHeaderBytes: 64 << 10,
 	}
 	return &http.Client{
-		Transport:     httpsOnly{transport},
+		Transport:     httpsOnly{transport, maxBody},
 		Timeout:       20 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errRedirect },
 	}
@@ -75,7 +80,10 @@ func NewGuardedClient(policy AddrPolicy, roots *x509.CertPool) *http.Client {
 
 // httpsOnly refuses any request that is not https, which covers endpoints a discovery document
 // names as well as the issuer, and caps every response body.
-type httpsOnly struct{ next http.RoundTripper }
+type httpsOnly struct {
+	next    http.RoundTripper
+	maxBody int64
+}
 
 func (h httpsOnly) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.URL.Scheme != "https" {
@@ -88,7 +96,7 @@ func (h httpsOnly) RoundTrip(r *http.Request) (*http.Response, error) {
 	resp.Body = struct {
 		io.Reader
 		io.Closer
-	}{io.LimitReader(resp.Body, 1<<20), resp.Body}
+	}{io.LimitReader(resp.Body, h.maxBody), resp.Body}
 	return resp, nil
 }
 

@@ -95,7 +95,7 @@ func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView,
 	v := eventView{CalendarID: c.ID, UID: in.UID, RecurrenceID: in.RecurrenceID, ETag: o.ETag,
 		Title: text(ical.PropSummary), Location: text(ical.PropLocation), Description: text(ical.PropDescription),
 		AllDay: in.AllDay, Recurring: in.Recurring, Override: in.Override, Floating: in.Floating,
-		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: role.CanWrite(), Repeat: repeat, Zone: zone,
+		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: access.CanEditEvents(c, role), Repeat: repeat, Zone: zone,
 		SeriesStart: series.start, SeriesEnd: series.end}
 	if in.AllDay {
 		v.Start, v.End = in.Start.In(viewer).Format(time.DateOnly), in.End.In(viewer).Format(time.DateOnly)
@@ -370,6 +370,8 @@ func (s *Server) saveEvent(ctx context.Context, c *store.Calendar, name string, 
 		return o, nil
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return nil, errEventChanged
+	case errors.Is(err, store.ErrReadOnly):
+		return nil, errReadOnlyCalendar
 	case errors.Is(err, davbackend.ErrTooLarge):
 		return nil, &apiError{status: http.StatusRequestEntityTooLarge, msg: "The event is too large", code: "too_large"}
 	case errors.Is(err, store.ErrNotFound):
@@ -387,12 +389,14 @@ func (s *Server) saveEvent(ctx context.Context, c *store.Calendar, name string, 
 
 var errEventChanged = &apiError{status: http.StatusPreconditionFailed, msg: "The event changed elsewhere; reload it", code: "conflict"}
 
+var errReadOnlyCalendar = &apiError{status: http.StatusForbidden, msg: "This calendar is read-only for you"}
+
 func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	c, role := s.calendarFor(w, r, r.PathValue("id"))
 	if c == nil {
 		return
 	}
-	if !role.CanWrite() {
+	if !access.CanEditEvents(c, role) {
 		s.writeError(w, http.StatusForbidden, "This calendar is read-only for you")
 		return
 	}
@@ -420,7 +424,7 @@ func (s *Server) loadEvent(w http.ResponseWriter, r *http.Request) (*store.Calen
 	if c == nil {
 		return nil, nil, nil, "", false
 	}
-	if !role.CanWrite() {
+	if !access.CanEditEvents(c, role) {
 		s.writeError(w, http.StatusForbidden, "This calendar is read-only for you")
 		return nil, nil, nil, "", false
 	}
@@ -525,6 +529,8 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 			s.writeAPIError(w, errEventChanged)
 		case errors.Is(err, store.ErrNotFound):
 			s.writeError(w, http.StatusNotFound, "No such event")
+		case errors.Is(err, store.ErrReadOnly):
+			s.writeAPIError(w, errReadOnlyCalendar)
 		case err != nil:
 			s.writeError(w, http.StatusInternalServerError, "Failed to delete the event")
 		default:

@@ -681,7 +681,7 @@ func TestAgentSkill(t *testing.T) {
 			t.Errorf("skill names %s, which is not a tool", name)
 		}
 	}
-	for _, msg := range []string{api.MCPReadOnlyForTest, api.MCPNotOwnForTest, "No such calendar", "No such event", "The event changed elsewhere; reload it", "Calendar storage is full"} {
+	for _, msg := range []string{api.MCPReadOnlyForTest, api.MCPNotOwnForTest, api.MCPSubscribedForTest, "No such calendar", "No such event", "The event changed elsewhere; reload it", "Calendar storage is full"} {
 		if !strings.Contains(skill, msg) {
 			t.Errorf("skill error table lacks %q", msg)
 		}

@@ -97,6 +97,26 @@ describe('CalendarPage', () => {
     expect(fcProps.at(-1)!.events).toBe(second);
   });
 
+  it('offers no subscribed or read-only calendar for a new event', async () => {
+    const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', subscription: { host: 'outlook.office365.com', refreshed_at: null, checked_at: null } };
+    mockFetch({ '/api/calendars': () => [sub, ...calendars], '/api/events': () => [] });
+    render(<CalendarPage />);
+    await screen.findByLabelText('Show Work');
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const select = screen.getByLabelText('Calendar') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.value)).toEqual(['cal_p']);
+    expect(select.value).toBe('cal_p');
+  });
+
+  it('disables New event when only subscribed calendars exist', async () => {
+    const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', subscription: { host: 'h', refreshed_at: null, checked_at: null } };
+    mockFetch({ '/api/calendars': () => [sub], '/api/events': () => [] });
+    render(<CalendarPage />);
+    await screen.findByLabelText('Show Work');
+    expect((screen.getByRole('button', { name: 'New event' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(fcProps.at(-1)!.selectable).toBe(false);
+  });
+
   it.each(['not json', '{}', '[1,"a"]'])('loadHidden survives %s', (raw) => {
     localStorage.setItem(HIDDEN_KEY, raw);
     expect([...loadHidden()]).toEqual(raw === '[1,"a"]' ? ['a'] : []);

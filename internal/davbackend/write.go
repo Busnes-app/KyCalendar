@@ -23,6 +23,19 @@ var ErrTooLarge = errors.New("davbackend: calendar object too large")
 // CalDAV validation, Inspect, then a store write with ETag preconditions, quotas and a change
 // row in one transaction.
 func Write(ctx context.Context, st store.Store, calendarID, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits) (*store.CalendarObject, error) {
+	o, err := Prepare(calendarID, name, cal, raw)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := st.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, lim); err != nil {
+		return nil, err
+	}
+	return o, nil
+}
+
+// Prepare runs every check Write makes before the store: size, CalDAV validity and Inspect.
+// Subscription refreshes use it so mirrored objects pass the same gate as client writes.
+func Prepare(calendarID, name string, cal *ical.Calendar, raw []byte) (*store.CalendarObject, error) {
 	if len(raw) > calendar.MaxObjectSize {
 		return nil, ErrTooLarge
 	}
@@ -33,11 +46,7 @@ func Write(ctx context.Context, st store.Store, calendarID, name string, cal *ic
 	if err != nil {
 		return nil, err
 	}
-	o := &store.CalendarObject{CalendarID: calendarID, Name: name, UID: info.UID, Data: raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}
-	if _, err := st.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, lim); err != nil {
-		return nil, err
-	}
-	return o, nil
+	return &store.CalendarObject{CalendarID: calendarID, Name: name, UID: info.UID, Data: raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}, nil
 }
 
 // EnsureDefault creates the user's default personal calendar when they own none.

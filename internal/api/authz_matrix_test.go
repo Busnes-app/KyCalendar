@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -74,6 +75,7 @@ type world struct {
 	group   *store.Calendar  // reader, editor and manager each hold their role on it
 	doomed  *store.Calendar  // the group calendar the admin row deletes
 	spare   *store.Calendar  // a personal calendar of the owner, deleted by the owner row
+	sub     *store.Calendar  // a subscribed calendar of the owner; its link never opens, so no row fetches
 }
 
 func newWorld(t *testing.T) *world {
@@ -150,6 +152,10 @@ func newWorld(t *testing.T) *world {
 	}
 	w.spare = &store.Calendar{ID: "cal_spare_owner", OwnerKind: "user", OwnerID: "usr_owner", Slug: "spare", Name: "Spare"}
 	if err := st.Calendars().CreateCalendar(ctx, w.spare, 0); err != nil {
+		t.Fatal(err)
+	}
+	w.sub = &store.Calendar{ID: "cal_sub_owner", OwnerKind: "user", OwnerID: "usr_owner", Slug: "sub", Name: "Work"}
+	if err := st.Calendars().CreateSubscribedCalendar(ctx, w.sub, &store.Subscription{URLSealed: "unopenable", URLHost: "matrix.invalid", NextCheckAt: time.Now().Add(time.Hour)}, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	return w
@@ -238,6 +244,10 @@ func apiRows(w *world) map[string]apiRow {
 		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed-uid",
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
 		"DELETE /api/events/{cal}/{uid}": {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
+		// http:// links are refused before any fetch, so the allowed cells never reach the network.
+		"POST /api/subscriptions":          {method: "POST", path: "/api/subscriptions", body: `{"url":"http://matrix.invalid/x.ics","name":"M"}`, want: everyday},
+		"PATCH /api/subscriptions/{id}":    {method: "PATCH", path: "/api/subscriptions/" + w.sub.ID, body: `{"url":"http://matrix.invalid/x.ics"}`, want: ownerOnly},
+		"POST /api/calendars/{id}/refresh": {method: "POST", path: "/api/calendars/" + w.sub.ID + "/refresh", want: ownerOnly},
 	}
 }
 

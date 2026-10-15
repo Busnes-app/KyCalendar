@@ -1,9 +1,13 @@
 import { secureFetch } from './api';
 
+// SubscriptionInfo marks a read-only calendar mirroring an ICS link; the link itself is never sent.
+export interface SubscriptionInfo { host: string; refreshed_at: string | null; checked_at: string | null; error?: string }
 export interface CalendarInfo {
   id: string; name: string; color: string; description: string;
   kind: 'personal' | 'group'; role: 'owner' | 'manager' | 'editor' | 'reader'; dav_path: string;
+  subscription?: SubscriptionInfo;
 }
+export const canAddEvents = (c: CalendarInfo) => c.role !== 'reader' && !c.subscription;
 export type Freq = '' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 export interface RepeatInfo { freq: Freq; weekdays?: string[] }
 export interface EventInfo {
@@ -45,6 +49,12 @@ export const patchCalendar = (id: string, b: { name?: string; color?: string }) 
   send(`/api/calendars/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(b) }).then((r) => parse<CalendarInfo>(r));
 export const deleteCalendar = (id: string) =>
   send(`/api/calendars/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => parse<void>(r));
+export const subscribeCalendar = (url: string, name: string, color?: string) =>
+  send('/api/subscriptions', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ url, name, color }) }).then((r) => parse<CalendarInfo>(r));
+export const updateSubscriptionLink = (id: string, url: string) =>
+  send(`/api/subscriptions/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ url }) }).then((r) => parse<CalendarInfo>(r));
+export const refreshSubscription = (id: string) =>
+  send(`/api/calendars/${encodeURIComponent(id)}/refresh`, { method: 'POST' }).then((r) => parse<CalendarInfo>(r));
 
 export function listEvents(start: Date, end: Date, tz: string, ids: string[]) {
   const q = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), tz });

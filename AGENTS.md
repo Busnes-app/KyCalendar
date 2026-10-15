@@ -345,6 +345,15 @@ Spec `docs/superpowers/specs/2026-10-14-kycalendar-mcp-agent-access-design.md`.
 - The scope is chosen at creation (required) and changed between MCP scopes only (`PATCH /api/app-passwords/{id}`, step-up); a `dav` token never becomes an agent's.
 - The agent skill (`internal/agentskill`) is served publicly at `/agent/skills/kycalendar/SKILL.md`; `TestAgentSkill` keeps its tools, error messages and version in step with the server.
 
+#### ICS subscription contracts
+
+Spec `docs/superpowers/specs/2026-10-15-kycalendar-ics-subscriptions-design.md`.
+
+- A user subscribes a personal calendar to a published ICS link (`https://` or `webcal://`, such as an Outlook "Publish a calendar" link). The server refreshes it every 15 minutes (`cmd/server` loop, `internal/feed`) and serves it to the web, CalDAV and MCP.
+- Subscribed calendars are read-only for everyone: the store refuses event writes there (`ErrReadOnly`), CalDAV advertises read-only privileges, events are never `editable` and MCP lists them `read_only`. The owner still renames, recolours and deletes the calendar.
+- The link is a bearer secret: sealed under a derived key, never returned, logged or audited (the host only).
+- The server fetches public addresses only (`feed.RefusePrivate`, checked at dial time on every redirect hop); 10 link tries per user per 15 minutes; 10 subscriptions per user, counted in the calendar cap and the storage quota.
+
 #### Installer setup
 
 - Container-local `kycalendar apply-setup` uses `ky.product-setup/1` and private `<DataDir>/installer/setup.sock`; `--check` inspects without migrations, key creation or writes. First setup atomically creates exact issuer/subject accounts, immutable ownership, sign-in binding and audit under the native `local-admins`, then `user-names` locks. Existing identities and sign-in settings are refused. Activation uses the normal graceful restart and drain.
@@ -366,6 +375,7 @@ Spec `docs/superpowers/specs/2026-10-14-kycalendar-mcp-agent-access-design.md`.
 - [internal/calendar/AGENTS.md](internal/calendar/AGENTS.md): Pure iCalendar validation, indexing bounds and sync tokens.
 - [internal/davbackend/AGENTS.md](internal/davbackend/AGENTS.md): CalDAV backend mapping one user's requests onto the calendar store.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
+- [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 
 `cmd/server` owns the scheduler: `backupLoop` builds the `RunConfig` and client once and

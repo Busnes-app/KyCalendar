@@ -67,12 +67,16 @@ func SetExpandTimeForTest(d time.Duration) func() {
 // so a test can trust httptest's certificate and dial its loopback listener. Test-only.
 func SetSignInHTTPClientForTest(s *Server, c *http.Client) { s.signinHTTP = c }
 
+// SetFeedClientForTest replaces the client that fetches subscribed links. Test-only.
+func SetFeedClientForTest(s *Server, c *http.Client) { s.feed.Client = c }
+
 // SetSignInForTest makes p the live sign-in provider (nil closes sign-in). Test-only.
 func SetSignInForTest(s *Server, p *sso.Provider) { s.signin.Store(p) }
 
 // MCP tool errors the skill must name, and the app version its frontmatter must carry.
 const (
-	MCPReadOnlyForTest = msgReadOnly
-	MCPNotOwnForTest   = msgNotOwn
-	AppVersionForTest  = appVersion
+	MCPReadOnlyForTest   = msgReadOnly
+	MCPNotOwnForTest     = msgNotOwn
+	MCPSubscribedForTest = msgSubscribed
+	AppVersionForTest    = appVersion
 )

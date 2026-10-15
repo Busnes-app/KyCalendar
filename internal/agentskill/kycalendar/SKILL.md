@@ -30,6 +30,9 @@ unused. The user creates a new one the same way.
    blanking or renaming an event, or moving it out of the way.
 5. **Personal calendars only.** Group and shared calendars, meeting rooms included, are not
    available. Say so rather than guessing.
+6. **Subscribed calendars are read-only.** A calendar with `read_only: true` in
+   `list_calendars` mirrors another system, such as a work calendar. Use its events to plan;
+   to change one, the user changes it at the source.
 
 ## Time
 
@@ -60,6 +63,7 @@ unused. The user creates a new one the same way.
 |---|---|---|
 | read-only token | The token cannot write | Tell the user. Write access is a setting on the token in KyCalendar |
 | this agent can only change events it created | The token may edit only its own events | Tell the user. They can change the event themselves, or allow it with the token setting "Can also change events it did not create" |
+| this calendar mirrors a subscription and is read-only | A subscribed calendar, such as a work calendar | Tell the user to change it at the source, or put the event in another calendar |
 | No such calendar | Wrong ID, or not a personal calendar | Run `list_calendars` again |
 | No such event | Wrong ID, or the event was deleted | Run `list_events` again |
 | The event changed elsewhere; reload it | Stale `etag` | Re-read and re-confirm (above) |

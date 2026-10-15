@@ -164,6 +164,7 @@ describe("AppPasswords", () => {
       return list[0];
     });
     mockFetch({ "GET /api/app-passwords": () => list, "PATCH /api/app-passwords/a1": patch });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AppPasswords username="alice" />);
     const select = (await screen.findByLabelText(/access for hermes/i)) as HTMLSelectElement;
     expect(screen.queryByLabelText(/access for iphone/i)).toBeNull();
@@ -180,9 +181,38 @@ describe("AppPasswords", () => {
       "PATCH /api/app-passwords/a1": () =>
         new Response(JSON.stringify({ error: "Sign in again to change an agent's access", code: "reauth_required" }), { status: 403 }),
     });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AppPasswords username="alice" />);
     fireEvent.change(await screen.findByLabelText(/access for hermes/i), { target: { value: "mcp:write-own" } });
     expect(await screen.findByText(/sign in again, then try again within 10 minutes/i)).toBeTruthy();
+  });
+
+  it("asks before widening an agent's access from the list, but not before narrowing it", async () => {
+    const list = [
+      { id: "a1", label: "Hermes", scope: "mcp:read", created_at: "2026-10-06T00:00:00Z", last_used_at: null },
+      { id: "a2", label: "Claw", scope: "mcp:write-own", created_at: "2026-10-06T00:00:00Z", last_used_at: null },
+    ];
+    const patch = vi.fn(() => list[0]);
+    mockFetch({ "GET /api/app-passwords": () => list, "PATCH /api/app-passwords/a1": patch, "PATCH /api/app-passwords/a2": patch });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AppPasswords username="alice" />);
+    const hermes = (await screen.findByLabelText(/access for hermes/i)) as HTMLSelectElement;
+
+    fireEvent.change(hermes, { target: { value: "mcp:write-own" } });
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining("Anyone who can message the agent can try to make it do so."));
+    expect(confirm.mock.lastCall![0]).not.toContain("move or rewrite");
+    fireEvent.change(hermes, { target: { value: "mcp:write-any" } });
+    expect(confirm.mock.lastCall![0]).toMatch(/Anyone who can message the agent[\s\S]*move or rewrite any of your appointments/);
+    fireEvent.change(screen.getByLabelText(/access for claw/i), { target: { value: "mcp:write-any" } });
+    expect(confirm.mock.lastCall![0]).toMatch(/^The agent can then move or rewrite any of your appointments\./);
+    expect(confirm).toHaveBeenCalledTimes(3);
+    expect(hermes.value).toBe("mcp:read");
+
+    fireEvent.change(screen.getByLabelText(/access for claw/i), { target: { value: "mcp:read" } });
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(confirm).toHaveBeenCalledTimes(3);
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1]?.method === "PATCH")!;
+    expect([String(call[0]), JSON.parse(String(call[1].body))]).toEqual(["/api/app-passwords/a2", { scope: "mcp:read" }]);
   });
 
   it("asks for a fresh sign-in when creating needs step-up", async () => {

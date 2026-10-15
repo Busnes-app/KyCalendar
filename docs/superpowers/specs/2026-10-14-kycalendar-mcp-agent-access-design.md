@@ -1,6 +1,8 @@
 # KyCalendar MCP access for AI agents — design
 
-Status: draft 2026-10-14, for review. Implementation plan follows approval.
+Status: implemented in PR #35 (2026-10-15). Section 1's restore note was corrected to match
+the code afterwards. Subscribed calendars (`2026-10-15-kycalendar-ics-subscriptions-design.md`)
+are personal and visible to the tools, but read-only under every scope.
 
 ## Goal
 
@@ -69,8 +71,10 @@ CREATE TABLE mcp_events (
   password reset) already deletes app passwords through one helper (`grantTables`), so it
   revokes MCP tokens too; their `mcp_events` rows cascade. The existing tests pin each path for
   app passwords; one store test pins an MCP token through the shared helper.
-- Capsule backups carry the column and `mcp_events`; a restore restores the tokens with their
-  scopes and records.
+- Capsule backups carry the column and `mcp_events`, but a restore revokes every app password
+  (`ResetAfterRestore`, as for CalDAV devices), and the records cascade with them. The user
+  creates a new agent token after a restore; under `mcp:write-own` it cannot edit the old
+  token's events.
 
 **Idle revocation.** An MCP token whose `last_used_at` (or `created_at`, if never used) is
 more than 90 days old is revoked. `dav` tokens are unchanged.

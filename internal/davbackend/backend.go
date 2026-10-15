@@ -136,7 +136,7 @@ func (b *Backend) toDAV(ctx context.Context, c *store.Calendar, role access.Role
 		SyncToken:             calendar.FormatSyncToken(epoch, c.ID, c.Seq),
 		MaxResourceSize:       calendar.MaxObjectSize,
 		SupportedComponentSet: []string{ical.CompEvent},
-		ReadOnly:              !role.CanWrite(),
+		ReadOnly:              !access.CanEditEvents(c, role),
 	}, nil
 }
 
@@ -387,7 +387,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	if name == "" {
 		return nil, webdav.NewHTTPError(http.StatusMethodNotAllowed, errors.New("PUT needs an object name"))
 	}
-	if !role.CanWrite() {
+	if !access.CanEditEvents(c, role) {
 		return nil, errReadOnly
 	}
 	ifMatch, err := ifMatchETag(opts.IfMatch)
@@ -408,6 +408,8 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarData)
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, errQuota
+	case errors.Is(err, store.ErrReadOnly):
+		return nil, errReadOnly
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, err)
 	case errors.Is(err, store.ErrUIDConflict):
@@ -430,7 +432,7 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 	if name == "" {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("calendars cannot be deleted over CalDAV"))
 	}
-	if !role.CanWrite() {
+	if !access.CanEditEvents(c, role) {
 		return errReadOnly
 	}
 	m, _ := ctx.Value(ifMatchKey{}).(webdav.ConditionalMatch)
@@ -444,6 +446,8 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 		return webdav.NewHTTPError(http.StatusPreconditionFailed, err)
 	case errors.Is(err, store.ErrNotFound):
 		return webdav.NewHTTPError(http.StatusNotFound, err)
+	case errors.Is(err, store.ErrReadOnly):
+		return errReadOnly
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return webdav.NewHTTPError(http.StatusPreconditionFailed, err)
 	}

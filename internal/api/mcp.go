@@ -22,8 +22,9 @@ const mcpInstructions = `KyCalendar holds the user's personal calendars. Event t
 
 // Tool errors the skill's error table names; TestSkillNamesEveryToolAndError keeps them in step.
 const (
-	msgReadOnly = "read-only token"
-	msgNotOwn   = "this agent can only change events it created"
+	msgReadOnly   = "read-only token"
+	msgNotOwn     = "this agent can only change events it created"
+	msgSubscribed = "this calendar mirrors a subscription and is read-only"
 )
 
 // maxMCPDescription caps each description in list_events results; the calendar keeps it whole.
@@ -168,6 +169,7 @@ type mcpCalendar struct {
 	Name        string `json:"name"`
 	Color       string `json:"color,omitempty"`
 	Description string `json:"description,omitempty"`
+	ReadOnly    bool   `json:"read_only,omitempty"`
 }
 
 type listCalendarsOut struct {
@@ -211,7 +213,7 @@ func (t mcpTools) listCalendars(ctx context.Context, _ *mcp.CallToolRequest, _ s
 	}
 	out := listCalendarsOut{Calendars: []mcpCalendar{}}
 	for _, c := range cals {
-		out.Calendars = append(out.Calendars, mcpCalendar{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description})
+		out.Calendars = append(out.Calendars, mcpCalendar{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, ReadOnly: c.Subscribed})
 	}
 	return nil, out, nil
 }
@@ -269,7 +271,8 @@ func (t mcpTools) listEvents(ctx context.Context, _ *mcp.CallToolRequest, in lis
 	}
 	for i := range events {
 		e := &events[i]
-		e.Editable = t.caller.canWrite() && (own == nil || own[e.CalendarID+"/"+e.UID])
+		// expandEvents set Editable from the calendar (false for subscriptions); the token narrows it.
+		e.Editable = e.Editable && t.caller.canWrite() && (own == nil || own[e.CalendarID+"/"+e.UID])
 		if len(e.Description) > maxMCPDescription {
 			e.Description = strings.ToValidUTF8(e.Description[:maxMCPDescription], "")
 			e.DescriptionTruncated = true
@@ -324,6 +327,9 @@ func (t mcpTools) createEvent(ctx context.Context, _ *mcp.CallToolRequest, in cr
 	if apiErr != nil {
 		return nil, writeEventOut{}, apiErr
 	}
+	if c.Subscribed {
+		return nil, writeEventOut{}, errors.New(msgSubscribed)
+	}
 	if strings.TrimSpace(in.Title) == "" {
 		return nil, writeEventOut{}, errors.New("title must not be blank")
 	}
@@ -369,6 +375,9 @@ func (t mcpTools) updateEvent(ctx context.Context, _ *mcp.CallToolRequest, in up
 	c, apiErr := t.personalCalendar(ctx, in.CalendarID)
 	if apiErr != nil {
 		return nil, writeEventOut{}, apiErr
+	}
+	if c.Subscribed {
+		return nil, writeEventOut{}, errors.New(msgSubscribed)
 	}
 	// A strong etag only: "*" would overwrite whatever is stored now.
 	if in.ETag == "" || strings.ContainsAny(in.ETag, "*\", \t\r\n") {
