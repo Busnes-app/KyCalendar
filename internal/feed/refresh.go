@@ -69,7 +69,7 @@ func (r *Refresher) Load(ctx context.Context, calendarID, host, link, etag, last
 	if err != nil || f.Body == nil {
 		return f, nil, err
 	}
-	objs, skipped, err := Parse(calendarID, f.Body)
+	objs, skipped, err := Parse(ctx, calendarID, f.Body)
 	if err != nil {
 		return nil, nil, err
 	}

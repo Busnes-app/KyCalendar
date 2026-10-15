@@ -30,7 +30,7 @@ func TestMCPAuthorizationMatrix(t *testing.T) {
 	if err := w.st.Calendars().CreateSubscribedCalendar(ctx, sub, &store.Subscription{URLSealed: "x", URLHost: "h", NextCheckAt: time.Now().Add(time.Hour)}, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	mirrored, _, err := feed.Parse(sub.ID, []byte(eventICS("work-uid")))
+	mirrored, _, err := feed.Parse(ctx, sub.ID, []byte(eventICS("work-uid")))
 	if err != nil || w.st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, mirrored, store.OwnerLimits{}) != nil {
 		t.Fatalf("mirror: %v", err)
 	}

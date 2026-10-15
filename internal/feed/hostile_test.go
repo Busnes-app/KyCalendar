@@ -1,6 +1,7 @@
 package feed
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ func TestParseContainsDecoderPanics(t *testing.T) {
 		"parameter at end of line":  "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nX-A;P=\r\nEND:VCALENDAR\r\n",
 		"missing END":               "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\n",
 	} {
-		if _, _, err := Parse("c", []byte(body)); Message(err) != string(errNotCalendar) {
+		if _, _, err := Parse(context.Background(), "c", []byte(body)); Message(err) != string(errNotCalendar) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -39,7 +40,7 @@ func TestParseRefusesHugeParameters(t *testing.T) {
 		"second parameter":       "X-A;Q=1;P=" + big + ":v",
 	} {
 		start := time.Now()
-		_, _, err := Parse("c", []byte(head+line+"\r\n"+tail))
+		_, _, err := Parse(context.Background(), "c", []byte(head+line+"\r\n"+tail))
 		if Message(err) != string(errNotCalendar) || time.Since(start) > 2*time.Second {
 			t.Errorf("%s: %v after %v", name, err, time.Since(start))
 		}
@@ -49,7 +50,7 @@ func TestParseRefusesHugeParameters(t *testing.T) {
 		"value with colons": "DESCRIPTION;LANGUAGE=en:" + strings.Repeat("a:b;c=", 20000),
 		"a long, real one":  "ATTENDEE;CN=\"Doe, Jane\";ROLE=REQ-PARTICIPANT:mailto:jane@example.com",
 	} {
-		if objs, _, err := Parse("c", []byte(head+line+"\r\n"+tail)); err != nil || len(objs) != 1 {
+		if objs, _, err := Parse(context.Background(), "c", []byte(head+line+"\r\n"+tail)); err != nil || len(objs) != 1 {
 			t.Errorf("%s: %d objects, %v", name, len(objs), err)
 		}
 	}
@@ -71,7 +72,7 @@ func TestParseCapsExpandedSize(t *testing.T) {
 	if b.Len() > MaxBody {
 		t.Fatalf("fixture is %d bytes, over the download cap", b.Len())
 	}
-	if _, _, err := Parse("c", []byte(b.String())); Message(err) != string(errTooLarge) {
+	if _, _, err := Parse(context.Background(), "c", []byte(b.String())); Message(err) != string(errTooLarge) {
 		t.Errorf("a %d-byte feed expanding past %d: %v", b.Len(), maxParsed, err)
 	}
 }
@@ -88,14 +89,14 @@ func TestParseChargesRefusedObjects(t *testing.T) {
 	}
 	b.WriteString("END:VCALENDAR\r\n")
 	start := time.Now()
-	objs, skipped, err := Parse("c", []byte(b.String()))
+	objs, skipped, err := Parse(context.Background(), "c", []byte(b.String()))
 	if Message(err) != string(errTooLarge) || time.Since(start) > 2*time.Second {
 		t.Errorf("300 refused 2 MiB objects: %d kept, %d skipped, %v after %v; want too large, at once", len(objs), skipped, err, time.Since(start))
 	}
 	// One oversized object alone is skipped, and the rest of the feed still loads.
 	one := b.String()
 	one = one[:strings.Index(one, "BEGIN:VEVENT\r\nUID:1\r\n")] + "BEGIN:VEVENT\r\nUID:ok\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	if objs, skipped, err := Parse("c", []byte(one)); err != nil || len(objs) != 1 || skipped != 1 {
+	if objs, skipped, err := Parse(context.Background(), "c", []byte(one)); err != nil || len(objs) != 1 || skipped != 1 {
 		t.Errorf("one oversized object: %d kept, %d skipped, %v; want 1 kept, 1 skipped", len(objs), skipped, err)
 	}
 }

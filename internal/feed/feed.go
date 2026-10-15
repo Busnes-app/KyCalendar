@@ -42,6 +42,10 @@ const (
 	maxParamValue = 1 << 10
 )
 
+// maxParseTime bounds one feed's parse, as maxExpandTime bounds one event listing. Real feeds
+// take milliseconds. A variable only so tests can shorten it.
+var maxParseTime = 5 * time.Second
+
 // userError is a failure shown to the user as is. It never carries the response body.
 type userError string
 
@@ -178,8 +182,10 @@ func Fetch(ctx context.Context, client *http.Client, link, etag, lastModified st
 
 // Parse splits a feed into one calendar object per UID: the series master with its overrides
 // and the time zones they name. Alarms are dropped, so a work calendar never rings the phone.
-// Objects that fail the CalDAV write checks are skipped and counted.
-func Parse(calendarID string, body []byte) (objs []*store.CalendarObject, skipped int, err error) {
+// Objects that fail the CalDAV write checks are skipped and counted. Each object's recurrence
+// check (calendar.Inspect) may cost up to its own budget, so the feed gets maxParseTime in all;
+// ctx is checked between objects, so a caller's timeout or a dropped request stops it too.
+func Parse(ctx context.Context, calendarID string, body []byte) (objs []*store.CalendarObject, skipped int, err error) {
 	// go-ical panics on some malformed parameters; refreshes run outside any HTTP recovery, so a
 	// panic here would take the server down.
 	defer func() {
@@ -221,7 +227,15 @@ func Parse(calendarID string, body []byte) (objs []*store.CalendarObject, skippe
 	// Every byte the encoder produces is charged, kept or not: a time zone is copied into each
 	// object that names it, so skipped objects can cost as much as kept ones.
 	budget := maxParsed
+	deadline, cancel := context.WithTimeout(ctx, maxParseTime)
+	defer cancel()
 	for _, uid := range order {
+		if deadline.Err() != nil {
+			if ctx.Err() != nil {
+				return nil, 0, ctx.Err() // the caller gave up
+			}
+			return nil, 0, errTooLarge // the feed's time ran out
+		}
 		limit := min(budget, calendar.MaxObjectSize)
 		o, tried, err := object(calendarID, uid, byUID[uid], zones, limit)
 		budget -= min(tried, budget)

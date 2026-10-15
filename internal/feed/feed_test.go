@@ -54,7 +54,7 @@ func fixture(t *testing.T) []byte {
 }
 
 func TestParseM365(t *testing.T) {
-	objs, skipped, err := Parse("cal_1", fixture(t))
+	objs, skipped, err := Parse(context.Background(), "cal_1", fixture(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,12 +93,12 @@ func TestParseM365(t *testing.T) {
 // TestParseStable: Exchange restamps DTSTAMP on every fetch. Unchanged events must still give
 // identical bytes, or every refresh rewrites the whole calendar.
 func TestParseStable(t *testing.T) {
-	a, _, err := Parse("cal_1", fixture(t))
+	a, _, err := Parse(context.Background(), "cal_1", fixture(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 5 {
-		b, _, err := Parse("cal_1", bytes.ReplaceAll(fixture(t), []byte("20261015T120000Z"), []byte("20261016T070000Z")))
+		b, _, err := Parse(context.Background(), "cal_1", bytes.ReplaceAll(fixture(t), []byte("20261015T120000Z"), []byte("20261016T070000Z")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,7 +111,7 @@ func TestParseStable(t *testing.T) {
 }
 
 func TestParseRefuses(t *testing.T) {
-	if _, _, err := Parse("c", []byte("<html>not a calendar</html>")); Message(err) != string(errNotCalendar) {
+	if _, _, err := Parse(context.Background(), "c", []byte("<html>not a calendar</html>")); Message(err) != string(errNotCalendar) {
 		t.Errorf("html: %v", err)
 	}
 	var many strings.Builder
@@ -120,7 +120,7 @@ func TestParseRefuses(t *testing.T) {
 		fmt.Fprintf(&many, "BEGIN:VEVENT\r\nUID:%d\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T000000Z\r\nEND:VEVENT\r\n", i)
 	}
 	many.WriteString("END:VCALENDAR\r\n")
-	if _, _, err := Parse("c", []byte(many.String())); Message(err) != string(errTooMany) {
+	if _, _, err := Parse(context.Background(), "c", []byte(many.String())); Message(err) != string(errTooMany) {
 		t.Errorf("%d events: %v", MaxObjects+1, err)
 	}
 }
