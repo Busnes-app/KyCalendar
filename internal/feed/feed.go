@@ -19,6 +19,7 @@ import (
 
 	"github.com/emersion/go-ical"
 
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/sso"
@@ -217,19 +218,37 @@ func Parse(calendarID string, body []byte) (objs []*store.CalendarObject, skippe
 	if len(order) > MaxObjects {
 		return nil, 0, errTooMany
 	}
-	total := 0
+	// Every byte the encoder produces is charged, kept or not: a time zone is copied into each
+	// object that names it, so skipped objects can cost as much as kept ones.
+	budget := maxParsed
 	for _, uid := range order {
-		o, err := object(calendarID, uid, byUID[uid], zones)
-		if err != nil {
+		limit := min(budget, calendar.MaxObjectSize)
+		o, tried, err := object(calendarID, uid, byUID[uid], zones, limit)
+		budget -= min(tried, budget)
+		switch {
+		case errors.Is(err, errTooLarge) && limit < calendar.MaxObjectSize:
+			return nil, 0, errTooLarge // the feed's budget ran out, not just this object's
+		case err != nil:
 			skipped++
 			continue
-		}
-		if total += len(o.Data); total > maxParsed {
-			return nil, 0, errTooLarge
 		}
 		objs = append(objs, o)
 	}
 	return objs, skipped, nil
+}
+
+// capped is an encoding buffer that refuses to grow past max and counts every byte offered.
+type capped struct {
+	bytes.Buffer
+	max, tried int
+}
+
+func (c *capped) Write(p []byte) (int, error) {
+	c.tried += len(p)
+	if c.Len()+len(p) > c.max {
+		return 0, errTooLarge
+	}
+	return c.Buffer.Write(p)
 }
 
 // longParams reports a content line with a parameter value over maxParamValue, reading lines
@@ -299,7 +318,9 @@ func longParam(s string) bool {
 	return false
 }
 
-func object(calendarID, uid string, events []*ical.Component, zones map[string]*ical.Component) (*store.CalendarObject, error) {
+// object builds uid's calendar object, encoding at most limit bytes (errTooLarge past it), and
+// reports how many bytes the encoder offered.
+func object(calendarID, uid string, events []*ical.Component, zones map[string]*ical.Component, limit int) (*store.CalendarObject, int, error) {
 	cal := ical.NewCalendar()
 	cal.Props.SetText(ical.PropVersion, "2.0")
 	cal.Props.SetText(ical.PropProductID, "-//KyCalendar//Subscription//EN")
@@ -335,10 +356,11 @@ func object(calendarID, uid string, events []*ical.Component, zones map[string]*
 		ev.Props.Set(&ical.Prop{Name: ical.PropDateTimeStamp, Params: ical.Params{}, Value: stamp})
 		cal.Children = append(cal.Children, &ical.Component{Name: ev.Name, Props: ev.Props, Children: kept})
 	}
-	var buf bytes.Buffer
-	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
-		return nil, err
+	buf := &capped{max: limit}
+	if err := ical.NewEncoder(buf).Encode(cal); err != nil {
+		return nil, buf.tried, err
 	}
 	sum := sha256.Sum256([]byte(uid))
-	return davbackend.Prepare(calendarID, hex.EncodeToString(sum[:16])+".ics", cal, buf.Bytes())
+	o, err := davbackend.Prepare(calendarID, hex.EncodeToString(sum[:16])+".ics", cal, buf.Bytes())
+	return o, buf.tried, err
 }

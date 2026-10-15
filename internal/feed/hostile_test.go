@@ -75,3 +75,27 @@ func TestParseCapsExpandedSize(t *testing.T) {
 		t.Errorf("a %d-byte feed expanding past %d: %v", b.Len(), maxParsed, err)
 	}
 }
+
+// Objects too large to keep cost as much to build as kept ones. They count against the same
+// budget, and building one stops at the object cap instead of running to the end.
+func TestParseChargesRefusedObjects(t *testing.T) {
+	var b strings.Builder
+	// One 2 MiB line in a shared time zone: every object naming it is over the 1 MiB object cap.
+	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VTIMEZONE\r\nTZID:Big\r\nX-PAD:" + strings.Repeat("p", 2<<20) + "\r\n")
+	b.WriteString("BEGIN:STANDARD\r\nDTSTART:16010101T000000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0100\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n")
+	for i := range 300 {
+		fmt.Fprintf(&b, "BEGIN:VEVENT\r\nUID:%d\r\nDTSTAMP:20260101T000000Z\r\nDTSTART;TZID=Big:20260101T090000\r\nEND:VEVENT\r\n", i)
+	}
+	b.WriteString("END:VCALENDAR\r\n")
+	start := time.Now()
+	objs, skipped, err := Parse("c", []byte(b.String()))
+	if Message(err) != string(errTooLarge) || time.Since(start) > 2*time.Second {
+		t.Errorf("300 refused 2 MiB objects: %d kept, %d skipped, %v after %v; want too large, at once", len(objs), skipped, err, time.Since(start))
+	}
+	// One oversized object alone is skipped, and the rest of the feed still loads.
+	one := b.String()
+	one = one[:strings.Index(one, "BEGIN:VEVENT\r\nUID:1\r\n")] + "BEGIN:VEVENT\r\nUID:ok\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	if objs, skipped, err := Parse("c", []byte(one)); err != nil || len(objs) != 1 || skipped != 1 {
+		t.Errorf("one oversized object: %d kept, %d skipped, %v; want 1 kept, 1 skipped", len(objs), skipped, err)
+	}
+}
