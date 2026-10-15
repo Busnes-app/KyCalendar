@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -675,10 +676,10 @@ func TestAgentSkill(t *testing.T) {
 			t.Errorf("skill does not name tool %s", tool.Name)
 		}
 	}
-	// Every tool-like name the skill mentions must exist.
-	for _, name := range []string{"list_calendars", "list_events", "create_event", "update_event", "delete_event"} {
-		if strings.Contains(skill, "`"+name+"`") && !slices.Contains(registered, name) {
-			t.Errorf("skill names %s, which is not a tool", name)
+	// Every tool-like name the skill mentions (a verb, an underscore, a noun) must exist.
+	for _, m := range regexp.MustCompile("`((?:list|get|create|update|delete|move|cancel|find|search)_[a-z_]+)`").FindAllStringSubmatch(skill, -1) {
+		if !slices.Contains(registered, m[1]) {
+			t.Errorf("skill names %s, which is not a tool", m[1])
 		}
 	}
 	for _, msg := range []string{api.MCPReadOnlyForTest, api.MCPNotOwnForTest, api.MCPSubscribedForTest, "No such calendar", "No such event", "The event changed elsewhere; reload it", "Calendar storage is full"} {
