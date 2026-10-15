@@ -52,6 +52,8 @@ var (
 	ownerOnly    = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// SCIM takes only its bearer token: a session cookie is never enough.
 	scimOnly = expect{anon: 401, deactivated: 401, admin: 401, owner: 401, reader: 401, editor: 401, manager: 401, nonmember: 401}
+	// MCP takes only a bearer MCP token, likewise.
+	mcpOnly = scimOnly
 )
 
 // public routes authenticate (or not) by design; they have no authorization to test here.
@@ -68,16 +70,17 @@ type world struct {
 	cookies map[actor]*http.Cookie
 	tokens  map[actor]string
 	passIDs map[actor]string
-	group   *store.Calendar // reader, editor and manager each hold their role on it
-	doomed  *store.Calendar // the group calendar the admin row deletes
-	spare   *store.Calendar // a personal calendar of the owner, deleted by the owner row
+	mcpIDs  map[actor]string // an MCP token each, for the scope row (the delete row revokes passIDs)
+	group   *store.Calendar  // reader, editor and manager each hold their role on it
+	doomed  *store.Calendar  // the group calendar the admin row deletes
+	spare   *store.Calendar  // a personal calendar of the owner, deleted by the owner row
 }
 
 func newWorld(t *testing.T) *world {
 	t.Helper()
 	srv, st, _ := setupTestServer(t)
 	ctx := context.Background()
-	w := &world{srv: srv, st: st, cookies: map[actor]*http.Cookie{}, tokens: map[actor]string{}, passIDs: map[actor]string{}}
+	w := &world{srv: srv, st: st, cookies: map[actor]*http.Cookie{}, tokens: map[actor]string{}, passIDs: map[actor]string{}, mcpIDs: map[actor]string{}}
 	for _, a := range actors[1:] {
 		role := "user"
 		if a == admin {
@@ -88,10 +91,11 @@ func newWorld(t *testing.T) *world {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: id, UserID: "usr_" + string(a), Label: "matrix", Hash: hash}, 0); err != nil {
+		if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: id, UserID: "usr_" + string(a), Label: "matrix", Hash: hash}, 0); err != nil {
 			t.Fatal(err)
 		}
 		w.tokens[a], w.passIDs[a] = token, id
+		w.mcpIDs[a], _ = seedToken(t, st, "usr_"+string(a), store.ScopeMCPRead)
 	}
 	w.group = groupCalendar(t, st, "Team")
 	w.doomed = groupCalendar(t, st, "Doomed")
@@ -188,10 +192,14 @@ func apiRows(w *world) map[string]apiRow {
 		"/scim/v2":                        {method: "GET", path: "/scim/v2", want: scimOnly},
 		"/scim/v2/":                       {method: "GET", path: "/scim/v2/Users", want: scimOnly},
 		"GET /api/app-passwords":          {method: "GET", path: "/api/app-passwords", want: everyday},
-		"POST /api/app-passwords":         {method: "POST", path: "/api/app-passwords", body: `{"label":"matrix-new"}`, want: everyday},
+		"POST /api/app-passwords":         {method: "POST", path: "/api/app-passwords", body: `{"label":"matrix-new","scope":"dav"}`, want: everyday},
 		// Each caller deletes its own app password; the anonymous caller names a placeholder so
 		// the path still matches the pattern instead of falling through to the SPA.
-		"DELETE /api/app-passwords/{id}":                 {method: "DELETE", pathFor: func(a actor) string { return "/api/app-passwords/" + cmp.Or(w.passIDs[a], "none") }, want: everyday},
+		"DELETE /api/app-passwords/{id}": {method: "DELETE", pathFor: func(a actor) string { return "/api/app-passwords/" + cmp.Or(w.passIDs[a], "none") }, want: everyday},
+		"PATCH /api/app-passwords/{id}":  {method: "PATCH", pathFor: func(a actor) string { return "/api/app-passwords/" + cmp.Or(w.mcpIDs[a], "none") }, body: `{"scope":"mcp:write-own"}`, want: everyday},
+		// A session cookie never authenticates /mcp; bearer callers are TestMCPAuthorizationMatrix.
+		"/mcp":                                           {method: "POST", path: "/mcp", body: `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, want: mcpOnly},
+		"GET /agent/skills/kycalendar/SKILL.md":          {want: public},
 		"GET /api/admin/calendars":                       {method: "GET", path: "/api/admin/calendars", want: adminOnly},
 		"POST /api/admin/calendars":                      {method: "POST", path: "/api/admin/calendars", body: `{"name":"Matrix"}`, want: adminOnly},
 		"DELETE /api/admin/calendars/{id}":               {method: "DELETE", path: "/api/admin/calendars/" + w.doomed.ID, want: adminOnly},

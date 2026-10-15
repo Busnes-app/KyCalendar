@@ -433,6 +433,25 @@ FOR EACH ROW EXECUTE FUNCTION calendar_usage_track();`,
 		SQLite:   lookupIndexes,
 		Postgres: lookupIndexes,
 	},
+	{
+		// App password scopes (CalDAV or MCP) and the events each MCP token created.
+		Version: 14,
+		Name:    "app_password_scopes",
+		SQLite: `ALTER TABLE app_passwords ADD COLUMN scope TEXT NOT NULL DEFAULT 'dav';
+CREATE TABLE mcp_events (
+    token_id TEXT NOT NULL REFERENCES app_passwords(id) ON DELETE CASCADE,
+    calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    uid TEXT NOT NULL,
+    PRIMARY KEY (token_id, calendar_id, uid)
+);`,
+		Postgres: `ALTER TABLE app_passwords ADD COLUMN scope VARCHAR(16) NOT NULL DEFAULT 'dav';
+CREATE TABLE mcp_events (
+    token_id VARCHAR(64) NOT NULL REFERENCES app_passwords(id) ON DELETE CASCADE,
+    calendar_id VARCHAR(64) NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    uid TEXT NOT NULL,
+    PRIMARY KEY (token_id, calendar_id, uid)
+);`,
+	},
 }
 
 const calendarUsageTable = `CREATE TABLE calendar_usage (

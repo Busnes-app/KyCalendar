@@ -218,6 +218,24 @@ the server, your user name and the password once; revoke it there at any time.
 Enter the app password where the client asks for a password. Per-user caps are in
 [Calendar limits](#calendar-limits).
 
+## Connect an AI agent
+
+AI agents such as OpenClaw and Hermes Agent reach your personal calendars over MCP at
+`https://<your host>/mcp`. On **Phones & apps**, choose **AI agent** and an access level:
+
+- **Read only** (the default): the agent sees your schedule.
+- **Read and write**: it can also add events and change the ones it created. The switch
+  **Can also change events it did not create** lets it change any of your events.
+
+No agent can delete events or see group calendars. The page shows the token once, with config
+for both agents that reads it from `KYCAL_TOKEN`, and the command to install the KyCalendar
+skill (served at `/agent/skills/kycalendar/SKILL.md`), which teaches the agent the tools and
+when to ask you first. You can change an agent's access there later. An agent token unused for
+90 days is revoked; an agent token never works over CalDAV, nor a phone's password over MCP.
+
+Event text can come from other people, and an agent may treat it as instructions. Give an
+agent write access only if you trust everyone who can message it.
+
 ## Disaster recovery
 
 Every backup is one `.kycap` capsule: the database snapshot, the deployment's encryption key,

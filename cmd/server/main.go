@@ -121,6 +121,9 @@ func runServer() {
 			if err := st.Audit().PruneAudit(ctx, time.Now().Add(-365*24*time.Hour)); err != nil {
 				log.Printf("audit prune failed: %v", err)
 			}
+			if err := api.ExpireIdleMCPTokens(ctx, st, time.Now()); err != nil {
+				log.Printf("idle agent token sweep failed: %v", err)
+			}
 			select {
 			case <-ctx.Done():
 				return

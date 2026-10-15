@@ -171,7 +171,7 @@ func TestInstallerOffboardingRevokesDAVAndPreservesCalendars(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: id, UserID: user.ID, Label: "fixture", Hash: hash}, 0); err != nil {
+		if err = st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: id, UserID: user.ID, Label: "fixture", Hash: hash}, 0); err != nil {
 			t.Fatal(err)
 		}
 		if got := davDo(srv, "OPTIONS", "/dav/", user.Username, token); sub == "owner" && got.Code != 403 || sub == "daily" && got.Code != 204 {

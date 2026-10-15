@@ -297,6 +297,12 @@ func (s *Server) routes() {
 	s.handle("GET /api/app-passwords", s.requireEveryday(s.handleListAppPasswords))
 	s.handle("POST /api/app-passwords", s.requireEveryday(s.handleCreateAppPassword))
 	s.handle("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
+	s.handle("PATCH /api/app-passwords/{id}", s.requireEveryday(s.handleSetAppPasswordScope))
+
+	// MCP for AI agents: bearer MCP tokens only, personal calendars only, no delete. The skill
+	// that teaches agents the tools is public: it holds no user or instance data.
+	s.handle("/mcp", s.newMCPHandler())
+	s.handle("GET /agent/skills/kycalendar/SKILL.md", http.HandlerFunc(s.handleAgentSkill))
 
 	// Group calendars: administrators create and delete them; administrators and managers
 	// change grants. None of these routes reads or writes events.
@@ -417,7 +423,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	origin := r.Header.Get("Origin")
-	if origin != "" && sameOrigin(origin, s.config.Server.AppURL) {
+	// /mcp is for agents, never browsers: no CORS grant, and its preflight reaches withMCPAuth.
+	mcpPath := r.URL.Path == "/mcp"
+	if origin != "" && sameOrigin(origin, s.config.Server.AppURL) && !mcpPath {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Vary", "Origin")
@@ -431,7 +439,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method == http.MethodOptions && !isDAVPath(r.URL.Path) {
+	if r.Method == http.MethodOptions && !isDAVPath(r.URL.Path) && !mcpPath {
 		if origin != "" && !sameOrigin(origin, s.config.Server.AppURL) {
 			http.Error(w, "Origin not allowed", http.StatusForbidden)
 			return

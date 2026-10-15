@@ -278,7 +278,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 #### Plan 1 CalDAV contracts
 
 - DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; PROPFIND, REPORT and OPTIONS on the bare `/` answer 308 there (308 keeps the method; a 301 may become GET and hit the SPA). Any other user's home is 403.
-- App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation, which requires step-up. HTTP Basic on `/dav/` takes the user name plus the token; the cookie session never authenticates DAV.
+- App passwords: `kc_<id>_<secret>` (lowercase base32; 80-bit id, 256-bit secret). Only the SHA-256 of the secret is stored; the token is shown once at creation, which requires step-up. Each has a scope (`dav`, or an MCP scope, below); HTTP Basic on `/dav/` takes the user name plus a `dav` token; the cookie session never authenticates DAV.
 - DAV login failures: 10 per IP (IPv6 per /64) per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
 - Inherited QR device pairing (`/api/devices/pair/*`, `internal/devices`, header Pair Device) is removed (R27): it minted full sessions and no KyCalendar client uses it. The `device_pairings` table and migrations stay; never edit existing migrations.
 - Administrators (`kycalendar.admin`, see Plan 2) are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
@@ -334,6 +334,17 @@ Spec `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`.
 - Sign-in: admins set the provider (`none`, `kyidentity`, `oidc`), label, issuer, client ID and secret on the Sign-in screen; `KY_KYSIGNON_ISSUER` fixes `kyidentity` and `KY_KYSIGNON_CLIENT_ID`/`_SECRET` apply and lock only beside it (otherwise ignored, so an environment secret never reaches an admin-entered issuer); `KY_KYSIGNON_HMAC_SECRET` alone changes nothing; `KY_SSO_ENABLED=false` stays the kill switch. Every provider configured here needs a client secret (confidential clients only). Saving (step-up) runs discovery, asks the admin to confirm how many previous-provider accounts a provider or issuer change disables, then rechecks the acting admin, disables those accounts and writes the settings in one transaction (issuers compare exactly: a trailing `/` is another issuer), and swaps the live provider with no restart; a failed transaction changes nothing and leaves sign-in closed. The secret is sealed under `crypto.DeriveKey(encryptionKey, "kycalendar:setting:signin_client_secret")`, never returned, and used, at startup or on a blank save, only for the registration it was entered for (kind, exact issuer and client ID, recorded beside it in `signin_client_secret_registration`): an environment change of issuer or client ID closes sign-in until a new secret is entered, and any other save without one is 400. Audit: `admin.signin_test`, `admin.signin_save`, `admin.signin_provider_change`.
 
 
+#### MCP agent access contracts
+
+Spec `docs/superpowers/specs/2026-10-14-kycalendar-mcp-agent-access-design.md`.
+
+- `/mcp` serves AI agents (OpenClaw, Hermes Agent) over stateless Streamable HTTP. It takes only `Authorization: Bearer` with an MCP-scoped app password: `mcp:read`, `mcp:write-own` (create, and update only events that token created, recorded in `mcp_events`) or `mcp:write-any` (update any personal event). A `dav` token is refused there as an MCP token is on `/dav/`, both like a wrong secret.
+- Personal calendars only: a group calendar is answered as missing on every tool. There is no delete tool, and `update_event` cannot blank a title or cancel an occurrence.
+- Any request carrying `Origin` is 403; `/mcp` gets no CORS grant and no `OPTIONS` short-circuit. Cookies never authenticate it. Administrators get 403.
+- An MCP token unused for 90 days is revoked: refused and deleted at sign-in, and swept daily by `cmd/server` (`api.ExpireIdleMCPTokens`). `dav` tokens never expire.
+- The scope is chosen at creation (required) and changed between MCP scopes only (`PATCH /api/app-passwords/{id}`, step-up); a `dav` token never becomes an agent's.
+- The agent skill (`internal/agentskill`) is served publicly at `/agent/skills/kycalendar/SKILL.md`; `TestAgentSkill` keeps its tools, error messages and version in step with the server.
+
 #### Installer setup
 
 - Container-local `kycalendar apply-setup` uses `ky.product-setup/1` and private `<DataDir>/installer/setup.sock`; `--check` inspects without migrations, key creation or writes. First setup atomically creates exact issuer/subject accounts, immutable ownership, sign-in binding and audit under the native `local-admins`, then `user-names` locks. Existing identities and sign-in settings are refused. Activation uses the normal graceful restart and drain.
@@ -354,6 +365,7 @@ Spec `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`.
 - [internal/api/AGENTS.md](internal/api/AGENTS.md): HTTP REST API endpoints, routing, and middleware.
 - [internal/calendar/AGENTS.md](internal/calendar/AGENTS.md): Pure iCalendar validation, indexing bounds and sync tokens.
 - [internal/davbackend/AGENTS.md](internal/davbackend/AGENTS.md): CalDAV backend mapping one user's requests onto the calendar store.
+- [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 
 `cmd/server` owns the scheduler: `backupLoop` builds the `RunConfig` and client once and

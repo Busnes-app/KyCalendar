@@ -29,7 +29,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	if err := s.store.Calendars().CreateCalendar(ctx, cal, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_carol", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
+	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "pw_carol", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +130,7 @@ func TestUpsertSSOUserFailedRoleWriteChangesNothing(t *testing.T) {
 	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_eve", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{ID: "pw_eve", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
+	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "pw_eve", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store

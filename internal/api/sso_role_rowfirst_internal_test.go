@@ -121,7 +121,7 @@ func TestAppPasswordCreatedAcrossAnSSORoleChangeIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 	}}}
-	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone"}`))
+	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone","scope":"dav"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-eve"})
 	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})
@@ -189,7 +189,7 @@ func TestAppPasswordCreatedAcrossASCIMRoleChangeIsRefused(t *testing.T) {
 			t.Fatalf("scim promotion: %d %s", w.Code, w.Body.String())
 		}
 	}}}
-	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone"}`))
+	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone","scope":"dav"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-dan"})
 	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})

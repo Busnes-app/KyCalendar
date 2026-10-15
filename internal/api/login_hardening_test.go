@@ -156,7 +156,7 @@ func TestCreateAppPasswordRequiresStepUp(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	alice := loginAs(t, srv, st, "alice", "user")
 	t.Cleanup(api.SetStepUpWindowForTest(-time.Second))
-	w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "stolen"})
+	w := doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "stolen", "scope": "dav"})
 	var body map[string]string
 	_ = json.Unmarshal(w.Body.Bytes(), &body)
 	if w.Code != http.StatusForbidden || body["code"] != "reauth_required" {

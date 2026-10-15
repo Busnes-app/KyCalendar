@@ -386,9 +386,22 @@ func seriesOf(cal *ical.Calendar, name, key string) (m *ical.Component, p *ical.
 // EditOne writes an override for one occurrence: a copy of the master without its recurrence,
 // with the edit applied. An existing override for that occurrence is edited in place.
 func EditOne(cal *ical.Calendar, recurrenceID string, in EventInput, now time.Time) error {
-	m, rid, o, err := seriesOf(cal, ical.PropRecurrenceID, recurrenceID)
+	o, err := overrideOf(cal, recurrenceID)
 	if err != nil {
 		return err
+	}
+	applyText(o, in)
+	setTimes(cal, o, in)
+	touch(o, now)
+	return nil
+}
+
+// overrideOf is the override for one occurrence, created as a copy of the master without its
+// recurrence when there is none yet.
+func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error) {
+	m, rid, o, err := seriesOf(cal, ical.PropRecurrenceID, recurrenceID)
+	if err != nil {
+		return nil, err
 	}
 	if o == nil {
 		o = cloneComp(m)
@@ -398,10 +411,46 @@ func EditOne(cal *ical.Calendar, recurrenceID string, in EventInput, now time.Ti
 		o.Props.Set(rid)
 		cal.Children = append(cal.Children, o)
 	}
-	applyText(o, in)
-	setTimes(cal, o, in)
-	touch(o, now)
+	return o, nil
+}
+
+// TextEdit changes an event's text; a nil field keeps its value, an empty one removes it.
+type TextEdit struct{ Title, Location, Description *string }
+
+// EditText changes only the text of the series (recurrenceID "") or of one occurrence. Times,
+// recurrence and every other occurrence stay as they are.
+func EditText(cal *ical.Calendar, recurrenceID string, t TextEdit, now time.Time) error {
+	comp, err := Master(cal)
+	if err == nil && recurrenceID != "" {
+		comp, err = overrideOf(cal, recurrenceID)
+	}
+	if err != nil {
+		return err
+	}
+	for name, v := range map[string]*string{ical.PropSummary: t.Title, ical.PropLocation: t.Location, ical.PropDescription: t.Description} {
+		if v != nil {
+			setText(comp, name, *v)
+		}
+	}
+	touch(comp, now)
 	return nil
+}
+
+// TextOf is the title, location and description of the series (recurrenceID "") or of one
+// occurrence: its override, else the master's.
+func TextOf(cal *ical.Calendar, recurrenceID string) (title, location, description string, err error) {
+	comp, err := Master(cal)
+	if err == nil && recurrenceID != "" {
+		var o *ical.Component
+		if _, _, o, err = seriesOf(cal, ical.PropRecurrenceID, recurrenceID); o != nil {
+			comp = o
+		}
+	}
+	if err != nil {
+		return "", "", "", err
+	}
+	text := func(name string) string { v, _ := comp.Props.Text(name); return v }
+	return text(ical.PropSummary), text(ical.PropLocation), text(ical.PropDescription), nil
 }
 
 // DeleteOne hides one occurrence: an EXDATE on the master, and its override removed.
