@@ -126,6 +126,18 @@ type Calendar struct {
 	ID, OwnerKind, OwnerID, Slug, Name, Color, Description string
 	Seq                                                    int64
 	CreatedAt                                              time.Time
+	Subscribed                                             bool // mirrors an ICS link; its events are read-only
+}
+
+// Subscription is the ICS link a subscribed calendar mirrors. The link is a bearer secret:
+// URLSealed is encrypted and URLHost is the only part ever shown.
+type Subscription struct {
+	CalendarID, OwnerID, URLSealed, URLHost string
+	ETag, LastModified                      string // validators from the last 200
+	RefreshedAt, CheckedAt                  *time.Time
+	NextCheckAt                             time.Time
+	Failures                                int
+	Error                                   string // short message for the last failure; "" after a success
 }
 
 type CalendarObject struct {

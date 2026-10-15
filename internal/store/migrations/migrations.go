@@ -452,6 +452,37 @@ CREATE TABLE mcp_events (
     PRIMARY KEY (token_id, calendar_id, uid)
 );`,
 	},
+	{
+		// Calendars that mirror an ICS link. The row's presence makes the calendar read-only.
+		Version: 15,
+		Name:    "calendar_subscriptions",
+		SQLite: `CREATE TABLE calendar_subscriptions (
+    calendar_id TEXT PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
+    url_sealed TEXT NOT NULL,
+    url_host TEXT NOT NULL,
+    etag TEXT NOT NULL DEFAULT '',
+    last_modified TEXT NOT NULL DEFAULT '',
+    refreshed_at DATETIME,
+    checked_at DATETIME,
+    next_check_at DATETIME NOT NULL,
+    failures INTEGER NOT NULL DEFAULT 0,
+    error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_calendar_subscriptions_due ON calendar_subscriptions(next_check_at);`,
+		Postgres: `CREATE TABLE calendar_subscriptions (
+    calendar_id VARCHAR(64) PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
+    url_sealed TEXT NOT NULL,
+    url_host VARCHAR(255) NOT NULL,
+    etag TEXT NOT NULL DEFAULT '',
+    last_modified TEXT NOT NULL DEFAULT '',
+    refreshed_at TIMESTAMPTZ,
+    checked_at TIMESTAMPTZ,
+    next_check_at TIMESTAMPTZ NOT NULL,
+    failures INTEGER NOT NULL DEFAULT 0,
+    error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_calendar_subscriptions_due ON calendar_subscriptions(next_check_at);`,
+	},
 }
 
 const calendarUsageTable = `CREATE TABLE calendar_usage (

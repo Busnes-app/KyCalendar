@@ -3,8 +3,9 @@ package store
 import (
 	"context"
 	"errors"
-	"github.com/Busnes-app/ky-primitives/applysetup"
 	"time"
+
+	"github.com/Busnes-app/ky-primitives/applysetup"
 )
 
 var (
@@ -17,6 +18,8 @@ var (
 	ErrUIDConflict        = errors.New("uid already used in calendar")
 	ErrSyncTokenExpired   = errors.New("sync token expired")
 	ErrQuotaExceeded      = errors.New("owner quota exceeded")
+	// ErrReadOnly is an event write to a subscribed calendar; only its refresh writes there.
+	ErrReadOnly = errors.New("calendar is read-only")
 	// ErrLastAdmin refuses a change that would leave no active local administrator.
 	ErrLastAdmin = errors.New("last active local administrator")
 	// ErrActorRevoked refuses an administrator's write once they are no longer an active
@@ -294,4 +297,18 @@ type CalendarStore interface {
 	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
 	PruneChanges(ctx context.Context, before time.Time) error
 	SyncEpoch(ctx context.Context) (string, error)
+
+	// CreateSubscribedCalendar creates c with its subscription. ErrQuotaExceeded when the owner
+	// has maxCalendars calendars or maxSubscriptions subscriptions (0 = no limit).
+	CreateSubscribedCalendar(ctx context.Context, c *Calendar, sub *Subscription, maxCalendars, maxSubscriptions int) error
+	GetSubscription(ctx context.Context, calendarID string) (*Subscription, error)
+	// DueSubscriptions lists up to limit subscriptions whose next check is at or before now.
+	DueSubscriptions(ctx context.Context, now time.Time, limit int) ([]*Subscription, error)
+	// SetSubscriptionSource replaces the link and forgets the old link's validators and failures.
+	SetSubscriptionSource(ctx context.Context, calendarID, urlSealed, urlHost string) error
+	// RecordSubscriptionCheck stores the outcome of one fetch: validators, times, failures, error.
+	RecordSubscriptionCheck(ctx context.Context, sub *Subscription) error
+	// ReplaceSubscriptionObjects makes objs the calendar's whole content in one transaction, with
+	// one change row per object added, changed or removed. lim applies as in PutObject.
+	ReplaceSubscriptionObjects(ctx context.Context, calendarID string, objs []*CalendarObject, lim OwnerLimits) error
 }

@@ -56,15 +56,31 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug,
 	return tx.Commit()
 }
 
-const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, seq, created_at`
+const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, seq, created_at,
+(SELECT COUNT(*) FROM calendar_subscriptions s WHERE s.calendar_id = calendars.id)`
 
 func scanCalendar(row interface{ Scan(...any) error }) (*Calendar, error) {
 	var cal Calendar
-	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &cal.Seq, &cal.CreatedAt)
+	var subscribed int
+	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &cal.Seq, &cal.CreatedAt, &subscribed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
+	cal.Subscribed = subscribed > 0
 	return &cal, err
+}
+
+// refuseSubscribed is ErrReadOnly when calendarID mirrors an ICS link. Every event write checks
+// it inside its transaction, so no path (web, CalDAV, agent) can edit a subscribed calendar.
+func (c *calendarStore) refuseSubscribed(ctx context.Context, tx *sql.Tx, calendarID string) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*) FROM calendar_subscriptions WHERE calendar_id = ?`), calendarID).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrReadOnly
+	}
+	return nil
 }
 
 func (c *calendarStore) GetCalendarBySlug(ctx context.Context, ownerKind, ownerID, slug string) (*Calendar, error) {
@@ -295,6 +311,9 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	if err := c.bump(ctx, tx, o.CalendarID, o.Name, false); err != nil {
 		return false, err
 	}
+	if err := c.refuseSubscribed(ctx, tx, o.CalendarID); err != nil {
+		return false, err
+	}
 	etag, exists, err := c.currentETag(ctx, tx, o.CalendarID, o.Name)
 	if err != nil {
 		return false, err
@@ -356,6 +375,9 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 	}
 	defer tx.Rollback()
 	if err := c.bump(ctx, tx, calendarID, name, true); err != nil {
+		return err
+	}
+	if err := c.refuseSubscribed(ctx, tx, calendarID); err != nil {
 		return err
 	}
 	etag, exists, err := c.currentETag(ctx, tx, calendarID, name)
