@@ -16,6 +16,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/feed"
 	"github.com/Busnes-app/kycalendar/internal/scim"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -44,6 +45,8 @@ type Server struct {
 	// signinHTTP reaches admin-entered providers: HTTPS only, no redirects, no loopback,
 	// link-local or cloud metadata targets.
 	signinHTTP *http.Client
+	// feed mirrors subscribed calendars; its client reaches public HTTPS addresses only.
+	feed       *feed.Refresher
 	scim       *scim.Server
 	recovery   recoveryClient
 	mux        *http.ServeMux
@@ -165,6 +168,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 
 	// No provider is live yet: LoadSignIn stores one after binding accounts to it.
 	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
+	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	s.routes()
 	return s
 }
@@ -343,6 +347,9 @@ func (s *Server) routes() {
 	s.handle("POST /api/calendars/{id}/events", s.requireEveryday(s.handleCreateEvent))
 	s.handle("PUT /api/events/{cal}/{uid}", s.requireEveryday(s.handleUpdateEvent))
 	s.handle("DELETE /api/events/{cal}/{uid}", s.requireEveryday(s.handleDeleteEvent))
+	s.handle("POST /api/subscriptions", s.requireEveryday(s.handleCreateSubscription))
+	s.handle("PATCH /api/subscriptions/{id}", s.requireEveryday(s.handlePatchSubscription))
+	s.handle("POST /api/calendars/{id}/refresh", s.requireEveryday(s.handleRefreshSubscription))
 
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.
 	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))

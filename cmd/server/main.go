@@ -138,6 +138,18 @@ func runServer() {
 	}
 	backupDone := make(chan struct{})
 	go backupLoop(ctx, cfg, st, backupDone)
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			srv.RefreshDueSubscriptions(ctx)
+		}
+	}()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{

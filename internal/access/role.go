@@ -30,6 +30,10 @@ func (r Role) CanRead() bool   { return r >= Reader }
 func (r Role) CanWrite() bool  { return r >= Editor }
 func (r Role) CanManage() bool { return r >= Manager }
 
+// CanEditEvents is whether r may create, change or delete events in c. A subscribed calendar
+// mirrors its link, so nobody edits its events; the store refuses such writes as well.
+func CanEditEvents(c *store.Calendar, r Role) bool { return r.CanWrite() && !c.Subscribed }
+
 // Resolve is u's role on c. grants must be u's own grants. Administrators get None on every
 // calendar, because they never read events. Personal calendars are owner-only. A group calendar
 // takes the highest role among the grants naming it.

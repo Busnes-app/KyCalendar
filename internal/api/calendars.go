@@ -24,6 +24,8 @@ type calendarView struct {
 	Kind        string `json:"kind"`
 	Role        string `json:"role"`
 	DAVPath     string `json:"dav_path"`
+	// Subscription is set on a calendar that mirrors an ICS link. The link itself is never sent.
+	Subscription *subscriptionView `json:"subscription,omitempty"`
 }
 
 func roleName(r access.Role) string {
@@ -127,7 +129,19 @@ func (s *Server) handleListCalendars(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]calendarView, 0, len(cals))
 	for _, c := range cals {
-		out = append(out, s.viewOf(user, c, access.Resolve(user, c, grants)))
+		v := s.viewOf(user, c, access.Resolve(user, c, grants))
+		if c.Subscribed {
+			sub, err := s.store.Calendars().GetSubscription(r.Context(), c.ID)
+			if errors.Is(err, store.ErrNotFound) {
+				continue // deleted since the list was read
+			}
+			if err != nil {
+				s.writeError(w, http.StatusInternalServerError, "Failed to list calendars")
+				return
+			}
+			v.Subscription = subscriptionViewOf(sub)
+		}
+		out = append(out, v)
 	}
 	s.writeJSON(w, http.StatusOK, out)
 }
@@ -144,17 +158,20 @@ func decodeCalendarBody(r *http.Request) (calendarBody, error) {
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		return b, errors.New("Invalid JSON body")
 	}
+	err := b.check()
+	return b, err
+}
+
+// check trims the name and validates every present field.
+func (b *calendarBody) check() error {
 	if b.Name != nil {
 		trimmed := strings.TrimSpace(*b.Name)
 		if trimmed == "" {
-			return b, errors.New("Name must not be blank")
+			return errors.New("Name must not be blank")
 		}
 		b.Name = &trimmed
 	}
-	if err := calendar.CheckProps(b.Name, b.Description, b.Color); err != nil {
-		return b, err
-	}
-	return b, nil
+	return calendar.CheckProps(b.Name, b.Description, b.Color)
 }
 
 func (s *Server) handleCreateCalendar(w http.ResponseWriter, r *http.Request) {
