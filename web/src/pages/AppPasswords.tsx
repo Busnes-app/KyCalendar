@@ -26,6 +26,17 @@ const ACCESS: Record<Exclude<Scope, "dav">, string> = {
 
 const isAgent = (s: Scope) => s.startsWith("mcp:");
 
+const WRITE_WARNING =
+  "The agent can add and change events. Anyone who can message the agent can try to make it do so. It can never delete events.";
+const ANY_WARNING = "The agent can then move or rewrite any of your appointments.";
+
+// widening is the warning for moving an agent from one access to more, or null when it narrows.
+function widening(from: Scope, to: Scope): string | null {
+  const rank = ["mcp:read", "mcp:write-own", "mcp:write-any"];
+  if (rank.indexOf(to) <= rank.indexOf(from)) return null;
+  return [from === "mcp:read" && WRITE_WARNING, to === "mcp:write-any" && ANY_WARNING].filter(Boolean).join(" ");
+}
+
 export default function AppPasswords({ username }: { username: string }) {
   const [list, setList] = useState<AppPassword[]>([]);
   const [label, setLabel] = useState("");
@@ -85,9 +96,11 @@ export default function AppPasswords({ username }: { username: string }) {
     await load();
   }
 
-  async function changeAccess(id: string, next: Scope) {
+  async function changeAccess(p: AppPassword, next: Scope) {
+    const warning = widening(p.scope, next);
+    if (warning && !window.confirm(`${warning}\n\nGive ${p.label} this access?`)) return;
     setError(null);
-    const res = await send(`/api/app-passwords/${encodeURIComponent(id)}`, {
+    const res = await send(`/api/app-passwords/${encodeURIComponent(p.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scope: next }),
@@ -128,15 +141,12 @@ export default function AppPasswords({ username }: { username: string }) {
             </label>
             {write && (
               <>
-                <p role="note">
-                  The agent can add and change events. Anyone who can message the agent can try to make it do so. It
-                  can never delete events.
-                </p>
+                <p role="note">{WRITE_WARNING}</p>
                 <label className="kc-check">
                   <input type="checkbox" checked={anyEvent} onChange={(e) => setAnyEvent(e.target.checked)} />
                   Can also change events it did not create
                 </label>
-                {anyEvent && <p role="note">The agent can then move or rewrite any of your appointments.</p>}
+                {anyEvent && <p role="note">{ANY_WARNING}</p>}
               </>
             )}
           </fieldset>
@@ -199,7 +209,7 @@ export default function AppPasswords({ username }: { username: string }) {
                   <select
                     aria-label={`Access for ${p.label}`}
                     value={p.scope}
-                    onChange={(e) => void changeAccess(p.id, e.target.value as Scope)}
+                    onChange={(e) => void changeAccess(p, e.target.value as Scope)}
                   >
                     {Object.entries(ACCESS).map(([value, name]) => (
                       <option key={value} value={value}>
