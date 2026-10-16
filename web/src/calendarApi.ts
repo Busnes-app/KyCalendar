@@ -5,9 +5,19 @@ export interface SubscriptionInfo { host: string; refreshed_at: string | null; c
 export interface CalendarInfo {
   id: string; name: string; color: string; description: string;
   kind: 'personal' | 'group'; role: 'owner' | 'manager' | 'editor' | 'reader'; dav_path: string;
+  components: Component[]; // fixed at creation
   subscription?: SubscriptionInfo;
 }
-export const canAddEvents = (c: CalendarInfo) => c.role !== 'reader' && !c.subscription;
+export type Component = 'VEVENT' | 'VTODO';
+// HOLDS are the component sets a calendar can be created with; tasks sync to CalDAV task apps.
+export const HOLDS = {
+  events: { label: 'Events', components: ['VEVENT'] },
+  tasks: { label: 'Tasks', components: ['VTODO'] },
+  both: { label: 'Events and tasks', components: ['VEVENT', 'VTODO'] },
+} as const satisfies Record<string, { label: string; components: readonly Component[] }>;
+export type Holds = keyof typeof HOLDS;
+export const holdsOf = (v: string): Holds => (v === 'tasks' || v === 'both' ? v : 'events');
+export const canAddEvents = (c: CalendarInfo) => c.role !== 'reader' && !c.subscription && c.components.includes('VEVENT');
 export type Freq = '' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 export interface RepeatInfo { freq: Freq; weekdays?: string[] }
 export interface EventInfo {
@@ -43,7 +53,7 @@ const eventPath = (ev: EventInfo) => `/api/events/${encodeURIComponent(ev.calend
 const ifMatch = (ev: EventInfo) => ({ 'If-Match': `"${ev.etag}"` });
 
 export const listCalendars = () => send('/api/calendars').then((r) => parse<CalendarInfo[]>(r));
-export const createCalendar = (b: { name: string; color?: string }) =>
+export const createCalendar = (b: { name: string; color?: string; components?: readonly Component[] }) =>
   send('/api/calendars', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(b) }).then((r) => parse<CalendarInfo>(r));
 export const patchCalendar = (id: string, b: { name?: string; color?: string }) =>
   send(`/api/calendars/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(b) }).then((r) => parse<CalendarInfo>(r));

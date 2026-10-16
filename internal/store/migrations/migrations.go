@@ -483,7 +483,18 @@ CREATE INDEX idx_calendar_subscriptions_due ON calendar_subscriptions(next_check
 );
 CREATE INDEX idx_calendar_subscriptions_due ON calendar_subscriptions(next_check_at);`,
 	},
+	{
+		// Tasks: a calendar's component set and each object's component. Every existing calendar
+		// and object is VEVENT, the only component accepted before this.
+		Version:  16,
+		Name:     "calendar_components",
+		SQLite:   calendarComponents,
+		Postgres: calendarComponents,
+	},
 }
+
+const calendarComponents = `ALTER TABLE calendars ADD COLUMN components TEXT NOT NULL DEFAULT 'VEVENT';
+ALTER TABLE calendar_objects ADD COLUMN component TEXT NOT NULL DEFAULT 'VEVENT';`
 
 const calendarUsageTable = `CREATE TABLE calendar_usage (
     id INTEGER PRIMARY KEY CHECK (id = 1),

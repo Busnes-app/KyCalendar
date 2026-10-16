@@ -45,8 +45,11 @@ func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar, maxPe
 			return ErrQuotaExceeded
 		}
 	}
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, cal.CreatedAt)
+	if len(cal.Components) == 0 {
+		cal.Components = []string{"VEVENT"} // the column default
+	}
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, components, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, strings.Join(cal.Components, ","), cal.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists
@@ -56,17 +59,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug,
 	return tx.Commit()
 }
 
-const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, seq, created_at,
+const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, components, seq, created_at,
 (SELECT COUNT(*) FROM calendar_subscriptions s WHERE s.calendar_id = calendars.id)`
 
 func scanCalendar(row interface{ Scan(...any) error }) (*Calendar, error) {
 	var cal Calendar
 	var subscribed int
-	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &cal.Seq, &cal.CreatedAt, &subscribed)
+	var comps string
+	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &comps, &cal.Seq, &cal.CreatedAt, &subscribed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	cal.Subscribed = subscribed > 0
+	cal.Components = strings.Split(comps, ",")
 	return &cal, err
 }
 
@@ -195,12 +200,12 @@ name = COALESCE(?, name), description = COALESCE(?, description), color = COALES
 	return nil
 }
 
-const objectCols = `calendar_id, name, uid, etag, data, first_start, last_end, modified_at`
+const objectCols = `calendar_id, name, component, uid, etag, data, first_start, last_end, modified_at`
 
 func scanObject(row interface{ Scan(...any) error }) (*CalendarObject, error) {
 	var o CalendarObject
 	var last sql.NullInt64
-	err := row.Scan(&o.CalendarID, &o.Name, &o.UID, &o.ETag, &o.Data, &o.FirstStart, &last, &o.ModifiedAt)
+	err := row.Scan(&o.CalendarID, &o.Name, &o.Component, &o.UID, &o.ETag, &o.Data, &o.FirstStart, &last, &o.ModifiedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -241,11 +246,11 @@ func (c *calendarStore) ListObjects(ctx context.Context, calendarID string) ([]*
 	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects WHERE calendar_id = ? ORDER BY name`, calendarID)
 }
 
-// ListObjectsInRange is a superset of the objects overlapping [start, end): last_end equal to start
-// keeps a zero-length event at start (RFC 4791 §9.9); callers apply the exact overlap.
-func (c *calendarStore) ListObjectsInRange(ctx context.Context, calendarID string, start, end int64) ([]*CalendarObject, error) {
+// ListObjectsInRange is a superset of the component's objects overlapping [start, end): last_end
+// equal to start keeps a zero-length event at start (RFC 4791 §9.9); callers apply the exact overlap.
+func (c *calendarStore) ListObjectsInRange(ctx context.Context, calendarID, component string, start, end int64) ([]*CalendarObject, error) {
 	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects
-WHERE calendar_id = ? AND first_start < ? AND (last_end IS NULL OR last_end >= ?) ORDER BY name`, calendarID, end, start)
+WHERE calendar_id = ? AND component = ? AND first_start < ? AND (last_end IS NULL OR last_end >= ?) ORDER BY name`, calendarID, component, end, start)
 }
 
 // bump advances the calendar sequence and logs one change, inside tx.
@@ -355,10 +360,10 @@ FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
 		}
 	}
 
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (calendar_id, name) DO UPDATE SET uid = excluded.uid, etag = excluded.etag, data = excluded.data,
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
-		o.CalendarID, o.Name, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
+		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return false, ErrUIDConflict

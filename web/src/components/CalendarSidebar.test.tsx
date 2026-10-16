@@ -12,9 +12,9 @@ afterEach(() => {
 });
 
 const cals: CalendarInfo[] = [
-  { id: 'cal_p', name: 'Mine', color: '#00aa11', description: '', kind: 'personal', role: 'owner', dav_path: '' },
-  { id: 'cal_m', name: 'Team', color: '', description: '', kind: 'group', role: 'manager', dav_path: '' },
-  { id: 'cal_r', name: 'News', color: '', description: '', kind: 'group', role: 'reader', dav_path: '' },
+  { id: 'cal_p', name: 'Mine', color: '#00aa11', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'] },
+  { id: 'cal_m', name: 'Team', color: '', description: '', kind: 'group', role: 'manager', dav_path: '', components: ['VEVENT'] },
+  { id: 'cal_r', name: 'News', color: '', description: '', kind: 'group', role: 'reader', dav_path: '', components: ['VEVENT'] },
 ];
 
 describe('CalendarSidebar', () => {
@@ -41,6 +41,20 @@ describe('CalendarSidebar', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it('creates a task list and marks it', async () => {
+    const post = vi.fn((_init?: RequestInit) => new Response(JSON.stringify(cals[0]), { status: 201 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_i, init) => post(init));
+    const onChanged = vi.fn();
+    const list: CalendarInfo = { ...cals[0], id: 'cal_t', name: 'Todo', components: ['VTODO'] };
+    render(<CalendarSidebar calendars={[...cals, list]} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+    expect(screen.getByText('Tasks · open in a tasks app')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Shared' } });
+    fireEvent.change(screen.getByLabelText('Holds'), { target: { value: 'tasks' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(JSON.parse(String(post.mock.calls[0][0]?.body))).toEqual({ name: 'Shared', components: ['VTODO'] });
+  });
+
   it('subscribes with the link, name and colour, and shows why a link failed', async () => {
     const post = vi.fn((_url: string, _init?: RequestInit) => new Response(JSON.stringify({ error: 'The link did not return a calendar' }), { status: 422 }));
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (i, init) => post(String(i), init));
@@ -60,7 +74,7 @@ describe('CalendarSidebar', () => {
   });
 
   const sub: CalendarInfo = {
-    id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '',
+    id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'],
     subscription: { host: 'outlook.office365.com', refreshed_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), checked_at: null, error: 'The link returned 404' },
   };
 

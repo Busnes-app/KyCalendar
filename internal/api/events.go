@@ -183,7 +183,7 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 			return nil, errTooSlow
 		}
 		role := access.Resolve(user, c, grants)
-		objs, err := s.store.Calendars().ListObjectsInRange(ctx, c.ID, start.Unix(), end.Unix())
+		objs, err := s.store.Calendars().ListObjectsInRange(ctx, c.ID, ical.CompEvent, start.Unix(), end.Unix())
 		if err != nil {
 			return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load events"}
 		}
@@ -364,7 +364,7 @@ func (s *Server) saveEvent(ctx context.Context, c *store.Calendar, name string, 
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "The event cannot be encoded"}
 	}
-	o, err := davbackend.Write(ctx, s.store, c.ID, name, cal, buf.Bytes(), etag, create, s.objectLimits())
+	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits())
 	switch {
 	case err == nil:
 		return o, nil
@@ -380,7 +380,9 @@ func (s *Server) saveEvent(ctx context.Context, c *store.Calendar, name string, 
 		return nil, &apiError{status: http.StatusConflict, msg: "An event with this UID already exists"}
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, &apiError{status: http.StatusInsufficientStorage, msg: "Calendar storage is full", code: "quota"}
-	case errors.Is(err, davbackend.ErrInvalidResource), errors.Is(err, calendar.ErrInvalidData), errors.Is(err, calendar.ErrUnsupportedComponent):
+	case errors.Is(err, calendar.ErrUnsupportedComponent):
+		return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "This calendar holds tasks, not events", code: "tasks_only"}
+	case errors.Is(err, davbackend.ErrInvalidResource), errors.Is(err, calendar.ErrInvalidData):
 		return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "The event is not valid"}
 	default:
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to save the event"}
@@ -445,10 +447,11 @@ func (s *Server) loadEvent(w http.ResponseWriter, r *http.Request) (*store.Calen
 	return c, o, cal, etag, true
 }
 
-// loadObject loads event uid of c and decodes it.
+// loadObject loads event uid of c and decodes it. A task is not an event: the event API and the
+// MCP event tools never read or change one.
 func (s *Server) loadObject(ctx context.Context, c *store.Calendar, uid string) (*store.CalendarObject, *ical.Calendar, *apiError) {
 	o, err := s.store.Calendars().GetObjectByUID(ctx, c.ID, uid)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || (err == nil && o.Component != ical.CompEvent) {
 		return nil, nil, &apiError{status: http.StatusNotFound, msg: "No such event"}
 	}
 	if err != nil {

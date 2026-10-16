@@ -1,6 +1,7 @@
 package calendar_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -26,6 +27,28 @@ func TestCheckProps(t *testing.T) {
 	for i, c := range bad {
 		if err := calendar.CheckProps(c.name, c.desc, c.color); err == nil {
 			t.Errorf("bad %d accepted", i)
+		}
+	}
+}
+
+func TestComponents(t *testing.T) {
+	for _, c := range []struct {
+		in   []string
+		want string
+	}{
+		{nil, "VEVENT"},
+		{[]string{"VTODO"}, "VTODO"},
+		{[]string{"VTODO", "VEVENT"}, "VEVENT,VTODO"},
+		{[]string{"VEVENT", "VEVENT"}, "VEVENT"},
+	} {
+		got, err := calendar.Components(c.in)
+		if err != nil || strings.Join(got, ",") != c.want {
+			t.Fatalf("Components(%v) = %v, %v; want %s", c.in, got, err, c.want)
+		}
+	}
+	for _, in := range [][]string{{"VJOURNAL"}, {"VEVENT", "VJOURNAL"}, {"vtodo"}, {""}} {
+		if _, err := calendar.Components(in); !errors.Is(err, calendar.ErrUnsupportedComponent) {
+			t.Fatalf("Components(%q): %v, want ErrUnsupportedComponent", in, err)
 		}
 	}
 }

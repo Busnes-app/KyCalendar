@@ -13,8 +13,8 @@ import { CalendarPage, HIDDEN_KEY, loadHidden, toFcEvent } from './CalendarPage'
 import type { EventInfo } from '../calendarApi';
 
 const calendars = [
-  { id: 'cal_p', name: 'Mine', color: '#00aa11', description: '', kind: 'personal', role: 'owner', dav_path: '/dav/u/calendars/default/' },
-  { id: 'cal_g', name: 'Team', color: '', description: '', kind: 'group', role: 'reader', dav_path: '/dav/u/calendars/_cal_g/' },
+  { id: 'cal_p', name: 'Mine', color: '#00aa11', description: '', kind: 'personal', role: 'owner', dav_path: '/dav/u/calendars/default/', components: ['VEVENT'] },
+  { id: 'cal_g', name: 'Team', color: '', description: '', kind: 'group', role: 'reader', dav_path: '/dav/u/calendars/_cal_g/', components: ['VEVENT'] },
 ];
 const ev: EventInfo = {
   calendar_id: 'cal_g', uid: 'u1', etag: 'e', title: '<b>x</b>', start: '2026-10-07T09:00:00+02:00', end: '2026-10-07T10:00:00+02:00',
@@ -98,7 +98,7 @@ describe('CalendarPage', () => {
   });
 
   it('offers no subscribed or read-only calendar for a new event', async () => {
-    const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', subscription: { host: 'outlook.office365.com', refreshed_at: null, checked_at: null } };
+    const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'], subscription: { host: 'outlook.office365.com', refreshed_at: null, checked_at: null } };
     mockFetch({ '/api/calendars': () => [sub, ...calendars], '/api/events': () => [] });
     render(<CalendarPage />);
     await screen.findByLabelText('Show Work');
@@ -109,7 +109,7 @@ describe('CalendarPage', () => {
   });
 
   it('disables New event when only subscribed calendars exist', async () => {
-    const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', subscription: { host: 'h', refreshed_at: null, checked_at: null } };
+    const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'], subscription: { host: 'h', refreshed_at: null, checked_at: null } };
     mockFetch({ '/api/calendars': () => [sub], '/api/events': () => [] });
     render(<CalendarPage />);
     await screen.findByLabelText('Show Work');

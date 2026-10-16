@@ -27,7 +27,7 @@ func TestSyncTokenOfARecreatedCalendarIsInvalid(t *testing.T) {
 		for i := range n {
 			uid := id + string(rune('a'+i))
 			raw := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VEVENT\r\nUID:" + uid + "\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261007T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-			if _, err := davbackend.Write(ctx, st, id, uid+".ics", decode(t, raw), []byte(raw), "", true, store.OwnerLimits{}); err != nil {
+			if _, err := davbackend.Write(ctx, st, &store.Calendar{ID: id, Components: []string{"VEVENT"}}, uid+".ics", decode(t, raw), []byte(raw), "", true, store.OwnerLimits{}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -76,7 +76,7 @@ func TestRangedQuerySkipsMatchForAnyRuleSpelling(t *testing.T) {
 	} {
 		raw := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VEVENT\r\nUID:" + name + "\r\nDTSTAMP:20261001T000000Z\r\n" +
 			"DTSTART:20261007T090000Z\r\nDTEND:20261007T100000Z\r\n" + rule + "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-		if _, err := davbackend.Write(ctx, st, cals[0].ID, name+".ics", decode(t, raw), []byte(raw), "", true, store.OwnerLimits{}); err != nil {
+		if _, err := davbackend.Write(ctx, st, cals[0], name+".ics", decode(t, raw), []byte(raw), "", true, store.OwnerLimits{}); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}

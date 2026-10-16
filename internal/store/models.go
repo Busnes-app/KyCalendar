@@ -126,8 +126,12 @@ type Calendar struct {
 	ID, OwnerKind, OwnerID, Slug, Name, Color, Description string
 	Seq                                                    int64
 	CreatedAt                                              time.Time
-	Subscribed                                             bool // mirrors an ICS link; its events are read-only
+	Subscribed                                             bool     // mirrors an ICS link; its events are read-only
+	Components                                             []string // VEVENT, VTODO or both, fixed at creation
 }
+
+// Holds reports whether objects of component type comp (VEVENT, VTODO) belong in c.
+func (c *Calendar) Holds(comp string) bool { return slices.Contains(c.Components, comp) }
 
 // Subscription is the ICS link a subscribed calendar mirrors. The link is a bearer secret:
 // URLSealed is encrypted and URLHost is the only part ever shown.
@@ -142,6 +146,7 @@ type Subscription struct {
 
 type CalendarObject struct {
 	CalendarID, Name, UID, ETag string
+	Component                   string // VEVENT or VTODO
 	Data                        []byte
 	FirstStart                  int64
 	LastEnd                     *int64

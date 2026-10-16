@@ -340,7 +340,7 @@ func TestDeleteUserRemovesTheirCalendars(t *testing.T) {
 	if err := cs.CreateCalendar(ctx, c, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: c.ID, Name: "a.ics", UID: "u", Data: []byte("abcd"), FirstStart: 1}, "", false, store.OwnerLimits{}); err != nil {
+	if _, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: c.ID, Name: "a.ics", Component: "VEVENT", UID: "u", Data: []byte("abcd"), FirstStart: 1}, "", false, store.OwnerLimits{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Users().DeleteUser(ctx, "usr_gone"); err != nil {
@@ -354,7 +354,7 @@ func TestDeleteUserRemovesTheirCalendars(t *testing.T) {
 	if err := cs.CreateCalendar(ctx, other, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: other.ID, Name: "b.ics", UID: "v", Data: []byte("efgh"), FirstStart: 1}, "", false, store.OwnerLimits{MaxTotalBytes: 4}); err != nil {
+	if _, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: other.ID, Name: "b.ics", Component: "VEVENT", UID: "v", Data: []byte("efgh"), FirstStart: 1}, "", false, store.OwnerLimits{MaxTotalBytes: 4}); err != nil {
 		t.Fatalf("deleted user's bytes still counted: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func calStore(t *testing.T) (store.CalendarStore, *store.Calendar) {
 }
 
 func obj(cal, name, uid, data string, first int64, last *int64) *store.CalendarObject {
-	return &store.CalendarObject{CalendarID: cal, Name: name, UID: uid, Data: []byte(data), FirstStart: first, LastEnd: last}
+	return &store.CalendarObject{CalendarID: cal, Name: name, Component: "VEVENT", UID: uid, Data: []byte(data), FirstStart: first, LastEnd: last}
 }
 
 func i64(v int64) *int64 { return &v }
@@ -105,7 +106,7 @@ func TestListObjectsInRange(t *testing.T) {
 	cs.PutObject(ctx, obj(c.ID, "in.ics", "i", "x", 100, i64(200)), "", false, store.OwnerLimits{})
 	cs.PutObject(ctx, obj(c.ID, "forever.ics", "f", "x", 5, nil), "", false, store.OwnerLimits{})
 	cs.PutObject(ctx, obj(c.ID, "future.ics", "u", "x", 1000, i64(2000)), "", false, store.OwnerLimits{})
-	got, err := cs.ListObjectsInRange(ctx, c.ID, 150, 500)
+	got, err := cs.ListObjectsInRange(ctx, c.ID, "VEVENT", 150, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,12 +119,51 @@ func TestListObjectsInRange(t *testing.T) {
 	}
 }
 
+// A range query reads one component type: a task never answers an event query, nor the reverse.
+func TestListObjectsInRangeByComponent(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	task := obj(c.ID, "task.ics", "t", "x", 100, nil)
+	task.Component = "VTODO"
+	cs.PutObject(ctx, obj(c.ID, "event.ics", "e", "x", 100, i64(200)), "", false, store.OwnerLimits{})
+	cs.PutObject(ctx, task, "", false, store.OwnerLimits{})
+	for comp, want := range map[string]string{"VEVENT": "event.ics", "VTODO": "task.ics"} {
+		got, err := cs.ListObjectsInRange(ctx, c.ID, comp, 150, 500)
+		if err != nil || len(got) != 1 || got[0].Name != want || got[0].Component != comp {
+			t.Fatalf("%s: %d objects, %v", comp, len(got), err)
+		}
+	}
+	// PUT may change an object's type; the index follows.
+	ev := obj(c.ID, "task.ics", "t", "y", 100, i64(200))
+	if _, err := cs.PutObject(ctx, ev, "", false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := cs.ListObjectsInRange(ctx, c.ID, "VTODO", 150, 500); len(got) != 0 {
+		t.Fatalf("replaced task still indexed as VTODO: %d", len(got))
+	}
+}
+
+func TestCalendarComponents(t *testing.T) {
+	ctx := context.Background()
+	cs, c := calStore(t)
+	if got, _ := cs.GetCalendarByID(ctx, c.ID); strings.Join(got.Components, ",") != "VEVENT" || !got.Holds("VEVENT") || got.Holds("VTODO") {
+		t.Fatalf("default calendar components %v, want VEVENT", got.Components)
+	}
+	both := &store.Calendar{ID: "cal_2", OwnerKind: "user", OwnerID: "usr_a", Slug: "both", Name: "b", Components: []string{"VEVENT", "VTODO"}}
+	if err := cs.CreateCalendar(ctx, both, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := cs.GetCalendarByID(ctx, "cal_2"); strings.Join(got.Components, ",") != "VEVENT,VTODO" {
+		t.Fatalf("components %v", got.Components)
+	}
+}
+
 // RFC 4791 §9.9: a zero-length event matches when DTSTART equals the range start.
 func TestListObjectsInRangeKeepsZeroLengthAtStart(t *testing.T) {
 	ctx := context.Background()
 	cs, c := calStore(t)
 	cs.PutObject(ctx, obj(c.ID, "point.ics", "p", "x", 150, i64(150)), "", false, store.OwnerLimits{})
-	got, err := cs.ListObjectsInRange(ctx, c.ID, 150, 500)
+	got, err := cs.ListObjectsInRange(ctx, c.ID, "VEVENT", 150, 500)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("got %d objects, %v", len(got), err)
 	}

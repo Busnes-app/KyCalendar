@@ -127,7 +127,7 @@ func newWorld(t *testing.T) *world {
 		}
 	}
 	put := func(name, uid string) {
-		o := &store.CalendarObject{CalendarID: w.group.ID, Name: name, UID: uid, Data: []byte(eventICS(uid))}
+		o := &store.CalendarObject{CalendarID: w.group.ID, Name: name, Component: "VEVENT", UID: uid, Data: []byte(eventICS(uid))}
 		if _, err := st.Calendars().PutObject(ctx, o, "", false, store.OwnerLimits{}); err != nil {
 			t.Fatal(err)
 		}

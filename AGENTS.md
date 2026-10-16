@@ -282,9 +282,9 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - DAV login failures: 10 per IP (IPv6 per /64) per 15 minutes; 50 per user only for a wrong secret on one of that user's own token IDs, so guessing without a token ID cannot lock a user out. The user is the token's owner; the Basic-auth name must match it case-insensitively.
 - Inherited QR device pairing (`/api/devices/pair/*`, `internal/devices`, header Pair Device) is removed (R27): it minted full sessions and no KyCalendar client uses it. The `device_pairings` table and migrations stay; never edit existing migrations.
 - Administrators (`kycalendar.admin`, see Plan 2) are refused (403) on DAV and on `/api/app-passwords`: admin identities are not everyday identities.
-- VEVENT only. PUT bodies are stored and served as the raw bytes received; the parsed form is used only for validation, indexing and filter matching.
+- VEVENT and VTODO, per calendar: each calendar's component set (VEVENT, VTODO or both, fixed at creation; see `internal/calendar` and `internal/davbackend`). PUT bodies are stored and served as the raw bytes received; the parsed form is used only for validation, indexing and filter matching.
 - Audit records older than 365 days are pruned daily by `cmd/server`, beside the change rows.
-- PROPFIND with `Depth: infinity` or no Depth header is 403 `DAV:propfind-finite-depth` (RFC 4918 §9.1). Sync tokens name their calendar's ID, so a token from a deleted calendar recreated at the same path is invalid and the client resyncs. RRULE/RDATE are accepted on VEVENT only, never on a nested component.
+- PROPFIND with `Depth: infinity` or no Depth header is 403 `DAV:propfind-finite-depth` (RFC 4918 §9.1). Sync tokens name their calendar's ID, so a token from a deleted calendar recreated at the same path is invalid and the client resyncs. RRULE/RDATE are accepted on VEVENT and VTODO only, never on a nested component.
 - Change rows older than 90 days are pruned daily by `cmd/server`; a sync token older than the prune horizon gets `ErrSyncTokenExpired` and the client resyncs.
 - Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
 
