@@ -49,6 +49,12 @@ updates:
         dependency-type: development
       npm-runtime:
         dependency-type: production
+    # FullCalendar 7 publishes only core and react; daygrid, timegrid, interaction and list
+    # stay on 6.x and pin core ~6.1, so a v7 group bump cannot even `npm ci`. Moving to 7
+    # is a migration of its own, not a Dependabot bump.
+    ignore:
+      - dependency-name: "@fullcalendar/*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
 
