@@ -10,8 +10,8 @@ afterEach(() => {
 });
 
 const cals: CalendarInfo[] = [
-  { id: 'cal_p', name: 'Mine', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '' },
-  { id: 'cal_r', name: 'News', color: '', description: '', kind: 'group', role: 'reader', dav_path: '' },
+  { id: 'cal_p', name: 'Mine', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'] },
+  { id: 'cal_r', name: 'News', color: '', description: '', kind: 'group', role: 'reader', dav_path: '', components: ['VEVENT'] },
 ];
 const recurring: EventInfo = {
   calendar_id: 'cal_p', uid: 'u1', recurrence_id: '20261012T070000Z', etag: 'e1', title: 'Standup',

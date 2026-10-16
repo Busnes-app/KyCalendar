@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ApiError, createCalendar, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo,
+  ApiError, HOLDS, createCalendar, holdsOf, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo, type Holds,
 } from '../calendarApi';
 
 interface Props {
@@ -67,6 +67,7 @@ function SubscriptionForm({ calendar, onSaved, onCancel }: { calendar?: Calendar
 
 export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Props) {
   const [name, setName] = useState('');
+  const [holds, setHolds] = useState<Holds>('events');
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: '', color: '' });
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +114,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
                 Delete
               </button>
             )}
+            {!c.components.includes('VEVENT') && <div className="kc-sub"><span>Tasks · open in a tasks app</span></div>}
             {c.subscription && (
               <div className="kc-sub">
                 <span>Subscribed · {c.subscription.host}</span>
@@ -163,11 +165,15 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
         className="kc-form"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (await run(() => createCalendar({ name }), 'Could not create the calendar')) setName('');
+          if (await run(() => createCalendar({ name, components: HOLDS[holds].components }), 'Could not create the calendar')) setName('');
         }}
       >
         <label htmlFor="kc-new-calendar">New calendar name</label>
         <input id="kc-new-calendar" value={name} maxLength={255} required onChange={(e) => setName(e.target.value)} />
+        <label htmlFor="kc-new-holds">Holds</label>
+        <select id="kc-new-holds" value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
+          {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
+        </select>
         <div className="kc-actions">
           <button type="submit">Add calendar</button>
           {!subscribing && <button type="button" className="btn-secondary" onClick={() => setSubscribing(true)}>Subscribe to a calendar</button>}

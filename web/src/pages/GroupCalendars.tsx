@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { JSON_HEADERS, send } from "../admin";
+import { HOLDS, holdsOf, type Holds } from "../calendarApi";
 
 interface Grant {
   group_id: string;
@@ -30,6 +31,7 @@ export default function GroupCalendars() {
   const [calendars, setCalendars] = useState<GroupCalendar[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [name, setName] = useState("");
+  const [holds, setHolds] = useState<Holds>("events");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -49,7 +51,7 @@ export default function GroupCalendars() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const res = await send("/api/admin/calendars", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name }) });
+    const res = await send("/api/admin/calendars", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name, components: HOLDS[holds].components }) });
     if (!res?.ok) {
       setError(await errorText(res, "Could not create the calendar"));
       return;
@@ -105,6 +107,12 @@ export default function GroupCalendars() {
         <label>
           Calendar name
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required />
+        </label>
+        <label>
+          Holds
+          <select value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
+            {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
+          </select>
         </label>
         <button type="submit">Create</button>
       </form>

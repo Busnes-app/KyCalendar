@@ -35,7 +35,7 @@ function setup(putStatus = 200) {
       puts.push({ url, body: JSON.parse(String(init.body)) });
       return new Response(JSON.stringify({ etag: 'e2', error: 'precondition_failed' }), { status: putStatus });
     }
-    if (url.startsWith('/api/calendars')) return new Response(JSON.stringify([{ id: 'cal_p', name: 'Mine', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '' }]), { status: 200 });
+    if (url.startsWith('/api/calendars')) return new Response(JSON.stringify([{ id: 'cal_p', name: 'Mine', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'] }]), { status: 200 });
     return new Response('[]', { status: 200 });
   });
   return puts;
