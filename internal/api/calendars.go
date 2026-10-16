@@ -24,6 +24,8 @@ type calendarView struct {
 	Kind        string `json:"kind"`
 	Role        string `json:"role"`
 	DAVPath     string `json:"dav_path"`
+	// Components is what the calendar holds: VEVENT, VTODO or both.
+	Components []string `json:"components"`
 	// Subscription is set on a calendar that mirrors an ICS link. The link itself is never sent.
 	Subscription *subscriptionView `json:"subscription,omitempty"`
 }
@@ -53,7 +55,7 @@ func (s *Server) viewOf(user *store.User, c *store.Calendar, role access.Role) c
 		kind, seg = "group", "_"+c.ID
 	}
 	return calendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, Kind: kind, Role: roleName(role),
-		DAVPath: davbackend.Prefix + "/" + user.ID + "/calendars/" + seg + "/"}
+		DAVPath: davbackend.Prefix + "/" + user.ID + "/calendars/" + seg + "/", Components: c.Components}
 }
 
 // visibleCalendars lists the user's personal calendars (creating the default) and every group
@@ -147,9 +149,10 @@ func (s *Server) handleListCalendars(w http.ResponseWriter, r *http.Request) {
 }
 
 type calendarBody struct {
-	Name        *string `json:"name"`
-	Color       *string `json:"color"`
-	Description *string `json:"description"`
+	Name        *string  `json:"name"`
+	Color       *string  `json:"color"`
+	Description *string  `json:"description"`
+	Components  []string `json:"components"` // create only; empty is VEVENT
 }
 
 // decodeCalendarBody validates a create or patch at the boundary; a present name must not be blank.
@@ -180,11 +183,15 @@ func (s *Server) handleCreateCalendar(w http.ResponseWriter, r *http.Request) {
 	if err == nil && b.Name == nil {
 		err = errors.New("Name is required")
 	}
+	var comps []string
+	if err == nil {
+		comps, err = calendar.Components(b.Components)
+	}
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	c := &store.Calendar{ID: "cal_" + uuid.NewString(), OwnerKind: "user", OwnerID: user.ID, Slug: "c-" + crypto.RandomHex(4), Name: *b.Name}
+	c := &store.Calendar{ID: "cal_" + uuid.NewString(), OwnerKind: "user", OwnerID: user.ID, Slug: "c-" + crypto.RandomHex(4), Name: *b.Name, Components: comps}
 	if b.Color != nil {
 		c.Color = *b.Color
 	}
@@ -213,6 +220,9 @@ func (s *Server) handlePatchCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := decodeCalendarBody(r)
+	if err == nil && b.Components != nil {
+		err = errors.New("Components are fixed when a calendar is created")
+	}
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return

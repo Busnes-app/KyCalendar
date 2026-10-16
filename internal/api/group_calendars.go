@@ -30,6 +30,7 @@ type groupCalendarView struct {
 	Color       string      `json:"color"`
 	Description string      `json:"description"`
 	CreatedAt   time.Time   `json:"created_at"`
+	Components  []string    `json:"components"`
 	Grants      []grantView `json:"grants"`
 }
 
@@ -42,7 +43,7 @@ func grantViews(gs []store.CalendarGrant) []grantView {
 }
 
 func groupCalendarViewOf(c *store.Calendar, gs []store.CalendarGrant) groupCalendarView {
-	return groupCalendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, CreatedAt: c.CreatedAt, Grants: grantViews(gs)}
+	return groupCalendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, CreatedAt: c.CreatedAt, Components: c.Components, Grants: grantViews(gs)}
 }
 
 // auditAction records an admin or access change by the session user; IDs and names only.
@@ -86,9 +87,10 @@ func (s *Server) handleListGroupCalendars(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleCreateGroupCalendar(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name        string `json:"name"`
-		Color       string `json:"color"`
-		Description string `json:"description"`
+		Name        string   `json:"name"`
+		Color       string   `json:"color"`
+		Description string   `json:"description"`
+		Components  []string `json:"components"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
@@ -103,8 +105,13 @@ func (s *Server) handleCreateGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	comps, err := calendar.Components(body.Components)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	id := "cal_" + uuid.NewString()
-	c := &store.Calendar{ID: id, OwnerKind: "group", OwnerID: id, Slug: "group", Name: body.Name, Color: body.Color, Description: body.Description}
+	c := &store.Calendar{ID: id, OwnerKind: "group", OwnerID: id, Slug: "group", Name: body.Name, Color: body.Color, Description: body.Description, Components: comps}
 	if err := s.store.Calendars().CreateCalendar(r.Context(), c, 0); err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to create the calendar")
 		return

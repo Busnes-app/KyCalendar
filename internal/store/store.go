@@ -290,7 +290,7 @@ type CalendarStore interface {
 	GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error)
 	GetObjectByUID(ctx context.Context, calendarID, uid string) (*CalendarObject, error)
 	ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error)
-	ListObjectsInRange(ctx context.Context, calendarID string, start, end int64) ([]*CalendarObject, error)
+	ListObjectsInRange(ctx context.Context, calendarID, component string, start, end int64) ([]*CalendarObject, error)
 	// PutObject enforces lim across every calendar of the target calendar's owner, atomically with the write.
 	PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits) (created bool, err error)
 	DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error

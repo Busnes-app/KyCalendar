@@ -36,6 +36,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug,
 		}
 		return err
 	}
+	cal.Components = []string{"VEVENT"} // the column default: a feed mirrors events only
 	sub.CalendarID, sub.OwnerID = cal.ID, cal.OwnerID
 	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_subscriptions
 (calendar_id, url_sealed, url_host, etag, last_modified, refreshed_at, checked_at, next_check_at, failures, error)
@@ -215,10 +216,10 @@ FROM calendar_usage WHERE id = 1`), calendarID).Scan(&used)
 		if err := c.bump(ctx, tx, calendarID, o.Name, false); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (calendar_id, name) DO UPDATE SET uid = excluded.uid, etag = excluded.etag, data = excluded.data,
+		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
-			o.CalendarID, o.Name, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
+			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
 		if err != nil {
 			return err
 		}

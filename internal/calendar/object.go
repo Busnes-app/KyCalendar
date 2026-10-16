@@ -4,6 +4,7 @@ package calendar
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -16,14 +17,15 @@ const MaxObjectSize = 1 << 20
 
 var (
 	ErrInvalidData          = errors.New("calendar: invalid calendar data")
-	ErrUnsupportedComponent = errors.New("calendar: only VEVENT is supported")
+	ErrUnsupportedComponent = errors.New("calendar: only VEVENT and VTODO are supported")
 )
 
 // Object is what the store indexes for one calendar resource.
 type Object struct {
+	Component  string // VEVENT or VTODO
 	UID        string
 	FirstStart int64  // unix seconds
-	LastEnd    *int64 // nil: recurs without end
+	LastEnd    *int64 // nil: recurs without end, or a task with neither DTSTART nor DUE
 }
 
 // zoneSlack widens bounds when a time's zone is unknown or floating: UTC-12 to UTC+14.
@@ -68,17 +70,21 @@ func wideTimeSet(opt *rrule.ROption) bool {
 func Inspect(cal *ical.Calendar) (Object, error) {
 	var o Object
 	first, last := int64(0), int64(0)
-	unbounded, seen := false, false
+	unbounded, undated, seen := false, false, false
 	budget, recurring := maxIndexOccurrences, 0
 
 	for _, comp := range cal.Children {
 		switch comp.Name {
 		case ical.CompTimezone:
 			continue
-		case ical.CompEvent:
+		case ical.CompEvent, ical.CompToDo:
 		default:
 			return Object{}, fmt.Errorf("%w: %s", ErrUnsupportedComponent, comp.Name)
 		}
+		if o.Component != "" && comp.Name != o.Component {
+			return Object{}, fmt.Errorf("%w: %s and %s in one object", ErrInvalidData, o.Component, comp.Name)
+		}
+		o.Component = comp.Name
 		uid, err := comp.Props.Text(ical.PropUID)
 		if err != nil || uid == "" {
 			return Object{}, fmt.Errorf("%w: missing UID", ErrInvalidData)
@@ -89,14 +95,27 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 		o.UID = uid
 		if recurs(comp.Children) {
 			// VALARM repeats with REPEAT/DURATION; a rule there is never indexed, only expanded by queries.
-			return Object{}, fmt.Errorf("%w: RRULE or RDATE inside VEVENT", ErrInvalidData)
+			return Object{}, fmt.Errorf("%w: RRULE or RDATE inside %s", ErrInvalidData, comp.Name)
 		}
 
-		start, end, slack, err := eventSpan(comp)
+		span := eventSpan
+		if comp.Name == ical.CompToDo {
+			span = taskSpan
+		}
+		start, end, slack, err := span(comp)
+		if errors.Is(err, errUndated) {
+			undated, unbounded = true, true
+			continue
+		}
 		if err != nil {
 			return Object{}, err
 		}
 		compFirst, compLast := start.Add(-slack), end.Add(slack)
+		if comp.Name == ical.CompToDo {
+			// A task's span is inclusive at both ends (RFC 4791 §9.9: a DUE-only task matches a
+			// range ending at DUE); the store's range test is first_start < end.
+			compFirst = compFirst.Add(-time.Second)
+		}
 
 		if comp.Props.Get(ical.PropRecurrenceRule) != nil && !unbounded {
 			recurring++
@@ -125,8 +144,11 @@ func Inspect(cal *ical.Calendar) (Object, error) {
 		}
 		seen = true
 	}
-	if !seen {
-		return Object{}, fmt.Errorf("%w: no VEVENT", ErrInvalidData)
+	switch {
+	case undated:
+		first = math.MinInt64 // every time range finds it
+	case !seen:
+		return Object{}, fmt.Errorf("%w: no VEVENT or VTODO", ErrInvalidData)
 	}
 	o.FirstStart = first
 	if !unbounded {
@@ -314,6 +336,56 @@ func eventSpan(comp *ical.Component) (time.Time, time.Time, time.Duration, error
 		end = start.Add(24 * time.Hour)
 	}
 	return start, end, slack, nil
+}
+
+// errUndated is a task with neither DTSTART nor DUE: it has no time to index.
+var errUndated = errors.New("undated task")
+
+// taskSpan returns a VTODO's index span: DTSTART to DUE or DTSTART+DURATION, else DUE alone.
+// RRULE and RDATE require DTSTART (RFC 5545 §3.8.5), so a task without one does not recur.
+func taskSpan(comp *ical.Component) (time.Time, time.Time, time.Duration, error) {
+	ds, due := comp.Props.Get(ical.PropDateTimeStart), comp.Props.Get(ical.PropDue)
+	if ds == nil && due == nil {
+		if recurs([]*ical.Component{comp}) {
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("%w: RRULE or RDATE without DTSTART", ErrInvalidData)
+		}
+		return time.Time{}, time.Time{}, 0, errUndated
+	}
+	if ds == nil {
+		t, slack, err := instant(due)
+		if err != nil {
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("%w: DUE", ErrInvalidData)
+		}
+		return t, t, slack, nil
+	}
+	start, slack, err := instant(ds)
+	if err != nil {
+		return time.Time{}, time.Time{}, 0, fmt.Errorf("%w: DTSTART", ErrInvalidData)
+	}
+	end := start
+	if due != nil {
+		t, dueSlack, err := instant(due)
+		if err != nil {
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("%w: DUE", ErrInvalidData)
+		}
+		// DUE before DTSTART is invalid (RFC 5545 §3.8.2.3) but stored: index the whole span.
+		start, end, slack = minTime(start, t), maxTime(start, t), max(slack, dueSlack)
+	} else if d, err := durationOf(comp); err == nil && d > 0 {
+		end = start.Add(d)
+	}
+	return start, end, slack, nil
+}
+
+// instant reads a DATE or DATE-TIME in UTC, with slack when its zone is floating or unknown.
+func instant(p *ical.Prop) (time.Time, time.Duration, error) {
+	if t, err := p.DateTime(time.UTC); err == nil {
+		if isFloating(p) {
+			return t, zoneSlack, nil
+		}
+		return t, 0, nil
+	}
+	t, err := parseFloating(p)
+	return t, zoneSlack, err
 }
 
 func durationOf(comp *ical.Component) (time.Duration, error) {

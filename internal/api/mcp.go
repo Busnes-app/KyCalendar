@@ -170,6 +170,8 @@ type mcpCalendar struct {
 	Color       string `json:"color,omitempty"`
 	Description string `json:"description,omitempty"`
 	ReadOnly    bool   `json:"read_only,omitempty"`
+	// Components is VEVENT, VTODO or both; events go only where VEVENT is listed.
+	Components []string `json:"components"`
 }
 
 type listCalendarsOut struct {
@@ -213,7 +215,7 @@ func (t mcpTools) listCalendars(ctx context.Context, _ *mcp.CallToolRequest, _ s
 	}
 	out := listCalendarsOut{Calendars: []mcpCalendar{}}
 	for _, c := range cals {
-		out.Calendars = append(out.Calendars, mcpCalendar{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, ReadOnly: c.Subscribed})
+		out.Calendars = append(out.Calendars, mcpCalendar{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, ReadOnly: c.Subscribed, Components: c.Components})
 	}
 	return nil, out, nil
 }

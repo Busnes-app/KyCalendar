@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
@@ -20,12 +21,16 @@ var ErrInvalidResource = errors.New("davbackend: not a valid calendar object res
 var ErrTooLarge = errors.New("davbackend: calendar object too large")
 
 // Write is the one write path for calendar objects, from CalDAV PUT and from web edits alike:
-// CalDAV validation, Inspect, then a store write with ETag preconditions, quotas and a change
-// row in one transaction.
-func Write(ctx context.Context, st store.Store, calendarID, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits) (*store.CalendarObject, error) {
-	o, err := Prepare(calendarID, name, cal, raw)
+// CalDAV validation, Inspect, the calendar's component set, then a store write with ETag
+// preconditions, quotas and a change row in one transaction. The component set is fixed at
+// creation, so checking it outside the transaction is safe.
+func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits) (*store.CalendarObject, error) {
+	o, err := Prepare(c.ID, name, cal, raw)
 	if err != nil {
 		return nil, err
+	}
+	if !c.Holds(o.Component) {
+		return nil, fmt.Errorf("%w: this calendar holds %s", calendar.ErrUnsupportedComponent, strings.Join(c.Components, " and "))
 	}
 	if _, err := st.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, lim); err != nil {
 		return nil, err
@@ -46,7 +51,7 @@ func Prepare(calendarID, name string, cal *ical.Calendar, raw []byte) (*store.Ca
 	if err != nil {
 		return nil, err
 	}
-	return &store.CalendarObject{CalendarID: calendarID, Name: name, UID: info.UID, Data: raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}, nil
+	return &store.CalendarObject{CalendarID: calendarID, Name: name, Component: info.Component, UID: info.UID, Data: raw, FirstStart: info.FirstStart, LastEnd: info.LastEnd}, nil
 }
 
 // EnsureDefault creates the user's default personal calendar when they own none.

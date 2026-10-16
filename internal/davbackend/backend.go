@@ -135,7 +135,7 @@ func (b *Backend) toDAV(ctx context.Context, c *store.Calendar, role access.Role
 		CTag:                  calendar.FormatSyncToken(epoch, c.ID, c.Seq), // seq alone repeats after a restore or a recreate
 		SyncToken:             calendar.FormatSyncToken(epoch, c.ID, c.Seq),
 		MaxResourceSize:       calendar.MaxObjectSize,
-		SupportedComponentSet: []string{ical.CompEvent},
+		SupportedComponentSet: c.Components,
 		ReadOnly:              !access.CanEditEvents(c, role),
 	}, nil
 }
@@ -236,13 +236,17 @@ func (b *Backend) CreateCalendar(ctx context.Context, cal *caldav.Calendar) erro
 	if err := calendar.CheckProps(&cal.Name, &cal.Description, &cal.Color); err != nil {
 		return webdav.NewHTTPError(http.StatusBadRequest, err)
 	}
+	comps, err := calendar.Components(cal.SupportedComponentSet)
+	if err != nil {
+		return webdav.NewHTTPError(http.StatusForbidden, err)
+	}
 	display := cal.Name
 	if display == "" {
 		display = slug
 	}
 	err = b.Store.Calendars().CreateCalendar(ctx, &store.Calendar{
 		ID: "cal_" + uuid.NewString(), OwnerKind: ownerUser, OwnerID: b.User.ID,
-		Slug: slug, Name: display, Description: cal.Description, Color: cal.Color,
+		Slug: slug, Name: display, Description: cal.Description, Color: cal.Color, Components: comps,
 	}, b.MaxCalendarsPerUser)
 	switch {
 	case errors.Is(err, store.ErrAlreadyExists):
@@ -331,9 +335,9 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 		return nil, err
 	}
 	var list []*store.CalendarObject
-	r, ranged := eventRange(q)
+	comp, r, ranged := queryRange(q)
 	if ranged {
-		list, err = b.Store.Calendars().ListObjectsInRange(ctx, c.ID, r[0], r[1])
+		list, err = b.Store.Calendars().ListObjectsInRange(ctx, c.ID, comp, r[0], r[1])
 	} else {
 		list, err = b.Store.Calendars().ListObjects(ctx, c.ID)
 	}
@@ -365,18 +369,19 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 	return out, nil
 }
 
-// eventRange returns the VEVENT time-range of a query as unix seconds, if it has one.
-func eventRange(q *caldav.CalendarQuery) ([2]int64, bool) {
+// queryRange returns the component and time-range of a VEVENT or VTODO query as unix seconds,
+// if it has one.
+func queryRange(q *caldav.CalendarQuery) (string, [2]int64, bool) {
 	for _, cf := range q.CompFilter.Comps {
-		if cf.Name == ical.CompEvent && !cf.Start.IsZero() {
+		if (cf.Name == ical.CompEvent || cf.Name == ical.CompToDo) && !cf.IsNotDefined && !cf.Start.IsZero() {
 			end := int64(1 << 62)
 			if !cf.End.IsZero() {
 				end = cf.End.Unix()
 			}
-			return [2]int64{cf.Start.Unix(), end}, true
+			return cf.Name, [2]int64{cf.Start.Unix(), end}, true
 		}
 	}
-	return [2]int64{}, false
+	return "", [2]int64{}, false
 }
 
 func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
@@ -396,7 +401,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
-	o, err := Write(ctx, b.Store, c.ID, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits())
+	o, err := Write(ctx, b.Store, c, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits())
 	switch {
 	case errors.Is(err, ErrTooLarge):
 		return nil, caldav.NewPreconditionError(caldav.PreconditionMaxResourceSize)

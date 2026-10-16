@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
+
+	"github.com/emersion/go-ical"
 )
 
 const (
@@ -24,4 +27,24 @@ func CheckProps(name, description, color *string) error {
 		return errors.New("calendar-color must be #RRGGBB or #RRGGBBAA")
 	}
 	return nil
+}
+
+// Components is the component set a calendar holds, in canonical order: VEVENT, VTODO or
+// both. An empty request is VEVENT, as every calendar was before tasks; any other name refuses.
+func Components(names []string) ([]string, error) {
+	if len(names) == 0 {
+		return []string{ical.CompEvent}, nil
+	}
+	var out []string
+	for _, c := range []string{ical.CompEvent, ical.CompToDo} {
+		if slices.Contains(names, c) {
+			out = append(out, c)
+		}
+	}
+	for _, n := range names {
+		if !slices.Contains(out, n) {
+			return nil, fmt.Errorf("%w: %q", ErrUnsupportedComponent, n)
+		}
+	}
+	return out, nil
 }

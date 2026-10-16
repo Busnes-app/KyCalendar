@@ -5,7 +5,9 @@ Pure iCalendar rules: what a calendar object must contain and how it is indexed;
 
 ## Local Contracts
 - No I/O. Callers pass decoded `*ical.Calendar`.
-- VEVENT only; one UID per object; every VEVENT needs DTSTART. RRULE or RDATE on a component inside a VEVENT (e.g. VALARM, which repeats with REPEAT/DURATION) is `ErrInvalidData`.
+- VEVENT or VTODO (VTIMEZONE beside them); one type and one UID per object; `Object.Component` names the type. Every VEVENT needs DTSTART. RRULE or RDATE on a component nested inside one (e.g. VALARM, which repeats with REPEAT/DURATION) is `ErrInvalidData`. Any other component is `ErrUnsupportedComponent`.
+- A VTODO indexes DTSTART to DUE or DTSTART+DURATION, else DUE alone (`taskSpan`), one second wider at the start (the span is inclusive; the store tests `first_start < end`), with the same zone slack and recurrence rules as events (a DUE-only rule runs from DUE). A task with neither DTSTART nor DUE is indexed unbounded (`FirstStart` = `math.MinInt64`, `LastEnd` nil), so every range finds it; RRULE or RDATE on one is `ErrInvalidData`.
+- `Components(names)` is the only component-set rule for MKCALENDAR and the API: empty is VEVENT; VEVENT, VTODO or both in that order; any other name is `ErrUnsupportedComponent`.
 - `Recurring(cal)` reports RRULE or RDATE on any component outside VTIMEZONE, read from the decoded object (go-ical upper-cases names and unfolds lines), so `rrule:` or a name folded mid-line cannot hide one. Callers use it, never a byte search.
 - `ResolveZone(tzid)` is the only TZID lookup for expansion and edits: tries IANA names via Go's data (the binary embeds `time/tzdata`), then Windows names through `windowsZones` (generated from CLDR release-48-2, territory 001, by `go generate`; the generator pins the source file's SHA-256), then old Thunderbird `/mozilla.org/<version>/<IANA>` paths. `loadIANA` helper refuses "" and "Local" at all lookup points. Unresolved zones are shown in UTC and flagged by callers.
 - `FirstStart`/`LastEnd` are conservative: unknown or floating zones widen by 14h; rules past 100 years, or needing more than 100000 occurrences, index as unbounded (`LastEnd == nil`).

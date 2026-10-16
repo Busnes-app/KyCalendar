@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"errors"
+	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -106,9 +107,13 @@ func TestInspectUnknownTZIDWidens(t *testing.T) {
 }
 
 func TestInspectRejects(t *testing.T) {
-	todo := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VTODO\nUID:t1\nDTSTAMP:20261001T000000Z\nEND:VTODO\nEND:VCALENDAR\n"
-	if _, err := Inspect(decode(t, todo)); !errors.Is(err, ErrUnsupportedComponent) {
-		t.Fatalf("VTODO: %v", err)
+	journal := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VJOURNAL\nUID:j1\nDTSTAMP:20261001T000000Z\nEND:VJOURNAL\nEND:VCALENDAR\n"
+	if _, err := Inspect(decode(t, journal)); !errors.Is(err, ErrUnsupportedComponent) {
+		t.Fatalf("VJOURNAL: %v", err)
+	}
+	mixed := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:m\nDTSTAMP:20261001T000000Z\nDTSTART:20261007T090000Z\nEND:VEVENT\nBEGIN:VTODO\nUID:m\nDTSTAMP:20261001T000000Z\nEND:VTODO\nEND:VCALENDAR\n"
+	if _, err := Inspect(decode(t, mixed)); !errors.Is(err, ErrInvalidData) {
+		t.Fatalf("VEVENT and VTODO in one object: %v", err)
 	}
 	noUID := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nDTSTAMP:20261001T000000Z\nDTSTART:20261007T090000Z\nEND:VEVENT\nEND:VCALENDAR\n"
 	if _, err := Inspect(decode(t, noUID)); !errors.Is(err, ErrInvalidData) {
@@ -393,4 +398,57 @@ func TestInspectNeverYieldingRuleIsUnboundedFast(t *testing.T) {
 			t.Errorf("%s: want unbounded, got %d", rule, *o.LastEnd)
 		}
 	}
+}
+
+func todo(body string) string {
+	return "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VTODO\nUID:t1\nDTSTAMP:20261001T000000Z\n" + body + "END:VTODO\nEND:VCALENDAR\n"
+}
+
+// A task indexes DTSTART to DUE (or DTSTART+DURATION), else DUE alone, one second wider at the
+// start so a range ending exactly at DUE finds it; one with neither is found by every range.
+func TestInspectTasks(t *testing.T) {
+	at := unix
+	ptr := func(v int64) *int64 { return &v }
+	cases := []struct {
+		name, body string
+		first      int64
+		last       *int64
+	}{
+		{"start and due", "DTSTART:20261007T090000Z\nDUE:20261009T170000Z\n", at("20261007T090000Z") - 1, ptr(at("20261009T170000Z"))},
+		{"start and duration", "DTSTART:20261007T090000Z\nDURATION:PT2H\n", at("20261007T090000Z") - 1, ptr(at("20261007T110000Z"))},
+		{"start only", "DTSTART:20261007T090000Z\n", at("20261007T090000Z") - 1, ptr(at("20261007T090000Z"))},
+		{"due only", "DUE:20261009T170000Z\n", at("20261009T170000Z") - 1, ptr(at("20261009T170000Z"))},
+		{"due before start", "DTSTART:20261009T170000Z\nDUE:20261007T090000Z\n", at("20261007T090000Z") - 1, ptr(at("20261009T170000Z"))},
+		{"floating due date", "DUE;VALUE=DATE:20261009\n", at("20261009T000000Z") - 14*3600 - 1, ptr(at("20261009T000000Z") + 14*3600)},
+		{"undated", "SUMMARY:someday\n", math.MinInt64, nil},
+		{"undated but completed", "STATUS:COMPLETED\nCOMPLETED:20261008T120000Z\n", math.MinInt64, nil},
+		{"recurring with count", "DTSTART:20261007T090000Z\nDUE:20261007T100000Z\nRRULE:FREQ=DAILY;COUNT=3\n", at("20261007T090000Z") - 1, ptr(at("20261009T100000Z"))},
+		{"recurring forever", "DUE:20261007T100000Z\nRRULE:FREQ=WEEKLY\n", at("20261007T100000Z") - 1, nil},
+	}
+	for _, c := range cases {
+		o, err := Inspect(decode(t, todo(c.body)))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if o.Component != ical.CompToDo || o.UID != "t1" || o.FirstStart != c.first || (o.LastEnd == nil) != (c.last == nil) || (c.last != nil && *o.LastEnd != *c.last) {
+			t.Fatalf("%s: %+v (last %v), want first %d last %v", c.name, o, deref(o.LastEnd), c.first, deref(c.last))
+		}
+	}
+	for name, body := range map[string]string{
+		"rule without dates":  "RRULE:FREQ=DAILY\n",
+		"rdate without dates": "RDATE:20261007T090000Z\n",
+		"bad due":             "DUE:tomorrow\n",
+		"rule in alarm":       "DUE:20261007T100000Z\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT5M\nRRULE:FREQ=DAILY\nEND:VALARM\n",
+	} {
+		if _, err := Inspect(decode(t, todo(body))); !errors.Is(err, ErrInvalidData) {
+			t.Fatalf("%s: %v, want ErrInvalidData", name, err)
+		}
+	}
+}
+
+func deref(p *int64) any {
+	if p == nil {
+		return nil
+	}
+	return *p
 }

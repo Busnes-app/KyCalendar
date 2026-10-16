@@ -250,7 +250,7 @@ func TestCalDAVRejectsBadData(t *testing.T) {
 	cal := "/dav/usr_alice/calendars/default/"
 	todo := strings.ReplaceAll(evA, "VEVENT", "VTODO")
 	if r := rawDAV(t, ts, "PUT", cal+"t.ics", "alice", token, todo, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 409 || !strings.Contains(readAll(r), "supported-calendar-component") {
-		t.Fatalf("VTODO: %d", r.StatusCode)
+		t.Fatalf("VTODO in an events calendar: %d", r.StatusCode)
 	}
 	rawDAV(t, ts, "PUT", cal+"a.ics", "alice", token, evA, map[string]string{"Content-Type": "text/calendar"})
 	if r := rawDAV(t, ts, "PUT", cal+"b.ics", "alice", token, evA, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 409 || !strings.Contains(readAll(r), "no-uid-conflict") {

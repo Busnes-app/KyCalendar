@@ -18,12 +18,44 @@ discover, sync, edit and are refused correctly.
 | Product boundary | Separate product | Inside KyPost: KyPost's turnkey plan excludes calendars from its first release, KyPost is mid-qualification at ~66k lines, and the installer must allow a calendar without KyPost. |
 | CalDAV library gaps | Fork as `Busnes-app/go-webdav`, upstream each patch | Own handler on go-ical: ~2k lines re-proving what go-webdav already does. Waiting for upstream: no date. |
 | Recurring-event edits in the web UI | "This occurrence" and "all occurrences" | "This and following" splits a series; deferred. Native clients may still do it and their data is stored as sent. |
-| Components | VEVENT only | VTODO (iOS Reminders) deferred; advertised via `supported-calendar-component-set`. |
+| Components | VEVENT and VTODO, per calendar (see "Tasks") | VJOURNAL, VFREEBUSY: no client need. One shared set for every calendar: DAVx5, Tasks.org and iOS Reminders pick task lists by `supported-calendar-component-set`. |
 
 go-webdav v0.7.0 facts that forced the fork (read from source): calendar PROPFIND has a fixed
 property set (no colour, `getctag` or `sync-token`); `current-user-privilege-set` always grants
 everything, so read-only calendars cannot be expressed; no `sync-collection` REPORT; PROPPATCH
 returns 501; `free-busy-query` is a TODO.
+
+## Tasks
+
+Added 2026-10-16 so a todo list can be shared between a user and their agent and synced to
+CalDAV task apps (DAVx5 with Tasks.org or jtx Board, iOS Reminders).
+
+- Each calendar has a component set fixed at creation: VEVENT (the default, and every calendar
+  that existed before), VTODO, or both. MKCALENDAR reads `supported-calendar-component-set`; the
+  web and admin forms offer Events, Tasks, or Events and tasks. A set naming anything else is
+  refused (MKCALENDAR 403, API 400) rather than silently narrowed. PROPPATCH cannot change it.
+- A PUT of a type outside the calendar's set is 409 `supported-calendar-component` (RFC 4791
+  §5.3.2.1), so a task never lands in an events calendar and the reverse.
+- Task bytes are stored and served unchanged, like events: SUMMARY, DESCRIPTION, DUE, DTSTART,
+  PRIORITY, STATUS, COMPLETED, PERCENT-COMPLETE, CATEGORIES, URL, RELATED-TO, VALARM, RRULE and
+  `X-` properties round-trip byte for byte.
+- Index rule: DTSTART to DUE (or DTSTART + DURATION), else DTSTART alone, else DUE alone; the
+  span is inclusive at both ends, so the index starts one second early. A task with neither
+  DTSTART nor DUE is indexed unbounded and every VTODO time-range query returns it: a superset
+  of RFC 4791 §9.9, which would narrow it by CREATED or COMPLETED. Undated tasks are what a
+  todo list holds most, and a client never loses one.
+- Objects record their type; a VEVENT range query never returns a task and a VTODO range
+  query never returns an event. Dated, non-recurring tasks are then matched exactly by the
+  fork's §9.9 VTODO table.
+- Recurring tasks index like recurring events (RRULE from DTSTART, or from DUE when there is no
+  DTSTART; RRULE or RDATE on a task with neither is invalid) and a time-range query keeps them on
+  the series' span without expanding them per query. Nothing expands task occurrences: there is
+  no task view, and clients compute the next occurrence themselves.
+- The web calendar, the JSON event API and the MCP event tools ignore tasks: tasks are never
+  listed as events, an event cannot be written into a task-only calendar (422 `tasks_only`), and
+  a task's UID is 404 to the event routes. Task lists show in the sidebar with a note to use a
+  tasks app.
+- ICS subscriptions stay events-only: the feed keeps VEVENTs and drops VTODO and VJOURNAL.
 
 ## Scope
 
@@ -80,7 +112,7 @@ Storage is SQLite through the base's DB layer.
 - Raw bytes are stored and served unchanged; parsing exists only to validate and index. Clients
   keep their `X-` properties.
 - PUT validation at the boundary: parses as iCalendar; all components share one UID; UID unique in
-  the calendar; VEVENT only; object ≤ 1 MiB and per-user object quota (both configurable);
+  the calendar; one VEVENT or VTODO type per object, and only a type in the calendar's set; object ≤ 1 MiB and per-user object quota (both configurable);
   `If-Match` and `If-None-Match` honoured.
 - Every write or delete increments the calendar's `seq` and appends to `changes` in the same
   transaction. `getctag` is the sync token (`sync_epoch` and `seq`), so it changes after a restore; the sync token is an opaque URL encoding `sync_epoch` and `seq`.

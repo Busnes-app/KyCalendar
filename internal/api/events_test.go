@@ -17,7 +17,7 @@ const recurringICS = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN
 
 func putObject(t *testing.T, st store.Store, cal *store.Calendar, name, uid, data string, first int64) {
 	t.Helper()
-	o := &store.CalendarObject{CalendarID: cal.ID, Name: name, UID: uid, Data: []byte(data), FirstStart: first}
+	o := &store.CalendarObject{CalendarID: cal.ID, Name: name, Component: "VEVENT", UID: uid, Data: []byte(data), FirstStart: first}
 	if _, err := st.Calendars().PutObject(context.Background(), o, "", false, store.OwnerLimits{}); err != nil {
 		t.Fatal(err)
 	}
