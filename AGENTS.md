@@ -255,6 +255,7 @@ Inherited from the scaffold; these rules apply to the server code.
 - `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
 
 - Deployment defaults: the image runs as UID/GID 10001 and sets `KY_HOST=0.0.0.0`; `docker-compose.yml` runs it `read_only` (tmpfs `/tmp`), `cap_drop: [ALL]`, `no-new-privileges`, and publishes `${KY_BIND_ADDRESS:-127.0.0.1}:8080`. The image embeds the committed `web/dist` (no frontend build stage) and pins base images by digest. `TestComposeAndImageAreHardenedByDefault` pins these. Host bind mounts `./data` and `./backups` must be owned by 10001 (README).
+- `GET /healthz` (`internal/api/health.go`) is public `ky.health/1` from `ky-primitives/health`: checks `database` and `backup` (degraded `last_run_failed` while the schedule is on and the last run failed); bodies carry fixed reason codes, never error text.
 - `make run` uses `./.dev-data` and `make clean` removes build output only: never `data/`, `backups/` or tracked files.
 - Container network IP configuration belongs to Compose: the optional
   `docker-compose.static-ip.yml` overlay requires `KY_CONTAINER_IP` and `KY_NETWORK_SUBNET`.

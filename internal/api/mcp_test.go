@@ -208,7 +208,7 @@ func TestMCPAuthentication(t *testing.T) {
 		"same-site origin too":              {map[string]string{"Authorization": "Bearer " + read, "Origin": "http://localhost:8080"}, 403},
 		"dav token":                         {map[string]string{"Authorization": "Bearer " + dav}, 401},
 		"token over Basic":                  {map[string]string{"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:"+read))}, 401},
-		"wrong secret":                      {map[string]string{"Authorization": "Bearer " + read[:len(read)-2] + "aa"}, 401},
+		"wrong secret":                      {map[string]string{"Authorization": "Bearer " + wrongSecret(read)}, 401},
 		"administrator":                     {map[string]string{"Authorization": "Bearer " + adminTok}, 403},
 	} {
 		if got := rawMCP(t, w.srv, c.header).Code; got != c.want {
@@ -687,4 +687,13 @@ func TestAgentSkill(t *testing.T) {
 			t.Errorf("skill error table lacks %q", msg)
 		}
 	}
+}
+
+// wrongSecret changes the token's last character, so it never equals the original.
+func wrongSecret(tok string) string {
+	last := byte('a')
+	if tok[len(tok)-1] == 'a' {
+		last = 'b'
+	}
+	return tok[:len(tok)-1] + string(last)
 }
