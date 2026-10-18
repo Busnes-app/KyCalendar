@@ -94,6 +94,12 @@ jobs:
       - name: Vendored go-webdav tests
         run: go -C third_party/go-webdav test ./...
 
+      # A pull request checkout is a merge commit: HEAD^1 is the base. The full byte-for-byte
+      # comparison needs the private fork: run scripts/check-fork-sync.sh <fork-checkout>.
+      - name: Vendored go-webdav moves only with its fork pin
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=2 origin "$GITHUB_SHA" && scripts/check-fork-sync.sh --since HEAD^1
+
       - name: Coverage summary
         run: |
           go tool cover -func=coverage.out | tail -n 1 | tee -a "$GITHUB_STEP_SUMMARY"

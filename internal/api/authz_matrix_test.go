@@ -339,6 +339,7 @@ func TestCalDAVAuthorizationMatrix(t *testing.T) {
 	propfind := `<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>`
 	patch := `<d:propertyupdate xmlns:d="DAV:"><d:set><d:prop><d:displayname>Renamed</d:displayname></d:prop></d:set></d:propertyupdate>`
 	sync := `<d:sync-collection xmlns:d="DAV:"><d:sync-token></d:sync-token><d:sync-level>1</d:sync-level><d:prop><d:getetag/></d:prop></d:sync-collection>`
+	freeBusy := `<c:free-busy-query xmlns:c="urn:ietf:params:xml:ns:caldav"><c:time-range start="20261001T000000Z" end="20261101T000000Z"/></c:free-busy-query>`
 	mk := `<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>x</d:displayname></d:prop></d:set></c:mkcalendar>`
 	group := func(me string) string { return "/dav/" + me + "/calendars/_" + w.group.ID + "/" }
 
@@ -351,6 +352,8 @@ func TestCalDAVAuthorizationMatrix(t *testing.T) {
 			davExpect(expect{reader: 207, editor: 207, manager: 207, owner: 404, nonmember: 404})},
 		{"group sync", "REPORT", group, sync, depth1,
 			davExpect(expect{reader: 207, editor: 207, manager: 207, owner: 404, nonmember: 404})},
+		{"group free-busy", "REPORT", group, freeBusy, depth1,
+			davExpect(expect{reader: 200, editor: 200, manager: 200, owner: 404, nonmember: 404})},
 		{"group get", "GET", func(me string) string { return group(me) + "seed.ics" }, "", nil,
 			davExpect(expect{reader: 200, editor: 200, manager: 200, owner: 404, nonmember: 404})},
 		{"group put", "PUT", func(me string) string { return group(me) + name(me) + "-new.ics" }, "", newICS,
@@ -365,6 +368,8 @@ func TestCalDAVAuthorizationMatrix(t *testing.T) {
 			davExpect(expect{owner: 403, reader: 403, editor: 403, manager: 403, nonmember: 403})},
 		{"owner's calendar", "PROPFIND", func(string) string { return "/dav/usr_owner/calendars/default/" }, propfind, depth0,
 			davExpect(expect{owner: 207, reader: 403, editor: 403, manager: 403, nonmember: 403})},
+		{"owner's calendar free-busy", "REPORT", func(string) string { return "/dav/usr_owner/calendars/default/" }, freeBusy, depth1,
+			davExpect(expect{owner: 200, reader: 403, editor: 403, manager: 403, nonmember: 403})},
 		{"owner's calendar put", "PUT", func(me string) string { return "/dav/usr_owner/calendars/default/" + name(me) + "-p.ics" }, "", newICS,
 			davExpect(expect{owner: 201, reader: 403, editor: 403, manager: 403, nonmember: 403})},
 	}

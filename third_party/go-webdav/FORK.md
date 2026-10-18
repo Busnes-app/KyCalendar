@@ -3,6 +3,9 @@
 Upstream: github.com/emersion/go-webdav v0.7.0 (MIT, see LICENSE). Module path unchanged;
 KyCalendar wires it with a `replace` in its go.mod.
 Source of truth for review and upstreaming: github.com/Busnes-app/go-webdav (branch `kycalendar`).
+KyCalendar vendors this branch byte for byte (without `.github`) in `third_party/go-webdav` and
+pins the commit in `third_party/go-webdav.commit`; `scripts/check-fork-sync.sh` there fails on
+any difference. Land a change here first, then sync it into KyCalendar.
 
 Patches (each one is a candidate upstream PR):
 
@@ -26,3 +29,7 @@ Patches (each one is a candidate upstream PR):
     `Calendar.SupportedComponentSet`; the backend decides which sets it accepts.
 11. VTODO time-range matching follows RFC 4791 §9.9's VTODO table (DTSTART with DURATION or
     DUE, DUE alone, COMPLETED and CREATED, else always).
+12. CALDAV:free-busy-query REPORT (RFC 4791 §7.10) through an optional FreeBusyBackend, which
+    returns busy periods only; the handler clips them to the range, merges them per FBTYPE and
+    renders one VFREEBUSY, so no event data reaches the reply. Calendar collections only;
+    advertised in supported-report-set only when the backend implements it.
