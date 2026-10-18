@@ -57,6 +57,19 @@ CalDAV task apps (DAVx5 with Tasks.org or jtx Board, iOS Reminders).
   tasks app.
 - ICS subscriptions stay events-only: the feed keeps VEVENTs and drops VTODO and VJOURNAL.
 
+## Free/busy
+
+Added 2026-10-17.
+
+- `CALDAV:free-busy-query` (RFC 4791 §7.10) on any calendar the caller can read answers one
+  VFREEBUSY: busy periods only, merged per FBTYPE, never summary, location, attendees or UID.
+  `TRANSP:TRANSPARENT` and `STATUS:CANCELLED` instances are free; `STATUS:TENTATIVE` is
+  `BUSY-TENTATIVE`. Floating times and dates are read as UTC. Bounded like the event API (400
+  days, 5000 instances, 2 s), else 403. Calendars still never store VFREEBUSY.
+- Looking up another person's free/busy is RFC 6638 scheduling-outbox work and ships with
+  invitations behind their feature flag. Advertising `calendar-auto-schedule` before the server
+  delivers invitations would make Thunderbird stop sending its own.
+
 ## Scope
 
 In v1a: identity and access, storage, CalDAV with sync tokens, app passwords, JSON API, recurrence
