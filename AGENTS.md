@@ -238,7 +238,7 @@ When the user requests a durable behavior change, record it here or in the relev
 ## KyCalendar
 
 - Purpose: the suite calendar, a separate product serving personal and group calendars to the web UI and native CalDAV clients.
-- Design contract: `docs/superpowers/specs/2026-10-06-kycalendar-v1a-design.md` (Go on the `ky_server_base` scaffold, forked `go-webdav` CalDAV, FullCalendar standard). Invitations (v1b), KyPost RSVP, KyMessages call links and kypost-android sync are separate specs.
+- Design contract: `docs/superpowers/specs/2026-10-06-kycalendar-v1a-design.md` (Go on the `ky_server_base` scaffold, forked `go-webdav` CalDAV, FullCalendar standard). Invitations (v1b, draft: `docs/superpowers/specs/2026-10-17-kycalendar-v1b-invitations-design.md`), KyPost RSVP, KyMessages call links and kypost-android sync are separate specs.
 
 ### Server contracts
 
