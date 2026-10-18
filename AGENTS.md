@@ -286,6 +286,8 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - Audit records older than 365 days are pruned daily by `cmd/server`, beside the change rows.
 - PROPFIND with `Depth: infinity` or no Depth header is 403 `DAV:propfind-finite-depth` (RFC 4918 §9.1). Sync tokens name their calendar's ID, so a token from a deleted calendar recreated at the same path is invalid and the client resyncs. RRULE/RDATE are accepted on VEVENT and VTODO only, never on a nested component.
 - Change rows older than 90 days are pruned daily by `cmd/server`; a sync token older than the prune horizon gets `ErrSyncTokenExpired` and the client resyncs.
+- `third_party/go-webdav` is Busnes-app/go-webdav (`kycalendar`) byte for byte at `third_party/go-webdav.commit`; change the fork first, then `scripts/check-fork-sync.sh --write`. CI refuses a vendored edit that does not move the pin.
+- `TestCalDAVWireSurface` pins what clients see (OPTIONS headers; PROPFIND of the discovery and scheduling props); regenerate its golden only on purpose (`KY_UPDATE_GOLDEN=1`). `scripts/interop/run.sh` drives a built server with python `caldav`.
 - Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
 
 #### Plan 2 access contracts
