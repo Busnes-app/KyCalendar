@@ -49,6 +49,13 @@ A digest-pinned install (`KY_IMAGE` in `.env`) gets nothing from `pull`: re-run 
 `make run` never touches `./data` or `./backups`, which hold the container's live database,
 key and capsules, and `make clean` removes only build output.
 
+## Monitoring
+
+`GET /healthz` is public and answers the suite's `ky.health/1` JSON for KyPulse: 200 while
+`ok` or `degraded`, 503 when `down`. It names two checks, `database` and `backup`, and never an
+error message; `backup` is `degraded` (`last_run_failed`) while the schedule is on and the last
+run failed. Results are cached for 5 seconds.
+
 ## Network and container defaults
 
 - A bare binary listens on `127.0.0.1`; set `KY_HOST=0.0.0.0` to listen on every interface.

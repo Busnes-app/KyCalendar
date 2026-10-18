@@ -261,6 +261,8 @@ func (s *Server) handle(pattern string, h http.Handler) {
 }
 
 func (s *Server) routes() {
+	// Public ky.health/1 for KyPulse: status and fixed reason codes only.
+	s.handle("GET /healthz", s.healthHandler())
 	s.handle("GET /api/installer/network", http.HandlerFunc(s.handleInstallerNetwork))
 	s.handle("POST /api/installer/directory", http.HandlerFunc(s.handleInstallerDirectory))
 	// Auth
