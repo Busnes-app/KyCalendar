@@ -356,6 +356,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/calendars/{id}/events", s.requireEveryday(s.handleCreateEvent))
 	s.handle("PUT /api/events/{cal}/{uid}", s.requireEveryday(s.handleUpdateEvent))
 	s.handle("DELETE /api/events/{cal}/{uid}", s.requireEveryday(s.handleDeleteEvent))
+	s.handle("POST /api/events/{cal}/{uid}/rsvp", s.requireEveryday(s.handleRSVP))
 	s.handle("POST /api/subscriptions", s.requireEveryday(s.handleCreateSubscription))
 	s.handle("PATCH /api/subscriptions/{id}", s.requireEveryday(s.handlePatchSubscription))
 	s.handle("POST /api/calendars/{id}/refresh", s.requireEveryday(s.handleRefreshSubscription))

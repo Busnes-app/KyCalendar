@@ -51,3 +51,7 @@
 .kc-dialog { color: var(--ky-ink); box-sizing: border-box; width: min(32rem, 100vw - 2rem); max-width: min(32rem, 100vw - 2rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; background: var(--ky-panel); border: 1px solid var(--ky-line); border-radius: var(--ky-radius); }
 .kc-dialog input:not([type='checkbox']):not([type='radio']), .kc-dialog select, .kc-dialog textarea { display: block; width: 100%; box-sizing: border-box; }
 .kc-dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+.kc-people { list-style: none; padding: 0; margin: 0.25rem 0; display: grid; gap: 0.25rem; }
+.kc-people li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
+.kc-invite { display: flex; gap: 0.5rem; }
+.kc-invite input { flex: 1; min-width: 0; }

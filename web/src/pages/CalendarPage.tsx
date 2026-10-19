@@ -84,7 +84,8 @@ export function toFcEvent(ev: EventInfo, color: string): EventInput {
 
 const narrow = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
 
-export function CalendarPage() {
+// scheduling and me (the user's email) let the event dialog offer invitations.
+export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boolean; me?: string }) {
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
@@ -259,6 +260,8 @@ export function CalendarPage() {
             initial={dialog.initial}
             onClose={closeDialog}
             onDone={closeDialog}
+            scheduling={scheduling}
+            me={me}
           />
         )}
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, updateEvent, type CalendarInfo, type EventInfo, type Freq } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, rsvp, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { linkify } from '../linkify';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
@@ -10,6 +10,8 @@ interface Props {
   initial: FormState;
   onDone: () => void;
   onClose: () => void;
+  scheduling?: boolean; // server sends invitations
+  me?: string; // signed-in user's email
 }
 
 const PRESETS: { value: Freq; label: string }[] = [
@@ -20,12 +22,17 @@ const PRESETS: { value: Freq; label: string }[] = [
   { value: 'yearly', label: 'Yearly' },
 ];
 
+const ANSWERS = new Map([['ACCEPTED', 'Accepted'], ['TENTATIVE', 'Maybe'], ['DECLINED', 'Declined'], ['DELEGATED', 'Delegated']]);
+const answerText = (status?: string) => ANSWERS.get(status ?? '') ?? 'Awaiting reply';
+const BUTTONS: [Answer, string][] = [['ACCEPTED', 'Accept'], ['TENTATIVE', 'Maybe'], ['DECLINED', 'Decline']];
+const sameEmail = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
 function message(e: unknown, fallback: string): string {
   if (e instanceof ApiError && e.status === 412) return 'This event changed elsewhere. Close and reopen it to see the latest version.';
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, onDone, onClose }: Props) {
+export function EventDialog({ calendars, event, initial, onDone, onClose, scheduling = false, me = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose || !event ? 'this' : 'all');
@@ -36,6 +43,12 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
   const first = useRef<HTMLInputElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const readOnly = event !== undefined && !event.editable;
+  const invited = scheduling && !!event?.my_status;
+  // Only the organizer (or anyone, before there is one) manages people; the server lists the organizer itself.
+  const organizes = scheduling && !readOnly && !invited && !!me && (!event?.organizer || sameEmail(event.organizer, me));
+  const [loaded] = useState(() => (event?.attendees ?? []).filter((a) => !sameEmail(a.email, me)));
+  const [people, setPeople] = useState(loaded);
+  const [invitee, setInvitee] = useState('');
 
   useEffect(() => {
     const d = dialog.current!;
@@ -79,7 +92,26 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
       setError(body);
       return;
     }
+    if (organizes && (people.length !== loaded.length || people.some((p, i) => p.email !== loaded[i].email))) body.attendees = people.map((p) => p.email);
     void act(() => (event ? updateEvent(event, body) : createEvent(form.calendarId, body)), 'Could not save the event');
+  }
+
+  function invite() {
+    const email = invitee.trim();
+    if (!/^[^\s@]+@[^\s@]+$/.test(email)) {
+      setError('Enter an email address like name@example.com');
+      return;
+    }
+    setError(null);
+    setInvitee('');
+    if (!sameEmail(email, me) && !people.some((p) => sameEmail(p.email, email))) setPeople([...people, { email, status: 'NEEDS-ACTION' }]);
+  }
+
+  function answer(partstat: Answer) {
+    if (!event) return;
+    // An occurrence answer only where the user can pick "This event"; otherwise the series.
+    const rid = !readOnly && choose && scope === 'this' ? event.recurrence_id : undefined;
+    void act(() => rsvp(event.calendar_id, event.uid, event.etag, partstat, rid), 'Could not send your answer');
   }
 
   function remove() {
@@ -87,6 +119,20 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
     if (!window.confirm(scope === 'this' ? 'Delete this occurrence?' : event.recurring ? 'Delete every occurrence of this event?' : 'Delete this event?')) return;
     void act(() => deleteEvent(event, scope), 'Could not delete the event');
   }
+
+  const invitation = invited && (
+    <>
+      {event!.organizer && <p>Organized by {event!.organizer}</p>}
+      <ul className="kc-people">
+        {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span></li>)}
+      </ul>
+      <div className="kc-actions" role="group" aria-label="Your answer">
+        {BUTTONS.map(([value, label]) => (
+          <button key={value} type="button" className="btn-secondary" aria-pressed={event!.my_status === value} disabled={busy} onClick={() => answer(value)}>{label}</button>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <dialog ref={dialog} aria-labelledby="kc-event-title" className="kc-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
@@ -97,6 +143,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
           <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
+          {invitation}
           <div className="kc-actions">
             <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
           </div>
@@ -111,6 +158,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
             </fieldset>
           )}
           {event?.recurring && scope === 'all' && <p>{MOVE_ALL_WARNING}</p>}
+          {invitation}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
@@ -153,6 +201,25 @@ export function EventDialog({ calendars, event, initial, onDone, onClose }: Prop
             )
           )}
           {scope === 'this' && event && form.freq === 'custom' && <p>Repeats: <span>Custom (edit on your device)</span></p>}
+          {organizes && (
+            <>
+              <label htmlFor="kc-invite">People</label>
+              {people.length > 0 && (
+                <ul className="kc-people">
+                  {people.map((p) => (
+                    <li key={p.email}>
+                      <span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
+                      <button type="button" className="btn-secondary kc-small kc-push" aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="kc-invite">
+                <input id="kc-invite" inputMode="email" autoComplete="off" placeholder="name@example.com" maxLength={320} value={invitee} onChange={(e) => setInvitee(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); invite(); } }} />
+                <button type="button" className="btn-secondary" onClick={invite}>Invite</button>
+              </div>
+            </>
+          )}
           <div className="kc-actions">
             <button type="submit" disabled={busy}>Save</button>
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
