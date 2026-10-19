@@ -1,6 +1,8 @@
 """CalDAV interop checks against a running KyCalendar, driven by scripts/interop/run.sh.
 
-An independent client (python caldav) plus raw HTTP for byte-exact and header checks. Every
+An independent client (python caldav) plus raw HTTP for byte-exact and header checks; with
+KY_INTEROP_SCHEDULING=1 it also checks discovery, an internal invite and answer, and outbox
+free/busy (37 checks). Every
 check prints PASS or FAIL; the exit status is the number of failures.
 """
 
@@ -149,6 +151,60 @@ if os.environ.get("KY_INTEROP_FREEBUSY") == "1":
     check("free-busy reveals no event details", "Secret" not in text and "Interop" not in text and busy not in text, text)
     fb = cal.freebusy_request(datetime(2026, 11, 10, tzinfo=timezone.utc), datetime(2026, 11, 11, tzinfo=timezone.utc))
     check("independent client parses the VFREEBUSY", "VFREEBUSY" in fb.data, fb.data[:200])
+
+# Server-side scheduling (RFC 6638), when the server runs with it on.
+if want_sched:
+    import time
+
+    check("client sees scheduling support", client.check_scheduling_support() is True)
+    addrs = [str(a) for a in principal.calendar_user_address_set()]
+    check("calendar-user-address-set is the user's email", "mailto:alice@example.com" in [a.lower() for a in addrs], str(addrs))
+    check("schedule inbox discovered", principal.schedule_inbox().url.path.endswith("/calendars/_inbox/"))
+    check("schedule outbox discovered", principal.schedule_outbox().url.path.endswith("/calendars/_outbox/"))
+
+    bob_id, bob_tok = USERS["bob"]
+    bob_home = f"/dav/{bob_id}/calendars/default/"
+    muid = f"interop-meet-{uuid.uuid4()}"
+    meet = event(muid, "20261112T150000Z", "20261112T160000Z",
+                 "ORGANIZER:mailto:alice@example.com\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com\r\n"
+                 "ATTENDEE;RSVP=TRUE:mailto:bob@example.com\r\nLOCATION:Room 4\r\n")
+    status, _, _ = raw("alice", "PUT", f"{home}{muid}.ics", meet, {"Content-Type": "text/calendar", "If-None-Match": "*"})
+    check("organizer PUT with an internal attendee", status == 201, str(status))
+
+    def bob_copy():
+        bob_cal = caldav.DAVClient(url=BASE + bob_home, username="bob", password=bob_tok).calendar(url=BASE + bob_home)
+        for ev in bob_cal.events():
+            if muid in ev.data:
+                return ev
+        return None
+
+    copy = None
+    for _ in range(30):  # the delivery worker runs every 5 s
+        copy = bob_copy()
+        if copy:
+            break
+        time.sleep(1)
+    check("invitation delivered to the attendee's calendar", copy is not None and "NEEDS-ACTION" in copy.data)
+
+    if copy is not None:
+        status, _, _ = raw("bob", "PUT", str(copy.url.path), copy.data.replace("NEEDS-ACTION", "ACCEPTED").encode(),
+                           {"Content-Type": "text/calendar"})
+        check("attendee accepts", status in (201, 204), str(status))
+        answered = False
+        for _ in range(30):
+            _, _, got = raw("alice", "GET", f"{home}{muid}.ics")
+            if b"PARTSTAT=ACCEPTED" in got and b"bob@example.com" in got and got.count(b"ACCEPTED") >= 2:
+                answered = True
+                break
+            time.sleep(1)
+        check("organizer's copy records the answer", answered)
+
+    fb = principal.freebusy_request(datetime(2026, 11, 12, tzinfo=timezone.utc), datetime(2026, 11, 13, tzinfo=timezone.utc),
+                                    ["mailto:bob@example.com"])
+    bob_fb = fb.get("mailto:bob@example.com")  # the client returns {address: FreeBusy, "errors": {...}}
+    text = str(bob_fb.data) if bob_fb is not None else repr(fb)
+    check("outbox free/busy has bob's busy meeting", "20261112T150000Z/20261112T160000Z" in text, text[:300])
+    check("outbox free/busy reveals no details", "Room 4" not in text and muid not in text, text[:300])
 
 print(f"{failures} failure(s)")
 sys.exit(min(failures, 100))

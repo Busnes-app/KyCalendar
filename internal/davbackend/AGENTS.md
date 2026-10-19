@@ -26,6 +26,19 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
     - a message whose ORGANIZER is not its sender (REQUEST, CANCEL), or not its recipient (REPLY), fails;
     - so does one meeting an existing object with that UID and another ORGANIZER (`uid_taken`), so no internal user can overwrite another's event by reusing its UID.
   - External recipients fail at once (`no_transport`) until KyPost delivery exists. Retries back off from 1 minute to 1 hour, and messages are dropped after 24 hours. Rows carry fixed reason codes, never bodies or addresses.
+- Scheduling surface (`surface.go`, fork patch 13): `Scheduling` is nil unless `Sched` is set and the user has an address, so the fork advertises nothing then.
+  - **Discovery:** the address is `mailto:<email>`. The inbox is `<home>_inbox/` and the outbox `<home>_outbox/`, `_` names that no calendar slug or `_cal_<uuid>` group segment can take. The default calendar is `<home>default/`.
+  - **The inbox is always empty:** deliveries go straight to calendars. Listing, query and sync answer nothing, with one sync token per epoch.
+  - **Outbox free/busy:**
+    - the organizer must be the caller (else 403);
+    - at most 50 recipients and 62 days (else 403);
+    - people on this instance (`store.CalendarUser`) get busy times from their personal, non-subscribed event calendars (`busyIn`, the same bounds as `QueryFreeBusy`; past them `5.1`);
+    - anyone else gets `3.7`.
+  - **Other properties:**
+    - Subscribed calendars are `schedule-calendar-transp` transparent.
+    - `Schedule-Tag` (`itip.ScheduleTag`) is served on GET and PUT for objects with ORGANIZER.
+    - `If-Schedule-Tag-Match` is 412 when the stored tag differs or the object is missing. Otherwise the stored ETag becomes the write's If-Match, so check and write are one condition.
+  - `handleDAV` guards POST bodies like PUT bodies.
 - Bytes from PUT are stored as received; GET, calendar-data and sync serve `Raw` and never decode. Only objects that go through `caldav.Match` are decoded.
 - Per-user caps answer 507 (`store.ErrQuotaExceeded`): objects on create, calendars on MKCALENDAR and default creation, stored bytes on every PUT (total minus the replaced object plus the new body). The store enforces them atomically; the backend only passes the limits.
 - Calendar properties are bounded at this boundary (`calendar.CheckProps`): `calendar-color` empty or `#RRGGBB`/`#RRGGBBAA`, `displayname` at most 255 bytes, `calendar-description` at most 4096 bytes. MKCALENDAR over a bound is 400; PROPPATCH is 403 for the whole request, nothing is stored.

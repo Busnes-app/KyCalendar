@@ -13,6 +13,7 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
+	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
 // One free-busy-query is bounded like GET /api/events.
@@ -40,33 +41,40 @@ func (b *Backend) QueryFreeBusy(ctx context.Context, p string, start, end time.T
 	if !c.Holds(ical.CompEvent) {
 		return nil, nil
 	}
-	objs, err := b.Store.Calendars().ListObjectsInRange(ctx, c.ID, ical.CompEvent, start.Unix(), end.Unix())
-	if err != nil {
-		return nil, err
-	}
-	begun := time.Now()
+	return busyIn(ctx, b.Store, []*store.Calendar{c}, start, end, time.Now())
+}
+
+// busyIn is the busy periods of cals' events in [start, end): at most maxFreeBusyInstances in
+// all and maxFreeBusyTime from begun, else errFreeBusyTooBig.
+func busyIn(ctx context.Context, st store.Store, cals []*store.Calendar, start, end, begun time.Time) ([]caldav.FreeBusyPeriod, error) {
 	var out []caldav.FreeBusyPeriod
-	for _, o := range objs {
-		if time.Since(begun) > maxFreeBusyTime {
-			return nil, errFreeBusyTooBig
-		}
-		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
-		if err != nil {
-			return nil, fmt.Errorf("stored object %s/%s does not parse: %w", c.ID, o.Name, err)
-		}
-		busy, err := calendar.BusyTimes(cal, start, end, time.UTC, maxFreeBusyInstances-len(out))
-		if errors.Is(err, calendar.ErrTooManyInstances) {
-			return nil, errFreeBusyTooBig
-		}
+	for _, c := range cals {
+		objs, err := st.Calendars().ListObjectsInRange(ctx, c.ID, ical.CompEvent, start.Unix(), end.Unix())
 		if err != nil {
 			return nil, err
 		}
-		for _, bt := range busy {
-			typ := caldav.FreeBusy
-			if bt.Tentative {
-				typ = caldav.FreeBusyTentative
+		for _, o := range objs {
+			if time.Since(begun) > maxFreeBusyTime {
+				return nil, errFreeBusyTooBig
 			}
-			out = append(out, caldav.FreeBusyPeriod{Start: bt.Start, End: bt.End, Type: typ})
+			cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+			if err != nil {
+				return nil, fmt.Errorf("stored object %s/%s does not parse: %w", c.ID, o.Name, err)
+			}
+			busy, err := calendar.BusyTimes(cal, start, end, time.UTC, maxFreeBusyInstances-len(out))
+			if errors.Is(err, calendar.ErrTooManyInstances) {
+				return nil, errFreeBusyTooBig
+			}
+			if err != nil {
+				return nil, err
+			}
+			for _, bt := range busy {
+				typ := caldav.FreeBusy
+				if bt.Tentative {
+					typ = caldav.FreeBusyTentative
+				}
+				out = append(out, caldav.FreeBusyPeriod{Start: bt.Start, End: bt.End, Type: typ})
+			}
 		}
 	}
 	return out, nil
