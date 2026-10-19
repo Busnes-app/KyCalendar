@@ -195,8 +195,8 @@ func TestSignificantAndBumpSequence(t *testing.T) {
 	}
 	moved := ics(t, "SEQUENCE:3", "ATTENDEE:mailto:bob@example.com")
 	moved.Children[0].Props.SetText(ical.PropLocation, "Room 2")
-	if !BumpSequence(old, moved) || moved.Children[0].Props.Get(ical.PropSequence).Value != "4" {
-		t.Errorf("location change: SEQUENCE %v", moved.Children[0].Props.Get(ical.PropSequence))
+	if !BumpSequence(old, moved) || !strings.Contains(encode(t, moved), "\r\nSEQUENCE:4\r\n") {
+		t.Errorf("location change:\n%s", encode(t, moved))
 	}
 	bumped := ics(t, "SEQUENCE:9", "DTEND:20261110T110000Z")
 	if BumpSequence(old, bumped) {

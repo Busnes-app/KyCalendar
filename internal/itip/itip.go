@@ -421,7 +421,9 @@ func BumpSequence(oldCal, newCal *ical.Calendar) bool {
 	bumped := false
 	for _, c := range events(newCal) {
 		if sequence(c) <= top {
-			c.Props.SetText(ical.PropSequence, strconv.Itoa(min(top+1, 1<<31-1)))
+			p := ical.NewProp(ical.PropSequence) // SetText would mark the integer VALUE=TEXT
+			p.Value = strconv.Itoa(min(top+1, 1<<31-1))
+			c.Props.Set(p)
 			bumped = true
 		}
 	}
