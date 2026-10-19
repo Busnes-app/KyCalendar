@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
+	"github.com/Busnes-app/ky-primitives/syncauth"
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/feed"
+	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/scim"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -50,16 +52,18 @@ type Server struct {
 	// feed mirrors subscribed calendars; its client reaches public HTTPS addresses only.
 	feed *feed.Refresher
 	// sched is server-side scheduling; nil while KYCALENDAR_SCHEDULING is off.
-	sched      *davbackend.Scheduler
-	scim       *scim.Server
-	recovery   recoveryClient
-	mux        *http.ServeMux
-	patterns   []string // every registered route, for the authorization matrix
-	attemptsMu sync.Mutex
-	attempts   map[string]attemptWindow
-	accounts   map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
-	davFails   davFailures
-	powSpent   auth.PoWSpent
+	sched *davbackend.Scheduler
+	// kypostReplay remembers KyPost event IDs inside the signature window.
+	kypostReplay syncauth.Replay
+	scim         *scim.Server
+	recovery     recoveryClient
+	mux          *http.ServeMux
+	patterns     []string // every registered route, for the authorization matrix
+	attemptsMu   sync.Mutex
+	attempts     map[string]attemptWindow
+	accounts     map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
+	davFails     davFailures
+	powSpent     auth.PoWSpent
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
@@ -175,6 +179,14 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	if cfg.Calendar.Scheduling {
 		s.sched = &davbackend.Scheduler{Store: st, Limits: s.objectLimits()}
+		if cfg.Calendar.KyPostURL != "" {
+			policy := feed.RefusePrivate
+			if cfg.Calendar.KyPostAllowPrivate {
+				policy = sso.RefuseLocal
+			}
+			s.sched.KyPost = &kypost.Client{BaseURL: cfg.Calendar.KyPostURL, Secret: cfg.Calendar.KyPostSecret, HTTP: sso.NewGuardedClient(policy, nil)}
+			s.kypostReplay = syncauth.NewMemoryReplay(syncauth.DefaultWindow, 100000)
+		}
 	}
 	s.routes()
 	return s
@@ -357,6 +369,11 @@ func (s *Server) routes() {
 	s.handle("PUT /api/events/{cal}/{uid}", s.requireEveryday(s.handleUpdateEvent))
 	s.handle("DELETE /api/events/{cal}/{uid}", s.requireEveryday(s.handleDeleteEvent))
 	s.handle("POST /api/events/{cal}/{uid}/rsvp", s.requireEveryday(s.handleRSVP))
+
+	// KyPost, server to server: syncauth-signed under the shared secret, never a session. 404
+	// unless scheduling and KyPost are both configured.
+	s.handle("POST /api/itip/inbound", http.HandlerFunc(s.handleITIPInbound))
+	s.handle("POST /api/itip/respond", http.HandlerFunc(s.handleITIPRespond))
 	s.handle("POST /api/subscriptions", s.requireEveryday(s.handleCreateSubscription))
 	s.handle("PATCH /api/subscriptions/{id}", s.requireEveryday(s.handlePatchSubscription))
 	s.handle("POST /api/calendars/{id}/refresh", s.requireEveryday(s.handleRefreshSubscription))

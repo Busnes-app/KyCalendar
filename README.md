@@ -203,7 +203,10 @@ positive or startup fails.
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
 | `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB), capped at a tenth of `KY_CALENDAR_MAX_BYTES_TOTAL` when that is set (4 MiB on SQLite) | Stored event bytes across all of a user's calendars, and separately per group calendar, so no single owner can fill the instance. |
 | `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite, `0` (off) on Postgres | Stored event bytes across every user. |
-| `KYCALENDAR_SCHEDULING` | `false` | Server-side invitations. **Leave it off: unfinished.** On, calendar apps hand invitations to the server and people on this instance get them in their calendar, but nothing reaches people outside the instance yet. |
+| `KYCALENDAR_SCHEDULING` | `false` | Server-side invitations. **Leave it off: unfinished.** On, calendar apps hand invitations to the server and people on this instance get them in their calendar. People outside the instance need KyPost (below), which does not accept them yet. |
+| `KYCALENDAR_KYPOST_URL` | empty | KyPost's `https://` address. KyPost mails invitations to people outside the instance from the organizer's own mailbox, and hands their replies back. Needs `KYCALENDAR_KYPOST_SECRET_FILE`. |
+| `KYCALENDAR_KYPOST_SECRET_FILE` | empty | A file holding the secret KyCalendar and KyPost share, at least 32 bytes (`openssl rand -hex 32`), mode 600. In Compose, put it in `./data` and name it `/app/data/kypost.secret`. |
+| `KYCALENDAR_KYPOST_ALLOW_PRIVATE` | `false` | Let KyPost be on your own network (a private address). Loopback stays refused; `https://` is always required. |
 
 The instance cap exists because a capsule carries the SQLite database as one file and refuses a
 file over 64 MiB: past it, every backup fails for everyone. Raising it on SQLite trades that

@@ -53,6 +53,9 @@ var (
 	ownerOnly    = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// SCIM takes only its bearer token: a session cookie is never enough.
 	scimOnly = expect{anon: 401, deactivated: 401, admin: 401, owner: 401, reader: 401, editor: 401, manager: 401, nonmember: 401}
+	// KyPost's routes take only its signature, and are absent (404) until KyPost is configured,
+	// which no matrix world is; TestKyPostRoutes covers them configured.
+	kypostOnly = expect{anon: 404, deactivated: 404, admin: 404, owner: 404, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// MCP takes only a bearer MCP token, likewise.
 	mcpOnly = scimOnly
 )
@@ -246,6 +249,8 @@ func apiRows(w *world) map[string]apiRow {
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
 		"DELETE /api/events/{cal}/{uid}":    {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
 		"POST /api/events/{cal}/{uid}/rsvp": {method: "POST", path: "/api/events/" + w.group.ID + "/seed-uid/rsvp", body: `{"partstat":"ACCEPTED"}`, want: groupWrite},
+		"POST /api/itip/inbound":            {method: "POST", path: "/api/itip/inbound", body: `{}`, want: kypostOnly},
+		"POST /api/itip/respond":            {method: "POST", path: "/api/itip/respond", body: `{}`, want: kypostOnly},
 		// http:// links are refused before any fetch, so the allowed cells never reach the network.
 		"POST /api/subscriptions":          {method: "POST", path: "/api/subscriptions", body: `{"url":"http://matrix.invalid/x.ics","name":"M"}`, want: everyday},
 		"PATCH /api/subscriptions/{id}":    {method: "PATCH", path: "/api/subscriptions/" + w.sub.ID, body: `{"url":"http://matrix.invalid/x.ics"}`, want: ownerOnly},

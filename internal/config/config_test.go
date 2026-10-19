@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -335,6 +337,45 @@ func TestSCIMNeedsAnExplicitToken(t *testing.T) {
 			}
 			if cfg.SCIM.Enabled != tc.want || cfg.SCIM.BearerToken != tc.token {
 				t.Fatalf("SCIM = enabled %v token %q, want %v %q", cfg.SCIM.Enabled, cfg.SCIM.BearerToken, tc.want, tc.token)
+			}
+		})
+	}
+}
+
+func TestKyPostConfigValidated(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good")
+	short := filepath.Join(dir, "short")
+	if err := os.WriteFile(good, []byte("0123456789abcdef0123456789abcdef\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(short, []byte("too-short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		url, file string
+		ok        bool
+	}{
+		"both set":       {"https://kypost.example/", good, true},
+		"neither set":    {"", "", true},
+		"http":           {"http://kypost.example", good, false},
+		"a path":         {"https://kypost.example/x", good, false},
+		"credentials":    {"https://u:p@kypost.example", good, false},
+		"no secret file": {"https://kypost.example", "", false},
+		"missing file":   {"https://kypost.example", filepath.Join(dir, "none"), false},
+		"short secret":   {"https://kypost.example", short, false},
+		"secret, no url": {"", good, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			t.Setenv("KYCALENDAR_KYPOST_URL", c.url)
+			t.Setenv("KYCALENDAR_KYPOST_SECRET_FILE", c.file)
+			cfg, err := config.LoadFromEnv()
+			if (err == nil) != c.ok {
+				t.Fatalf("err %v, want ok=%v", err, c.ok)
+			}
+			if c.ok && c.url != "" && (cfg.Calendar.KyPostURL != "https://kypost.example" || len(cfg.Calendar.KyPostSecret) != 32) {
+				t.Errorf("url %q, secret %d bytes", cfg.Calendar.KyPostURL, len(cfg.Calendar.KyPostSecret))
 			}
 		})
 	}

@@ -1,10 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,6 +39,11 @@ type CalendarConfig struct {
 	// Scheduling turns on server-side scheduling (RFC 6638): implicit iTIP on every write.
 	// Off by default; off, CalDAV behaves exactly as it did before scheduling existed.
 	Scheduling bool `json:"scheduling"`
+	// KyPost carries invitation mail for people outside the instance: its https base URL and
+	// the shared syncauth secret, read from KYCALENDAR_KYPOST_SECRET_FILE. Empty URL: no KyPost.
+	KyPostURL          string `json:"kypost_url,omitempty"`
+	KyPostSecret       []byte `json:"-"`
+	KyPostAllowPrivate bool   `json:"kypost_allow_private"` // a LAN address; loopback stays refused
 }
 
 // ServerConfig defines HTTP and network settings.
@@ -191,6 +198,20 @@ func LoadFromEnv() (*Config, error) {
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
 		Scheduling:          getEnvBool("KYCALENDAR_SCHEDULING", false),
+		KyPostURL:           strings.TrimSuffix(getEnv("KYCALENDAR_KYPOST_URL", ""), "/"),
+		KyPostAllowPrivate:  getEnvBool("KYCALENDAR_KYPOST_ALLOW_PRIVATE", false),
+	}
+	if secretFile := getEnv("KYCALENDAR_KYPOST_SECRET_FILE", ""); calCfg.KyPostURL != "" || secretFile != "" {
+		u, err := url.Parse(calCfg.KyPostURL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+			return nil, fmt.Errorf("KYCALENDAR_KYPOST_URL must be https://host with no path or credentials")
+		}
+		if secretFile == "" {
+			return nil, fmt.Errorf("KYCALENDAR_KYPOST_URL needs KYCALENDAR_KYPOST_SECRET_FILE")
+		}
+		if calCfg.KyPostSecret, err = kypostSecret(secretFile); err != nil {
+			return nil, err
+		}
 	}
 	// The SQLite snapshot is one capsule member, capped at 64 MiB; leave room for everything else.
 	defaultTotal := 0
@@ -384,4 +405,17 @@ func unmapPrefix(p netip.Prefix) netip.Prefix {
 		return p
 	}
 	return netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+}
+
+// kypostSecret reads the shared KyPost secret: at least 32 bytes once trimmed.
+func kypostSecret(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("KYCALENDAR_KYPOST_SECRET_FILE: %w", err)
+	}
+	secret := bytes.TrimSpace(raw)
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("KYCALENDAR_KYPOST_SECRET_FILE: the secret must be at least 32 bytes")
+	}
+	return secret, nil
 }

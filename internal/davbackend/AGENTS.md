@@ -25,7 +25,7 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
   - Delivery checks:
     - a message whose ORGANIZER is not its sender (REQUEST, CANCEL), or not its recipient (REPLY), fails;
     - so does one meeting an existing object with that UID and another ORGANIZER (`uid_taken`), so no internal user can overwrite another's event by reusing its UID.
-  - External recipients fail at once (`no_transport`) until KyPost delivery exists. Retries back off from 1 minute to 1 hour, and messages are dropped after 24 hours. Rows carry fixed reason codes, never bodies or addresses.
+  - External recipients go to KyPost (`external.go`, `Scheduler.KyPost`; `no_transport` without one, `no_kypost_account` for a sender with no KyIdentity binding, `kypost_<code>` when KyPost refuses). `Inbound` and `Respond` apply what KyPost forwards under the rules in the root AGENTS.md. Retries back off from 1 minute to 1 hour, and messages are dropped after 24 hours. Rows carry fixed reason codes, never bodies or addresses.
 - Scheduling surface (`surface.go`, fork patch 13): `Scheduling` is nil unless `Sched` is set and the user has an address, so the fork advertises nothing then.
   - **Discovery:** the address is `mailto:<email>`. The inbox is `<home>_inbox/` and the outbox `<home>_outbox/`, `_` names that no calendar slug or `_cal_<uuid>` group segment can take. The default calendar is `<home>default/`.
   - **The inbox is always empty:** deliveries go straight to calendars. Listing, query and sync answer nothing, with one sync token per epoch.

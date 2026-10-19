@@ -123,6 +123,10 @@ iOS and Android work; the iOS part is unproven until the device gate below.
   - KyCalendar to KyPost, for outbound iTIP.
   - KyPost to KyCalendar, for inbound iTIP, RSVPs and free/busy.
   - KyCalendar to KyMessages, for rooms.
+- **As built (KyCalendar to KyPost):** one shared secret per product pair, not one per
+  direction. Every request's event type names its route and direction, so a request cannot be
+  reflected back at its sender. For now the secret comes from `KYCALENDAR_KYPOST_SECRET_FILE`,
+  which the installer can write. The pairing-code screens below are not built yet.
 - **How a pairing is made:** the receiving product's admin screen (or the installer, through
   `ky.product-setup/1`) generates a pairing code; the calling product's admin claims it. Both
   store the secret sealed under a derived key. Unpairing on either side is a step-up, audited
@@ -166,6 +170,9 @@ What KyPost implements; its contract doc is written with the code.
       when over, which KyCalendar retries);
     - a copy goes to the user's Sent folder.
   - METHOD is REQUEST, CANCEL or REPLY only.
+  - **REPLY provenance:** KyPost sends a REPLY only when the user's mailbox holds an invitation
+    with that UID from that organizer. Without this check, a user could aim a reply at any
+    address by writing an event that names it as organizer.
 - **Inbound:** for a message with a `text/calendar` part whose METHOD is REQUEST, REPLY or CANCEL
   (already detected as `calendarMethod`), KyPost verifies DKIM itself with go-msgauth, as it does
   for send-as proofs. Only a pass whose `d=` equals the From domain and whose signed headers
