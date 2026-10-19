@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"path"
 	"strings"
@@ -49,6 +51,32 @@ func (s *Server) handleDAV(w http.ResponseWriter, r *http.Request) {
 		MaxObjectsPerUser: limits.MaxObjectsPerUser, MaxCalendarsPerUser: limits.MaxCalendarsPerUser, MaxBytesPerUser: limits.MaxBytesPerUser,
 		MaxBytesTotal: limits.MaxBytesTotal,
 	}
+	if r.Method == http.MethodPut && !guardICalendarBody(w, r) {
+		return
+	}
 	h := &caldav.Handler{Backend: backend, Prefix: davbackend.Prefix, MaxResourceSize: calendar.MaxObjectSize}
 	h.ServeHTTP(w, r.WithContext(davbackend.WithIfMatch(r.Context(), r.Header.Get("If-Match"))))
+}
+
+// invalidCalendarData is the fork's own answer to a body it cannot decode.
+const invalidCalendarData = `<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+	`<error xmlns="DAV:"><valid-calendar-data xmlns="urn:ietf:params:xml:ns:caldav"></valid-calendar-data></error>`
+
+// guardICalendarBody refuses a PUT body with a parameter value go-ical would take quadratic
+// time to decode, before the fork decodes it, and puts the bytes back otherwise. The body is
+// already capped by ServeHTTP's MaxBytesReader.
+func guardICalendarBody(w http.ResponseWriter, r *http.Request) bool {
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "caldav: failed to read body: "+err.Error(), http.StatusBadRequest) // as the fork answers
+		return false
+	}
+	if calendar.LongParams(raw) {
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8") // what clients get from the fork, which sets its type too late
+		w.WriteHeader(http.StatusConflict)
+		_, _ = io.WriteString(w, invalidCalendarData)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	return true
 }

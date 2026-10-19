@@ -37,9 +37,6 @@ const (
 	// maxParsed caps the objects one feed may produce. Time zones are copied into every object
 	// that names them, so the output can far outgrow the 10 MiB download.
 	maxParsed = 32 << 20
-	// maxParamValue caps each parameter value. go-ical builds them a byte at a time, so its cost
-	// is the value's length times the feed's size; real values (TZID, CN, ALTREP) are far shorter.
-	maxParamValue = 1 << 10
 )
 
 // maxParseTime bounds one feed's parse, as maxExpandTime bounds one event listing. Real feeds
@@ -193,7 +190,7 @@ func Parse(ctx context.Context, calendarID string, body []byte) (objs []*store.C
 			objs, skipped, err = nil, 0, errNotCalendar
 		}
 	}()
-	if longParams(body) {
+	if calendar.LongParams(body) {
 		return nil, 0, errNotCalendar
 	}
 	src, err := ical.NewDecoder(bytes.NewReader(body)).Decode()
@@ -263,73 +260,6 @@ func (c *capped) Write(p []byte) (int, error) {
 		return 0, errTooLarge
 	}
 	return c.Buffer.Write(p)
-}
-
-// longParams reports a content line with a parameter value over maxParamValue, reading lines
-// and parameters exactly as go-ical's decoder does (decoder.go: readContinuedLine,
-// decodeContentLine, decodeParam), so no syntax the decoder accepts escapes the check. Linear.
-func longParams(body []byte) bool {
-	var line []byte
-	for len(body) > 0 {
-		phys := body
-		if i := bytes.IndexByte(body, '\n'); i >= 0 {
-			phys, body = body[:i], body[i+1:]
-		} else {
-			body = nil
-		}
-		line = append(line, bytes.TrimSuffix(phys, []byte("\r"))...) // bufio.ReadLine drops only that \r
-		if len(body) > 0 && (body[0] == ' ' || body[0] == '\t') {
-			body = body[1:] // a fold: the decoder drops the space and joins the next line
-			continue
-		}
-		if longParam(string(line)) {
-			return true
-		}
-		line = line[:0]
-	}
-	return false
-}
-
-func longParam(s string) bool {
-	i := strings.IndexAny(s, ";:")
-	if i < 0 {
-		return false
-	}
-	for s = s[i:]; strings.HasPrefix(s, ";"); {
-		// The parameter name runs to the next '=' anywhere on the line, a ':' included.
-		eq := strings.IndexByte(s, '=')
-		if eq < 0 {
-			return false
-		}
-		s = s[eq+1:]
-		for {
-			var n int
-			if strings.HasPrefix(s, `"`) {
-				end := strings.IndexByte(s[1:], '"')
-				if end < 0 {
-					return len(s)-1 > maxParamValue // read to the end, then refused
-				}
-				n, s = end, s[end+2:]
-			} else {
-				end := strings.IndexAny(s, "\";,:")
-				if end < 0 {
-					end = len(s)
-				}
-				n, s = end, s[end:]
-				if strings.HasPrefix(s, `"`) {
-					return n > maxParamValue // read up to the quote, then refused
-				}
-			}
-			if n > maxParamValue {
-				return true
-			}
-			if s == "" || s[0] != ',' {
-				break // ';' next parameter, ':' the value; anything else the decoder refuses
-			}
-			s = s[1:]
-		}
-	}
-	return false
 }
 
 // object builds uid's calendar object, encoding at most limit bytes (errTooLarge past it), and
