@@ -23,6 +23,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"theme":            theme,
 		"captcha_provider": s.config.Captcha.Provider,
 		"sso_enabled":      s.config.SSO.Enabled,
+		"scheduling":       s.sched != nil,
 	}
 	// The login button shows only for a live provider with SSO enabled.
 	if p := s.signin.Load(); p != nil && s.config.SSO.Enabled {

@@ -25,10 +25,15 @@ export interface EventInfo {
   location?: string; description?: string; start: string; end: string; series_start: string; series_end: string;
   all_day: boolean; recurring: boolean; override?: boolean; repeat: RepeatInfo; floating?: boolean;
   unknown_zone?: boolean; partial?: boolean; zone?: string; editable: boolean;
+  // Meetings: status is the PARTSTAT; my_status is set only for an invited viewer who is not the organizer.
+  organizer?: string; attendees?: Attendee[]; my_status?: string;
 }
+export interface Attendee { email: string; status: string }
+export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
 export interface EventBody {
   title: string; location: string; description: string; start: string; end: string; all_day: boolean;
   zone?: string; repeat: RepeatInfo; scope?: 'all' | 'this'; recurrence_id?: string;
+  attendees?: string[]; // absent keeps the list; [] removes everyone
 }
 
 export class ApiError extends Error {
@@ -49,8 +54,8 @@ async function parse<T>(res: Response | null): Promise<T> {
   throw new ApiError(res.status, body?.code ?? '', body?.error ?? `Request failed (${res.status})`);
 }
 
-const eventPath = (ev: EventInfo) => `/api/events/${encodeURIComponent(ev.calendar_id)}/${encodeURIComponent(ev.uid)}`;
-const ifMatch = (ev: EventInfo) => ({ 'If-Match': `"${ev.etag}"` });
+const eventPath = (ev: Pick<EventInfo, 'calendar_id' | 'uid'>) => `/api/events/${encodeURIComponent(ev.calendar_id)}/${encodeURIComponent(ev.uid)}`;
+const ifMatch = (ev: Pick<EventInfo, 'etag'>) => ({ 'If-Match': `"${ev.etag}"` });
 
 export const listCalendars = () => send('/api/calendars').then((r) => parse<CalendarInfo[]>(r));
 export const createCalendar = (b: { name: string; color?: string; components?: readonly Component[] }) =>
@@ -82,5 +87,9 @@ export function deleteEvent(ev: EventInfo, scope: 'all' | 'this') {
   if (scope === 'this' && ev.recurrence_id) q.set('recurrence_id', ev.recurrence_id);
   return send(`${eventPath(ev)}?${q}`, { method: 'DELETE', headers: ifMatch(ev) }).then((r) => parse<void>(r));
 }
+export const rsvp = (calendarId: string, uid: string, etag: string, partstat: Answer, recurrenceId?: string) =>
+  send(`${eventPath({ calendar_id: calendarId, uid })}/rsvp`, {
+    method: 'POST', headers: { ...JSON_HEADERS, ...ifMatch({ etag }) }, body: JSON.stringify({ partstat, recurrence_id: recurrenceId }),
+  }).then((r) => parse<{ etag: string }>(r));
 
 export const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { canAddEvents, holdsOf, type CalendarInfo } from './calendarApi';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, canAddEvents, holdsOf, rsvp, type CalendarInfo } from './calendarApi';
+
+afterEach(() => vi.restoreAllMocks());
 
 const cal: CalendarInfo = { id: 'c', name: 'C', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'] };
 
@@ -15,5 +17,18 @@ describe('canAddEvents', () => {
     expect(holdsOf('tasks')).toBe('tasks');
     expect(holdsOf('both')).toBe('both');
     expect(holdsOf('VJOURNAL')).toBe('events');
+  });
+});
+
+describe('rsvp', () => {
+  it('posts the answer with a strong If-Match and throws ApiError', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ etag: 'e2' })));
+    await expect(rsvp('c/1', 'u', 'e1', 'DECLINED')).resolves.toEqual({ etag: 'e2' });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('/api/events/c%2F1/u/rsvp');
+    expect(new Headers(init?.headers).get('If-Match')).toBe('"e1"');
+    expect(JSON.parse(String(init?.body))).toEqual({ partstat: 'DECLINED' });
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'changed', code: 'conflict' }), { status: 412 }));
+    await expect(rsvp('c', 'u', 'e1', 'ACCEPTED', 'r1')).rejects.toMatchObject({ status: 412, code: 'conflict' } satisfies Partial<ApiError>);
   });
 });

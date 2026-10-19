@@ -42,6 +42,9 @@ unused. The user creates a new one the same way.
 - All-day events: `all_day: true`, dates only, and `end` is the day *after* the last day. A
   one-day event on 20 October is `start: 2026-10-20`, `end: 2026-10-21`.
 - `list_events` covers at most 400 days per call. Ask for the range you need, not more.
+- A meeting carries `organizer`, `attendees` (each `email` and `status`: ACCEPTED, TENTATIVE,
+  DECLINED or NEEDS-ACTION) and, when the user is invited, `my_status`. Read them; you cannot
+  change who is invited or answer for the user.
 - Long descriptions are cut to 2 KiB in `list_events` (`description_truncated: true`). The
   full text stays in the calendar.
 

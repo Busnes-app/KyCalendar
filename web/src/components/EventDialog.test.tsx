@@ -155,4 +155,89 @@ describe('EventDialog', () => {
     rerender(el(b, 2));
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Other');
   });
+
+  describe('with scheduling', () => {
+    const newForm = () => emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p');
+    const meeting: EventInfo = {
+      ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' }, organizer: 'me@example.com',
+      attendees: [{ email: 'me@example.com', status: 'ACCEPTED' }, { email: 'ann@example.com', status: 'TENTATIVE' }, { email: 'bob@example.com', status: 'NEEDS-ACTION' }],
+    };
+
+    it('invites people on create, ignoring bad, duplicate and own addresses', async () => {
+      const calls = capture();
+      render(<EventDialog calendars={cals} initial={newForm()} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      const input = screen.getByLabelText('People');
+      fireEvent.change(input, { target: { value: 'nope' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+      expect(screen.getByRole('alert').textContent).toMatch(/email address/);
+      for (const v of ['ann@example.com', 'ANN@example.com', 'Me@Example.com']) {
+        fireEvent.change(input, { target: { value: v } });
+        expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false); // Enter invites; default (submit) prevented
+      }
+      expect(screen.getByText('Awaiting reply')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Remove ann@example.com' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({ attendees: ['ann@example.com'] });
+    });
+
+    it('sends no attendees on a plain create or an edit that leaves people alone', async () => {
+      const calls = capture();
+      const { unmount } = render(<EventDialog calendars={cals} initial={newForm()} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      unmount();
+      render(<EventDialog calendars={cals} event={meeting} initial={formFromEvent(meeting, 'this')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      expect(screen.getByText('Maybe')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Remove me@example.com' })).toBeNull();
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Renamed' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[0].body).not.toHaveProperty('attendees');
+      expect(calls[1].body).not.toHaveProperty('attendees');
+    });
+
+    it('sends an empty list when everyone is removed', async () => {
+      const calls = capture();
+      render(<EventDialog calendars={cals} event={meeting} initial={formFromEvent(meeting, 'this')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Remove ann@example.com' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove bob@example.com' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0]).toMatchObject({ method: 'PUT', body: { attendees: [] } });
+    });
+
+    it('lets an invitee answer with If-Match, for the occurrence chosen', async () => {
+      const calls = capture();
+      const onDone = vi.fn();
+      const inv = { ...recurring, organizer: 'boss@example.com', attendees: [{ email: 'boss@example.com', status: 'ACCEPTED' }, { email: 'me@example.com', status: 'TENTATIVE' }], my_status: 'TENTATIVE' };
+      render(<EventDialog calendars={cals} event={inv} initial={formFromEvent(inv, 'this')} onDone={onDone} onClose={vi.fn()} scheduling me="me@example.com" />);
+      expect(screen.getByText('Organized by boss@example.com')).toBeTruthy();
+      expect(screen.getByText('Accepted')).toBeTruthy();
+      expect(screen.queryByLabelText('People')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Maybe' }).getAttribute('aria-pressed')).toBe('true');
+      expect(screen.getByRole('button', { name: 'Decline' }).getAttribute('aria-pressed')).toBe('false');
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+      expect(calls[0]).toMatchObject({ method: 'POST', url: '/api/events/cal_p/u1/rsvp', ifMatch: '"e1"', body: { partstat: 'ACCEPTED', recurrence_id: '20261012T070000Z' } });
+    });
+
+    it('shows the server message when an answer fails', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: 'You are not invited', code: 'not_invited' }), { status: 422 }));
+      const inv = { ...meeting, editable: false, organizer: 'boss@example.com', my_status: 'NEEDS-ACTION' };
+      render(<EventDialog calendars={cals} event={inv} initial={formFromEvent(inv, 'this')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+      expect((await screen.findByRole('alert')).textContent).toBe('You are not invited');
+    });
+
+    it('renders nothing new with scheduling off', () => {
+      const inv = { ...meeting, organizer: 'boss@example.com', my_status: 'ACCEPTED' };
+      const { unmount } = render(<EventDialog calendars={cals} event={inv} initial={formFromEvent(inv, 'this')} onDone={vi.fn()} onClose={vi.fn()} me="me@example.com" />);
+      expect(screen.queryByText(/Organized by/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+      unmount();
+      render(<EventDialog calendars={cals} initial={newForm()} onDone={vi.fn()} onClose={vi.fn()} me="me@example.com" />);
+      expect(screen.queryByLabelText('People')).toBeNull();
+    });
+  });
 });

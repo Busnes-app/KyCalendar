@@ -244,7 +244,8 @@ func apiRows(w *world) map[string]apiRow {
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
 		"PUT /api/events/{cal}/{uid}": {method: "PUT", path: "/api/events/" + w.group.ID + "/seed-uid",
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
-		"DELETE /api/events/{cal}/{uid}": {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
+		"DELETE /api/events/{cal}/{uid}":    {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
+		"POST /api/events/{cal}/{uid}/rsvp": {method: "POST", path: "/api/events/" + w.group.ID + "/seed-uid/rsvp", body: `{"partstat":"ACCEPTED"}`, want: groupWrite},
 		// http:// links are refused before any fetch, so the allowed cells never reach the network.
 		"POST /api/subscriptions":          {method: "POST", path: "/api/subscriptions", body: `{"url":"http://matrix.invalid/x.ics","name":"M"}`, want: everyday},
 		"PATCH /api/subscriptions/{id}":    {method: "PATCH", path: "/api/subscriptions/" + w.sub.ID, body: `{"url":"http://matrix.invalid/x.ics"}`, want: ownerOnly},

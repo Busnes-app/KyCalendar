@@ -18,6 +18,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
+	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -57,6 +58,16 @@ type eventView struct {
 	Partial              bool       `json:"partial,omitempty"`
 	Zone                 string     `json:"zone,omitempty"`
 	Editable             bool       `json:"editable"`
+	// Meetings: the organizer's email, each attendee's email and answer, and the viewer's own
+	// answer when they are invited (not the organizer).
+	Organizer string         `json:"organizer,omitempty"`
+	Attendees []attendeeView `json:"attendees,omitempty"`
+	MyStatus  string         `json:"my_status,omitempty"`
+}
+
+type attendeeView struct {
+	Email  string `json:"email"`
+	Status string `json:"status"`
 }
 
 var weekdayCodes = []string{"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
@@ -97,6 +108,14 @@ func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView,
 		AllDay: in.AllDay, Recurring: in.Recurring, Override: in.Override, Floating: in.Floating,
 		UnknownZone: in.UnknownZone, Partial: in.Partial, Editable: access.CanEditEvents(c, role), Repeat: repeat, Zone: zone,
 		SeriesStart: series.start, SeriesEnd: series.end}
+	if p := in.Event.Props.Get(ical.PropOrganizer); p != nil {
+		if a, ok := itip.ParseAddress(p.Value); ok {
+			v.Organizer = a.Email()
+		}
+	}
+	for _, a := range itip.AttendeesOf(in.Event) {
+		v.Attendees = append(v.Attendees, attendeeView{Email: a.Address.Email(), Status: a.Status})
+	}
 	if in.AllDay {
 		v.Start, v.End = in.Start.In(viewer).Format(time.DateOnly), in.End.In(viewer).Format(time.DateOnly)
 	} else {
@@ -219,7 +238,15 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 				}
 			}
 			for _, in := range insts {
-				out = append(out, instanceView(c, o, repeat, zone, series, in, viewer, role))
+				v := instanceView(c, o, repeat, zone, series, in, viewer, role)
+				if self := strings.ToLower(user.Email); self != "" && v.Organizer != self {
+					for _, a := range v.Attendees {
+						if a.Email == self {
+							v.MyStatus = a.Status
+						}
+					}
+				}
+				out = append(out, v)
 			}
 		}
 	}
@@ -245,6 +272,8 @@ type eventBody struct {
 	Repeat       repeatView `json:"repeat"`
 	Scope        string     `json:"scope"`
 	RecurrenceID string     `json:"recurrence_id"`
+	// Attendees replaces the meeting's attendee list (emails); absent keeps it, [] ends the meeting.
+	Attendees *[]string `json:"attendees"`
 }
 
 var errBadEvent = errors.New("bad event")
@@ -413,7 +442,12 @@ func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := uuid.NewString()
-	o, ok := s.writeEvent(w, r, c, uid+".ics", calendar.NewEvent(uid, in, time.Now()), "", true)
+	cal := calendar.NewEvent(uid, in, time.Now())
+	if apiErr := s.applyAttendees(r.Context(), cal, b.Attendees); apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	o, ok := s.writeEvent(w, r, c, uid+".ics", cal, "", true)
 	if !ok {
 		return
 	}
@@ -490,6 +524,10 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if apiErr := applyEdit(cal, b); apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	if apiErr := s.applyAttendees(r.Context(), cal, b.Attendees); apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
 	}
