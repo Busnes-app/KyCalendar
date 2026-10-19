@@ -3,9 +3,10 @@
 Status: revised 2026-10-18 after Yoshi's decisions (below); awaiting review. Not in the
 early-November 2026 release (see "Release fit").
 
-Companion specs: `kypost-server/docs/superpowers/specs/2026-10-18-kypost-calendar-scheduling-design.md`
-(mail transport) and `KyMessage-Server/docs/superpowers/specs/2026-10-18-kymessages-meeting-rooms-design.md`
-(video rooms and guests).
+Companion spec: `KyMessage-Server/docs/superpowers/specs/2026-10-18-kymessages-meeting-rooms-design.md`
+(video rooms and guests). KyPost keeps no committed design specs (`docs/superpowers/` is
+gitignored there); its half is defined in "KyPost interface" below and becomes a contract doc in
+`kypost-server/docs/` in the same change set as its code.
 
 ## Outcome
 
@@ -47,7 +48,7 @@ iOS and Android work; the iOS part is unproven until the device gate below.
 | Switch | `KYCALENDAR_SCHEDULING`, default off; with it off `TestCalDAVWireSurface` matches its golden byte for byte. It also stays off until the KyPost transport exists: turning it on stops Thunderbird sending to external attendees | Always on: changes what every client does |
 | Mail transport | KyPost sends as the organizer from their own mailbox, building the MIME itself from the iTIP object KyCalendar hands it | A relay in KyCalendar: a second mail system, and a From address that is not the organizer's |
 | Inbound mail | KyPost hands iTIP mail that arrived in a user's mailbox to KyCalendar, as that user | An inbound SMTP receiver in KyCalendar |
-| Service credentials | Pairwise backend credentials (below), each scoped to a fixed route set and naming the acting user per request | Per-user tokens: every user would set them up by hand (decision 4) |
+| Service credentials | Pairwise HMAC secrets signed with `ky-primitives/syncauth` (scheme v1, already used by KyIdentity's webhooks to KyPost and KyMessages), each scoped to a fixed route set and naming the acting user per request | Per-user tokens: every user would set them up by hand (decision 4). Bearer tokens: no replay protection |
 | Video | KyMessages creates one Matrix room per meeting series; KyCalendar stores its link in `CONFERENCE` (RFC 7986) and in `LOCATION` when that is empty | A link in DESCRIPTION only: clients cannot show it as a join button |
 | COUNTER | Refused (`SCHEDULE-STATUS:3.14` to the sender) | Google COUNTER support is unverified (v1a spec) |
 
@@ -95,8 +96,8 @@ iOS and Android work; the iOS part is unproven until the device gate below.
 
 - **Default on:** a write by a local organizer that leaves at least one attendee on the event
   asks KyMessages for a room (`PUT /api/meetings/{id}`, idempotent).
-- **What KyCalendar sends:** the organizer, the summary, the internal attendees, the external
-  attendee addresses, and the occurrence windows.
+- **What KyCalendar sends:** the organizer, the summary, the internal attendees, one opaque key
+  per external attendee (never their name or address), and the occurrence windows.
   - A recurring series sends windows for the next 90 days; the daily loop extends them.
 - **Rewriting the stored event:** the room's member link goes into `CONFERENCE;VALUE=URI;FEATURE=VIDEO;LABEL=KyMessages`
   and into `LOCATION` when that is empty. This is a server-side change to a scheduling object, so
@@ -118,27 +119,65 @@ iOS and Android work; the iOS part is unproven until the device gate below.
 
 ## Backend credentials
 
-- **Three pairings, each issued by the callee:**
-  - KyPost issues a token to KyCalendar for outbound iTIP.
-  - KyCalendar issues a token to KyPost for inbound iTIP, RSVPs and free/busy.
-  - KyMessages issues a token to KyCalendar for rooms.
-- **How a pairing is made:** a pairing code is generated on the callee's admin screen (or by the
-  installer through `ky.product-setup/1`) and claimed on the caller's.
-  - The caller stores the token sealed under a derived key.
-  - The callee stores only its hash.
-  - Unpairing on either side is a step-up, audited action.
-- **Every request** carries the token and the acting user's KyIdentity `sub`. The callee:
-  - refuses a `sub` that is not an active everyday user locally;
-  - allows only the route set fixed for that pairing;
-  - applies its own per-user rules: KyPost sends only for a user who turned on calendar
-    sending, as their own address, to that object's attendees.
-- **Blast radius:** a stolen KyCalendar→KyPost token can send invitation mail as any user who
-  turned on calendar sending. It cannot send arbitrary mail, and KyPost's per-user rate limits and
-  audit bound it. This is the cost of decision 4, recorded here.
+- **Three pairings, each with its own secret, held by both sides:**
+  - KyCalendar to KyPost, for outbound iTIP.
+  - KyPost to KyCalendar, for inbound iTIP, RSVPs and free/busy.
+  - KyCalendar to KyMessages, for rooms.
+- **How a pairing is made:** the receiving product's admin screen (or the installer, through
+  `ky.product-setup/1`) generates a pairing code; the calling product's admin claims it. Both
+  store the secret sealed under a derived key. Unpairing on either side is a step-up, audited
+  action.
+- **Every request is signed with `syncauth.Sign`:**
+  - The event type names the route (for example `kycalendar.itip.send`).
+  - The event ID is the idempotency key: event UID hash, SEQUENCE, recipient and method. The
+    receiver's replay guard turns a retry into a no-op rather than a second message.
+  - The body carries the acting user's KyIdentity `sub` and issuer.
+  - The receiver checks the signature with `syncauth` (timestamp window and replay guard) and
+    accepts only its pairing's route set.
+- **The receiver resolves the user by `sub` and issuer** (KyPost: `GetBySSOSubIssuer`) and
+  refuses one that is not an active everyday user. Then it applies its own per-user rules.
+- **Blast radius:** a stolen KyCalendar to KyPost secret can send invitation mail as any user who
+  turned on calendar sending.
+  - It cannot send arbitrary mail: KyPost builds the message itself and sends only to that
+    object's attendees, as the user's own address or a verified send-as alias.
+  - KyPost's existing per-user send quota and its audit bound it.
+  - This is the cost of decision 4, recorded here.
 - **Transport:** HTTPS only and no redirects. Private addresses are allowed only with an explicit
   opt-in, the same rule as KyRecovery.
-- **Idempotency:** each message carries an idempotency key (event UID hash, SEQUENCE, recipient,
-  method), so a retry never sends twice.
+
+## KyPost interface
+
+What KyPost implements; its contract doc is written with the code.
+
+- **Outbound, `POST /api/calendar/itip/send`** (KyCalendar's pairing): `{sub, issuer, from,
+  recipients[], ics}`.
+  - **Refused (409), so the attendee shows `5.3`:**
+    - the user has not turned on "Let KyCalendar send invitations from this mailbox" (off by
+      default);
+    - `from` is neither the account's own address nor a verified send-as alias (the
+      `resolveMailFrom` rule);
+    - a recipient is not an ATTENDEE (or, for REPLY, the ORGANIZER) of the object.
+  - **Accepted:**
+    - KyPost builds a `text/calendar; method=<METHOD>` message from a fixed template, extending
+      today's `calendarReply` path, which already sends REPLY;
+    - the Subject is SUMMARY with control characters removed, cut to 200 bytes;
+    - no caller-supplied header reaches the message;
+    - it is charged to the user's send quota (`admitSend`/`chargeSend`; 429 with `Retry-After`
+      when over, which KyCalendar retries);
+    - a copy goes to the user's Sent folder.
+  - METHOD is REQUEST, CANCEL or REPLY only.
+- **Inbound:** for a message with a `text/calendar` part whose METHOD is REQUEST, REPLY or CANCEL
+  (already detected as `calendarMethod`), KyPost verifies DKIM itself with go-msgauth, as it does
+  for send-as proofs. Only a pass whose `d=` equals the From domain and whose signed headers
+  include From is forwarded to KyCalendar's `/api/itip/inbound`, with `dkim_aligned: true`.
+  - KyPost has no per-message DMARC or SPF result for mail it reads over IMAP, so DKIM alignment
+    is the only sender proof available.
+  - Everything else stays an ordinary message. Its RSVP card still works: the user's own Accept is
+    the authorization (below).
+- **RSVP cards:** the web, Android and iOS clients call KyPost, which calls KyCalendar's
+  `/api/itip/respond` as the user. The REPLY to an external organizer then comes back through
+  outbound. The direct `calendarReply` send becomes the fallback for a user whose KyPost is not
+  paired with KyCalendar.
 
 ## Outbound queue
 
@@ -151,9 +190,9 @@ iOS and Android work; the iOS part is unproven until the device gate below.
 
 ## Inbound iTIP (from KyPost)
 
-`POST /api/itip/inbound`: KyPost's credential, as the user whose mailbox received the mail. The
-body carries the raw iCalendar, the envelope sender and KyPost's DMARC result. KyPost forwards
-only mail with an aligned DMARC pass; KyCalendar refuses anything else.
+`POST /api/itip/inbound`: KyPost's pairing, as the user whose mailbox received the mail. The
+body carries the raw iCalendar, the From address and `dkim_aligned`. KyCalendar refuses
+anything without `dkim_aligned: true` and treats the rest as hostile.
 
 - **Boundary checks:**
   - one VCALENDAR, at most `MaxObjectSize`;
@@ -175,10 +214,16 @@ only mail with an aligned DMARC pass; KyCalendar refuses anything else.
 
 ## RSVP from KyPost
 
-`POST /api/itip/respond` (KyPost credential, as the user) with `{uid, recurrence_id?, partstat}`
-writes the user's PARTSTAT through `davbackend.Write`. Implicit scheduling then sends the REPLY:
-internally, or through KyPost for an external organizer. Accept on a pending external invitation
-first writes it into the default calendar.
+`POST /api/itip/respond` (KyPost's pairing, as the user) with `{uid, recurrence_id?, partstat}`,
+plus the invitation's raw iCalendar when KyCalendar has not seen it. That happens when inbound
+mail lacked an aligned DKIM signature.
+
+- The user's PARTSTAT is written through `davbackend.Write`, and implicit scheduling sends the
+  REPLY: internally, or through KyPost for an external organizer.
+- Accepting an invitation KyCalendar has not seen writes it into the default calendar. The user's
+  explicit Accept is the authorization, so an unverified sender can put an event on the calendar
+  only when the user accepts it.
+- Later updates and cancels from that sender still need `dkim_aligned`.
 
 ## Web UI
 
@@ -221,7 +266,7 @@ first writes it into the default calendar.
    - a forged REPLY from a non-attendee;
    - a REPLY that moves DTSTART;
    - a REQUEST for another organizer's UID;
-   - a DMARC-fail body;
+   - a body without `dkim_aligned`;
    - header injection in SUMMARY and addresses;
    - rate limits.
 4. **Credentials:** a missing, wrong, unpaired or out-of-scope token, and an inactive or
@@ -245,7 +290,7 @@ Not in the early-November 2026 release. Rough estimates:
 | Product | Work | Time |
 |---|---|---|
 | KyCalendar | scheduling core, outbox, inbound, rooms client, web UI, MCP scope | ~3 weeks |
-| KyPost | outbound send, inbound forwarding, RSVP wiring, pairing | ~2 weeks |
+| KyPost | outbound send (extending `calendarReply`), DKIM-checked inbound forwarding, RSVP wiring, pairing | ~2 weeks |
 | KyMessages | meeting rooms, guest waiting room, starting with the Element spike | ~2–3 weeks |
 
 On top of that comes the real-device gate, which only an operator can run. The flag stays off
