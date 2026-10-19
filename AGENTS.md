@@ -379,6 +379,7 @@ Spec `docs/superpowers/specs/2026-10-15-kycalendar-ics-subscriptions-design.md`.
 - [internal/api/AGENTS.md](internal/api/AGENTS.md): HTTP REST API endpoints, routing, and middleware.
 - [internal/calendar/AGENTS.md](internal/calendar/AGENTS.md): Pure iCalendar validation, indexing bounds and sync tokens.
 - [internal/davbackend/AGENTS.md](internal/davbackend/AGENTS.md): CalDAV backend mapping one user's requests onto the calendar store.
+- [internal/itip/AGENTS.md](internal/itip/AGENTS.md): Pure iTIP rules for server-side scheduling: messages, inbound checks, reply merging.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.

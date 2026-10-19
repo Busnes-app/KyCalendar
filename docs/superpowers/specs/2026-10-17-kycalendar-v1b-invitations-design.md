@@ -207,8 +207,8 @@ anything without `dkim_aligned: true` and treats the rest as hostile.
   - at most 100 attendees per component and 1000 per object;
   - every address is `mailto:`, valid, at most 254 bytes, with no CR/LF.
 - **REPLY:** only for an event the user organizes whose ATTENDEE list holds the sender. It
-  changes only that attendee's PARTSTAT (and DELEGATED-*), and never times, text or other
-  attendees.
+  changes only that attendee's PARTSTAT, and never times, text or other attendees.
+  Delegation is not supported.
 - **REQUEST from an external organizer:**
   - It lands in the inbox as a pending invitation and is written to a calendar only when the
     user accepts.
