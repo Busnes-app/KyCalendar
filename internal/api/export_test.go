@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -81,3 +82,7 @@ const (
 	MCPSubscribedForTest = msgSubscribed
 	AppVersionForTest    = appVersion
 )
+
+// SetKyPostClientForTest points the scheduler's KyPost client at c (an httptest server's client:
+// the real guarded client refuses loopback). Scheduling and KyPost must be configured.
+func SetKyPostClientForTest(s *Server, c *kypost.Client) { s.sched.KyPost = c }

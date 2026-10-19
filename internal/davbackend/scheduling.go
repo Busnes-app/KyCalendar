@@ -14,6 +14,7 @@ import (
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/itip"
+	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -23,9 +24,10 @@ type Scheduler struct {
 	Store  store.Store
 	Limits store.OwnerLimits // applied to deliveries into a recipient's calendar
 	Now    func() time.Time
+	KyPost *kypost.Client // nil: nothing reaches people outside the instance (no_transport)
 }
 
-// External delivery has no transport yet: such messages fail at once instead of waiting.
+// errNoTransport is an external recipient with no KyPost configured: it fails at once.
 var errNoTransport = errors.New("no transport for external attendees")
 
 // errPermanent marks a delivery that retrying cannot fix.
@@ -174,13 +176,6 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	if !ok {
 		return errPermanent{"bad_recipient"}
 	}
-	recipient, err := s.Store.Users().CalendarUser(ctx, to.Email())
-	if errors.Is(err, store.ErrNotFound) {
-		return errNoTransport
-	}
-	if err != nil {
-		return err
-	}
 	msg, err := itip.Decode(m.Body)
 	if err != nil {
 		return errPermanent{"bad_body"}
@@ -190,16 +185,20 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 		return errPermanent{"bad_body"}
 	}
 	org, _ := itip.Organizer(msg)
+	if (method == itip.MethodReply && org != to) || (method != itip.MethodReply && org != from) {
+		return errPermanent{"not_organizer"}
+	}
+	recipient, err := s.Store.Users().CalendarUser(ctx, to.Email())
+	if errors.Is(err, store.ErrNotFound) {
+		return s.sendExternal(ctx, m, sender, from, to)
+	}
+	if err != nil {
+		return err
+	}
 	switch method {
 	case itip.MethodRequest, itip.MethodCancel:
-		if org != from {
-			return errPermanent{"not_organizer"}
-		}
 		return s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg)
 	default: // REPLY
-		if org != to {
-			return errPermanent{"not_organizer"}
-		}
 		return s.deliverReply(ctx, recipient, to, uid, from, msg)
 	}
 }
@@ -308,22 +307,7 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 	case err != nil:
 		return err
 	}
-	src := msg
-	if method == itip.MethodCancel {
-		src = existing
-	}
-	next, err := itip.AttendeeCopy(src, existing, self)
-	if err != nil {
-		return errPermanent{"invalid_object"}
-	}
-	if method == itip.MethodCancel {
-		for _, ev := range next.Children {
-			if ev.Name == ical.CompEvent {
-				ev.Props.SetText(ical.PropStatus, "CANCELLED")
-			}
-		}
-	}
-	return s.put(ctx, c, o.Name, next, o.ETag, false)
+	return s.deliverInto(ctx, c, o, existing, self, method, msg)
 }
 
 // deliverReply records an internal attendee's answer on the organizer's object.
