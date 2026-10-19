@@ -180,7 +180,7 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND o.calendar_id <> ?`), ownerKind, o
 	if lim.MaxTotalBytes > 0 {
 		var used int64
 		err := tx.QueryRowContext(ctx, c.q(`SELECT bytes - COALESCE((SELECT SUM(LENGTH(data)) FROM calendar_objects WHERE calendar_id = ?), 0)
-FROM calendar_usage WHERE id = 1`), calendarID).Scan(&used)
++ `+pendingOutboxBytes+` FROM calendar_usage WHERE id = 1`), calendarID).Scan(&used)
 		if err != nil {
 			return err
 		}

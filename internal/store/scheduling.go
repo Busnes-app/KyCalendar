@@ -21,6 +21,10 @@ type OutboxMessage struct {
 	CreatedAt   time.Time
 }
 
+// pendingOutboxBytes is a scalar subquery: the bytes of every pending message. Every instance-cap
+// check adds it, so queued bodies and stored objects share MaxTotalBytes.
+const pendingOutboxBytes = `(SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending')`
+
 // Planner runs inside an object write's transaction with the object's previous bytes (nil when
 // it is new). Returned data, when non-nil, replaces what is stored (on a delete it is ignored);
 // returned rows are queued in the same transaction, so a message exists exactly when its write does.
@@ -70,8 +74,7 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 	}
 	if lim.MaxTotalBytes > 0 {
 		var used int64
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) +
-(SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending')`)).Scan(&used); err != nil {
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes)).Scan(&used); err != nil {
 			return err
 		}
 		if used+adding > lim.MaxTotalBytes {

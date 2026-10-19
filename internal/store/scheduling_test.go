@@ -90,3 +90,36 @@ func TestOutboxFinishClearsBodyAndPrunes(t *testing.T) {
 		t.Error("the prune removed a pending message")
 	}
 }
+
+// Pending bodies count on every write, not only writes that queue: an ordinary PutObject past
+// the instance cap because of them is refused, and the object is unchanged.
+func TestPendingOutboxCountsOnEveryWrite(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	o := outboxObject(t, st, "alice")
+	if _, err := st.Calendars().PutObjectPlanned(ctx, o, "", false, store.OwnerLimits{}, plan(row("a", "usr_alice", 5000))); err != nil {
+		t.Fatal(err)
+	}
+	other := &store.CalendarObject{CalendarID: o.CalendarID, Name: "n.ics", Component: "VEVENT", UID: "n", Data: make([]byte, 2000)}
+	if _, err := st.Calendars().PutObject(ctx, other, "", false, store.OwnerLimits{MaxTotalBytes: 6000}); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("a plain write past the cap with pending bodies: %v", err)
+	}
+	if _, err := st.Calendars().GetObject(ctx, o.CalendarID, "n.ics"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the refused write stored its object: %v", err)
+	}
+	sub := &store.Calendar{ID: "cal_feed", OwnerKind: "user", OwnerID: "usr_alice", Slug: "feed", Name: "Feed", Subscribed: true}
+	if err := st.Calendars().CreateSubscribedCalendar(ctx, sub, &store.Subscription{CalendarID: sub.ID, OwnerID: "usr_alice",
+		URLSealed: "x", URLHost: "feed.example", NextCheckAt: time.Now()}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	mirrored := &store.CalendarObject{CalendarID: sub.ID, Name: "f.ics", Component: "VEVENT", UID: "f", Data: make([]byte, 2000)}
+	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{mirrored}, store.OwnerLimits{MaxTotalBytes: 6000}); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("a subscription refresh past the cap with pending bodies: %v", err)
+	}
+	if err := st.Calendars().FinishOutbox(ctx, "a", "delivered", time.Now(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Calendars().PutObject(ctx, other, "", false, store.OwnerLimits{MaxTotalBytes: 6000}); err != nil {
+		t.Fatalf("once delivered, the bodies no longer count: %v", err)
+	}
+}

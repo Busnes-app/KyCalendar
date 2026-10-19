@@ -356,10 +356,11 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name 
 		}
 	}
 	if lim.MaxTotalBytes > 0 {
-		// calendar_usage is kept by triggers in each writing transaction (migration 12).
+		// calendar_usage is kept by triggers in each writing transaction (migration 12). Pending
+		// outbox bodies share the cap: they sit in the same database and the same capsule.
 		var used int64
 		err := tx.QueryRowContext(ctx, c.q(`SELECT bytes - COALESCE((SELECT LENGTH(data) FROM calendar_objects WHERE calendar_id = ? AND name = ?), 0)
-FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
++ `+pendingOutboxBytes+` FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
 		if err != nil {
 			return false, err
 		}
