@@ -185,4 +185,27 @@ func TestKyPostRoutes(t *testing.T) {
 	if got := readAll(r); !strings.Contains(got, "dave-1") || !strings.Contains(got, "STATUS:CANCELLED") {
 		t.Fatalf("bob's copy after dave cancelled:\n%s", got)
 	}
+
+	// An outsider's invitation reusing the UID of alice's meeting cannot answer for that meeting.
+	if r := rawDAV(t, ts, "PUT", cal+"shared.ics", "alice", tokens["alice"], meeting("shared", "alice", "ATTENDEE:mailto:bob@example.com"),
+		map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 201 {
+		t.Fatalf("alice's meeting %d", r.StatusCode)
+	}
+	deliver()
+	fake.take()
+	evil := strings.Replace(strings.Replace(invite, "UID:dave-1", "UID:shared", 1), "dave@example.org", "evil@example.org", 1)
+	resp = kypost.RespondRequest{User: bob, UID: "shared", Partstat: "DECLINED", ICS: evil}
+	if w := signedPost(t, srv, "/api/itip/respond", kypost.EventRespond, "rsp-2", resp); w.Code != 422 {
+		t.Fatalf("answering through a colliding invitation: %d %s", w.Code, w.Body.String())
+	}
+	if w := signedPost(t, srv, "/api/itip/respond", kypost.EventRespond, "rsp-3", kypost.RespondRequest{User: bob, UID: "shared", Partstat: "DECLINED"}); w.Code != 422 {
+		t.Errorf("an answer without the invitation: %d", w.Code)
+	}
+	deliver()
+	if sent := fake.take(); len(sent) != 0 {
+		t.Fatalf("a refused answer sent %+v", sent)
+	}
+	if got := readAll(rawDAV(t, ts, "GET", cal+"shared.ics", "alice", tokens["alice"], "", nil)); strings.Contains(got, "DECLINED") {
+		t.Fatalf("alice's meeting took bob's answer to another organizer's invitation:\n%s", got)
+	}
 }

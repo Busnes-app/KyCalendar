@@ -125,32 +125,38 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 	return s.put(ctx, c, o.Name, next, o.ETag, false)
 }
 
-// Respond records u's answer from a KyPost RSVP card. When KyCalendar has not seen the
-// invitation, invite (as mailed) is written into u's default calendar first: the user's own
-// answer is what lets a sender put an event in their calendar. The answer then goes through the
-// scheduled write path, so the organizer gets a REPLY.
+// Respond records u's answer from a KyPost RSVP card to invite, the invitation as mailed. The
+// answer is bound to invite's organizer: it changes only u's copy of that organizer's event, so
+// an invitation reusing another meeting's UID cannot answer for that meeting. When KyCalendar has
+// not seen the invitation it is written into u's default calendar first: the user's own answer is
+// what lets a sender put an event in their calendar. The answer then goes through the scheduled
+// write path, so the organizer gets a REPLY.
 func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceID, partstat string, invite *ical.Calendar) error {
 	self, ok := address(u)
 	if !ok {
 		return errPermanent{"no_address"}
 	}
-	c, o, cal, err := s.findAny(ctx, u, uid)
-	if errors.Is(err, store.ErrNotFound) && invite != nil {
-		method, iuid, verr := itip.Validate(invite)
-		org, _ := itip.Organizer(invite)
-		if verr != nil || method != itip.MethodRequest || iuid != uid || org == self || !invited(invite, self) {
-			return itip.ErrInvalid
-		}
+	if invite == nil {
+		return itip.ErrInvalid
+	}
+	method, iuid, err := itip.Validate(invite)
+	org, _ := itip.Organizer(invite)
+	if err != nil || method != itip.MethodRequest || iuid != uid || org == self || !invited(invite, self) {
+		return itip.ErrInvalid
+	}
+	c, o, cal, err := s.find(ctx, u, uid, org)
+	if errors.Is(err, store.ErrNotFound) {
 		if err := s.deliverToAttendee(ctx, u, self, org, uid, method, invite); err != nil {
 			return err
 		}
-		c, o, cal, err = s.findAny(ctx, u, uid)
+		c, o, cal, err = s.find(ctx, u, uid, org)
+	}
+	var perm errPermanent
+	if errors.As(err, &perm) { // the UID belongs to another organizer's event here
+		return itip.ErrNotInvited
 	}
 	if err != nil {
 		return err
-	}
-	if org, ok := itip.Organizer(cal); !ok || org == self {
-		return itip.ErrNotInvited
 	}
 	if recurrenceID != "" {
 		if err := calendar.EditText(cal, recurrenceID, calendar.TextEdit{}, s.now()); err != nil {
@@ -180,27 +186,4 @@ func invited(cal *ical.Calendar, self itip.Address) bool {
 		}
 	}
 	return false
-}
-
-// findAny is u's object with uid in a calendar u can edit, whoever organizes it.
-func (s *Scheduler) findAny(ctx context.Context, u *store.User, uid string) (*store.Calendar, *store.CalendarObject, *ical.Calendar, error) {
-	cals, err := s.writable(ctx, u)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	for _, c := range cals {
-		o, err := s.Store.Calendars().GetObjectByUID(ctx, c.ID, uid)
-		if errors.Is(err, store.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		cal, err := itip.Decode(o.Data)
-		if err != nil {
-			return nil, nil, nil, errPermanent{"invalid_object"}
-		}
-		return c, o, cal, nil
-	}
-	return nil, nil, nil, store.ErrNotFound
 }

@@ -53,14 +53,14 @@ type InboundRequest struct {
 	ICS         string `json:"ics"`
 }
 
-// RespondRequest is the user's answer from a KyPost RSVP card. ICS is the invitation as mailed,
-// for one KyCalendar has not seen.
+// RespondRequest is the user's answer from a KyPost RSVP card. ICS, the invitation as mailed, is
+// required: the answer is bound to its organizer.
 type RespondRequest struct {
 	User
 	UID          string `json:"uid"`
 	RecurrenceID string `json:"recurrence_id,omitempty"`
 	Partstat     string `json:"partstat"`
-	ICS          string `json:"ics,omitempty"`
+	ICS          string `json:"ics"`
 }
 
 // ErrRetry is a failure worth retrying: the network, 429 or a 5xx.
