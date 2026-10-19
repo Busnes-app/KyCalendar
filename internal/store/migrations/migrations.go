@@ -491,6 +491,40 @@ CREATE INDEX idx_calendar_subscriptions_due ON calendar_subscriptions(next_check
 		SQLite:   calendarComponents,
 		Postgres: calendarComponents,
 	},
+	{
+		// Scheduling: iTIP messages queued in the transaction of the write that produced them,
+		// delivered by the outbox worker. dedupe_key makes a re-queued message a no-op.
+		Version: 17,
+		Name:    "scheduling_outbox",
+		SQLite: `CREATE TABLE scheduling_outbox (
+    id TEXT PRIMARY KEY,
+    dedupe_key TEXT NOT NULL UNIQUE,
+    sender_id TEXT NOT NULL,
+    method TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    body BLOB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at DATETIME NOT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL
+);
+CREATE INDEX idx_scheduling_outbox_due ON scheduling_outbox(status, next_attempt_at);`,
+		Postgres: `CREATE TABLE scheduling_outbox (
+    id VARCHAR(64) PRIMARY KEY,
+    dedupe_key VARCHAR(128) NOT NULL UNIQUE,
+    sender_id VARCHAR(64) NOT NULL,
+    method VARCHAR(16) NOT NULL,
+    recipient VARCHAR(320) NOT NULL,
+    body BYTEA NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_scheduling_outbox_due ON scheduling_outbox(status, next_attempt_at);`,
+	},
 }
 
 const calendarComponents = `ALTER TABLE calendars ADD COLUMN components TEXT NOT NULL DEFAULT 'VEVENT';

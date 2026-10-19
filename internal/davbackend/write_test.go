@@ -46,25 +46,25 @@ func TestWrite(t *testing.T) {
 	}
 	id := cals[0]
 
-	o, err := davbackend.Write(ctx, st, id, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{})
+	o, err := davbackend.Write(ctx, st, id, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}, nil)
 	if err != nil || o.ETag == "" {
 		t.Fatalf("write: %+v %v", o, err)
 	}
-	if _, err := davbackend.Write(ctx, st, id, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}); !errors.Is(err, store.ErrPreconditionFailed) {
+	if _, err := davbackend.Write(ctx, st, id, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}, nil); !errors.Is(err, store.ErrPreconditionFailed) {
 		t.Fatalf("If-None-Match on an existing object: %v", err)
 	}
-	if _, err := davbackend.Write(ctx, st, id, "w1.ics", decode(t, event), []byte(event), "stale", false, store.OwnerLimits{}); !errors.Is(err, store.ErrPreconditionFailed) {
+	if _, err := davbackend.Write(ctx, st, id, "w1.ics", decode(t, event), []byte(event), "stale", false, store.OwnerLimits{}, nil); !errors.Is(err, store.ErrPreconditionFailed) {
 		t.Fatalf("stale If-Match: %v", err)
 	}
-	if _, err := davbackend.Write(ctx, st, id, "t1.ics", decode(t, todo), []byte(todo), "", true, store.OwnerLimits{}); !errors.Is(err, calendar.ErrUnsupportedComponent) {
+	if _, err := davbackend.Write(ctx, st, id, "t1.ics", decode(t, todo), []byte(todo), "", true, store.OwnerLimits{}, nil); !errors.Is(err, calendar.ErrUnsupportedComponent) {
 		t.Fatalf("VTODO in an events calendar: %v", err)
 	}
 	journal := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VJOURNAL\r\nUID:j1\r\nDTSTAMP:20261001T000000Z\r\nEND:VJOURNAL\r\nEND:VCALENDAR\r\n"
-	if _, err := davbackend.Write(ctx, st, id, "j1.ics", decode(t, journal), []byte(journal), "", true, store.OwnerLimits{}); !errors.Is(err, calendar.ErrUnsupportedComponent) {
+	if _, err := davbackend.Write(ctx, st, id, "j1.ics", decode(t, journal), []byte(journal), "", true, store.OwnerLimits{}, nil); !errors.Is(err, calendar.ErrUnsupportedComponent) {
 		t.Fatalf("VJOURNAL: %v", err)
 	}
 	method := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:m1\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261007T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	if _, err := davbackend.Write(ctx, st, id, "m1.ics", decode(t, method), []byte(method), "", true, store.OwnerLimits{}); !errors.Is(err, davbackend.ErrInvalidResource) {
+	if _, err := davbackend.Write(ctx, st, id, "m1.ics", decode(t, method), []byte(method), "", true, store.OwnerLimits{}, nil); !errors.Is(err, davbackend.ErrInvalidResource) {
 		t.Fatalf("METHOD: %v", err)
 	}
 }
@@ -77,7 +77,7 @@ func TestWriteRefusesAnOverlargeObject(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 	raw := make([]byte, calendar.MaxObjectSize+1)
-	_, err = davbackend.Write(ctx, st, &store.Calendar{ID: "cal_none"}, "a.ics", decode(t, event), raw, "", true, store.OwnerLimits{})
+	_, err = davbackend.Write(ctx, st, &store.Calendar{ID: "cal_none"}, "a.ics", decode(t, event), raw, "", true, store.OwnerLimits{}, nil)
 	if !errors.Is(err, davbackend.ErrTooLarge) {
 		t.Fatalf("got %v, want ErrTooLarge", err)
 	}
@@ -100,17 +100,17 @@ func TestWriteEnforcesComponentSet(t *testing.T) {
 		return c
 	}
 	tasks, both := mk("tasks", "VTODO"), mk("both", "VEVENT", "VTODO")
-	o, err := davbackend.Write(ctx, st, tasks, "t1.ics", decode(t, todo), []byte(todo), "", true, store.OwnerLimits{})
+	o, err := davbackend.Write(ctx, st, tasks, "t1.ics", decode(t, todo), []byte(todo), "", true, store.OwnerLimits{}, nil)
 	if err != nil || o.Component != "VTODO" {
 		t.Fatalf("VTODO in a task list: %+v %v", o, err)
 	}
-	if _, err := davbackend.Write(ctx, st, tasks, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}); !errors.Is(err, calendar.ErrUnsupportedComponent) {
+	if _, err := davbackend.Write(ctx, st, tasks, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}, nil); !errors.Is(err, calendar.ErrUnsupportedComponent) {
 		t.Fatalf("VEVENT in a task list: %v", err)
 	}
-	if _, err := davbackend.Write(ctx, st, both, "t1.ics", decode(t, todo), []byte(todo), "", true, store.OwnerLimits{}); err != nil {
+	if _, err := davbackend.Write(ctx, st, both, "t1.ics", decode(t, todo), []byte(todo), "", true, store.OwnerLimits{}, nil); err != nil {
 		t.Fatalf("VTODO in a mixed calendar: %v", err)
 	}
-	if _, err := davbackend.Write(ctx, st, both, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}); err != nil {
+	if _, err := davbackend.Write(ctx, st, both, "w1.ics", decode(t, event), []byte(event), "", true, store.OwnerLimits{}, nil); err != nil {
 		t.Fatalf("VEVENT in a mixed calendar: %v", err)
 	}
 }

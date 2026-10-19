@@ -176,12 +176,13 @@ Restored 4 files from capsule cap-kycalendar-1788605720094118543
 ```
 
 Then it resets the restored database in one transaction, with no further input: sessions,
-MFA challenges and app passwords are deleted, a new sync epoch is written and
+MFA challenges and app passwords are deleted, invitations still queued in the backup are
+dropped (they describe the calendar as it was), a new sync epoch is written and
 `system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
 deals with them. It ends with:
 
 ```
-✓ Sessions, MFA challenges and app passwords revoked; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
+✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
 ```
 
 If the reset fails, the files are in place but the credentials are still the backup's. The

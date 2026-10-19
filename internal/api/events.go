@@ -350,7 +350,7 @@ func ifMatch(r *http.Request) (etag string, present, ok bool) {
 
 // writeEvent stores cal through the one write path and writes any error as JSON.
 func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, bool) {
-	o, apiErr := s.saveEvent(r.Context(), c, name, cal, etag, create)
+	o, apiErr := s.saveEvent(r.Context(), sessionUser(r.Context()), c, name, cal, etag, create)
 	if apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return nil, false
@@ -358,13 +358,13 @@ func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Cal
 	return o, true
 }
 
-// saveEvent stores cal through the one write path and maps its errors.
-func (s *Server) saveEvent(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, *apiError) {
+// saveEvent stores cal for writer through the one write path and maps its errors.
+func (s *Server) saveEvent(ctx context.Context, writer *store.User, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, *apiError) {
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "The event cannot be encoded"}
 	}
-	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits())
+	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(writer, cal))
 	switch {
 	case err == nil:
 		return o, nil
@@ -526,7 +526,7 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("scope") {
 	case "", "all":
-		err := s.store.Calendars().DeleteObject(r.Context(), c.ID, o.Name, etag)
+		err := davbackend.Delete(r.Context(), s.store, c, o.Name, etag, s.objectLimits(), s.sched.Plan(sessionUser(r.Context()), nil))
 		switch {
 		case errors.Is(err, store.ErrPreconditionFailed):
 			s.writeAPIError(w, errEventChanged)
@@ -534,6 +534,8 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, http.StatusNotFound, "No such event")
 		case errors.Is(err, store.ErrReadOnly):
 			s.writeAPIError(w, errReadOnlyCalendar)
+		case errors.Is(err, store.ErrQuotaExceeded): // the cancellations it would queue do not fit
+			s.writeAPIError(w, &apiError{status: http.StatusInsufficientStorage, msg: "Calendar storage is full", code: "quota"})
 		case err != nil:
 			s.writeError(w, http.StatusInternalServerError, "Failed to delete the event")
 		default:

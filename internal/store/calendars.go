@@ -281,8 +281,10 @@ func (c *calendarStore) currentETag(ctx context.Context, tx *sql.Tx, calendarID,
 }
 
 func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits) (bool, error) {
-	sum := sha256.Sum256(o.Data)
-	o.ETag = hex.EncodeToString(sum[:])
+	return c.PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, nil)
+}
+
+func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits, plan Planner) (bool, error) {
 	o.ModifiedAt = time.Now().UTC()
 
 	tx, err := c.store.beginTx(ctx)
@@ -326,6 +328,12 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 	if (ifNoneMatch && exists) || (ifMatch != "" && (!exists || (ifMatch != "*" && etag != ifMatch))) {
 		return false, ErrPreconditionFailed
 	}
+	rows, err := c.runPlan(ctx, tx, o, exists, plan)
+	if err != nil {
+		return false, err
+	}
+	sum := sha256.Sum256(o.Data)
+	o.ETag = hex.EncodeToString(sum[:])
 	var other string
 	err = tx.QueryRowContext(ctx, c.q(`SELECT name FROM calendar_objects WHERE calendar_id = ? AND uid = ? AND name <> ?`),
 		o.CalendarID, o.UID, o.Name).Scan(&other)
@@ -348,10 +356,11 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name 
 		}
 	}
 	if lim.MaxTotalBytes > 0 {
-		// calendar_usage is kept by triggers in each writing transaction (migration 12).
+		// calendar_usage is kept by triggers in each writing transaction (migration 12). Pending
+		// outbox bodies share the cap: they sit in the same database and the same capsule.
 		var used int64
 		err := tx.QueryRowContext(ctx, c.q(`SELECT bytes - COALESCE((SELECT LENGTH(data) FROM calendar_objects WHERE calendar_id = ? AND name = ?), 0)
-FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
++ `+pendingOutboxBytes+` FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
 		if err != nil {
 			return false, err
 		}
@@ -370,10 +379,17 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 		}
 		return false, err
 	}
+	if err := c.queue(ctx, tx, rows, lim); err != nil {
+		return false, err
+	}
 	return !exists, tx.Commit()
 }
 
 func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error {
+	return c.DeleteObjectPlanned(ctx, calendarID, name, ifMatch, OwnerLimits{}, nil)
+}
+
+func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner) error {
 	tx, err := c.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -395,7 +411,20 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 	if ifMatch != "" && ifMatch != "*" && etag != ifMatch {
 		return ErrPreconditionFailed
 	}
+	var rows []*OutboxMessage
+	if plan != nil {
+		var previous []byte
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT data FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name).Scan(&previous); err != nil {
+			return err
+		}
+		if _, rows, err = plan(previous); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name); err != nil {
+		return err
+	}
+	if err := c.queue(ctx, tx, rows, lim); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -23,8 +23,10 @@ var ErrTooLarge = errors.New("davbackend: calendar object too large")
 // Write is the one write path for calendar objects, from CalDAV PUT and from web edits alike:
 // CalDAV validation, Inspect, the calendar's component set, then a store write with ETag
 // preconditions, quotas and a change row in one transaction. The component set is fixed at
-// creation, so checking it outside the transaction is safe.
-func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits) (*store.CalendarObject, error) {
+// creation, so checking it outside the transaction is safe. A non-nil plan (Scheduler.Plan)
+// runs inside the store's transaction and may rewrite the object; the returned object holds
+// what was stored.
+func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits, plan store.Planner) (*store.CalendarObject, error) {
 	o, err := Prepare(c.ID, name, cal, raw)
 	if err != nil {
 		return nil, err
@@ -32,10 +34,16 @@ func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, 
 	if !c.Holds(o.Component) {
 		return nil, fmt.Errorf("%w: this calendar holds %s", calendar.ErrUnsupportedComponent, strings.Join(c.Components, " and "))
 	}
-	if _, err := st.Calendars().PutObject(ctx, o, ifMatch, ifNoneMatch, lim); err != nil {
+	if _, err := st.Calendars().PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan); err != nil {
 		return nil, err
 	}
 	return o, nil
+}
+
+// Delete is the one delete path for calendar objects, with plan run inside its transaction and
+// the messages it queues bounded by lim.
+func Delete(ctx context.Context, st store.Store, c *store.Calendar, name, ifMatch string, lim store.OwnerLimits, plan store.Planner) error {
+	return st.Calendars().DeleteObjectPlanned(ctx, c.ID, name, ifMatch, lim, plan)
 }
 
 // Prepare runs every check Write makes before the store: size, CalDAV validity and Inspect.

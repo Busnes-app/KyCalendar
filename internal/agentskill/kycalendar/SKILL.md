@@ -63,6 +63,7 @@ unused. The user creates a new one the same way.
 |---|---|---|
 | read-only token | The token cannot write | Tell the user. Write access is a setting on the token in KyCalendar |
 | this agent can only change events it created | The token may edit only its own events | Tell the user. They can change the event themselves, or allow it with the token setting "Can also change events it did not create" |
+| this event has attendees; agents cannot change meetings yet | Changing a meeting would send an update to every attendee | Tell the user to change it in KyCalendar or their calendar app |
 | this calendar mirrors a subscription and is read-only | A subscribed calendar, such as a work calendar | Tell the user to change it at the source, or put the event in another calendar |
 | No such calendar | Wrong ID, or not a personal calendar | Run `list_calendars` again |
 | No such event | Wrong ID, or the event was deleted | Run `list_events` again |

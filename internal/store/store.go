@@ -86,6 +86,9 @@ type UserStore interface {
 	GetUserByID(ctx context.Context, id string) (*User, error)
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	// CalendarUser is the one active everyday user whose email is email, ignoring case;
+	// ErrNotFound when there is none or more than one.
+	CalendarUser(ctx context.Context, email string) (*User, error)
 	GetUserBySSO(ctx context.Context, provider, subject string) (*User, error)
 	UpdateUser(ctx context.Context, u *User) error
 	ResetAdminPassword(ctx context.Context, userID, newHash string) error
@@ -293,7 +296,19 @@ type CalendarStore interface {
 	ListObjectsInRange(ctx context.Context, calendarID, component string, start, end int64) ([]*CalendarObject, error)
 	// PutObject enforces lim across every calendar of the target calendar's owner, atomically with the write.
 	PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits) (created bool, err error)
+	// PutObjectPlanned is PutObject with plan run inside its transaction (see Planner).
+	PutObjectPlanned(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits, plan Planner) (created bool, err error)
 	DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error
+	// DeleteObjectPlanned is DeleteObject with plan run inside its transaction (see Planner);
+	// lim bounds the messages it queues.
+	DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner) error
+	// DueOutbox lists up to limit pending messages whose next attempt is at or before now, oldest first.
+	DueOutbox(ctx context.Context, now time.Time, limit int) ([]*OutboxMessage, error)
+	// FinishOutbox records one delivery attempt: status delivered, failed or pending (retry at
+	// next). A finished message's body is cleared.
+	FinishOutbox(ctx context.Context, id, status string, next time.Time, lastError string) error
+	// PruneOutbox deletes finished messages created before before.
+	PruneOutbox(ctx context.Context, before time.Time) error
 	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
 	PruneChanges(ctx context.Context, before time.Time) error
 	SyncEpoch(ctx context.Context) (string, error)

@@ -49,7 +49,7 @@ func (s *Server) handleDAV(w http.ResponseWriter, r *http.Request) {
 	backend := &davbackend.Backend{
 		Store: s.store, User: user, Grants: grants,
 		MaxObjectsPerUser: limits.MaxObjectsPerUser, MaxCalendarsPerUser: limits.MaxCalendarsPerUser, MaxBytesPerUser: limits.MaxBytesPerUser,
-		MaxBytesTotal: limits.MaxBytesTotal,
+		MaxBytesTotal: limits.MaxBytesTotal, Sched: s.sched,
 	}
 	if r.Method == http.MethodPut && !guardICalendarBody(w, r) {
 		return
