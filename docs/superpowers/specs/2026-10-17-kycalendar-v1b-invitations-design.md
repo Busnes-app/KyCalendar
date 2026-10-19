@@ -26,6 +26,11 @@ meeting.
    and must be let in by someone in the room; leaving means being let in again.
 4. Products authenticate to each other with backend server credentials, not per-user tokens.
 5. A meeting gets a video room by default.
+6. A guest's window opens 10 minutes before each occurrence starts and closes at its end; at the
+   end guests are removed from the call.
+7. Any internal member of the meeting room (the organizer or an internal attendee) may let a
+   guest in.
+8. Internal invitations are added to the attendee's default calendar as `NEEDS-ACTION`.
 
 ## Why the server schedules
 
@@ -97,7 +102,8 @@ iOS and Android work; the iOS part is unproven until the device gate below.
 - **Default on:** a write by a local organizer that leaves at least one attendee on the event
   asks KyMessages for a room (`PUT /api/meetings/{id}`, idempotent).
 - **What KyCalendar sends:** the organizer, the summary, the internal attendees, one opaque key
-  per external attendee (never their name or address), and the occurrence windows.
+  per external attendee (never their name or address), and the occurrence windows: from 10
+  minutes before each occurrence starts to its end (decision 6).
   - A recurring series sends windows for the next 90 days; the daily loop extends them.
 - **Rewriting the stored event:** the room's member link goes into `CONFERENCE;VALUE=URI;FEATURE=VIDEO;LABEL=KyMessages`
   and into `LOCATION` when that is empty. This is a server-side change to a scheduling object, so
@@ -295,12 +301,3 @@ Not in the early-November 2026 release. Rough estimates:
 
 On top of that comes the real-device gate, which only an operator can run. The flag stays off
 until the KyPost transport has landed.
-
-## Open questions for Yoshi
-
-- Guest window: the draft lets a guest knock from 10 minutes before the start until 15 minutes
-  after the end of each occurrence. Is that "the time of the meeting"?
-- Who may let a guest in: any internal member of the meeting room (the organizer and internal
-  attendees) or only the organizer? The draft assumes any internal member.
-- Internal invitations auto-add to the attendee's calendar as `NEEDS-ACTION` (Apple and Google
-  behaviour). Keep?
