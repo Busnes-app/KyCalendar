@@ -40,7 +40,10 @@ func encode(t *testing.T, cal *ical.Calendar) string {
 	return b.String()
 }
 
-func summary(msgs []Message) string {
+func summary(msgs []Message, err error) string {
+	if err != nil {
+		return "error: " + err.Error()
+	}
 	var out []string
 	for _, m := range msgs {
 		var to []string
@@ -100,7 +103,8 @@ func TestOrganizerCreateUpdateDelete(t *testing.T) {
 	if got := summary(Outgoing(alice, base, nil, now)); got != "CANCEL bob@example.com,carol@example.net" {
 		t.Errorf("delete: %s", got)
 	}
-	cancel := Outgoing(alice, base, nil, now)[0].Calendar
+	cancelMsgs, _ := Outgoing(alice, base, nil, now)
+	cancel := cancelMsgs[0].Calendar
 	if s := encode(t, cancel); !strings.Contains(s, "METHOD:CANCEL") || !strings.Contains(s, "STATUS:CANCELLED") {
 		t.Errorf("cancel body:\n%s", s)
 	}
@@ -109,9 +113,9 @@ func TestOrganizerCreateUpdateDelete(t *testing.T) {
 func TestOrganizerMessageIsSanitised(t *testing.T) {
 	cal := ics(t, "ATTENDEE;SCHEDULE-STATUS=1.2;RSVP=TRUE:mailto:bob@example.com", "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT15M\nDESCRIPTION:mine\nEND:VALARM")
 	cal.Children[0].Props.Get(ical.PropOrganizer).Params.Set("SCHEDULE-AGENT", "SERVER")
-	msgs := Outgoing(alice, nil, cal, now)
-	if len(msgs) != 1 {
-		t.Fatalf("%s", summary(msgs))
+	msgs, err := Outgoing(alice, nil, cal, now)
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("%s", summary(msgs, err))
 	}
 	s := encode(t, msgs[0].Calendar)
 	for _, gone := range []string{"VALARM", "SCHEDULE-STATUS", "SCHEDULE-AGENT"} {
@@ -141,16 +145,16 @@ func TestNotTheOrganizerOrAnAttendee(t *testing.T) {
 	}
 	plain := ics(t)
 	plain.Children[0].Props.Del(ical.PropOrganizer)
-	if got := Outgoing(alice, nil, plain, now); got != nil {
-		t.Errorf("an event without ORGANIZER sent: %s", summary(got))
+	if got, err := Outgoing(alice, nil, plain, now); got != nil || err != nil {
+		t.Errorf("an event without ORGANIZER sent: %s", summary(got, err))
 	}
 }
 
 func TestAttendeeReply(t *testing.T) {
 	invited := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com", "ATTENDEE:mailto:carol@example.net")
 	accepted := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com", "ATTENDEE:mailto:carol@example.net")
-	msgs := Outgoing(bob, invited, accepted, now)
-	if got := summary(msgs); got != "REPLY alice@example.com" {
+	msgs, err := Outgoing(bob, invited, accepted, now)
+	if got := summary(msgs, err); got != "REPLY alice@example.com" {
 		t.Fatalf("accept: %s", got)
 	}
 	s := encode(t, msgs[0].Calendar)
@@ -175,11 +179,17 @@ func TestAttendeeReply(t *testing.T) {
 	if got := summary(Outgoing(bob, invited, nil, now)); got != "REPLY alice@example.com" {
 		t.Fatalf("delete: %s", got)
 	}
-	if s := encode(t, Outgoing(bob, invited, nil, now)[0].Calendar); !strings.Contains(s, "PARTSTAT=DECLINED") {
+	declined, _ := Outgoing(bob, invited, nil, now)
+	if s := encode(t, declined[0].Calendar); !strings.Contains(s, "PARTSTAT=DECLINED") {
 		t.Errorf("deleting an invitation declines it:\n%s", s)
 	}
 	if got := summary(Outgoing(bob, nil, invited, now)); got != "" {
 		t.Errorf("an attendee's first write sends nothing: %s", got)
+	}
+	redirected := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")
+	redirected.Children[0].Props.Get(ical.PropOrganizer).Value = "mailto:victim@example.org"
+	if got := summary(Outgoing(bob, invited, redirected, now)); got != "" {
+		t.Errorf("an attendee who rewrote ORGANIZER aimed a reply: %s", got)
 	}
 }
 
@@ -329,7 +339,10 @@ func TestApplyReply(t *testing.T) {
 func TestAttendeeCopy(t *testing.T) {
 	request := ics(t, "SEQUENCE:1", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
 	request.Props.SetText(ical.PropMethod, MethodRequest)
-	first := AttendeeCopy(request, nil, bob)
+	first, err := AttendeeCopy(request, nil, bob)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if s := encode(t, first); strings.Contains(s, "METHOD") || !strings.Contains(s, "PARTSTAT=NEEDS-ACTION:mailto:bob@example.com") {
 		t.Errorf("first delivery:\n%s", s)
 	}
@@ -337,14 +350,43 @@ func TestAttendeeCopy(t *testing.T) {
 	mine := ics(t, "SEQUENCE:1", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com", "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT5M\nDESCRIPTION:bob's\nEND:VALARM")
 	retitled := ics(t, "SEQUENCE:1", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
 	retitled.Children[0].Props.SetText(ical.PropSummary, "Planning v2")
-	s := encode(t, AttendeeCopy(retitled, mine, bob))
+	retitledCopy, err := AttendeeCopy(retitled, mine, bob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := encode(t, retitledCopy)
 	if !strings.Contains(s, "Planning v2") || !strings.Contains(s, "PARTSTAT=ACCEPTED:mailto:bob@example.com") || !strings.Contains(s, "bob's") {
 		t.Errorf("a retitle keeps bob's answer and alarm:\n%s", s)
 	}
 
 	moved := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")
 	moved.Children[0].Props.SetText(ical.PropDateTimeStart, "20261110T150000Z")
-	if s := encode(t, AttendeeCopy(moved, mine, bob)); !strings.Contains(s, "PARTSTAT=NEEDS-ACTION:mailto:bob@example.com") {
+	movedCopy, err := AttendeeCopy(moved, mine, bob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := encode(t, movedCopy); !strings.Contains(s, "PARTSTAT=NEEDS-ACTION:mailto:bob@example.com") {
 		t.Errorf("a move asks bob again:\n%s", s)
+	}
+}
+
+// go-ical's encoder is stricter than its decoder: an object can decode and still not encode
+// (here, a VEVENT without DTSTAMP). Building messages or copies from one is ErrInvalid, never a
+// panic: the delivery worker runs outside HTTP recovery.
+func TestUnencodableObjectIsAnErrorNotAPanic(t *testing.T) {
+	body := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:m1\r\nDTSTART:20261110T090000Z\r\n" +
+		"ORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	bad, err := Decode([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Outgoing(alice, nil, bad, now); !errors.Is(err, ErrInvalid) {
+		t.Errorf("Outgoing: %v", err)
+	}
+	if _, err := Outgoing(alice, bad, nil, now); !errors.Is(err, ErrInvalid) {
+		t.Errorf("Outgoing on delete: %v", err)
+	}
+	if _, err := AttendeeCopy(bad, nil, bob); !errors.Is(err, ErrInvalid) {
+		t.Errorf("AttendeeCopy: %v", err)
 	}
 }

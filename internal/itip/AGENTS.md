@@ -19,8 +19,10 @@ Delivery, queues, credentials and storage belong to their callers; nothing here 
     - CANCEL to removed attendees;
     - CANCEL to all on delete.
     An answer recorded on the organizer's copy (PARTSTAT only) sends nothing.
-  - **Attendee:** a REPLY to the organizer only when self's own PARTSTAT changed; a delete is a
-    DECLINED REPLY; an attendee's first write and their other edits send nothing.
+  - **Attendee:** a REPLY to the organizer only when self's own PARTSTAT changed and ORGANIZER is
+    unchanged since the previous version (so a rewritten ORGANIZER cannot aim a reply at any
+    address); a delete is a DECLINED REPLY; an attendee's first write and their other edits send
+    nothing.
   - **Anyone else, or no ORGANIZER:** nothing.
   - **Never scheduled by the server:** attendees with `SCHEDULE-AGENT` other than SERVER.
 - Messages never carry VALARMs or the SCHEDULE-AGENT, SCHEDULE-STATUS and SCHEDULE-FORCE-SEND
@@ -44,13 +46,16 @@ Delivery, queues, credentials and storage belong to their callers; nothing here 
   - ignores a reply to an older SEQUENCE and an unknown PARTSTAT;
   - refuses another UID (`ErrUIDMismatch`) and a sender who is not an attendee
     (`ErrNotAttendee`).
+- Building a message or copy re-encodes the object. go-ical's encoder is stricter than its decoder,
+  so a client's object can decode and still not encode: `Outgoing` and `AttendeeCopy` return
+  `ErrInvalid` then, never panic (the delivery worker runs outside HTTP recovery).
 - `AttendeeCopy(request, existing, self)`: the organizer's object without METHOD. It keeps
   self's VALARMs from `existing`, and self's PARTSTAT unless the change is significant, which
   resets it to NEEDS-ACTION.
 
 ## Verification
 - `go test -race ./internal/itip/`
-- `go test ./internal/itip/ -run '^$' -fuzz FuzzInbound -fuzztime 60s` (8.6M inputs clean, 2026-10-18)
+- `go test ./internal/itip/ -run '^$' -fuzz FuzzInbound -fuzztime 60s` (3.6M inputs clean with Outgoing and AttendeeCopy in the target, 2026-10-19)
 
 ## Child DOX Index
 None.

@@ -114,21 +114,30 @@ func attendees(cal *ical.Calendar) map[Address]bool {
 	return out
 }
 
-func clone(cal *ical.Calendar) *ical.Calendar {
+// clone is a deep copy by encoding and decoding. go-ical's encoder is stricter than its decoder,
+// so a client's object can decode and still fail here: that is ErrInvalid, never a panic.
+func clone(cal *ical.Calendar) (out *ical.Calendar, err error) {
+	defer func() {
+		if recover() != nil {
+			out, err = nil, ErrInvalid
+		}
+	}()
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
-		panic("itip: re-encoding a decoded calendar failed: " + err.Error()) // stored objects encode
+		return nil, ErrInvalid
 	}
-	out, err := ical.NewDecoder(&buf).Decode()
-	if err != nil {
-		panic("itip: decoding a just-encoded calendar failed: " + err.Error())
+	if out, err = ical.NewDecoder(&buf).Decode(); err != nil {
+		return nil, ErrInvalid
 	}
-	return out
+	return out, nil
 }
 
 // message is cal as sent: METHOD set, VALARMs and the server-only parameters removed.
-func message(cal *ical.Calendar, method string) *ical.Calendar {
-	out := clone(cal)
+func message(cal *ical.Calendar, method string) (*ical.Calendar, error) {
+	out, err := clone(cal)
+	if err != nil {
+		return nil, err
+	}
 	out.Props.SetText(ical.PropMethod, method)
 	for _, c := range events(out) {
 		kept := c.Children[:0]
@@ -146,7 +155,7 @@ func message(cal *ical.Calendar, method string) *ical.Calendar {
 			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 func sorted(set map[Address]bool, except Address) []Address {
@@ -165,31 +174,36 @@ func sorted(set map[Address]bool, except Address) []Address {
 }
 
 // Outgoing is what the server sends after self writes newCal over oldCal. oldCal is nil for a
-// create and newCal nil for a delete. self is the writer's own address.
-func Outgoing(self Address, oldCal, newCal *ical.Calendar, now time.Time) []Message {
+// create and newCal nil for a delete. self is the writer's own address. ErrInvalid is an object
+// that cannot be sent as it stands (go-ical will not encode it).
+func Outgoing(self Address, oldCal, newCal *ical.Calendar, now time.Time) ([]Message, error) {
 	cur := newCal
 	if cur == nil {
 		cur = oldCal
 	}
 	org, ok := Organizer(cur)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	if org == self {
 		return organizerMessages(self, oldCal, newCal)
 	}
 	if reply := attendeeReply(self, org, oldCal, newCal, now); reply != nil {
-		return []Message{*reply}
+		return []Message{*reply}, nil
 	}
-	return nil
+	return nil, nil
 }
 
-func organizerMessages(self Address, oldCal, newCal *ical.Calendar) []Message {
+func organizerMessages(self Address, oldCal, newCal *ical.Calendar) ([]Message, error) {
 	if newCal == nil {
 		if to := sorted(attendees(oldCal), self); len(to) > 0 {
-			return []Message{{Method: MethodCancel, Recipients: to, Calendar: cancelled(oldCal)}}
+			c, err := cancelled(oldCal)
+			if err != nil {
+				return nil, err
+			}
+			return []Message{{Method: MethodCancel, Recipients: to, Calendar: c}}, nil
 		}
-		return nil
+		return nil, nil
 	}
 	now, before := attendees(newCal), attendees(oldCal)
 	var out []Message
@@ -200,23 +214,34 @@ func organizerMessages(self Address, oldCal, newCal *ical.Calendar) []Message {
 		}
 	}
 	if to := sorted(removed, self); len(to) > 0 {
-		out = append(out, Message{Method: MethodCancel, Recipients: to, Calendar: cancelled(newCal)})
+		c, err := cancelled(newCal)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Message{Method: MethodCancel, Recipients: to, Calendar: c})
 	}
 	if oldCal != nil && !Changed(oldCal, newCal) {
-		return out
+		return out, nil
 	}
 	if to := sorted(now, self); len(to) > 0 {
-		out = append(out, Message{Method: MethodRequest, Recipients: to, Calendar: message(newCal, MethodRequest)})
+		req, err := message(newCal, MethodRequest)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Message{Method: MethodRequest, Recipients: to, Calendar: req})
 	}
-	return out
+	return out, nil
 }
 
-func cancelled(cal *ical.Calendar) *ical.Calendar {
-	out := message(cal, MethodCancel)
+func cancelled(cal *ical.Calendar) (*ical.Calendar, error) {
+	out, err := message(cal, MethodCancel)
+	if err != nil {
+		return nil, err
+	}
 	for _, c := range events(out) {
 		c.Props.SetText(ical.PropStatus, "CANCELLED")
 	}
-	return out
+	return out, nil
 }
 
 // partstatOf is self's PARTSTAT on each VEVENT, keyed by RECURRENCE-ID ("" for the master).
@@ -251,6 +276,9 @@ func recurrenceKey(c *ical.Component) string {
 func attendeeReply(self, org Address, oldCal, newCal *ical.Calendar, now time.Time) *Message {
 	if oldCal == nil {
 		return nil // an attendee's first copy arrives by delivery, not by their write
+	}
+	if before, ok := Organizer(oldCal); !ok || before != org {
+		return nil // an attendee who rewrites ORGANIZER must not aim a reply at another address
 	}
 	before := partstatOf(oldCal, self)
 	var src *ical.Calendar
@@ -550,8 +578,11 @@ func firstUID(cal *ical.Calendar) (string, bool) {
 // AttendeeCopy is what lands in self's calendar from an organizer's REQUEST: the organizer's
 // object, with self's own VALARMs kept from existing (nil for a first delivery) and self's
 // PARTSTAT kept unless the change is significant, which asks them again.
-func AttendeeCopy(request, existing *ical.Calendar, self Address) *ical.Calendar {
-	out := clone(request)
+func AttendeeCopy(request, existing *ical.Calendar, self Address) (*ical.Calendar, error) {
+	out, err := clone(request)
+	if err != nil {
+		return nil, err
+	}
 	out.Props.Del(ical.PropMethod)
 	keep := map[string]string{}
 	alarms := map[string][]*ical.Component{}
@@ -577,5 +608,5 @@ func AttendeeCopy(request, existing *ical.Calendar, self Address) *ical.Calendar
 			}
 		}
 	}
-	return out
+	return out, nil
 }

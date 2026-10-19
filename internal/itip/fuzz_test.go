@@ -28,6 +28,8 @@ func FuzzInbound(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		_, _ = Outgoing(alice, stored, msg, now) // must not panic, whatever msg is
+		_, _ = AttendeeCopy(msg, stored, bob)
 		if _, err := ApplyReply(stored, msg, bob); err != nil {
 			return
 		}
