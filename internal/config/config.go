@@ -34,6 +34,9 @@ type CalendarConfig struct {
 	MaxCalendarsPerUser int   `json:"max_calendars_per_user"`
 	MaxBytesPerUser     int64 `json:"max_bytes_per_user"`
 	MaxBytesTotal       int64 `json:"max_bytes_total"`
+	// Scheduling turns on server-side scheduling (RFC 6638): implicit iTIP on every write.
+	// Off by default; off, CalDAV behaves exactly as it did before scheduling existed.
+	Scheduling bool `json:"scheduling"`
 }
 
 // ServerConfig defines HTTP and network settings.
@@ -187,6 +190,7 @@ func LoadFromEnv() (*Config, error) {
 	calCfg := CalendarConfig{
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
+		Scheduling:          getEnvBool("KYCALENDAR_SCHEDULING", false),
 	}
 	// The SQLite snapshot is one capsule member, capped at 64 MiB; leave room for everything else.
 	defaultTotal := 0

@@ -80,6 +80,10 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 			return err
 		}
 	}
+	// Messages queued before the backup describe an older calendar: never send them.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM scheduling_outbox"); err != nil {
+		return err
+	}
 	epoch := crypto.RandomHex(8)
 	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_meta SET value = ? WHERE key = 'sync_epoch'`), epoch)
 	if err != nil {
@@ -93,7 +97,7 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()

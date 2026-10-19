@@ -13,6 +13,19 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 - A `default` personal calendar is created on first listing or on first access to its path (`ensureDefault`), only when the user owns no calendar.
 - A group calendar is its own quota owner: only the per-owner object and byte limits apply to it, plus the instance byte cap. No calendar-count limit applies; admins create group calendars with no cap.
 - `Write` is the one calendar-object write path, used by `PutCalendarObject` and the JSON event API (subscription refreshes run its checks through `Prepare` and write with `ReplaceSubscriptionObjects`): `ErrTooLarge` for an object over `calendar.MaxObjectSize` (before any other work), `caldav.ValidateCalendarObject` (`ErrInvalidResource`), `calendar.Inspect` (`ErrUnsupportedComponent`, `ErrInvalidData`), the calendar's component set (`store.Calendar.Holds`, `ErrUnsupportedComponent`; the set is immutable, so it is checked before the transaction), then `store.PutObject` with ETag preconditions, owner and instance quotas and the change row in one transaction. `EnsureDefault` creates a user's default calendar when they own none; CalDAV listing and `GET /api/calendars` both call it.
+- Scheduling (`Scheduler`, `scheduling.go`; nil while `KYCALENDAR_SCHEDULING` is off, and then every write is exactly an unscheduled one):
+  - `Plan(writer, newCal)` is the `store.Planner` that `Write` and `Delete` run inside their transaction. It diffs the previous bytes with `itip.Outgoing`, raises SEQUENCE on an organizer's significant change (`itip.BumpSequence`, the only change the server makes to a client's object), and queues one outbox row per recipient.
+  - A user's calendar user address is `mailto:` plus their email. A writer with no email, or an administrator, schedules nothing.
+  - When the stored bytes differ from the PUT body, CalDAV returns no ETag so the client refetches. The JSON API still returns the stored ETag.
+  - `DeliverDue` (`cmd/server`, every 5 s) resolves each recipient with `store.CalendarUser` at delivery time. Internal recipients:
+    - REQUEST writes `itip.AttendeeCopy` into their existing copy, or a new object `<hex of the UID hash>.ics` in their default calendar.
+    - CANCEL marks their copy `STATUS:CANCELLED` and keeps it.
+    - REPLY runs `itip.ApplyReply` on the organizer's object.
+    - Copies are looked up across personal non-subscribed event calendars and group calendars the user can edit, and are written against their ETag.
+  - Delivery checks:
+    - a message whose ORGANIZER is not its sender (REQUEST, CANCEL), or not its recipient (REPLY), fails;
+    - so does one meeting an existing object with that UID and another ORGANIZER (`uid_taken`), so no internal user can overwrite another's event by reusing its UID.
+  - External recipients fail at once (`no_transport`) until KyPost delivery exists. Retries back off from 1 minute to 1 hour, and messages are dropped after 24 hours. Rows carry fixed reason codes, never bodies or addresses.
 - Bytes from PUT are stored as received; GET, calendar-data and sync serve `Raw` and never decode. Only objects that go through `caldav.Match` are decoded.
 - Per-user caps answer 507 (`store.ErrQuotaExceeded`): objects on create, calendars on MKCALENDAR and default creation, stored bytes on every PUT (total minus the replaced object plus the new body). The store enforces them atomically; the backend only passes the limits.
 - Calendar properties are bounded at this boundary (`calendar.CheckProps`): `calendar-color` empty or `#RRGGBB`/`#RRGGBBAA`, `displayname` at most 255 bytes, `calendar-description` at most 4096 bytes. MKCALENDAR over a bound is 400; PROPPATCH is 403 for the whole request, nothing is stored.

@@ -58,7 +58,7 @@ func TestEventAPIIgnoresTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, ics := range map[string]string{"task-someday.ics": taskUndated, "task-due.ics": taskDue} {
-		if _, err := davbackend.Write(ctx, st, list, name, decode(t, ics), []byte(ics), "", true, store.OwnerLimits{}); err != nil {
+		if _, err := davbackend.Write(ctx, st, list, name, decode(t, ics), []byte(ics), "", true, store.OwnerLimits{}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -102,7 +102,7 @@ func TestMCPIgnoresTasks(t *testing.T) {
 	if err := w.st.Calendars().CreateCalendar(ctx, both, 0); err != nil {
 		t.Fatal(err)
 	}
-	o, err := davbackend.Write(ctx, w.st, both, "task-due.ics", decode(t, taskDue), []byte(taskDue), "", true, store.OwnerLimits{})
+	o, err := davbackend.Write(ctx, w.st, both, "task-due.ics", decode(t, taskDue), []byte(taskDue), "", true, store.OwnerLimits{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

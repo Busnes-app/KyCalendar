@@ -150,6 +150,20 @@ func runServer() {
 			srv.RefreshDueSubscriptions(ctx)
 		}
 	}()
+	// Scheduling deliveries. An interrupted delivery stays pending and runs again: each one is
+	// idempotent (copies are written against their ETag; a reply sets the same answer again).
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			srv.DeliverScheduled(ctx)
+		}
+	}()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{

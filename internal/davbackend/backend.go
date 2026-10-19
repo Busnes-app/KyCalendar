@@ -66,6 +66,7 @@ type Backend struct {
 	MaxCalendarsPerUser int
 	MaxBytesPerUser     int64
 	MaxBytesTotal       int64
+	Sched               *Scheduler // nil: scheduling off
 }
 
 type ifMatchKey struct{}
@@ -401,7 +402,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
-	o, err := Write(ctx, b.Store, c, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits())
+	o, err := Write(ctx, b.Store, c, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits(), b.Sched.Plan(b.User, cal))
 	switch {
 	case errors.Is(err, ErrTooLarge):
 		return nil, caldav.NewPreconditionError(caldav.PreconditionMaxResourceSize)
@@ -422,7 +423,11 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	case err != nil:
 		return nil, err
 	}
-	return &caldav.CalendarObject{Path: b.home() + slug + "/" + name, ETag: o.ETag, ModTime: o.ModifiedAt}, nil
+	etag := o.ETag
+	if !bytes.Equal(o.Data, opts.Raw) {
+		etag = "" // the server changed the object: no ETag, so the client refetches (RFC 4791 §5.3.4)
+	}
+	return &caldav.CalendarObject{Path: b.home() + slug + "/" + name, ETag: etag, ModTime: o.ModifiedAt}, nil
 }
 
 func (b *Backend) limits() store.OwnerLimits {
@@ -445,7 +450,7 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 	if err != nil {
 		return err
 	}
-	err = b.Store.Calendars().DeleteObject(ctx, c.ID, name, ifMatch)
+	err = Delete(ctx, b.Store, c, name, ifMatch, b.Sched.Plan(b.User, nil))
 	switch {
 	case errors.Is(err, store.ErrNotFound) && m.IsSet():
 		return webdav.NewHTTPError(http.StatusPreconditionFailed, err)

@@ -25,6 +25,7 @@ const (
 	msgReadOnly   = "read-only token"
 	msgNotOwn     = "this agent can only change events it created"
 	msgSubscribed = "this calendar mirrors a subscription and is read-only"
+	msgMeeting    = "this event has attendees; agents cannot change meetings yet"
 )
 
 // maxMCPDescription caps each description in list_events results; the calendar keeps it whole.
@@ -345,7 +346,7 @@ func (t mcpTools) createEvent(ctx context.Context, _ *mcp.CallToolRequest, in cr
 	if err := apps.RecordMCPEvent(ctx, t.caller.token.ID, c.ID, uid); err != nil {
 		return nil, writeEventOut{}, errors.New("Failed to save the event")
 	}
-	o, apiErr := t.s.saveEvent(ctx, c, uid+".ics", calendar.NewEvent(uid, ev, time.Now()), "", true)
+	o, apiErr := t.s.saveEvent(ctx, t.caller.user, c, uid+".ics", calendar.NewEvent(uid, ev, time.Now()), "", true)
 	if apiErr != nil {
 		_ = apps.ForgetMCPEvent(ctx, t.caller.token.ID, c.ID, uid)
 		return nil, writeEventOut{}, apiErr
@@ -417,7 +418,11 @@ func (t mcpTools) updateEvent(ctx context.Context, _ *mcp.CallToolRequest, in up
 	} else if apiErr := editTimes(cal, rid, in); apiErr != nil {
 		return nil, writeEventOut{}, apiErr
 	}
-	saved, apiErr := t.s.saveEvent(ctx, c, o.Name, cal, in.ETag, false)
+	if t.s.config.Calendar.Scheduling && hasAttendees(cal) {
+		// An edit here would mail every attendee; the mcp:invite scope that allows it is not built yet.
+		return nil, writeEventOut{}, errors.New(msgMeeting)
+	}
+	saved, apiErr := t.s.saveEvent(ctx, t.caller.user, c, o.Name, cal, in.ETag, false)
 	if apiErr != nil {
 		return nil, writeEventOut{}, apiErr
 	}
@@ -488,4 +493,14 @@ func ExpireIdleMCPTokens(ctx context.Context, st store.Store, now time.Time) err
 		_ = st.Audit().LogAudit(ctx, &store.AuditRecord{UserID: p.UserID, Action: "app_password.expired", Resource: "app_password:" + p.ID})
 	}
 	return err
+}
+
+// hasAttendees reports any ATTENDEE on any component: a meeting.
+func hasAttendees(cal *ical.Calendar) bool {
+	for _, c := range cal.Children {
+		if len(c.Props[ical.PropAttendee]) > 0 {
+			return true
+		}
+	}
+	return false
 }

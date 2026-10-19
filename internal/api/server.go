@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/feed"
 	"github.com/Busnes-app/kycalendar/internal/scim"
 	"github.com/Busnes-app/kycalendar/internal/sso"
@@ -46,7 +48,9 @@ type Server struct {
 	// link-local or cloud metadata targets.
 	signinHTTP *http.Client
 	// feed mirrors subscribed calendars; its client reaches public HTTPS addresses only.
-	feed       *feed.Refresher
+	feed *feed.Refresher
+	// sched is server-side scheduling; nil while KYCALENDAR_SCHEDULING is off.
+	sched      *davbackend.Scheduler
 	scim       *scim.Server
 	recovery   recoveryClient
 	mux        *http.ServeMux
@@ -169,6 +173,9 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	// No provider is live yet: LoadSignIn stores one after binding accounts to it.
 	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
+	if cfg.Calendar.Scheduling {
+		s.sched = &davbackend.Scheduler{Store: st, Limits: s.objectLimits()}
+	}
 	s.routes()
 	return s
 }
@@ -532,4 +539,19 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, data any) {
 
 func (s *Server) writeError(w http.ResponseWriter, status int, message string) {
 	s.writeJSON(w, status, map[string]string{"error": message})
+}
+
+// DeliverScheduled delivers due scheduling messages, a batch at a time, until none is due.
+// A no-op while scheduling is off.
+func (s *Server) DeliverScheduled(ctx context.Context) {
+	for s.sched != nil && ctx.Err() == nil {
+		n, err := s.sched.DeliverDue(ctx)
+		if err != nil {
+			log.Printf("[SCHED] delivery failed: %v", err)
+			return
+		}
+		if n == 0 {
+			return
+		}
+	}
 }
