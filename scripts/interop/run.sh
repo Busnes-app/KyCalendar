@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # CalDAV interop: drives a built server with an independent client (python caldav) and raw HTTP.
 # Usage: scripts/interop/run.sh [binary]   (default: builds ./cmd/server)
+# KY_INTEROP_FREEBUSY=1 adds free/busy checks; KY_INTEROP_SCHEDULING=1 runs the server with
+# KYCALENDAR_SCHEDULING=true and adds the scheduling checks.
 # Needs python3. The client is installed into a throwaway venv outside the repo.
 set -euo pipefail
 
@@ -24,9 +26,10 @@ if [ ! -x "$VENV/bin/python" ]; then
 fi
 
 ADMIN_PASS="InteropAdminPass123!"
+if [ "${KY_INTEROP_SCHEDULING:-}" = 1 ]; then KY_INTEROP_ENV="KYCALENDAR_SCHEDULING=true ${KY_INTEROP_ENV:-}"; fi
 KY_PORT="$PORT" KY_HOST=127.0.0.1 KY_DATA_DIR="$WORK/data" KY_DB_DRIVER=sqlite \
   KY_ADMIN_PASSWORD="$ADMIN_PASS" KY_CAPTCHA_PROVIDER=none KY_APP_URL="$BASE" \
-  ${KY_INTEROP_ENV:-} "$BIN" >"$WORK/server.log" 2>&1 &
+  env ${KY_INTEROP_ENV:-} "$BIN" >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 curl -s -o /dev/null --retry 30 --retry-delay 1 --retry-all-errors "$BASE/" || { cat "$WORK/server.log"; exit 1; }
 
@@ -49,7 +52,7 @@ login "$ADMIN" admin "$ADMIN_PASS" "InteropAdminFinal456!"
 person() {
   local body temp jar="$WORK/$1.jar"
   body="$(json -b "$ADMIN" -H "X-CSRF-Token: $(csrf "$ADMIN")" \
-    -d '{"username":"'"$1"'","display_name":"'"$1"'","role":"user"}' -X POST "$BASE/api/admin/users")"
+    -d '{"username":"'"$1"'","display_name":"'"$1"'","email":"'"$1"'@example.com","role":"user"}' -X POST "$BASE/api/admin/users")"
   temp="$(printf '%s' "$body" | field temporary_password)"
   login "$jar" "$1" "$temp" "InteropPerson${1}Pass1!"
   local id tok

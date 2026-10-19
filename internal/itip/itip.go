@@ -5,6 +5,8 @@ package itip
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/mail"
 	"strconv"
@@ -609,4 +611,44 @@ func AttendeeCopy(request, existing *ical.Calendar, self Address) (*ical.Calenda
 		}
 	}
 	return out, nil
+}
+
+// ScheduleTag is the object's Schedule-Tag (RFC 6638 §3.2), or "" when it is not a scheduling
+// object (no ORGANIZER). It hashes the object without what answering or a client's own
+// bookkeeping changes: answers (PARTSTAT, RSVP, SCHEDULE-STATUS), VALARMs, DTSTAMP,
+// LAST-MODIFIED and X- properties. So it moves on an organizer's change and not on a reply.
+func ScheduleTag(cal *ical.Calendar) string {
+	if _, ok := Organizer(cal); !ok {
+		return ""
+	}
+	out, err := clone(cal)
+	if err != nil {
+		return ""
+	}
+	for _, c := range events(out) {
+		kept := c.Children[:0]
+		for _, child := range c.Children {
+			if child.Name != ical.CompAlarm {
+				kept = append(kept, child)
+			}
+		}
+		c.Children = kept
+		for name := range c.Props {
+			if strings.HasPrefix(name, "X-") || name == ical.PropLastModified {
+				delete(c.Props, name)
+			}
+		}
+		c.Props.SetDateTime(ical.PropDateTimeStamp, time.Unix(0, 0).UTC()) // required, so pinned
+		for i := range c.Props[ical.PropAttendee] {
+			for _, param := range []string{ical.ParamParticipationStatus, ical.ParamRSVP, "SCHEDULE-STATUS"} {
+				c.Props[ical.PropAttendee][i].Params.Del(param)
+			}
+		}
+	}
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(out); err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(buf.Bytes())
+	return hex.EncodeToString(sum[:16])
 }

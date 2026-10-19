@@ -51,7 +51,7 @@ func (s *Server) handleDAV(w http.ResponseWriter, r *http.Request) {
 		MaxObjectsPerUser: limits.MaxObjectsPerUser, MaxCalendarsPerUser: limits.MaxCalendarsPerUser, MaxBytesPerUser: limits.MaxBytesPerUser,
 		MaxBytesTotal: limits.MaxBytesTotal, Sched: s.sched,
 	}
-	if r.Method == http.MethodPut && !guardICalendarBody(w, r) {
+	if (r.Method == http.MethodPut || r.Method == http.MethodPost) && !guardICalendarBody(w, r) {
 		return
 	}
 	h := &caldav.Handler{Backend: backend, Prefix: davbackend.Prefix, MaxResourceSize: calendar.MaxObjectSize}

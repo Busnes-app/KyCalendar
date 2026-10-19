@@ -390,3 +390,27 @@ func TestUnencodableObjectIsAnErrorNotAPanic(t *testing.T) {
 		t.Errorf("AttendeeCopy: %v", err)
 	}
 }
+
+func TestScheduleTag(t *testing.T) {
+	base := ics(t, "SEQUENCE:1", "ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:bob@example.com")
+	tag := ScheduleTag(base)
+	if len(tag) != 32 {
+		t.Fatalf("tag %q", tag)
+	}
+	answered := ics(t, "SEQUENCE:1", "ATTENDEE;PARTSTAT=ACCEPTED;SCHEDULE-STATUS=2.0:mailto:bob@example.com",
+		"X-MOZ-GENERATION:3", "LAST-MODIFIED:20261102T000000Z", "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT5M\nDESCRIPTION:x\nEND:VALARM")
+	answered.Children[0].Props.SetDateTime(ical.PropDateTimeStamp, now)
+	if got := ScheduleTag(answered); got != tag {
+		t.Errorf("an answer and client bookkeeping moved the tag: %s -> %s", tag, got)
+	}
+	moved := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:bob@example.com")
+	moved.Children[0].Props.SetText(ical.PropLocation, "Room 2")
+	if ScheduleTag(moved) == tag {
+		t.Error("an organizer's change kept the tag")
+	}
+	plain := ics(t)
+	plain.Children[0].Props.Del(ical.PropOrganizer)
+	if ScheduleTag(plain) != "" {
+		t.Error("a non-scheduling object has a tag")
+	}
+}

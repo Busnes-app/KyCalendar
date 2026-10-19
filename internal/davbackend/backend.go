@@ -138,6 +138,7 @@ func (b *Backend) toDAV(ctx context.Context, c *store.Calendar, role access.Role
 		MaxResourceSize:       calendar.MaxObjectSize,
 		SupportedComponentSet: c.Components,
 		ReadOnly:              !access.CanEditEvents(c, role),
+		ScheduleTransparent:   c.Subscribed, // a mirrored feed never makes its owner busy
 	}, nil
 }
 
@@ -307,6 +308,11 @@ func (b *Backend) GetCalendarObject(ctx context.Context, p string, req *caldav.C
 		return nil, err
 	}
 	co := b.toObject(slug, o)
+	if b.Sched != nil {
+		if cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err == nil {
+			co.ScheduleTag = b.scheduleTag(cal)
+		}
+	}
 	return &co, nil
 }
 
@@ -319,6 +325,9 @@ func (b *Backend) convert(slug string, list []*store.CalendarObject) []caldav.Ca
 }
 
 func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+	if b.isInbox(p) {
+		return nil, nil
+	}
 	slug, c, _, _, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
@@ -331,6 +340,9 @@ func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav
 }
 
 func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+	if b.isInbox(p) {
+		return nil, nil
+	}
 	slug, c, _, _, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
@@ -400,6 +412,11 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	if err != nil {
 		return nil, err
 	}
+	if b.Sched != nil && opts.IfScheduleTagMatch != "" {
+		if ifMatch, err = b.matchScheduleTag(ctx, c, name, opts.IfScheduleTagMatch, ifMatch); err != nil {
+			return nil, err
+		}
+	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
 	o, err := Write(ctx, b.Store, c, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits(), b.Sched.Plan(b.User, cal))
@@ -427,7 +444,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	if !bytes.Equal(o.Data, opts.Raw) {
 		etag = "" // the server changed the object: no ETag, so the client refetches (RFC 4791 §5.3.4)
 	}
-	return &caldav.CalendarObject{Path: b.home() + slug + "/" + name, ETag: etag, ModTime: o.ModifiedAt}, nil
+	return &caldav.CalendarObject{Path: b.home() + slug + "/" + name, ETag: etag, ModTime: o.ModifiedAt, ScheduleTag: b.scheduleTag(cal)}, nil
 }
 
 func (b *Backend) limits() store.OwnerLimits {
@@ -467,6 +484,9 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 }
 
 func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.SyncResult, error) {
+	if b.isInbox(p) {
+		return b.syncInbox(ctx, token)
+	}
 	slug, c, _, _, err := b.objectAt(ctx, p)
 	if err != nil {
 		return nil, err
