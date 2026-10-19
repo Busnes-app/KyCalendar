@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
@@ -127,5 +128,42 @@ func TestWebAttendeesNeedScheduling(t *testing.T) {
 	_ = json.Unmarshal(call(t, srv, "GET", "/api/settings", "", nil).Body.Bytes(), &settings)
 	if settings["scheduling"] != false {
 		t.Errorf("settings scheduling = %v", settings["scheduling"])
+	}
+}
+
+func TestWebFreeBusyPicker(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, bobCal := webUser(t, srv, st, "bob")
+	secret := `{"title":"Secret interview","location":"Room 9","start":"2026-11-10T13:00:00Z","end":"2026-11-10T14:00:00Z","zone":"UTC"}`
+	if r := call(t, srv, "POST", "/api/calendars/"+bobCal+"/events", secret, bob); r.Code != http.StatusCreated {
+		t.Fatalf("bob's event %d", r.Code)
+	}
+	r := call(t, srv, "GET", "/api/freebusy?users=bob@example.com,carol@example.net&start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z", "", alice)
+	body := r.Body.String()
+	if r.Code != 200 || !strings.Contains(body, `"email":"bob@example.com","busy":[{"start":"2026-11-10T13:00:00Z","end":"2026-11-10T14:00:00Z"}]`) ||
+		!strings.Contains(body, `"email":"carol@example.net","unknown":true`) {
+		t.Fatalf("free/busy %d %s", r.Code, body)
+	}
+	for _, leak := range []string{"Secret", "Room 9"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("free/busy reveals %q: %s", leak, body)
+		}
+	}
+	for _, q := range []string{"users=bob@example.com&start=2026-11-10T00:00:00Z&end=2026-11-09T00:00:00Z",
+		"users=bob@example.com&start=2026-01-01T00:00:00Z&end=2026-06-01T00:00:00Z", "start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z",
+		"users=not-an-email&start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z"} {
+		if r := call(t, srv, "GET", "/api/freebusy?"+q, "", alice); r.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", q, r.Code)
+		}
+	}
+}
+
+func TestWebFreeBusyNeedsScheduling(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, _ := webUser(t, srv, st, "alice")
+	if r := call(t, srv, "GET", "/api/freebusy?users=bob@example.com&start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z", "", alice); r.Code != http.StatusUnprocessableEntity {
+		t.Errorf("scheduling off: %d", r.Code)
 	}
 }

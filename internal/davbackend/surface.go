@@ -92,7 +92,7 @@ func (b *Backend) ScheduleFreeBusy(ctx context.Context, req *ical.Calendar) ([]c
 			case err != nil:
 				return nil, err
 			default:
-				periods, err := b.personalBusy(ctx, u, start, end, begun)
+				periods, err := PersonalBusy(ctx, b.Store, u, start, end, begun)
 				if errors.Is(err, errFreeBusyTooBig) {
 					resp.Status = "5.1;Could not complete delivery"
 					break
@@ -109,8 +109,11 @@ func (b *Backend) ScheduleFreeBusy(ctx context.Context, req *ical.Calendar) ([]c
 	return out, nil
 }
 
-func (b *Backend) personalBusy(ctx context.Context, u *store.User, start, end, begun time.Time) ([]caldav.FreeBusyPeriod, error) {
-	own, err := b.Store.Calendars().ListCalendarsByOwner(ctx, ownerUser, u.ID)
+// PersonalBusy is u's busy times in [start, end) from their personal, non-subscribed event
+// calendars, bounded like free-busy-query (errFreeBusyTooBig past it). Outbox free/busy and the
+// web attendee picker share it.
+func PersonalBusy(ctx context.Context, st store.Store, u *store.User, start, end, begun time.Time) ([]caldav.FreeBusyPeriod, error) {
+	own, err := st.Calendars().ListCalendarsByOwner(ctx, ownerUser, u.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +123,17 @@ func (b *Backend) personalBusy(ctx context.Context, u *store.User, start, end, b
 			cals = append(cals, c)
 		}
 	}
-	return busyIn(ctx, b.Store, cals, start, end, begun)
+	return busyIn(ctx, st, cals, start, end, begun)
 }
+
+// ErrFreeBusyTooBig is a free/busy request past the bounds.
+var ErrFreeBusyTooBig = errFreeBusyTooBig
+
+// Free/busy request bounds shared by the outbox and the web picker.
+const (
+	MaxFreeBusyPeople = maxFreeBusyRecipients
+	MaxFreeBusyRange  = maxOutboxRange
+)
 
 // freeBusyReply is the METHOD:REPLY VFREEBUSY for one recipient of request.
 func freeBusyReply(request *ical.Component, to itip.Address, start, end time.Time, periods []caldav.FreeBusyPeriod) *ical.Calendar {

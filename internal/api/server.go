@@ -369,6 +369,7 @@ func (s *Server) routes() {
 	s.handle("PUT /api/events/{cal}/{uid}", s.requireEveryday(s.handleUpdateEvent))
 	s.handle("DELETE /api/events/{cal}/{uid}", s.requireEveryday(s.handleDeleteEvent))
 	s.handle("POST /api/events/{cal}/{uid}/rsvp", s.requireEveryday(s.handleRSVP))
+	s.handle("GET /api/freebusy", s.requireEveryday(s.handleFreeBusy))
 
 	// KyPost, server to server: syncauth-signed under the shared secret, never a session. 404
 	// unless scheduling and KyPost are both configured.
