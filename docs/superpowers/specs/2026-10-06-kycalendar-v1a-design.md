@@ -77,12 +77,12 @@ expansion, web UI, admin screens, KyRecovery backup and restore.
 
 Out of v1a, each with its own spec:
 
-- **v1b invitations (KyCalendar):** iTIP/iMIP REQUEST, REPLY, CANCEL, COUNTER; implicit scheduling
-  on save so web and native clients share it; internal delivery; outbound mail through the operator
-  relay or KyPost's outbox (undecided); an inbound endpoint KyPost calls as the user. COUNTER
-  support in Google Calendar is unverified and must be tested before it is promised.
-- **KyPost:** RSVP card on `text/calendar` mail that calls KyCalendar's API as the signed-in user.
-- **KyMessages:** an API to create a call link; none exists today.
+- **v1b invitations and meetings (KyCalendar):** `docs/superpowers/specs/2026-10-17-kycalendar-v1b-invitations-design.md`.
+  Implicit scheduling on save so web and native clients share it; internal delivery; mail sent
+  and received through KyPost as the user; KyMessages video rooms with a guest waiting room;
+  COUNTER refused.
+- **KyPost:** sends and receives invitation mail for KyCalendar and wires its RSVP cards; see the v1b spec.
+- **KyMessages:** meeting rooms with a guest waiting room, called by KyCalendar; see the v1b spec.
 - **kypost-android:** calendar sync.
 
 ## 1. Identity, ownership and access
