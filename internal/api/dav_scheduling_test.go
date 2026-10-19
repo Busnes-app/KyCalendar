@@ -243,3 +243,23 @@ func TestSchedulingAgentCannotChangeMeetings(t *testing.T) {
 		t.Errorf("an event without attendees: %q", msg)
 	}
 }
+
+// An object go-ical decodes but will not re-encode (here a VEVENT without DTSTAMP) is stored as
+// sent and schedules nothing; it never takes the server down.
+func TestSchedulingUnencodableObject(t *testing.T) {
+	w := newSchedWorld(t, true)
+	body := strings.Replace(meeting("odd", "alice", "ATTENDEE:mailto:bob@example.com"), "DTSTAMP:20261001T000000Z\r\n", "", 1)
+	code, _ := w.put("alice", "odd.ics", body, "")
+	if code == 201 {
+		if _, got, _ := w.get("alice", "odd.ics"); got != body {
+			t.Fatal("stored object differs from what was sent")
+		}
+	} else if code != 409 {
+		t.Fatalf("PUT %d", code)
+	}
+	w.deliver()
+	if got, _ := w.copyOf("bob", "odd"); got != "" {
+		t.Fatalf("an object the server cannot re-encode was delivered:\n%s", got)
+	}
+	t.Logf("PUT answered %d", code)
+}

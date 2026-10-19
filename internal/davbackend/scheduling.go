@@ -81,14 +81,17 @@ func (s *Scheduler) Plan(writer *store.User, newCal *ical.Calendar) store.Planne
 		var data []byte
 		if newCal != nil {
 			if org, ok := itip.Organizer(newCal); ok && org == self && itip.BumpSequence(oldCal, newCal) {
-				var err error
-				if data, err = encodeCal(newCal); err != nil {
-					return nil, nil, err
-				}
+				data, _ = encodeCal(newCal) // nil when go-ical will not encode it: stored as sent
 			}
 		}
+		msgs, err := itip.Outgoing(self, oldCal, newCal, s.now())
+		if err != nil {
+			// The object cannot be sent as it stands. It is still stored: refusing would break the
+			// client's sync over something it cannot fix.
+			return data, nil, nil
+		}
 		var rows []*store.OutboxMessage
-		for _, m := range itip.Outgoing(self, oldCal, newCal, s.now()) {
+		for _, m := range msgs {
 			body, err := encodeCal(m.Calendar)
 			if err != nil {
 				return nil, nil, err
@@ -110,7 +113,7 @@ func (s *Scheduler) DeliverDue(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	for _, m := range due {
-		err := s.deliver(ctx, m)
+		err := s.deliverSafely(ctx, m)
 		var perm errPermanent
 		switch {
 		case err == nil:
@@ -142,6 +145,17 @@ func reason(err error) string {
 		return "quota"
 	}
 	return "error"
+}
+
+// deliverSafely is deliver with a panic turned into a permanent failure of that one message:
+// the worker runs outside HTTP recovery, and go-ical panics on some input.
+func (s *Scheduler) deliverSafely(ctx context.Context, m *store.OutboxMessage) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = errPermanent{"panic"}
+		}
+	}()
+	return s.deliver(ctx, m)
 }
 
 func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
@@ -285,21 +299,29 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		if err != nil {
 			return err
 		}
+		first, err := itip.AttendeeCopy(msg, nil, self)
+		if err != nil {
+			return errPermanent{"invalid_object"}
+		}
 		sum := sha256.Sum256([]byte(uid))
-		return s.put(ctx, def, hex.EncodeToString(sum[:16])+".ics", itip.AttendeeCopy(msg, nil, self), "", true)
+		return s.put(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true)
 	case err != nil:
 		return err
 	}
-	var next *ical.Calendar
+	src := msg
 	if method == itip.MethodCancel {
-		next = itip.AttendeeCopy(existing, existing, self)
+		src = existing
+	}
+	next, err := itip.AttendeeCopy(src, existing, self)
+	if err != nil {
+		return errPermanent{"invalid_object"}
+	}
+	if method == itip.MethodCancel {
 		for _, ev := range next.Children {
 			if ev.Name == ical.CompEvent {
 				ev.Props.SetText(ical.PropStatus, "CANCELLED")
 			}
 		}
-	} else {
-		next = itip.AttendeeCopy(msg, existing, self)
 	}
 	return s.put(ctx, c, o.Name, next, o.ETag, false)
 }
