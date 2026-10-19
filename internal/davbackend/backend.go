@@ -450,7 +450,7 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 	if err != nil {
 		return err
 	}
-	err = Delete(ctx, b.Store, c, name, ifMatch, b.Sched.Plan(b.User, nil))
+	err = Delete(ctx, b.Store, c, name, ifMatch, b.limits(), b.Sched.Plan(b.User, nil))
 	switch {
 	case errors.Is(err, store.ErrNotFound) && m.IsSet():
 		return webdav.NewHTTPError(http.StatusPreconditionFailed, err)
@@ -460,6 +460,8 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, p string) error {
 		return errReadOnly
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return webdav.NewHTTPError(http.StatusPreconditionFailed, err)
+	case errors.Is(err, store.ErrQuotaExceeded): // the cancellations it would queue do not fit
+		return errQuota
 	}
 	return err
 }

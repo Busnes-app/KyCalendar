@@ -299,12 +299,16 @@ type CalendarStore interface {
 	// PutObjectPlanned is PutObject with plan run inside its transaction (see Planner).
 	PutObjectPlanned(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits, plan Planner) (created bool, err error)
 	DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error
-	// DeleteObjectPlanned is DeleteObject with plan run inside its transaction (see Planner).
-	DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, plan Planner) error
+	// DeleteObjectPlanned is DeleteObject with plan run inside its transaction (see Planner);
+	// lim bounds the messages it queues.
+	DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner) error
 	// DueOutbox lists up to limit pending messages whose next attempt is at or before now, oldest first.
 	DueOutbox(ctx context.Context, now time.Time, limit int) ([]*OutboxMessage, error)
-	// FinishOutbox records one delivery attempt: status delivered, failed or pending (retry at next).
+	// FinishOutbox records one delivery attempt: status delivered, failed or pending (retry at
+	// next). A finished message's body is cleared.
 	FinishOutbox(ctx context.Context, id, status string, next time.Time, lastError string) error
+	// PruneOutbox deletes finished messages created before before.
+	PruneOutbox(ctx context.Context, before time.Time) error
 	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
 	PruneChanges(ctx context.Context, before time.Time) error
 	SyncEpoch(ctx context.Context) (string, error)

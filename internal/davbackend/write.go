@@ -40,9 +40,10 @@ func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, 
 	return o, nil
 }
 
-// Delete is the one delete path for calendar objects, with plan run inside its transaction.
-func Delete(ctx context.Context, st store.Store, c *store.Calendar, name, ifMatch string, plan store.Planner) error {
-	return st.Calendars().DeleteObjectPlanned(ctx, c.ID, name, ifMatch, plan)
+// Delete is the one delete path for calendar objects, with plan run inside its transaction and
+// the messages it queues bounded by lim.
+func Delete(ctx context.Context, st store.Store, c *store.Calendar, name, ifMatch string, lim store.OwnerLimits, plan store.Planner) error {
+	return st.Calendars().DeleteObjectPlanned(ctx, c.ID, name, ifMatch, lim, plan)
 }
 
 // Prepare runs every check Write makes before the store: size, CalDAV validity and Inspect.

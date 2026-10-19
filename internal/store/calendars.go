@@ -378,17 +378,17 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 		}
 		return false, err
 	}
-	if err := c.queue(ctx, tx, rows); err != nil {
+	if err := c.queue(ctx, tx, rows, lim); err != nil {
 		return false, err
 	}
 	return !exists, tx.Commit()
 }
 
 func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error {
-	return c.DeleteObjectPlanned(ctx, calendarID, name, ifMatch, nil)
+	return c.DeleteObjectPlanned(ctx, calendarID, name, ifMatch, OwnerLimits{}, nil)
 }
 
-func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, plan Planner) error {
+func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner) error {
 	tx, err := c.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -423,7 +423,7 @@ func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, nam
 	if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name); err != nil {
 		return err
 	}
-	if err := c.queue(ctx, tx, rows); err != nil {
+	if err := c.queue(ctx, tx, rows, lim); err != nil {
 		return err
 	}
 	return tx.Commit()

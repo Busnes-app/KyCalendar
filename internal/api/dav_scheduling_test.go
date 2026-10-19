@@ -263,3 +263,73 @@ func TestSchedulingUnencodableObject(t *testing.T) {
 	}
 	t.Logf("PUT answered %d", code)
 }
+
+// The guard reads the stored object, not the edit's result: moving a series drops its
+// overrides, so an override carrying the only attendee would otherwise be cancelled unasked.
+func TestSchedulingAgentCannotDropAMeetingOverride(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	w := newMCPWorld(t)
+	ctx := context.Background()
+	u, err := w.st.Users().GetUserByID(ctx, "usr_alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Email = "alice@example.com"
+	if err := w.st.Users().UpdateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	_, tok := seedToken(t, w.st, "usr_alice", store.ScopeMCPWriteAny)
+	cs := agent(t, w.srv, tok)
+	c, err := w.st.Calendars().GetCalendarByID(ctx, w.personal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	series := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VEVENT\r\nUID:series\r\nDTSTAMP:20261001T000000Z\r\n" +
+		"DTSTART:20261102T090000Z\r\nDTEND:20261102T100000Z\r\nRRULE:FREQ=DAILY;COUNT=5\r\nSUMMARY:Standup\r\nEND:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\nUID:series\r\nDTSTAMP:20261001T000000Z\r\nRECURRENCE-ID:20261103T090000Z\r\nDTSTART:20261103T090000Z\r\n" +
+		"DTEND:20261103T100000Z\r\nSUMMARY:Standup with Bob\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\n" +
+		"END:VEVENT\r\nEND:VCALENDAR\r\n"
+	if _, err := davbackend.Write(ctx, w.st, c, "series.ics", decode(t, series), []byte(series), "", true, store.OwnerLimits{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	before, err := w.st.Calendars().GetObjectByUID(ctx, w.personal, "series")
+	if err != nil {
+		t.Fatal(err)
+	}
+	move := map[string]any{"calendar_id": w.personal, "uid": "series", "etag": before.ETag, "scope": "all",
+		"start": "2026-11-02T11:00:00Z", "end": "2026-11-02T12:00:00Z", "zone": "UTC"}
+	if msg := callTool(t, cs, "update_event", move, nil); msg != api.MCPMeetingForTest {
+		t.Fatalf("moving a series with a meeting override: %q", msg)
+	}
+	after, _ := w.st.Calendars().GetObjectByUID(ctx, w.personal, "series")
+	if after.ETag != before.ETag {
+		t.Fatal("the refused edit changed the stored object")
+	}
+	if due, _ := w.st.Calendars().DueOutbox(ctx, time.Now().Add(48*time.Hour), 10); len(due) != 0 {
+		t.Fatalf("the refused edit queued %d messages", len(due))
+	}
+}
+
+// Each recipient's copy counts against the writer's storage, inside the write's transaction: a
+// meeting whose invitations do not fit is refused whole (507), with nothing stored or queued.
+func TestSchedulingOutboxCountsAgainstQuota(t *testing.T) {
+	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", "20000")
+	w := newSchedWorld(t, true)
+	var atts []string
+	for i := range 40 {
+		atts = append(atts, "ATTENDEE:mailto:guest"+string(rune('a'+i%26))+string(rune('a'+i/26))+"@example.net")
+	}
+	big := meeting("big", "alice", atts...)
+	if code, _ := w.put("alice", "big.ics", big, ""); code != 507 {
+		t.Fatalf("a meeting whose %d invitations exceed the quota: %d", len(atts), code)
+	}
+	if code, _, _ := w.get("alice", "big.ics"); code != 404 {
+		t.Fatalf("the refused meeting was stored: GET %d", code)
+	}
+	if due, _ := w.st.Calendars().DueOutbox(context.Background(), time.Now().Add(48*time.Hour), 100); len(due) != 0 {
+		t.Fatalf("the refused meeting queued %d messages", len(due))
+	}
+	if code, _ := w.put("alice", "small.ics", meeting("small", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
+		t.Fatalf("a small meeting: %d", code)
+	}
+}

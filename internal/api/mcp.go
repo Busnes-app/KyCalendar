@@ -394,6 +394,11 @@ func (t mcpTools) updateEvent(ctx context.Context, _ *mcp.CallToolRequest, in up
 	if apiErr != nil {
 		return nil, writeEventOut{}, apiErr
 	}
+	// Judged on the stored object: an edit can drop the overrides that carry the attendees, and
+	// the write would then cancel the meeting for them. The mcp:invite scope is not built yet.
+	if t.s.config.Calendar.Scheduling && hasAttendees(cal) {
+		return nil, writeEventOut{}, errors.New(msgMeeting)
+	}
 	if own != nil && !own[c.ID+"/"+in.UID] {
 		return nil, writeEventOut{}, errors.New(msgNotOwn)
 	}
@@ -417,10 +422,6 @@ func (t mcpTools) updateEvent(ctx context.Context, _ *mcp.CallToolRequest, in up
 		}
 	} else if apiErr := editTimes(cal, rid, in); apiErr != nil {
 		return nil, writeEventOut{}, apiErr
-	}
-	if t.s.config.Calendar.Scheduling && hasAttendees(cal) {
-		// An edit here would mail every attendee; the mcp:invite scope that allows it is not built yet.
-		return nil, writeEventOut{}, errors.New(msgMeeting)
 	}
 	saved, apiErr := t.s.saveEvent(ctx, t.caller.user, c, o.Name, cal, in.ETag, false)
 	if apiErr != nil {

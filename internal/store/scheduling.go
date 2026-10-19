@@ -46,7 +46,38 @@ func (c *calendarStore) runPlan(ctx context.Context, tx *sql.Tx, o *CalendarObje
 	return rows, nil
 }
 
-func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMessage) error {
+// queue inserts rows in the write's transaction. Pending bodies count against lim: one sender's
+// against MaxBytes, and every pending body plus every stored object against MaxTotalBytes, so
+// a meeting with many attendees cannot fill the disk or the backup capsule. Over either limit
+// the whole write is refused (ErrQuotaExceeded).
+func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMessage, lim OwnerLimits) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	var adding int64
+	for _, m := range rows {
+		adding += int64(len(m.Body))
+	}
+	if lim.MaxBytes > 0 {
+		var pending int64
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending' AND sender_id = ?`),
+			rows[0].SenderID).Scan(&pending); err != nil {
+			return err
+		}
+		if pending+adding > lim.MaxBytes {
+			return ErrQuotaExceeded
+		}
+	}
+	if lim.MaxTotalBytes > 0 {
+		var used int64
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) +
+(SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending')`)).Scan(&used); err != nil {
+			return err
+		}
+		if used+adding > lim.MaxTotalBytes {
+			return ErrQuotaExceeded
+		}
+	}
 	now := time.Now().UTC()
 	for _, m := range rows {
 		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
@@ -80,8 +111,10 @@ FROM scheduling_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER B
 }
 
 func (c *calendarStore) FinishOutbox(ctx context.Context, id, status string, next time.Time, lastError string) error {
-	res, err := c.store.db.ExecContext(ctx, c.q(`UPDATE scheduling_outbox SET status = ?, attempts = attempts + 1, next_attempt_at = ?, last_error = ?
-WHERE id = ? AND status = 'pending'`), status, next.UTC(), lastError, id)
+	// A finished message keeps its dedupe key and outcome, never its body.
+	res, err := c.store.db.ExecContext(ctx, c.q(`UPDATE scheduling_outbox SET status = ?, attempts = attempts + 1, next_attempt_at = ?, last_error = ?,
+body = CASE WHEN ? = 'pending' THEN body ELSE ? END
+WHERE id = ? AND status = 'pending'`), status, next.UTC(), lastError, status, []byte{}, id)
 	if err != nil {
 		return err
 	}
@@ -89,6 +122,11 @@ WHERE id = ? AND status = 'pending'`), status, next.UTC(), lastError, id)
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (c *calendarStore) PruneOutbox(ctx context.Context, before time.Time) error {
+	_, err := c.store.db.ExecContext(ctx, c.q(`DELETE FROM scheduling_outbox WHERE status <> 'pending' AND created_at < ?`), before.UTC())
+	return err
 }
 
 func (u *userStore) CalendarUser(ctx context.Context, email string) (*User, error) {

@@ -526,7 +526,7 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("scope") {
 	case "", "all":
-		err := davbackend.Delete(r.Context(), s.store, c, o.Name, etag, s.sched.Plan(sessionUser(r.Context()), nil))
+		err := davbackend.Delete(r.Context(), s.store, c, o.Name, etag, s.objectLimits(), s.sched.Plan(sessionUser(r.Context()), nil))
 		switch {
 		case errors.Is(err, store.ErrPreconditionFailed):
 			s.writeAPIError(w, errEventChanged)
@@ -534,6 +534,8 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, http.StatusNotFound, "No such event")
 		case errors.Is(err, store.ErrReadOnly):
 			s.writeAPIError(w, errReadOnlyCalendar)
+		case errors.Is(err, store.ErrQuotaExceeded): // the cancellations it would queue do not fit
+			s.writeAPIError(w, &apiError{status: http.StatusInsufficientStorage, msg: "Calendar storage is full", code: "quota"})
 		case err != nil:
 			s.writeError(w, http.StatusInternalServerError, "Failed to delete the event")
 		default:
