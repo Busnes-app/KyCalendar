@@ -1,16 +1,28 @@
 # KyCalendar installer boundary
 
-Run `/app/kycalendar apply-setup --file /data/installer/bundle.json` in the selected running
-container. `--check` performs read-only comparison through private target IPC; it does not
+Run `apply-setup` in the running container. With the stock compose file the service is `app`
+(container `kycalendar`), the image runs as UID 10001 and the data directory is `/app/data`,
+a persistent volume. Put the bundle there as a 0600 file owned by UID 10001:
+
+```bash
+docker compose exec app /app/kycalendar apply-setup --file /app/data/installer/bundle.json
+docker compose restart app
+```
+
+`--check` performs read-only comparison through private target IPC; it does not
 open or migrate a database, generate keys, modify accounts or audit. `--capabilities` needs
-no configuration. `KY_DATA_DIR` must match the running server (default `./data`).
+no configuration. `KY_DATA_DIR` must match the running server (`/app/data` in the image;
+`./data` for a bare binary).
 
 The common `ky.product-setup/1` envelope requires service `kycalendar`, a stable setup UUID,
 a canonical HTTPS KyIdentity issuer, dedicated client ID and private absolute client and
 directory credential references, callback `<KY_APP_URL>/api/sso/kysignon/callback`, at least
 one dedicated administrator and optional everyday identities. Credentials and the bundle
 must be process-owned regular 0600 files. Identities name exact issuer, subject and unique
-username. Use assigned-users-only OIDC and the application role `kycalendar.admin`.
+username. Use assigned-users-only OIDC. KyCalendar reads one application role,
+`kycalendar.admin`: administrators' tokens must carry it and everyday tokens must not. There
+is no everyday role; other role values are ignored. A managed account whose token disagrees
+with its assigned role is refused, deactivated and its sessions revoked.
 
 First setup atomically creates new subjects, immutable ownership, sign-in binding and native
 SQL audit. It refuses existing identities, sign-in settings, conflicting environment settings,
@@ -39,6 +51,14 @@ Managed sealed backups include client/directory credentials and their destinatio
 Restore these files to their recorded target paths with the runtime owner and 0600 permissions
 before startup. Drills inspect the retained database and require credential members as well
 as native calendar counts, objects and integrity checks.
+
+Only the running server loads the installer configuration, so only its backups carry these
+members: Back up now, the schedule, Download capsule and Run restore drill
+(`POST /api/backup/drill`). The CLI `deposit`, `export-capsule` and `backup-drill` commands
+do not load it and omit them: `deposit` and `export-capsule` seal a capsule without the
+credentials, and `backup-drill` reports `FAILED` with `Installer Credentials: Required
+managed credential omitted` even when the deposited capsules are complete. Drill a managed
+install from the admin screen or API.
 
 Installer recovery enrollment, central client/app-role/group composition, existing mixed-use
 migration, real-device interop and image/library provenance remain deployment gates. The

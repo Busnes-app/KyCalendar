@@ -8,14 +8,15 @@ disaster recovery through the suite's KyRecovery.
 
 Installer integration: [product-owned setup contract](docs/INSTALLER_SETUP.md).
 
-Published image:
+Published image (needs `docker-compose.yml` from this repository, no build):
 
 ```bash
-make ci        # gofmt, vet, race tests, smoke test
-make run       # build and start on 127.0.0.1:8080 with its own data in .dev-data/
 mkdir -p -m 700 data backups && sudo chown 10001:10001 data backups   # the container's UID
 docker compose up -d
 ```
+
+Production settings such as `KY_ENV` and `KY_SESSION_SECRET` need an override file; see
+[Settings Compose does not pass](#settings-compose-does-not-pass).
 
 Source install (never paste this into a published-image install: the build overlay wins over a
 `KY_IMAGE` digest pin, and a source install must set this line before its first `up -d` on a
@@ -79,6 +80,35 @@ run failed. Results are cached for 5 seconds.
 
   A new install creates both before its first `up -d` (the quick start above does); a
   directory Docker creates for a missing bind mount is owned by root.
+
+## Settings Compose does not pass
+
+Compose reads `.env` only to fill in `docker-compose.yml`; the container receives just the
+variables that file's `environment:` list names. Any other line in `.env` never reaches the
+server: `KY_ENV`, `KY_SESSION_SECRET`, `KY_ADMIN_PASSWORD`, `KY_TRUSTED_PROXIES`,
+`KY_ALLOW_INSECURE_HTTP`, `KY_COOKIE_SECURE` and `KY_KYSIGNON_*` among them. Pass them
+through a local override that reads a private file:
+
+```yaml
+# docker-compose.override.yml
+services:
+  app:
+    env_file: .env.app
+```
+
+```dotenv
+# .env.app (mode 600, git-ignored)
+KY_ENV=production
+KY_SESSION_SECRET=<random, e.g. openssl rand -hex 32>
+KY_TRUSTED_PROXIES=<your proxy's address>/32
+```
+
+Append `docker-compose.override.yml` to the end of the `COMPOSE_FILE` chain in `.env` (for a
+published-image install without other overlays,
+`COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml`), then `docker compose up -d`.
+A variable the base `environment:` list already sets (`KY_SSO_ENABLED`, for one) keeps that
+value; change it in the override's own `environment:`. `docker compose config` shows the
+merged result, secrets included, so do not share its output.
 
 ## Container IP address
 
@@ -296,7 +326,9 @@ and skip the question.
 Back up now, the schedule and the `deposit` command all do the same thing: seal one capsule
 and deliver it to every configured destination. A pinned key with no destination is refused
 with a message that says so. A local write that fails does not stop the deposit, and a
-refused deposit does not remove the local copy.
+refused deposit does not remove the local copy. On an installer-managed install, the CLI
+commands (`deposit`, `export-capsule`, `backup-drill`) leave out the installer credentials;
+use the admin screen or the schedule there ([installer setup](docs/INSTALLER_SETUP.md)).
 
 ### Environment
 

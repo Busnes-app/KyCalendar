@@ -405,3 +405,7 @@ messages). Concurrent drills on one data directory are refused
 if the process exits. Keep `data/drill.lock` in place; it holds no secret and must not be
 removed to bypass a running drill. Opened scratch data stays under `data/drill` with 0700
 permissions and is removed when the drill returns.
+
+`backup-drill` exits 0 once the drill runs, passed or failed: read its `Status:` line. On an
+installer-managed install it cannot pass; use the in-app drill
+([installer setup](INSTALLER_SETUP.md)).
