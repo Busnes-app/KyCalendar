@@ -51,7 +51,9 @@ func main() {
 			runRenameUser(os.Args[2:])
 			return
 		case "backup-drill":
-			runBackupDrill(os.Args[2:])
+			if !runBackupDrill(os.Args[2:]) {
+				os.Exit(1)
+			}
 			return
 		case "export-capsule":
 			runExportCapsule(os.Args[2:])
@@ -322,15 +324,8 @@ func recordRun(ctx context.Context, st store.Store, actor string, res recoverycl
 
 // runDeposit seals and delivers one capsule now, for cron or an operator at a shell.
 func runDeposit() {
-	cfg, err := config.LoadFromEnv()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
 	ctx := context.Background()
-	st, err := store.Open(ctx, cfg.Database)
-	if err != nil {
-		log.Fatalf("DB error: %v", err)
-	}
+	cfg, st := openForBackup(ctx)
 	defer st.Close()
 
 	res, err := runBackup(ctx, cfg, st)
@@ -411,16 +406,10 @@ func collectFiles(ctx context.Context, cfg *config.Config) recoveryclient.Payloa
 	return payload
 }
 
-func runBackupDrill(args []string) {
-	cfg, err := config.LoadFromEnv()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
+// runBackupDrill prints the drill summary and reports whether it passed.
+func runBackupDrill(args []string) bool {
 	ctx := context.Background()
-	st, err := store.Open(ctx, cfg.Database)
-	if err != nil {
-		log.Fatalf("DB error: %v", err)
-	}
+	cfg, st := openForBackup(ctx)
 	defer st.Close()
 
 	payload := collectFiles(ctx, cfg)
@@ -440,6 +429,25 @@ func runBackupDrill(args []string) {
 		fmt.Printf("  [%s] %s: %s\n", status, check.Name, check.Message)
 	}
 	fmt.Println("==================================================")
+	return result.Passed
+}
+
+// openForBackup opens a one-shot backup command's configuration and store and loads the stored
+// installer setup, as runServer does, so a managed install's capsules and drills carry its
+// installer credentials.
+func openForBackup(ctx context.Context) (*config.Config, store.Store) {
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	st, err := store.Open(ctx, cfg.Database)
+	if err != nil {
+		log.Fatalf("DB error: %v", err)
+	}
+	if err := loadInstallerConfiguration(ctx, cfg, st); err != nil {
+		log.Fatalf("Installer configuration unavailable: %v", err)
+	}
+	return cfg, st
 }
 
 func runExportCapsule(args []string) {
@@ -447,15 +455,8 @@ func runExportCapsule(args []string) {
 	out := fs.String("out", "", "output path (default <capsule-id>.kycap in the current directory)")
 	_ = fs.Parse(args)
 
-	cfg, err := config.LoadFromEnv()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
 	ctx := context.Background()
-	st, err := store.Open(ctx, cfg.Database)
-	if err != nil {
-		log.Fatalf("DB error: %v", err)
-	}
+	cfg, st := openForBackup(ctx)
 	defer st.Close()
 
 	key, err := recoveryclient.LoadRecoveryKey(cfg.Database.DataDir, backup.Settings(ctx, st.Settings()))

@@ -37,3 +37,46 @@ func TestComposeAndImageAreHardenedByDefault(t *testing.T) {
 		t.Error("Dockerfile has a base image not pinned by digest")
 	}
 }
+
+// Settings an operator puts in .env reach the server; unset, each is empty or the server's own
+// default, so an install that sets none behaves as before.
+func TestComposeForwardsOperatorSettings(t *testing.T) {
+	compose, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`- KY_ENV=${KY_ENV:-development}`,
+		`- KY_SESSION_SECRET=${KY_SESSION_SECRET:-}`,
+		`- KY_ADMIN_PASSWORD=${KY_ADMIN_PASSWORD:-}`,
+		`- KY_TRUSTED_PROXIES=${KY_TRUSTED_PROXIES:-}`,
+		`- KY_KYSIGNON_ISSUER=${KY_KYSIGNON_ISSUER:-}`,
+		`- KY_KYSIGNON_CLIENT_ID=${KY_KYSIGNON_CLIENT_ID:-}`,
+		`- KY_KYSIGNON_SECRET=${KY_KYSIGNON_SECRET:-}`,
+		`- KY_KYSIGNON_HMAC_SECRET=${KY_KYSIGNON_HMAC_SECRET:-}`,
+	} {
+		if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(want) + `\s*$`).Match(compose) {
+			t.Errorf("docker-compose.yml lacks %s", want)
+		}
+	}
+}
+
+// Compose marks the container unhealthy when /healthz answers 503. busybox wget is in the
+// alpine runtime image; the CI docker job runs this exact command in the built image.
+func TestComposeHealthcheckProbesHealthz(t *testing.T) {
+	compose, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]`
+	if !regexp.MustCompile(`(?m)^\s*healthcheck:\s*\n\s*` + regexp.QuoteMeta(want) + `\s*$`).Match(compose) {
+		t.Errorf("docker-compose.yml lacks the healthcheck %s", want)
+	}
+	ci, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`docker exec ky_ci wget -q -O /dev/null http://127\.0\.0\.1:8080/healthz`).Match(ci) {
+		t.Error("ci.yml does not run the healthcheck command in the built image")
+	}
+}

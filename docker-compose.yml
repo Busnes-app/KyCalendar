@@ -46,6 +46,13 @@ services:
     # Covers cmd/server's shutdownTimeout (5s HTTP drain) plus backupWaitTimeout (17m for a
     # deposit already on the wire), so SIGKILL cannot land on a capsule mid-upload.
     stop_grace_period: 20m
+    # A 503 from /healthz marks the container unhealthy; busybox wget is in the image.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     # Non-root (UID 10001, from the image), read-only root filesystem, no capabilities. Only
     # the two volumes and /tmp are writable; host ./data and ./backups must be owned by 10001.
     read_only: true
@@ -65,6 +72,16 @@ services:
       - KY_APP_URL=${KY_APP_URL:-http://localhost:8080}
       - KY_DB_DRIVER=sqlite
       - KY_DATA_DIR=/app/data
+      # Set in .env. Unset, each keeps the server's default: development mode, a session secret
+      # generated per start, a generated admin password file, no trusted proxy, sign-in from the
+      # admin screen. KY_ENV=production needs an https:// KY_APP_URL and KY_SESSION_SECRET.
+      - KY_ENV=${KY_ENV:-development}
+      - KY_SESSION_SECRET=${KY_SESSION_SECRET:-}
+      - KY_ADMIN_PASSWORD=${KY_ADMIN_PASSWORD:-}
+      - KY_KYSIGNON_ISSUER=${KY_KYSIGNON_ISSUER:-}
+      - KY_KYSIGNON_CLIENT_ID=${KY_KYSIGNON_CLIENT_ID:-}
+      - KY_KYSIGNON_SECRET=${KY_KYSIGNON_SECRET:-}
+      - KY_KYSIGNON_HMAC_SECRET=${KY_KYSIGNON_HMAC_SECRET:-}
       # Disaster recovery. Sealed capsules land in KYCALENDAR_BACKUP_DIR (empty = no local copies);
       # the schedule below is only the default the admin screen overrides. KYCALENDAR_DNS lives in
       # docker-compose.lan-dns.yml, never here.
@@ -83,10 +100,10 @@ services:
       - KY_BACKUP_KEEP=${KY_BACKUP_KEEP:-}
       - KY_BACKUP_DEPOSIT_INTERVAL=${KY_BACKUP_DEPOSIT_INTERVAL:-}
       - KY_BACKUP_ALLOW_PRIVATE_RECOVERY=${KY_BACKUP_ALLOW_PRIVATE_RECOVERY:-}
-      # Set to the reverse proxy container's own address when one fronts this service, e.g.
-      # its address on the Docker network below (never a whole bridge range like 172.16.0.0/12,
-      # which trusts every other container). 0.0.0.0/0 and ::/0 are refused at startup.
-      # - KY_TRUSTED_PROXIES=172.18.0.2/32
+      # Set in .env to the reverse proxy container's own address when one fronts this service,
+      # e.g. 172.18.0.2/32 (never a whole bridge range like 172.16.0.0/12, which trusts every
+      # other container). 0.0.0.0/0 and ::/0 are refused at startup.
+      - KY_TRUSTED_PROXIES=${KY_TRUSTED_PROXIES:-}
       - KY_SSO_ENABLED=true
       # SCIM provisioning is on only when KY_SCIM_TOKEN (32+ characters) is set in .env.
       - KY_SCIM_TOKEN=${KY_SCIM_TOKEN:-}
