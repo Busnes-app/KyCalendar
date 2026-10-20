@@ -254,6 +254,8 @@ jobs:
           curl -sf -X POST -H 'Content-Type: application/json' \
             -d '{"username":"admin","password":"CiSmokeAdminPass123!"}' \
             http://127.0.0.1:18080/api/auth/login | grep -q '"authenticated":true'
+          # docker-compose.yml's healthcheck command, inside the image it runs in
+          docker exec ky_ci wget -q -O /dev/null http://127.0.0.1:8080/healthz
 
       # Hand the exact image the checks above ran against to the publish job,
       # so what gets pushed is what was tested, never a second build.

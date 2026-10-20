@@ -52,13 +52,8 @@ Restore these files to their recorded target paths with the runtime owner and 06
 before startup. Drills inspect the retained database and require credential members as well
 as native calendar counts, objects and integrity checks.
 
-Only the running server loads the installer configuration, so only its backups carry these
-members: Back up now, the schedule, Download capsule and Run restore drill
-(`POST /api/backup/drill`). The CLI `deposit`, `export-capsule` and `backup-drill` commands
-do not load it and omit them: `deposit` and `export-capsule` seal a capsule without the
-credentials, and `backup-drill` reports `FAILED` with `Installer Credentials: Required
-managed credential omitted` even when the deposited capsules are complete. Drill a managed
-install from the admin screen or API.
+The server and the CLI `deposit`, `export-capsule` and `backup-drill` commands all load the
+stored setup, so every capsule and drill of a managed install carries these members.
 
 Installer recovery enrollment, central client/app-role/group composition, existing mixed-use
 migration, real-device interop and image/library provenance remain deployment gates. The

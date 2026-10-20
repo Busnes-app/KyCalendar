@@ -15,8 +15,8 @@ mkdir -p -m 700 data backups && sudo chown 10001:10001 data backups   # the cont
 docker compose up -d
 ```
 
-Production settings such as `KY_ENV` and `KY_SESSION_SECRET` need an override file; see
-[Settings Compose does not pass](#settings-compose-does-not-pass).
+For production, set `KY_ENV`, `KY_APP_URL` and `KY_SESSION_SECRET` in `.env` first; see
+[Settings in `.env`](#settings-in-env).
 
 Source install (never paste this into a published-image install: the build overlay wins over a
 `KY_IMAGE` digest pin, and a source install must set this line before its first `up -d` on a
@@ -55,7 +55,8 @@ key and capsules, and `make clean` removes only build output.
 `GET /healthz` is public and answers the suite's `ky.health/1` JSON for KyPulse: 200 while
 `ok` or `degraded`, 503 when `down`. It names two checks, `database` and `backup`, and never an
 error message; `backup` is `degraded` (`last_run_failed`) while the schedule is on and the last
-run failed. Results are cached for 5 seconds.
+run failed. Results are cached for 5 seconds. Compose probes it every 30 seconds, so
+`docker compose ps` shows the container unhealthy while it answers 503.
 
 ## Network and container defaults
 
@@ -81,34 +82,23 @@ run failed. Results are cached for 5 seconds.
   A new install creates both before its first `up -d` (the quick start above does); a
   directory Docker creates for a missing bind mount is owned by root.
 
-## Settings Compose does not pass
+## Settings in `.env`
 
-Compose reads `.env` only to fill in `docker-compose.yml`; the container receives just the
-variables that file's `environment:` list names. Any other line in `.env` never reaches the
-server: `KY_ENV`, `KY_SESSION_SECRET`, `KY_ADMIN_PASSWORD`, `KY_TRUSTED_PROXIES`,
-`KY_ALLOW_INSECURE_HTTP`, `KY_COOKIE_SECURE` and `KY_KYSIGNON_*` among them. Pass them
-through a local override that reads a private file:
-
-```yaml
-# docker-compose.override.yml
-services:
-  app:
-    env_file: .env.app
-```
+Compose passes these from `.env` to the server: `KY_APP_URL`, `KY_ENV`, `KY_SESSION_SECRET`,
+`KY_ADMIN_PASSWORD`, `KY_TRUSTED_PROXIES`, `KY_SCIM_TOKEN`, `KY_KYSIGNON_ISSUER`,
+`KY_KYSIGNON_CLIENT_ID`, `KY_KYSIGNON_SECRET`, `KY_KYSIGNON_HMAC_SECRET` and the
+`KYCALENDAR_*` settings below. Unset, each keeps the server's default. A production `.env`
+(mode 600) holds at least:
 
 ```dotenv
-# .env.app (mode 600, git-ignored)
 KY_ENV=production
+KY_APP_URL=https://<your host>
 KY_SESSION_SECRET=<random, e.g. openssl rand -hex 32>
 KY_TRUSTED_PROXIES=<your proxy's address>/32
 ```
 
-Append `docker-compose.override.yml` to the end of the `COMPOSE_FILE` chain in `.env` (for a
-published-image install without other overlays,
-`COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml`), then `docker compose up -d`.
-A variable the base `environment:` list already sets (`KY_SSO_ENABLED`, for one) keeps that
-value; change it in the override's own `environment:`. `docker compose config` shows the
-merged result, secrets included, so do not share its output.
+Switches that weaken security (`KY_ALLOW_INSECURE_HTTP`, `KY_COOKIE_SECURE`) are not passed;
+for local testing, set them in a local override's `environment:`.
 
 ## Container IP address
 
@@ -326,9 +316,7 @@ and skip the question.
 Back up now, the schedule and the `deposit` command all do the same thing: seal one capsule
 and deliver it to every configured destination. A pinned key with no destination is refused
 with a message that says so. A local write that fails does not stop the deposit, and a
-refused deposit does not remove the local copy. On an installer-managed install, the CLI
-commands (`deposit`, `export-capsule`, `backup-drill`) leave out the installer credentials;
-use the admin screen or the schedule there ([installer setup](docs/INSTALLER_SETUP.md)).
+refused deposit does not remove the local copy.
 
 ### Environment
 
@@ -400,6 +388,17 @@ them off.
 
 `docs/RESTORE.md` is the runbook: opening a capsule with the custodians' cards, putting the
 result in service, and what to distrust afterwards. Drill it once a quarter with real cards.
+
+## Upgrading: compose passes `.env` settings
+
+`docker-compose.yml` now passes `KY_ENV`, `KY_SESSION_SECRET`, `KY_ADMIN_PASSWORD`,
+`KY_TRUSTED_PROXIES` and the four `KY_KYSIGNON_*` variables from `.env`; before, those lines
+did nothing. Read `.env` before the next `docker compose up -d`: each of them set there now
+takes effect. `KY_ENV=production` refuses to start without an `https://` `KY_APP_URL` and a
+`KY_SESSION_SECRET`, and `KY_KYSIGNON_ISSUER` binds sign-in to that provider (see
+[Sign-in](#sign-in)). To keep the old behaviour, delete those lines from `.env`. The published port is
+unchanged (`127.0.0.1` unless `KY_BIND_ADDRESS` says otherwise), and the container now has a
+healthcheck on `/healthz`.
 
 ## Upgrading after the Busnes-app owner move
 
