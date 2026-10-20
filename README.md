@@ -1,5 +1,7 @@
 # kycalendar
 
+**Start here:** [Standalone installation](INSTALL.md). Create personal calendars, events and local groups, share group calendars, and connect CalDAV clients using per-device app passwords. Local administrator and everyday accounts work without KyIdentity. KyPost invitation delivery and other suite integrations require separate setup.
+
 KyCalendar is the Busnes.app suite calendar: personal calendars served to the web app and to
 native CalDAV clients (iOS and macOS Calendar, DAVx5, Thunderbird) with per-device app
 passwords. Built on the suite server base: Go backend, embedded React PWA, SQLite or
@@ -26,15 +28,17 @@ this block once and confirm with `docker compose config --images`, which must pr
 
 ```bash
 make ci        # gofmt, vet, race tests, smoke test
-make run       # build and start on 127.0.0.1:8080 with its own data in .dev-data/
 (umask 077; t=$(mktemp ./.env.XXXXXX) && touch .env \
   && cf=$({ grep '^COMPOSE_FILE=' .env || [ $? -eq 1 ]; } | tail -n1 | cut -d= -f2-) && cf=${cf:-docker-compose.yml} \
   && case ":$cf:" in *:docker-compose.build.yml:*) ;; *) cf="$cf:docker-compose.build.yml";; esac \
   && { grep -v -e '^COMPOSE_FILE=' .env || [ $? -eq 1 ]; } > "$t" \
   && printf 'COMPOSE_FILE=%s\n' "$cf" >> "$t" && mv "$t" .env)
 mkdir -p -m 700 data backups && sudo chown 10001:10001 data backups   # the container's UID
-docker compose up -d
+docker compose up -d --build
 ```
+
+For a foreground development server instead, use `make run` in a separate terminal.
+It binds `127.0.0.1:8080` and uses `.dev-data/`; stop it before using the same port for Compose.
 
 Update a published-image install on the rolling tag:
 
