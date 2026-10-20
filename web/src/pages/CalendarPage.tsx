@@ -225,12 +225,12 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
 
   return (
     <section className="page kc-layout">
-      <CalendarSidebar calendars={calendars} hidden={hidden} onToggle={toggle} onChanged={loadCalendars} />
       <div className="kc-calendar">
         {error && <p role="alert">{error}</p>}
+        <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}</p></div>
         <button type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
           New event
-        </button>
+        </button></div>
         <FullCalendar
           ref={ref}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -265,6 +265,7 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
           />
         )}
       </div>
+      <CalendarSidebar calendars={calendars} hidden={hidden} onToggle={toggle} onChanged={loadCalendars} />
     </section>
   );
 }

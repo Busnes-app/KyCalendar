@@ -41,6 +41,7 @@ Owns user interface components, service worker caching, PWA installation manifes
 - Sign-in responses are validated at the HTTP boundary. A `managed` response disables configuration, Test and Save, explains KyQuickStart ownership and leaves callback Copy available. Source `installer` is distinct from environment and saved settings.
 
 ## Verification
+- The everyday calendar canvas precedes calendar management in reading order. On narrow screens, the complete calendar/subscription sidebar follows the canvas; keep every calendar control available.
 - Browser setup: build the frontend, run `go build -o .browser/server ./cmd/server` at the repo root, then `cd web && npx playwright install chromium && npm run test:browser`. CI also installs browser OS dependencies.
 - `make test-web` or `cd web && npm ci && npm test`, then `npm run build` (vitest with jsdom; `src/pages/Backup.test.tsx` renders the recovery screen against a stubbed status route). Commit `web/dist` after a build; CI diffs it.
 
