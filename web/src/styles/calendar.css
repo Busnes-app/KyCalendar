@@ -55,3 +55,30 @@
 .kc-people li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
 .kc-invite { display: flex; gap: 0.5rem; }
 .kc-invite input { flex: 1; min-width: 0; }
+
+/* Keep the calendar canvas first on small screens; all calendar tools follow it. */
+.page.kc-layout { padding: 24px; grid-template-columns: minmax(12rem, 14rem) minmax(0, 1fr); gap: 24px; }
+.kc-layout > .kc-calendar { grid-column: 2; grid-row: 1; }
+.kc-layout > .kc-sidebar { grid-column: 1; grid-row: 1; padding: 0 20px 20px 0; border: 0; border-right: 1px solid var(--ky-line); border-radius: 0; background: transparent; }
+.kc-workspace-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+.kc-workspace-heading h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+.kc-workspace-heading p { margin-top: 6px; color: var(--ky-ink); font-size: 12px; overflow-wrap: anywhere; }
+.kc-workspace-heading .kc-new { margin: 0; min-height: 42px; }
+.kc-calendar .fc .fc-toolbar { gap: 12px; margin-bottom: 20px; }
+.kc-calendar .fc .fc-toolbar-title { font-size: 20px; letter-spacing: -.02em; color: var(--ky-ink-strong); }
+.kc-calendar .fc .fc-button { padding: .55em .75em; font-size: 13px; min-height: 36px; }
+.kc-calendar .fc .fc-col-header-cell-cushion { padding-block: 12px; font-size: 12px; font-weight: 500; }
+.kc-calendar .fc .fc-timegrid-slot { height: 2rem; }
+.kc-sidebar ul { gap: 0; }
+.kc-sidebar li { padding-block: 12px; border-bottom: 1px solid var(--ky-line); }
+.kc-sidebar .kc-cal-name { flex-basis: 100%; margin-bottom: 4px; }
+.kc-sidebar .kc-small { min-height: 30px; }
+.kc-sidebar .kc-hint, .kc-sidebar .kc-sub { color: var(--ky-ink); line-height: 1.55; }
+@media (max-width: 1100px) {
+  .page.kc-layout { grid-template-columns: minmax(0, 1fr); }
+  .kc-layout > .kc-calendar { grid-column: 1; grid-row: 1; }
+  .kc-layout > .kc-sidebar { grid-column: 1; grid-row: 2; border-right: 0; border-top: 1px solid var(--ky-line); padding: 20px 0; }
+  .kc-sidebar > ul { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 0 24px; }
+  .kc-sidebar > .kc-form { max-width: 30rem; }
+}
+@media (max-width: 720px) { .page.kc-layout { padding: 20px 12px; gap: 20px; } .kc-workspace-heading { margin-bottom: 20px; } .kc-calendar .fc .fc-toolbar { justify-content: flex-start; } .kc-calendar .fc .fc-toolbar-chunk { max-width: 100%; } .kc-calendar .fc .fc-toolbar-title { font-size: 18px; } }
