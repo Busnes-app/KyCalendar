@@ -15,7 +15,7 @@ const taskFull = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:+//IDN tasks.org//and
 	"BEGIN:VTODO\r\nDTSTAMP:20261016T080000Z\r\nUID:task-full\r\nCREATED:20261016T080000Z\r\nLAST-MODIFIED:20261016T080000Z\r\n" +
 	"SUMMARY:Renew the domain\\, then tell Lain\r\n" +
 	"DESCRIPTION:Notes that run long enough to be folded by the client across mo\r\n re than one line\\nsecond line\r\n" +
-	"URL:https://registrar.example/renew?d=urlxl.com\r\n" +
+	"URL:https://registrar.example/renew?d=example.com\r\n" +
 	"DTSTART;TZID=Europe/Berlin:20261007T090000\r\nDUE;TZID=Europe/Berlin:20261009T170000\r\n" +
 	"PRIORITY:1\r\nSTATUS:NEEDS-ACTION\r\nPERCENT-COMPLETE:0\r\n" +
 	"CATEGORIES:home,admin\r\nCATEGORIES:shared\r\n" +
