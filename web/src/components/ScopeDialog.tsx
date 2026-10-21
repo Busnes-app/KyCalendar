@@ -20,11 +20,11 @@ export function ScopeDialog({ onChoose }: { onChoose: (scope: 'this' | 'all' | n
   return (
     <dialog ref={dialog} aria-labelledby="kc-scope-title" className="kc-dialog" onCancel={(e) => { e.preventDefault(); onChoose(null); }}>
       <h2 id="kc-scope-title">Change a repeating event</h2>
-      <p>{MOVE_ALL_WARNING}</p>
-      <div className="kc-actions">
+      <p className="modal-desc">{MOVE_ALL_WARNING}</p>
+      <div className="modal-actions">
+        <button type="button" className="btn-ghost push-start" onClick={() => onChoose(null)}>Cancel</button>
+        <button type="button" className="btn-secondary" onClick={() => onChoose('all')}>All events</button>
         <button type="button" ref={first} onClick={() => onChoose('this')}>This event</button>
-        <button type="button" onClick={() => onChoose('all')}>All events</button>
-        <button type="button" className="btn-secondary" onClick={() => onChoose(null)}>Cancel</button>
       </div>
     </dialog>
   );

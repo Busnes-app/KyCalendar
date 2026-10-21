@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 
 async function signIn(page, username, password) {
   await page.goto('/');
-  await page.getByPlaceholder('admin', { exact: true }).fill(username);
+  await page.getByLabel('Username', { exact: true }).fill(username);
   await page.locator('input[type=password]').fill(password);
-  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
 // Own client address so this spec's sign-ins keep a separate login-limiter bucket.
@@ -38,9 +38,9 @@ test('people: an admin adds a person who signs in and lands on the calendar', as
   await person.getByLabel('Confirm new password').fill('PersonChosen789!');
   await person.getByRole('button', { name: 'Change password' }).click();
   await expect(person.getByRole('status')).toContainText('Password changed');
-  await person.getByPlaceholder('admin', { exact: true }).fill(username);
+  await person.getByLabel('Username', { exact: true }).fill(username);
   await person.locator('input[type=password]').fill('PersonChosen789!');
-  await person.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await person.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(person.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Calendar' })).toHaveAttribute('aria-current', 'page');
   await expect(person.locator('.fc')).toBeVisible();
   await context.close();

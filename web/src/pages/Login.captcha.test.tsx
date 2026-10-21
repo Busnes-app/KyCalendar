@@ -28,11 +28,11 @@ describe('Login captcha', () => {
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 });
     });
     render(<Login appName="Cal" onSuccess={() => {}} />);
-    fireEvent.change(screen.getByPlaceholderText('admin'), { target: { value: 'alice' } });
-    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'wrong' } });
-    fireEvent.submit(screen.getByPlaceholderText('admin').closest('form')!);
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'alice' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } });
+    fireEvent.submit(screen.getByLabelText('Username').closest('form')!);
     await screen.findByText('Invalid credentials');
-    fireEvent.submit(screen.getByPlaceholderText('admin').closest('form')!);
+    fireEvent.submit(screen.getByLabelText('Username').closest('form')!);
     await waitFor(() => expect(sent).toHaveLength(2));
     expect(sent[0]).not.toBe(sent[1]);
   });

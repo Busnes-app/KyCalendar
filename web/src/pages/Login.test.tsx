@@ -19,4 +19,12 @@ describe('Login', () => {
     render(<Login appName="Cal" onSuccess={() => {}} signinName="<b>x</b>" />);
     expect(screen.getByRole('link', { name: 'Continue with <b>x</b>' })).toBeTruthy();
   });
+
+  it('names its fields and carries KyCalendar copy, not the template', () => {
+    render(<Login appName="KyCalendar" onSuccess={() => {}} notice="Password changed. Sign in with your new password." />);
+    expect(screen.getByLabelText('Username')).toBeTruthy();
+    expect(screen.getByLabelText('Password')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toMatch(/Password changed/);
+    expect(document.body.textContent).not.toMatch(/Mobile First|Base Platform/);
+  });
 });

@@ -6,9 +6,9 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   const title = `Planning ${testInfo.project.name} ${Date.now()}`;
 
   await page.goto('/');
-  await page.getByPlaceholder('admin', { exact: true }).fill('walter');
+  await page.getByLabel('Username', { exact: true }).fill('walter');
   await page.locator('input[type=password]').fill('WalterUpdated456!');
-  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   // Everyday users land on the calendar; FullCalendar renders under the production CSP.
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Calendar' })).toHaveAttribute('aria-current', 'page');
@@ -64,6 +64,23 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   }
   await expect(page.locator('.fc-list-event', { hasText: title })).toHaveCount(0);
 
+  // Week view opens on the working day (07:00), not midnight, even when switched to from month.
+  await page.locator('.fc-dayGridMonth-button').click();
+  await page.locator('.fc-timeGridWeek-button').click();
+  const slot7 = page.locator('.fc-timegrid-slot[data-time="07:00:00"]').first();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.fc-timegrid .fc-scroller-liquid-absolute')?.scrollTop ?? 0)).toBeGreaterThan(200);
+  await expect(slot7).toBeInViewport();
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  // AI agent setup: its long commands scroll inside their own blocks, never the page.
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Phones & apps' }).click();
+  await page.getByLabel(/AI agent/).check();
+  await page.getByLabel('Agent name').fill(`Agent ${testInfo.project.name} ${Date.now()}`);
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  const install = page.getByLabel('Hermes Agent skill install command', { exact: true });
+  await expect(install).toBeVisible();
+  expect(await install.evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(violations).toEqual([]);
 });

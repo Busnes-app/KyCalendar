@@ -2,6 +2,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CalendarSidebar, ago } from './CalendarSidebar';
 import type { CalendarInfo } from '../calendarApi';
+import { PALETTE, calendarColors, nextColor } from '../calendarColors';
+
+// The colour a new calendar gets: one none of the listed calendars shows.
+const unused = (list: CalendarInfo[]) => nextColor([...calendarColors(list).values()]);
 
 // Expected relative times in the test machine's own locale, as the sidebar renders them.
 const rel = (n: number, unit: Intl.RelativeTimeFormatUnit) => new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(n, unit);
@@ -18,6 +22,21 @@ const cals: CalendarInfo[] = [
 ];
 
 describe('CalendarSidebar', () => {
+  it('shows calendars stored without a colour in distinct colours, and gives a new one an unused colour', async () => {
+    const post = vi.fn((_init?: RequestInit) => new Response(JSON.stringify(cals[0]), { status: 201 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_i, init) => post(init));
+    const { container } = render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
+    const shown = [...container.querySelectorAll<HTMLElement>('.kc-swatch')].map((el) => el.style.background);
+    expect(new Set(shown).size).toBe(cals.length);
+    fireEvent.click(screen.getByRole('button', { name: 'New calendar' }));
+    fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Work' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const color = JSON.parse(String(post.mock.calls[0][0]?.body)).color;
+    expect(PALETTE).toContain(color);
+    expect([...calendarColors(cals).values()]).not.toContain(color);
+  });
+
   it('toggles visibility and offers edits only where the role allows', () => {
     const onToggle = vi.fn();
     render(<CalendarSidebar calendars={cals} hidden={new Set(['cal_r'])} onToggle={onToggle} onChanged={vi.fn()} />);
@@ -36,6 +55,7 @@ describe('CalendarSidebar', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_i, init) => post(init));
     const onChanged = vi.fn();
     render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New calendar' }));
     fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
@@ -48,11 +68,12 @@ describe('CalendarSidebar', () => {
     const list: CalendarInfo = { ...cals[0], id: 'cal_t', name: 'Todo', components: ['VTODO'] };
     render(<CalendarSidebar calendars={[...cals, list]} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
     expect(screen.getByText('Tasks · open in a tasks app')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'New calendar' }));
     fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Shared' } });
     fireEvent.change(screen.getByLabelText('Holds'), { target: { value: 'tasks' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
-    expect(JSON.parse(String(post.mock.calls[0][0]?.body))).toEqual({ name: 'Shared', components: ['VTODO'] });
+    expect(JSON.parse(String(post.mock.calls[0][0]?.body))).toEqual({ name: 'Shared', components: ['VTODO'], color: unused([...cals, list]) });
   });
 
   it('subscribes with the link, name and colour, and shows why a link failed', async () => {
@@ -68,7 +89,7 @@ describe('CalendarSidebar', () => {
     const [url, init] = post.mock.calls[0];
     expect(url).toBe('/api/subscriptions');
     expect(init?.method).toBe('POST');
-    expect(JSON.parse(String(init?.body))).toEqual({ url: 'webcal://outlook.office365.com/owa/calendar/x/reachcalendar.ics', name: 'Work', color: '#e8590c' });
+    expect(JSON.parse(String(init?.body))).toEqual({ url: 'webcal://outlook.office365.com/owa/calendar/x/reachcalendar.ics', name: 'Work', color: unused(cals) });
     expect(onChanged).not.toHaveBeenCalled();
     expect((screen.getByRole('button', { name: 'Subscribe' }) as HTMLButtonElement).disabled).toBe(false);
   });

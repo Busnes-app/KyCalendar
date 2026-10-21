@@ -15,6 +15,7 @@ import {
   Unlink,
   XCircle,
 } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 import { secureFetch } from '../api';
 
 export interface DepositReceipt {
@@ -341,14 +342,17 @@ export const Backup: React.FC = () => {
   const newestLocal = copies[0];
 
   return (
-    <div className="dr-page">
-      <div className="dr-header">
-        <h1>Backup &amp; recovery</h1>
-        <button type="button" className="btn-secondary" onClick={fetchStatus} disabled={loadingStatus}>
-          <RefreshCw size={14} className={loadingStatus ? 'animate-spin' : ''} />
-          <span>Refresh</span>
-        </button>
-      </div>
+    <div className="page dr-page">
+      <PageHeader
+        title="Backups"
+        lede="Sealed, encrypted backups of this KyCalendar. Only the suite's recovery custodians, together, can open one."
+        action={
+          <button type="button" className="btn-secondary" onClick={fetchStatus} disabled={loadingStatus}>
+            <RefreshCw size={14} className={loadingStatus ? 'animate-spin' : ''} aria-hidden="true" />
+            <span>Refresh</span>
+          </button>
+        }
+      />
 
       {statusError && <Alert kind="error">{statusError}</Alert>}
       {status?.recovery_key_error && <Alert kind="error">{status.recovery_key_error}</Alert>}
@@ -534,7 +538,7 @@ export const Backup: React.FC = () => {
             </div>
           </form>
           {paired && (
-            <button type="button" className="btn-secondary" onClick={unpair} disabled={unpairing}>
+            <button type="button" className="btn-danger" onClick={unpair} disabled={unpairing}>
               {unpairing ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
               <span>Unpair</span>
             </button>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
+import { Plus } from 'lucide-react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
@@ -7,6 +8,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import type { DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { ApiError, browserZone, canAddEvents, listCalendars, listEvents, updateEvent, type CalendarInfo, type EventInfo } from '../calendarApi';
+import { calendarColors, textOn } from '../calendarColors';
 import { CalendarSidebar } from '../components/CalendarSidebar';
 import { EventDialog } from '../components/EventDialog';
 import { ScopeDialog } from '../components/ScopeDialog';
@@ -78,11 +80,15 @@ export function toFcEvent(ev: EventInfo, color: string): EventInput {
     editable: ev.editable && !ev.partial,
     backgroundColor: color,
     borderColor: color,
+    textColor: textOn(color),
     extendedProps: { info: ev },
   };
 }
 
 const narrow = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+// Day and week views scroll inside a fixed height that opens on the working day, not midnight.
+const TIME_GRID_HEIGHT = 'max(32rem, calc(100vh - 13rem))';
+const SCROLL_TIME = '07:00:00';
 
 // scheduling and me (the user's email) let the event dialog offer invitations.
 export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boolean; me?: string }) {
@@ -94,6 +100,12 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
   const dragError = useRef<string | null>(null);
   const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
+  const [timeGrid, setTimeGrid] = useState(() => !narrow());
+  // A view switched from month or list renders before its fixed height applies, so FullCalendar's
+  // own scrollTime finds nothing to scroll: open on the working day once the height is in place.
+  useEffect(() => {
+    if (timeGrid) ref.current?.getApi().scrollToTime(SCROLL_TIME);
+  }, [timeGrid]);
 
   const loadCalendars = useCallback(async () => {
     try {
@@ -124,7 +136,8 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
         success([]);
         return;
       }
-      const colorOf = (id: string) => calendars.find((c) => c.id === id)?.color || 'var(--ky-accent)';
+      const colors = calendarColors(calendars);
+      const colorOf = (id: string) => colors.get(id) ?? 'var(--ky-accent)';
       listEvents(info.start, info.end, browserZone(), visible)
         .then((evs) => {
           setError(null);
@@ -229,6 +242,7 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
         {error && <p role="alert">{error}</p>}
         <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}</p></div>
         <button type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
+          <Plus size={16} aria-hidden="true" />
           New event
         </button></div>
         <FullCalendar
@@ -237,7 +251,9 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
           initialView={narrow() ? 'listWeek' : 'timeGridWeek'}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' }}
           timeZone="local"
-          height="auto"
+          height={timeGrid ? TIME_GRID_HEIGHT : 'auto'}
+          scrollTime={SCROLL_TIME}
+          datesSet={(arg) => setTimeGrid(arg.view.type.startsWith('timeGrid'))}
           nowIndicator
           editable
           eventInteractive

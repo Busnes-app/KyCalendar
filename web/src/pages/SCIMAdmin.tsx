@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Users } from 'lucide-react';
 import { send } from '../admin';
+import { CopyButton, EmptyState, PageHeader } from '../components/ui';
 
 interface SCIMUser {
   id: string;
@@ -33,58 +33,68 @@ export const SCIMAdmin: React.FC = () => {
   }, []);
 
   return (
-    <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '32px 20px' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
-        <Users size={24} style={{ color: 'var(--accent)' }} />
-        <span>SCIM provisioning</span>
-      </h1>
+    <section className="page">
+      <PageHeader
+        title="Directory (SCIM)"
+        lede="Your identity provider can create, update and disable people and groups here over SCIM 2.0. People it provisions are read-only in KyCalendar."
+      />
       {error && <p role="alert">Could not load the SCIM status. Reload the page to try again.</p>}
       {status && (
         <>
-          <div className="panel" style={{ marginBottom: '24px' }}>
-            <p>
-              <span className={`badge badge-${status.enabled ? 'success' : 'neutral'}`}>{status.enabled ? 'Enabled' : 'Disabled'}</span>{' '}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">Provisioning</h2>
+              <span className={status.enabled ? 'badge badge-success' : 'badge'}>{status.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+            <p className="card-body muted">
               {status.token_configured
                 ? 'A bearer token is set in KY_SCIM_TOKEN. Give the same value to your identity provider.'
                 : 'Set KY_SCIM_TOKEN (at least 32 characters) and restart to enable SCIM.'}
             </p>
-            <label style={{ display: 'block', fontSize: '12px', marginTop: '12px' }}>
-              SCIM base URL
-              <input type="text" readOnly value={status.endpoint} style={{ fontFamily: 'var(--font-mono)', fontSize: '13px' }} />
-            </label>
+            <div className="form form-wide card-body">
+              <div className="field">
+                <label htmlFor="scim-url">SCIM base URL</label>
+                <div className="input-with-action">
+                  <input id="scim-url" type="text" readOnly value={status.endpoint} className="font-mono" />
+                  <CopyButton text={status.endpoint} label="Copy the SCIM base URL" />
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="panel">
-            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>Provisioned accounts ({status.total})</h3>
+          <section className="section" aria-labelledby="scim-accounts">
+            <h2 className="section-title" id="scim-accounts">Provisioned accounts ({status.total})</h2>
             {status.users.length === 0 ? (
-              <p style={{ fontSize: '13px' }}>No accounts provisioned through SCIM.</p>
+              <EmptyState title="No accounts provisioned through SCIM.">Accounts appear here once your identity provider pushes them.</EmptyState>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--line)', textAlign: 'left' }}>
-                    <th style={{ padding: '8px 12px' }}>Username</th>
-                    <th style={{ padding: '8px 12px' }}>Display name</th>
-                    <th style={{ padding: '8px 12px' }}>Email</th>
-                    <th style={{ padding: '8px 12px' }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {status.users.map((u) => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                      <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{u.username}</td>
-                      <td style={{ padding: '10px 12px' }}>{u.display_name || '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>{u.email || '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span className={`badge badge-${u.status === 'active' ? 'success' : 'danger'}`}>{u.status === 'active' ? 'Active' : 'Inactive'}</span>
-                      </td>
+              <div className="table-card">
+                <table className="data-table stacked">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Display name</th>
+                      <th>Email</th>
+                      <th>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {status.users.map((u) => (
+                      <tr key={u.id}>
+                        <td className="cell-strong">{u.username}</td>
+                        <td data-label="Display name">{u.display_name || '—'}</td>
+                        <td data-label="Email">{u.email || '—'}</td>
+                        <td data-label="Status">
+                          <span className={`badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}>{u.status === 'active' ? 'Active' : 'Inactive'}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-            {status.total > status.users.length && <p>{`Showing ${status.users.length} of ${status.total}`}</p>}
-          </div>
+            {status.total > status.users.length && <p className="load-more">{`Showing ${status.users.length} of ${status.total}`}</p>}
+          </section>
         </>
       )}
-    </div>
+    </section>
   );
 };

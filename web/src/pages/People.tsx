@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { UserPlus } from "lucide-react";
 import { JSON_HEADERS, LoadMore, REAUTH, SourceBadge, failure, pageURL, send } from "../admin";
+import { CopyButton, EmptyState, Modal, PageHeader } from "../components/ui";
 
 interface Person {
   id: string;
@@ -123,85 +124,123 @@ export default function People({ me }: { me: string }) {
 
   return (
     <section className="page">
-      <h1>People</h1>
-      <p>
-        Add people who sign in with a password here. People from your identity provider are read-only; change them there. After a sign-in provider change, you can reattach one to the current provider.
-        Administrators manage this instance and never see calendars.
-      </p>
-      <form
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void load(query);
-        }}
-      >
-        <label>
-          Search people
-          <input value={query} onChange={(e) => setQuery(e.target.value)} maxLength={255} />
-        </label>
-        <button type="submit">Search</button>
-      </form>
-      <button type="button" onClick={() => setAdding(true)}>
-        Add person
-      </button>
+      <PageHeader
+        title="People"
+        lede={
+          <>
+            Add people who sign in with a password here. People from your identity provider are read-only; change them there.
+            After a sign-in provider change, you can reattach one to the current provider. Administrators manage this instance
+            and never see calendars.
+          </>
+        }
+        action={
+          <button type="button" onClick={() => setAdding(true)}>
+            <UserPlus size={16} aria-hidden="true" />
+            Add person
+          </button>
+        }
+      />
+      <div className="toolbar">
+        <form
+          role="search"
+          className="inline-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void load(query);
+          }}
+        >
+          <div className="field">
+            <label htmlFor="people-search">Search people</label>
+            <input id="people-search" type="search" placeholder="Name, username or email" value={query} onChange={(e) => setQuery(e.target.value)} maxLength={255} />
+          </div>
+          <button type="submit" className="btn-secondary">
+            Search
+          </button>
+        </form>
+      </div>
       {error && <p role="alert">{error}</p>}
-      <table>
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th>Last sign-in</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {people.map((p) => (
-            <tr key={p.id}>
-              <td>
-                {p.username} <SourceBadge source={p.source} />
-              </td>
-              <td>{p.display_name}</td>
-              <td>{p.email}</td>
-              <td>{p.role === "admin" ? "Administrator" : "Everyday"}</td>
-              <td>
-                {p.status === "active" ? "Active" : "Disabled"}
-                {p.mfa ? " · MFA" : ""}
-              </td>
-              <td>{p.last_login_at ? new Date(p.last_login_at).toLocaleString() : "Never"}</td>
-              <td>
-                {p.source !== "local" && p.needs_reattach && (
-                  <button type="button" aria-label={`Reattach ${p.username} to current sign-in`} onClick={() => reattach(p)}>
-                    Reattach to current sign-in
-                  </button>
-                )}
-                {p.source === "local" && (
-                  <>
-                    <button type="button" aria-label={`Edit ${p.username}`} onClick={() => setEditing(p)}>
-                      Edit
-                    </button>
-                    <button type="button" aria-label={`Reset password for ${p.username}`} onClick={() => reset(p)}>
-                      Reset password
-                    </button>
-                    {p.id !== me && (
-                      <>
-                        <button type="button" onClick={() => toggleRole(p)}>
-                          {p.role === "admin" ? `Make ${p.username} a user` : `Make ${p.username} an admin`}
+      {people.length === 0 && !busy ? (
+        <EmptyState title={shownQuery ? `No one matches “${shownQuery}”.` : "No people yet."}>
+          {shownQuery ? "Try part of a name, username or email." : "Add a person to give them a sign-in."}
+        </EmptyState>
+      ) : (
+        <div className="table-card">
+          <table className="data-table stacked">
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Last sign-in</th>
+                <th className="col-actions">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {people.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <span className="cell-strong">{p.display_name || p.username}</span>
+                    <span className="cell-sub">
+                      <span>{p.username}</span> · {p.role === "admin" ? "Administrator" : "Everyday"} <SourceBadge source={p.source} />
+                    </span>
+                  </td>
+                  <td data-label="Email">{p.email || <span className="muted">—</span>}</td>
+                  <td data-label="Status">
+                    <span className="badges">
+                      <span className={p.status === "active" ? "badge badge-success" : "badge"}>{p.status === "active" ? "Active" : "Disabled"}</span>
+                      {p.mfa ? <span className="badge">MFA</span> : null}
+                    </span>
+                  </td>
+                  <td data-label="Last sign-in" className="cell-nowrap">
+                    {p.last_login_at ? when(p.last_login_at) : <span className="muted">Never</span>}
+                  </td>
+                  <td className="col-actions">
+                    <div className="row-actions">
+                      {p.source !== "local" && p.needs_reattach && (
+                        <button type="button" className="btn-secondary btn-sm" aria-label={`Reattach ${p.username} to current sign-in`} onClick={() => reattach(p)}>
+                          Reattach to current sign-in
                         </button>
-                        <button type="button" onClick={() => toggleStatus(p)}>
-                          {p.status === "active" ? `Disable ${p.username}` : `Enable ${p.username}`}
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                      )}
+                      {p.source === "local" && (
+                        <>
+                          <button type="button" className="btn-secondary btn-sm" aria-label={`Edit ${p.username}`} onClick={() => setEditing(p)}>
+                            Edit
+                          </button>
+                          <button type="button" className="btn-secondary btn-sm" aria-label={`Reset password for ${p.username}`} onClick={() => reset(p)}>
+                            Reset password
+                          </button>
+                          {p.id !== me && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                aria-label={p.role === "admin" ? `Make ${p.username} a user` : `Make ${p.username} an admin`}
+                                onClick={() => toggleRole(p)}
+                              >
+                                {p.role === "admin" ? "Make user" : "Make admin"}
+                              </button>
+                              <button
+                                type="button"
+                                className={p.status === "active" ? "btn-danger btn-sm" : "btn-secondary btn-sm"}
+                                aria-label={p.status === "active" ? `Disable ${p.username}` : `Enable ${p.username}`}
+                                onClick={() => toggleStatus(p)}
+                              >
+                                {p.status === "active" ? "Disable" : "Enable"}
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <LoadMore shown={people.length} total={total} busy={busy} onMore={() => void load(shownQuery, people.length)} />
       {adding && (
         <AddPerson
@@ -228,27 +267,7 @@ export default function People({ me }: { me: string }) {
   );
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const d = ref.current!;
-    d.showModal();
-    return () => d.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      aria-label={title}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-    >
-      <h2>{title}</h2>
-      {children}
-    </dialog>
-  );
-}
+const when = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function AddPerson({ onClose, onCreated }: { onClose: () => void; onCreated: (h: Handover) => void }) {
   const [form, setForm] = useState({ username: "", display_name: "", email: "", role: "user" });
@@ -267,24 +286,34 @@ function AddPerson({ onClose, onCreated }: { onClose: () => void; onCreated: (h:
   }
 
   return (
-    <Modal title="Add person" onClose={onClose}>
-      <form onSubmit={submit}>
-        <label htmlFor="person-username">Username</label>
-        <input id="person-username" value={form.username} onChange={set("username")} maxLength={64} required autoFocus />
-        <label htmlFor="person-name">Display name</label>
-        <input id="person-name" value={form.display_name} onChange={set("display_name")} maxLength={255} />
-        <label htmlFor="person-email">Email</label>
-        <input id="person-email" type="email" value={form.email} onChange={set("email")} />
-        <label htmlFor="person-role">Role</label>
-        <select id="person-role" value={form.role} onChange={set("role")}>
-          <option value="user">Everyday user</option>
-          <option value="admin">Administrator (no calendars)</option>
-        </select>
+    <Modal title="Add person" description="They sign in with a temporary password you hand over, then choose their own." onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <div className="field">
+          <label htmlFor="person-username">Username</label>
+          <input id="person-username" value={form.username} onChange={set("username")} maxLength={64} autoComplete="off" required autoFocus />
+        </div>
+        <div className="field">
+          <label htmlFor="person-name">Display name</label>
+          <input id="person-name" value={form.display_name} onChange={set("display_name")} maxLength={255} />
+        </div>
+        <div className="field">
+          <label htmlFor="person-email">Email</label>
+          <input id="person-email" type="email" value={form.email} onChange={set("email")} />
+        </div>
+        <div className="field">
+          <label htmlFor="person-role">Role</label>
+          <select id="person-role" value={form.role} onChange={set("role")}>
+            <option value="user">Everyday user</option>
+            <option value="admin">Administrator (no calendars)</option>
+          </select>
+        </div>
         {error && <p role="alert">{error}</p>}
-        <button type="submit">Create</button>
-        <button type="button" className="btn-secondary" onClick={onClose}>
-          Cancel
-        </button>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit">Create</button>
+        </div>
       </form>
     </Modal>
   );
@@ -308,48 +337,52 @@ function EditPerson({ person, onClose, onSaved }: { person: Person; onClose: () 
 
   return (
     <Modal title={`Edit ${person.username}`} onClose={onClose}>
-      <form onSubmit={submit}>
-        <label htmlFor="edit-username">Username</label>
-        <input id="edit-username" value={form.username} onChange={set("username")} maxLength={64} required />
-        <label htmlFor="edit-name">Display name</label>
-        <input id="edit-name" value={form.display_name} onChange={set("display_name")} maxLength={255} required />
-        <label htmlFor="edit-email">Email</label>
-        <input id="edit-email" type="email" value={form.email} onChange={set("email")} />
+      <form className="form" onSubmit={submit}>
+        <div className="field">
+          <label htmlFor="edit-username">Username</label>
+          <input id="edit-username" value={form.username} onChange={set("username")} maxLength={64} autoComplete="off" required />
+        </div>
+        <div className="field">
+          <label htmlFor="edit-name">Display name</label>
+          <input id="edit-name" value={form.display_name} onChange={set("display_name")} maxLength={255} required />
+        </div>
+        <div className="field">
+          <label htmlFor="edit-email">Email</label>
+          <input id="edit-email" type="email" value={form.email} onChange={set("email")} />
+        </div>
         {error && <p role="alert">{error}</p>}
-        <button type="submit">Save</button>
-        <button type="button" className="btn-secondary" onClick={onClose}>
-          Cancel
-        </button>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit">Save</button>
+        </div>
       </form>
     </Modal>
   );
 }
 
 function PasswordHandover({ handover, onClose }: { handover: Handover; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
   return (
-    <Modal title="Temporary password" onClose={onClose}>
-      <p>
-        Give this to {handover.username} in person or over another channel you trust, not in the same message as the
-        username. It is shown once: they choose their own password at first sign-in.
-      </p>
-      <p>
+    <Modal
+      title="Temporary password"
+      description={
+        <>
+          Give this to {handover.username} in person or over another channel you trust, not in the same message as the username.
+          It is shown once: they choose their own password at first sign-in.
+        </>
+      }
+      onClose={onClose}
+    >
+      <div className="secret">
         <code data-testid="temporary-password">{handover.password}</code>
-      </p>
-      <button
-        type="button"
-        onClick={() =>
-          void navigator.clipboard?.writeText(handover.password).then(
-            () => setCopied(true),
-            () => setCopied(false),
-          )
-        }
-      >
-        {copied ? "Copied" : "Copy"}
-      </button>
-      <button type="button" onClick={onClose}>
-        Done
-      </button>
+        <CopyButton text={handover.password} label="Copy the temporary password" />
+      </div>
+      <div className="modal-actions">
+        <button type="button" onClick={onClose}>
+          Done
+        </button>
+      </div>
     </Modal>
   );
 }

@@ -21,13 +21,13 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   });
   // Online navigation must refresh the shell rather than pinning a previous deploy.
   await page.reload();
-  await page.getByPlaceholder('admin', { exact: true }).fill('admin');
+  await page.getByLabel('Username', { exact: true }).fill('admin');
   await page.locator('input[type=password]').fill('IncorrectPassword123!');
-  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('form').locator('..')).toContainText(/invalid|incorrect|failed/i);
   await fits(page);
   await page.locator('input[type=password]').fill('BrowserUpdated456!');
-  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav).toBeVisible();
   await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible();
@@ -53,9 +53,9 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   await page.keyboard.press('Tab');
   await expect(nav.getByRole('button').nth(1)).toBeFocused();
   await expect(nav.getByRole('button').nth(1)).toHaveCSS('outline-style', 'solid');
-  await nav.getByRole('button', { name: 'Settings & DB' }).click();
-  await expect(nav.getByRole('button', { name: 'Settings & DB' })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('heading', { name: 'System Settings & Architecture' })).toBeVisible();
+  await nav.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(nav.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await fits(page);
   // Device pairing was removed (R27): the shell offers no pairing entry point.
   await expect(page.getByRole('button', { name: 'Pair Device' })).toHaveCount(0);
