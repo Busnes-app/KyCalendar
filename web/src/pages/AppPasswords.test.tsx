@@ -1,4 +1,4 @@
-import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AppPasswords from "./AppPasswords";
 
@@ -125,7 +125,20 @@ describe("AppPasswords", () => {
     expect(status).not.toMatch(/Bearer kc_/); // the token never goes into a config snippet
   });
 
-  it("asks before letting an agent change events it did not create", async () => {
+  it("offers the three agent access levels in order, read only first and chosen", () => {
+    mockFetch({ "GET /api/app-passwords": () => [] });
+    render(<AppPasswords username="alice" />);
+    fireEvent.click(screen.getByLabelText(/ai agent/i));
+    const radios = within(screen.getByRole("group", { name: "Agent access" })).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.map((r) => r.nextElementSibling?.firstChild?.textContent)).toEqual(["Read only", "Edit its own events", "Edit any event"]);
+    expect(radios.map((r) => r.value)).toEqual(["mcp:read", "mcp:write-own", "mcp:write-any"]);
+    expect(radios.map((r) => r.checked)).toEqual([true, false, false]);
+    for (const r of radios) expect(r.closest("label")?.querySelector(".choice-hint")?.textContent).toBeTruthy();
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("warns before letting an agent edit events and sends the chosen level", async () => {
     let sent: { scope?: string } = {};
     mockFetch({
       "GET /api/app-passwords": () => [],
@@ -136,21 +149,36 @@ describe("AppPasswords", () => {
     });
     render(<AppPasswords username="alice" />);
     fireEvent.click(screen.getByLabelText(/ai agent/i));
-    fireEvent.click(screen.getByLabelText(/read and write/i));
-    const any = screen.getByLabelText(/can also change events it did not create/i) as HTMLInputElement;
-    expect(any.checked).toBe(false);
+    fireEvent.click(screen.getByLabelText(/edit its own events/i));
+    const note = screen.getByRole("note").textContent ?? "";
+    expect(note).toContain("Anyone who can message the agent can try to make it do so.");
+    expect(note).toContain("It can never delete events.");
+    expect(note).not.toContain("move or rewrite");
     fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "Claw" } });
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     await screen.findByText("kc_a1_secret");
     expect(sent.scope).toBe("mcp:write-own");
 
     fireEvent.click(screen.getByRole("button", { name: /done/i }));
-    fireEvent.click(screen.getByLabelText(/can also change events it did not create/i));
-    expect(screen.getByText(/move or rewrite any of your appointments/i)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/edit any event/i));
+    expect(screen.getByRole("note").textContent).toMatch(/never delete events[\s\S]*move or rewrite any of your appointments/);
     fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "Claw 2" } });
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     await screen.findByText("kc_a1_secret");
     expect(sent.scope).toBe("mcp:write-any");
+  });
+
+  it("names each agent's access in the list as the form does", async () => {
+    const list = [{ id: "a1", label: "Hermes", scope: "mcp:write-own", created_at: "2026-10-06T00:00:00Z", last_used_at: null }];
+    mockFetch({ "GET /api/app-passwords": () => list });
+    render(<AppPasswords username="alice" />);
+    const select = (await screen.findByLabelText(/access for hermes/i)) as HTMLSelectElement;
+    expect([...select.options].map((o) => [o.value, o.text])).toEqual([
+      ["mcp:read", "Read only"],
+      ["mcp:write-own", "Edit its own events"],
+      ["mcp:write-any", "Edit any event"],
+    ]);
+    expect(select.selectedOptions[0].text).toBe("Edit its own events");
   });
 
   it("changes an agent's access and shows when it is revoked if unused", async () => {

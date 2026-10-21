@@ -31,6 +31,10 @@ mkdir -p -m 700 data backups && sudo chown 10001:10001 data backups   # the cont
 docker compose up -d --build
 ```
 
+A source build reports its version as `dev` (Settings, `kycalendar version`, backups) unless
+`.env` sets `KYCALENDAR_VERSION`, for example to `$(git describe --tags | sed 's/^v//')` on a
+release tag. Published images and `make build` stamp it themselves.
+
 For a foreground development server instead, use `make run` in a separate terminal.
 It binds `127.0.0.1:8080` and uses `.dev-data/`; stop it before using the same port for Compose.
 

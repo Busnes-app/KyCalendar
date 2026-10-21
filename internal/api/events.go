@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -187,10 +188,32 @@ func (s *Server) writeAPIError(w http.ResponseWriter, e *apiError) {
 	s.writeJSON(w, e.status, map[string]string{"error": e.msg, "code": e.code})
 }
 
-// expandEvents expands every instance of cals between start and end, as viewer sees them.
+// listedInstance is one expanded instance with the keys it is ordered by.
+type listedInstance struct {
+	day   string // the viewer's local date of the start
+	start time.Time
+	view  eventView
+}
+
+// compareListed orders instances by day, all-day events first on their day, then by start;
+// UID, occurrence and calendar break ties so equal starts always list the same way.
+func compareListed(a, b listedInstance) int {
+	allDayFirst := func(v eventView) int {
+		if v.AllDay {
+			return 0
+		}
+		return 1
+	}
+	return cmp.Or(cmp.Compare(a.day, b.day), cmp.Compare(allDayFirst(a.view), allDayFirst(b.view)),
+		a.start.Compare(b.start), cmp.Compare(a.view.UID, b.view.UID),
+		cmp.Compare(a.view.RecurrenceID, b.view.RecurrenceID), cmp.Compare(a.view.CalendarID, b.view.CalendarID))
+}
+
+// expandEvents expands every instance of cals between start and end, as viewer sees them, in
+// chronological order (compareListed).
 func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*store.Calendar, grants []store.CalendarGrant, start, end time.Time, viewer *time.Location) ([]eventView, *apiError) {
 	begun := time.Now()
-	out := []eventView{}
+	var listed []listedInstance
 	tooSlow := func() bool {
 		if time.Since(begun) <= maxExpandTime {
 			return false
@@ -211,7 +234,7 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 			if err != nil {
 				return nil, &apiError{status: http.StatusInternalServerError, msg: "A stored event does not parse"}
 			}
-			insts, err := calendar.Expand(cal, start, end, viewer, maxEventInstances-len(out))
+			insts, err := calendar.Expand(cal, start, end, viewer, maxEventInstances-len(listed))
 			if errors.Is(err, calendar.ErrTooManyInstances) {
 				return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "Too many events in this range; choose a shorter range", code: "too_many_instances"}
 			}
@@ -246,9 +269,14 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 						}
 					}
 				}
-				out = append(out, v)
+				listed = append(listed, listedInstance{day: in.Start.In(viewer).Format(time.DateOnly), start: in.Start, view: v})
 			}
 		}
+	}
+	slices.SortFunc(listed, compareListed)
+	out := make([]eventView, len(listed))
+	for i, l := range listed {
+		out[i] = l.view
 	}
 	return out, nil
 }

@@ -2,13 +2,19 @@
 
 all: build-web build
 
+# The release tag without its "v", or a describe of the commit since it ("0.4.2-59-gf4ec94e",
+# "-dirty" for a modified tree). Empty outside a git checkout: the binary then reports what the
+# go command stamped, else "dev". Override with `make build VERSION=0.5.0`.
+VERSION ?= $(shell git describe --tags --dirty 2>/dev/null | sed 's/^v//')
+LDFLAGS := -X github.com/Busnes-app/kycalendar/internal/version.Version=$(VERSION)
+
 build-web:
 	@echo "==> Building frontend web assets..."
 	@cd web && npm ci && npm run build
 
 build:
 	@echo "==> Compiling kycalendar binary..."
-	@go build -o kycalendar ./cmd/server
+	@go build -ldflags "$(LDFLAGS)" -o kycalendar ./cmd/server
 
 test:
 	@echo "==> Running test suite..."
@@ -44,7 +50,7 @@ lint:
 	@go vet ./...
 
 smoke: build
-	@./scripts/smoke-test.sh
+	@KY_SMOKE_VERSION="$(VERSION)" ./scripts/smoke-test.sh
 
 ci: tidy-check lint test-race test-fork test-web smoke
 	@echo "==> Local CI checks passed"
@@ -54,7 +60,7 @@ run: build
 	@KY_DATA_DIR=./.dev-data ./kycalendar
 
 docker-build:
-	@docker build -t kycalendar .
+	@docker build --build-arg VERSION="$(VERSION)" -t kycalendar .
 
 # Build output only. Never data/, backups/ or .dev-data/ (live databases, keys, capsules) or
 # tracked files such as web/dist.

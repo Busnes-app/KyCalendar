@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/Busnes-app/kycalendar/internal/version"
 )
 
 type ThemeUpdateRequest struct {
@@ -38,6 +40,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 
 	out["scim_enabled"] = s.config.SCIM.Enabled
 	out["db_driver"] = s.config.Database.Driver
+	out["version"] = version.Version
 
 	// extra_settings holds secrets such as the SCIM bearer token. The KyRecovery pairing
 	// token is sealed at rest and never leaves the process in either form: an admin can see

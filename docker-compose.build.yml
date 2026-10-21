@@ -18,3 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # What Settings and the version command report; empty reports "dev". For a checkout of
+      # a release tag: KYCALENDAR_VERSION=$(git describe --tags | sed 's/^v//') in .env.
+      args:
+        VERSION: ${KYCALENDAR_VERSION:-}

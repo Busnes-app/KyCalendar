@@ -1,7 +1,7 @@
 ---
 name: kycalendar
 description: Read and manage the user's KyCalendar personal calendars through the kycalendar MCP tools. Use when the user asks about their schedule, availability or events, or asks to add, move or change an event.
-version: "0.4.2"
+version: "dev"
 ---
 
 # KyCalendar

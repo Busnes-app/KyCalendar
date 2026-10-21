@@ -22,6 +22,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/version"
 )
 
 // mcpWorld is alice (everyday, editor on a group calendar) with her personal calendar.
@@ -258,6 +259,9 @@ func TestMCPEndToEnd(t *testing.T) {
 	if cs.InitializeResult().Instructions == "" {
 		t.Error("initialize carries no instructions")
 	}
+	if got := cs.InitializeResult().ServerInfo; got.Name != "kycalendar" || got.Version != version.Version {
+		t.Errorf("server info %+v, want kycalendar %s", got, version.Version)
+	}
 	tools, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -313,6 +317,80 @@ func TestMCPEndToEnd(t *testing.T) {
 	ev = findEvent(listEvents(t, cs, nil), made.UID)
 	if ev == nil || ev.Title != "Dentist (moved)" || ev.Start != "2026-10-21T09:00:00Z" {
 		t.Fatalf("after update %+v", ev)
+	}
+}
+
+// Events list by start whatever order they were stored in, a series' occurrences interleaved
+// with other events, all-day events first on their day and equal starts by UID; the web list
+// keeps the same order.
+func TestEventsListInChronologicalOrder(t *testing.T) {
+	w := newMCPWorld(t)
+	_, tok := seedToken(t, w.st, "usr_alice", store.ScopeMCPWriteAny)
+	cs := agent(t, w.srv, tok)
+	at := func(title, start, end string) map[string]any {
+		args := createArgs(w.personal, title)
+		args["start"], args["end"] = start, end
+		return args
+	}
+	weekly := at("Standup", "2026-10-05T09:00:00Z", "2026-10-05T09:15:00Z")
+	weekly["repeat"] = map[string]any{"freq": "weekly"}
+	allDay := at("Holiday", "2026-10-12", "2026-10-13")
+	allDay["all_day"] = true
+	uids := map[string]string{}
+	for _, args := range []map[string]any{
+		at("Late", "2026-10-25T15:00:00Z", "2026-10-25T16:00:00Z"),
+		at("Late too", "2026-10-25T15:00:00Z", "2026-10-25T15:30:00Z"),
+		weekly,
+		at("Midnight", "2026-10-12T00:00:00Z", "2026-10-12T00:30:00Z"),
+		allDay,
+		at("Early", "2026-10-02T08:00:00Z", "2026-10-02T09:00:00Z"),
+	} {
+		var made written
+		if msg := callTool(t, cs, "create_event", args, &made); msg != "" {
+			t.Fatalf("create %v: %s", args["title"], msg)
+		}
+		uids[args["title"].(string)] = made.UID
+	}
+	tie := []string{"Late", "Late too"}
+	if uids["Late"] > uids["Late too"] {
+		tie = []string{"Late too", "Late"}
+	}
+	want := slices.Concat([]string{"Early", "Standup", "Holiday", "Midnight", "Standup", "Standup"}, tie, []string{"Standup"})
+
+	var got []string
+	for _, e := range listEvents(t, cs, nil) {
+		got = append(got, e.Title)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("list_events order %v, want %v", got, want)
+	}
+
+	rec := doJSON(t, w.srv, "GET", "/api/events?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z", w.alice, nil)
+	var web []mcpEvent
+	if err := json.Unmarshal(rec.Body.Bytes(), &web); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("GET /api/events: %d %s", rec.Code, rec.Body)
+	}
+	got = got[:0]
+	for _, e := range web {
+		got = append(got, e.Title)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("GET /api/events order %v, want %v", got, want)
+	}
+
+	// In New York, Midnight UTC is the evening before, so it moves ahead of the holiday.
+	var ny struct {
+		Events []mcpEvent `json:"events"`
+	}
+	if msg := callTool(t, cs, "list_events", map[string]any{"start": "2026-10-11T00:00:00-04:00", "end": "2026-10-13T00:00:00-04:00", "tz": "America/New_York"}, &ny); msg != "" {
+		t.Fatal(msg)
+	}
+	got = got[:0]
+	for _, e := range ny.Events {
+		got = append(got, e.Title)
+	}
+	if want := []string{"Midnight", "Holiday", "Standup"}; !slices.Equal(got, want) {
+		t.Errorf("list_events in New York %v, want %v", got, want)
 	}
 }
 
@@ -643,10 +721,16 @@ func TestAgentSkill(t *testing.T) {
 	rec := httptest.NewRecorder()
 	w.srv.ServeHTTP(rec, httptest.NewRequest("GET", "/agent/skills/kycalendar/SKILL.md", nil))
 	body, _ := io.ReadAll(rec.Body)
-	if rec.Code != http.StatusOK || !bytes.Equal(body, agentskill.KyCalendar) || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/markdown") {
+	if rec.Code != http.StatusOK || !bytes.Equal(body, agentskill.For(version.Version)) || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/markdown") {
 		t.Fatalf("served %d %q, want the embedded skill as markdown", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	skill := string(agentskill.KyCalendar)
+	if n := bytes.Count(agentskill.KyCalendar, []byte(agentskill.SourceVersion)); n != 1 {
+		t.Fatalf("committed skill has %d %q lines, want 1: the served copy would not carry the build's version", n, agentskill.SourceVersion)
+	}
+	if got := string(agentskill.For("1.2.3")); !strings.Contains(got, "\nversion: \"1.2.3\"\n") || strings.Contains(got, agentskill.SourceVersion) {
+		t.Errorf("For(1.2.3) does not carry 1.2.3 as its version")
+	}
+	skill := string(body)
 
 	front, _, ok := strings.Cut(strings.TrimPrefix(skill, "---\n"), "\n---\n")
 	if !ok || !strings.HasPrefix(skill, "---\n") {
@@ -660,8 +744,8 @@ func TestAgentSkill(t *testing.T) {
 	if want := []string{"name", "description", "version"}; !slices.Equal(keys, want) {
 		t.Errorf("frontmatter keys %v, want exactly %v", keys, want)
 	}
-	if !strings.Contains(front, `version: "`+api.AppVersionForTest+`"`) {
-		t.Errorf("skill version is not the app version %s", api.AppVersionForTest)
+	if !strings.Contains(front, `version: "`+version.Version+`"`) {
+		t.Errorf("served skill version is not the app version %s", version.Version)
 	}
 
 	_, tok := seedToken(t, w.st, "usr_alice", store.ScopeMCPRead)

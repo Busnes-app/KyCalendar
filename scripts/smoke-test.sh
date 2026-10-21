@@ -63,6 +63,10 @@ stop_server() {
 echo "==> CLI subcommands"
 check "version exits 0" "$("$BIN" version >/dev/null 2>&1 && echo 0 || echo 1)" "0"
 contains "version prints name" "$("$BIN" version)" "kycalendar"
+# KY_SMOKE_VERSION is what the build stamped with -X (make smoke and CI pass it).
+if [ -n "${KY_SMOKE_VERSION:-}" ]; then
+  check "version reports the build stamp" "$("$BIN" version)" "kycalendar $KY_SMOKE_VERSION (Busnes.app calendar)"
+fi
 
 # The drill seals to a throwaway key and reopens it, so the pipeline runs even unpaired.
 # Whether the suite key is pinned is the status route's report, not the drill's.
@@ -164,6 +168,9 @@ LOGIN_BODY="$(curl -s -c "$WORK/cookies" -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"FinalSmokePassword123!"}' "$BASE/api/auth/login")"
 contains "reset replacement signs in" "$LOGIN_BODY" '"authenticated":true'
 contains "admin settings include db_driver" "$(curl -s -b "$WORK/cookies" "$BASE/api/settings")" '"db_driver"'
+if [ -n "${KY_SMOKE_VERSION:-}" ]; then
+  contains "settings report the build stamp" "$(curl -s -b "$WORK/cookies" "$BASE/api/settings")" "\"version\":\"$KY_SMOKE_VERSION\""
+fi
 check "deposit CLI refuses without a key" \
   "$(KY_DATA_DIR="$WORK/cli" KY_DB_DRIVER=sqlite "$BIN" deposit >/dev/null 2>&1 && echo 0 || echo 1)" "1"
 CSRF="$(awk '$6 == "ky_csrf" { print $7 }' "$WORK/cookies")"

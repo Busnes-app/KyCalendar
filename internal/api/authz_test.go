@@ -12,6 +12,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/version"
 )
 
 // loginAs creates a user with the given role and returns its session cookie.
@@ -94,7 +95,7 @@ func TestSettingsExposureByRole(t *testing.T) {
 	if anon["app_name"] == nil || anon["captcha_provider"] == nil {
 		t.Errorf("anonymous settings must keep the login screen working, got %v", anon)
 	}
-	for _, secret := range []string{"extra_settings", "db_driver"} {
+	for _, secret := range []string{"extra_settings", "db_driver", "version"} {
 		if _, found := anon[secret]; found {
 			t.Errorf("anonymous settings leaked %q: %v", secret, anon)
 		}
@@ -106,6 +107,9 @@ func TestSettingsExposureByRole(t *testing.T) {
 	member := decode(do(t, srv, "GET", "/api/settings", loginAs(t, srv, st, "bob", "user")))
 	if member["db_driver"] == nil {
 		t.Errorf("authenticated settings should include db_driver, got %v", member)
+	}
+	if member["version"] != version.Version {
+		t.Errorf("authenticated settings version %v, want %s", member["version"], version.Version)
 	}
 	if _, found := member["extra_settings"]; found {
 		t.Errorf("non-admin settings leaked extra_settings: %v", member)
