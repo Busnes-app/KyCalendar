@@ -1,7 +1,8 @@
 name: publish release image
 
-# A published release vX.Y.Z publishes the immutable :X.Y.Z image, attests and
-# verifies it, then moves :stable. :<sha> and :latest belong to ci.yml.
+# A published release vX.Y.Z publishes the immutable :X.Y.Z image, stamped with X.Y.Z at
+# build time (nothing in the tree is bumped by hand), attests and verifies it, then moves
+# :stable. :<sha> and :latest belong to ci.yml.
 on:
   release:
     types: [published]
@@ -55,29 +56,6 @@ jobs:
           want="$(git rev-parse "$GITHUB_SHA^{commit}")"
           if [ "$head" != "$want" ]; then
             echo "::error::checked out $head, but the release names $want" >&2
-            exit 1
-          fi
-
-      # appVersion is written into every capsule manifest; the agent skill and web
-      # bundle versions are checked so the artifact has one answer to "which version".
-      - name: Require the tag and every version source to agree
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          set -euo pipefail
-          fail=""
-          check() {
-            echo "$1: ${2:-<unparsed>}"
-            [ "$2" = "$VERSION" ] || fail="$fail $1(${2:-unparsed})"
-          }
-          for f in cmd/server/main.go internal/api/backup_handlers.go; do
-            check "$f" "$(sed -n 's/^const appVersion = "\(.*\)"$/\1/p' "$f")"
-          done
-          check internal/agentskill/kycalendar/SKILL.md "$(sed -n 's/^version: "\(.*\)"$/\1/p' internal/agentskill/kycalendar/SKILL.md)"
-          check web/package.json "$(jq -r .version web/package.json)"
-          if [ -n "$fail" ]; then
-            echo "::error::release $VERSION disagrees with:$fail" >&2
-            echo "Bump every version source in the commit you tag." >&2
             exit 1
           fi
 
@@ -139,8 +117,25 @@ jobs:
           context: .
           push: true
           tags: ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
+          # internal/version.Version, which every place that reports a version reads.
+          build-args: VERSION=${{ steps.version.outputs.value }}
           provenance: mode=max
           sbom: true
+
+      # Before the attestation, so a binary that would report another version never gets one
+      # or reaches :stable.
+      - name: Require the image to report the release version
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          got="$(docker run --rm "$IMAGE_NAME@$DIGEST" version)"
+          want="kycalendar $VERSION (Busnes.app calendar)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::image says '$got', want '$want'" >&2
+            exit 1
+          fi
 
       - name: Publish GitHub image attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

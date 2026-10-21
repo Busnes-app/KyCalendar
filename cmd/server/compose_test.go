@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -78,5 +79,25 @@ func TestComposeHealthcheckProbesHealthz(t *testing.T) {
 	}
 	if !regexp.MustCompile(`docker exec ky_ci wget -q -O /dev/null http://127\.0\.0\.1:8080/healthz`).Match(ci) {
 		t.Error("ci.yml does not run the healthcheck command in the built image")
+	}
+}
+
+// Every build that ships stamps internal/version.Version, the one variable every place that
+// reports a version reads, and the release stamps it from its tag.
+func TestEveryBuildStampsTheVersion(t *testing.T) {
+	const stamp = "-X github.com/Busnes-app/kycalendar/internal/version.Version="
+	for file, want := range map[string]string{
+		"Dockerfile":                          stamp + "${VERSION}",
+		"Makefile":                            stamp + "$(VERSION)",
+		".github/workflows/ci.yml":            `docker build --build-arg VERSION="$version"`,
+		".github/workflows/release-image.yml": "build-args: VERSION=${{ steps.version.outputs.value }}",
+	} {
+		data, err := os.ReadFile(filepath.Join("..", "..", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), want) {
+			t.Errorf("%s does not stamp the version: lacks %s", file, want)
+		}
 	}
 }

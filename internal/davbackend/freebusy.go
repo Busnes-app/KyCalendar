@@ -2,10 +2,12 @@ package davbackend
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -44,8 +46,8 @@ func (b *Backend) QueryFreeBusy(ctx context.Context, p string, start, end time.T
 	return busyIn(ctx, b.Store, []*store.Calendar{c}, start, end, time.Now())
 }
 
-// busyIn is the busy periods of cals' events in [start, end): at most maxFreeBusyInstances in
-// all and maxFreeBusyTime from begun, else errFreeBusyTooBig.
+// busyIn is the busy periods of cals' events in [start, end), ordered by start then end: at
+// most maxFreeBusyInstances in all and maxFreeBusyTime from begun, else errFreeBusyTooBig.
 func busyIn(ctx context.Context, st store.Store, cals []*store.Calendar, start, end, begun time.Time) ([]caldav.FreeBusyPeriod, error) {
 	var out []caldav.FreeBusyPeriod
 	for _, c := range cals {
@@ -77,5 +79,8 @@ func busyIn(ctx context.Context, st store.Store, cals []*store.Calendar, start, 
 			}
 		}
 	}
+	slices.SortFunc(out, func(a, b caldav.FreeBusyPeriod) int {
+		return cmp.Or(a.Start.Compare(b.Start), a.End.Compare(b.End), cmp.Compare(a.Type, b.Type))
+	})
 	return out, nil
 }

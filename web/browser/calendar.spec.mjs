@@ -76,6 +76,14 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   // AI agent setup: its long commands scroll inside their own blocks, never the page.
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Phones & apps' }).click();
   await page.getByLabel(/AI agent/).check();
+  // Three access levels, narrowest first and chosen by default.
+  const access = page.getByRole('group', { name: 'Agent access' }).getByRole('radio');
+  await expect(access).toHaveCount(3);
+  for (const [i, name] of ['Read only', 'Edit its own events', 'Edit any event'].entries()) {
+    await expect(access.nth(i)).toBeVisible();
+    await expect(page.getByLabel(name)).toBeVisible();
+  }
+  await expect(access.first()).toBeChecked();
   await page.getByLabel('Agent name').fill(`Agent ${testInfo.project.name} ${Date.now()}`);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   const install = page.getByLabel('Hermes Agent skill install command', { exact: true });

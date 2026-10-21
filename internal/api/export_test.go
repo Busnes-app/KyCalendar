@@ -74,13 +74,12 @@ func SetFeedClientForTest(s *Server, c *http.Client) { s.feed.Client = c }
 // SetSignInForTest makes p the live sign-in provider (nil closes sign-in). Test-only.
 func SetSignInForTest(s *Server, p *sso.Provider) { s.signin.Store(p) }
 
-// MCP tool errors the skill must name, and the app version its frontmatter must carry.
+// MCP tool errors the skill must name.
 const (
 	MCPReadOnlyForTest   = msgReadOnly
 	MCPNotOwnForTest     = msgNotOwn
 	MCPMeetingForTest    = msgMeeting
 	MCPSubscribedForTest = msgSubscribed
-	AppVersionForTest    = appVersion
 )
 
 // SetKyPostClientForTest points the scheduler's KyPost client at c (an httptest server's client:

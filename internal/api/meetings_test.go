@@ -160,6 +160,27 @@ func TestWebFreeBusyPicker(t *testing.T) {
 	}
 }
 
+// Busy times list by start, a series' occurrences interleaved with other events.
+func TestWebFreeBusyIsInOrder(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, bobCal := webUser(t, srv, st, "bob")
+	for _, ev := range []string{
+		`{"title":"Lunch","start":"2026-11-10T12:00:00Z","end":"2026-11-10T13:00:00Z","zone":"UTC"}`,
+		`{"title":"Gym","start":"2026-11-10T08:00:00Z","end":"2026-11-10T09:00:00Z","zone":"UTC","repeat":{"freq":"daily"}}`,
+	} {
+		if r := call(t, srv, "POST", "/api/calendars/"+bobCal+"/events", ev, bob); r.Code != http.StatusCreated {
+			t.Fatalf("bob's event %d %s", r.Code, r.Body)
+		}
+	}
+	r := call(t, srv, "GET", "/api/freebusy?users=bob@example.com&start=2026-11-10T00:00:00Z&end=2026-11-12T00:00:00Z", "", alice)
+	want := `"busy":[{"start":"2026-11-10T08:00:00Z","end":"2026-11-10T09:00:00Z"},{"start":"2026-11-10T12:00:00Z","end":"2026-11-10T13:00:00Z"},{"start":"2026-11-11T08:00:00Z","end":"2026-11-11T09:00:00Z"}]`
+	if r.Code != 200 || !strings.Contains(r.Body.String(), want) {
+		t.Errorf("free/busy %d %s, want %s", r.Code, r.Body, want)
+	}
+}
+
 func TestWebFreeBusyNeedsScheduling(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	alice, _ := webUser(t, srv, st, "alice")

@@ -57,3 +57,9 @@ Every page and dialog, before (main at `ff8496f`) and after, in Busnes Light and
 Capture conditions: the built server on disposable SQLite data, fictional people (`lgtm.llc`: Alex Morgan, Sam Rivera, Jordan Lee) and events, a clock fixed at 2026-10-21 10:15 America/New_York, Chromium with `calendar.lgtm.llc` mapped to loopback inside the browser only. 1920×1080 captures were inspected but are not committed. Phone captures are full-page, so the sticky header can show a blank band above the page on both sides.
 
 `npm test`, the production build and the Chromium suite (light/dark × 390/1280, including the new week-view and agent-setup overflow checks) passed on this revision. This is visual evidence, not a full accessibility audit.
+
+## Agent access levels — 2026-10-21
+
+The Phones & apps form and agent list, before (main at `f4ec94e`) and after, in Busnes Light and Dark at 1280×900 and 390×844 CSS pixels: [docs/screenshots/agent-access/agent-access-form.jpg](docs/screenshots/agent-access/agent-access-form.jpg). Top row before, bottom row after; each capture runs from the add card to the end of the list.
+
+Capture conditions: the built server on disposable SQLite data, the fictional everyday user `sam.rivera` with four fictional devices and agents (one per access level), AI agent chosen in the form.

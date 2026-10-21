@@ -3,7 +3,8 @@ import { secureFetch } from "../api";
 import { REAUTH } from "../admin";
 import { CodeBlock, CopyButton, EmptyState, PageHeader } from "../components/ui";
 
-type Scope = "dav" | "mcp:read" | "mcp:write-own" | "mcp:write-any";
+type AgentScope = "mcp:read" | "mcp:write-own" | "mcp:write-any";
+type Scope = "dav" | AgentScope;
 
 interface AppPassword {
   id: string;
@@ -19,11 +20,12 @@ interface Created {
   scope: Scope;
 }
 
-const ACCESS: Record<Exclude<Scope, "dav">, string> = {
-  "mcp:read": "Read only",
-  "mcp:write-own": "Read and write: only events it created",
-  "mcp:write-any": "Read and write: all events",
-};
+// The three agent access levels, narrowest first; the create form and each agent's row use these names.
+const ACCESS: { scope: AgentScope; name: string; hint: string }[] = [
+  { scope: "mcp:read", name: "Read only", hint: "Sees your calendars and events. Changes nothing." },
+  { scope: "mcp:write-own", name: "Edit its own events", hint: "Adds events, and changes only the ones it added." },
+  { scope: "mcp:write-any", name: "Edit any event", hint: "Adds events, and changes any of your events." },
+];
 
 const isAgent = (s: Scope) => s.startsWith("mcp:");
 
@@ -33,7 +35,7 @@ const ANY_WARNING = "The agent can then move or rewrite any of your appointments
 
 // widening is the warning for moving an agent from one access to more, or null when it narrows.
 function widening(from: Scope, to: Scope): string | null {
-  const rank = ["mcp:read", "mcp:write-own", "mcp:write-any"];
+  const rank: Scope[] = ACCESS.map((a) => a.scope);
   if (rank.indexOf(to) <= rank.indexOf(from)) return null;
   return [from === "mcp:read" && WRITE_WARNING, to === "mcp:write-any" && ANY_WARNING].filter(Boolean).join(" ");
 }
@@ -42,8 +44,7 @@ export default function AppPasswords({ username }: { username: string }) {
   const [list, setList] = useState<AppPassword[]>([]);
   const [label, setLabel] = useState("");
   const [agent, setAgent] = useState(false);
-  const [write, setWrite] = useState(false);
-  const [anyEvent, setAnyEvent] = useState(false);
+  const [access, setAccess] = useState<AgentScope>("mcp:read");
   const [created, setCreated] = useState<Created | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +64,7 @@ export default function AppPasswords({ username }: { username: string }) {
     void load();
   }, [load]);
 
-  const scope: Scope = !agent ? "dav" : !write ? "mcp:read" : anyEvent ? "mcp:write-any" : "mcp:write-own";
+  const scope: Scope = agent ? access : "dav";
 
   async function failed(res: Response | null, fallback: string) {
     const body = await res?.json().catch(() => null);
@@ -141,24 +142,16 @@ export default function AppPasswords({ username }: { username: string }) {
           {agent && (
             <fieldset>
               <legend>Agent access</legend>
-              <label className="choice">
-                <input type="radio" name="access" checked={!write} onChange={() => setWrite(false)} />
-                Read only
-              </label>
-              <label className="choice">
-                <input type="radio" name="access" checked={write} onChange={() => setWrite(true)} />
-                Read and write
-              </label>
-              {write && (
-                <>
-                  <p role="note">{WRITE_WARNING}</p>
-                  <label className="choice">
-                    <input type="checkbox" checked={anyEvent} onChange={(e) => setAnyEvent(e.target.checked)} />
-                    Can also change events it did not create
-                  </label>
-                  {anyEvent && <p role="note">{ANY_WARNING}</p>}
-                </>
-              )}
+              {ACCESS.map((a) => (
+                <label className="choice" key={a.scope}>
+                  <input type="radio" name="access" value={a.scope} checked={access === a.scope} onChange={() => setAccess(a.scope)} />
+                  <span>
+                    {a.name}
+                    <span className="choice-hint">{a.hint}</span>
+                  </span>
+                </label>
+              ))}
+              {access !== "mcp:read" && <p role="note">{widening("mcp:read", access)}</p>}
             </fieldset>
           )}
           <div className="field">
@@ -233,9 +226,9 @@ export default function AppPasswords({ username }: { username: string }) {
                             value={p.scope}
                             onChange={(e) => void changeAccess(p, e.target.value as Scope)}
                           >
-                            {Object.entries(ACCESS).map(([value, name]) => (
-                              <option key={value} value={value}>
-                                {name}
+                            {ACCESS.map((a) => (
+                              <option key={a.scope} value={a.scope}>
+                                {a.name}
                               </option>
                             ))}
                           </select>
