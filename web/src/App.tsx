@@ -12,6 +12,7 @@ import Groups from './pages/Groups';
 import People from './pages/People';
 import SignIn from './pages/SignIn';
 import './styles/theme.css';
+import './styles/ui.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
 import { secureFetch } from './api';
@@ -73,26 +74,24 @@ export const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', color: 'var(--ink)' }}>
-        Loading {settings?.app_name || 'KyCalendar'}...
+      <div className="app-loading" role="status">
+        Loading {settings?.app_name || 'KyCalendar'}…
       </div>
     );
   }
 
   if (!user) {
     return (
-      <>
-      {notice && <p role="status" style={{ padding: 16 }}>{notice}</p>}
       <Login
         appName={settings?.app_name || 'KyCalendar'}
         signinName={settings?.signin_name}
+        notice={notice}
         onSuccess={(u) => {
           setNotice('');
           setUser(u);
           void loadSettings();
         }}
       />
-      </>
     );
   }
 
@@ -117,7 +116,7 @@ export const App: React.FC = () => {
       />
 
       <main className="app-main">
-        {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p>Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} /></Suspense>}
+        {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} /></Suspense>}
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
         {/* Admin pages: the API refuses everyday users anyway; never render them either. */}
         {isAdmin && activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}

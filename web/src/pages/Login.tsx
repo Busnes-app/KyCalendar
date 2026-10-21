@@ -8,13 +8,15 @@ interface LoginProps {
   appName: string;
   /** The configured provider's button label; no button without one. */
   signinName?: string;
+  /** A message from the previous screen, such as a completed password change. */
+  notice?: string;
 }
 
 interface MFAChallenge {
   mfa_token: string;
 }
 
-export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) => {
+export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, notice }) => {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
@@ -97,137 +99,100 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) 
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-        background: 'var(--bg)',
-      }}
-    >
-      <div style={{ position: 'absolute', top: 20, right: 20 }}>
+    <main className="auth-screen">
+      <div className="auth-theme">
         <ThemeSwitcher />
       </div>
 
-      <div style={{ width: '100%', maxWidth: '420px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              padding: '12px',
-              background: 'var(--accent-soft)',
-              borderRadius: '12px',
-              color: 'var(--accent)',
-              marginBottom: '12px',
-            }}
-          >
-            <img src="/app-icon.png" width={56} height={56} alt="" />
-          </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>{appName || 'KyCalendar'}</h1>
-          <p style={{ color: 'var(--ink)', fontSize: '14px', marginTop: '4px' }}>Cloud Mobile First Base Platform</p>
+      <div className="auth-body">
+        <div className="auth-brand">
+          <img src="/app-icon.png" width={56} height={56} alt="" />
+          <h1>{appName || 'KyCalendar'}</h1>
+          <p>Your calendars, on your own server.</p>
         </div>
 
-        <div className="panel">
+        <div className="panel auth-card">
+          {notice && !error && <p role="status" className="alert alert-success">{notice}</p>}
           {error && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid var(--danger)',
-                borderRadius: '6px',
-                padding: '10px',
-                color: 'var(--danger)',
-                fontSize: '13px',
-                marginBottom: '16px',
-              }}
-            >
-              <AlertCircle size={16} />
+            <div role="alert" className="alert alert-error auth-error">
+              <AlertCircle size={16} aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
 
           {mfaChallenge ? (
-            <form onSubmit={handleMFASubmit}>
-              <h2 style={{ fontSize: '18px', marginBottom: '8px' }}>Two-Factor Verification</h2>
-              <p style={{ color: 'var(--ink)', fontSize: '13px', marginBottom: '16px' }}>
-                {isRecoveryCode ? 'Enter one of your single-use recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
-              </p>
+            <form className="stack" onSubmit={handleMFASubmit}>
+              <div>
+                <h2>Two-step verification</h2>
+                <p className="card-meta">
+                  {isRecoveryCode ? 'Enter one of your single-use recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
+                </p>
+              </div>
 
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: 'var(--ink)', marginBottom: '6px' }}>
-                  {isRecoveryCode ? 'Recovery Code' : 'Authenticator Code'}
-                </label>
+              <div className="field">
+                <label htmlFor="mfa-code">{isRecoveryCode ? 'Recovery code' : 'Authenticator code'}</label>
                 <input
+                  id="mfa-code"
+                  className="code-input"
                   type="text"
+                  inputMode={isRecoveryCode ? 'text' : 'numeric'}
+                  autoComplete="one-time-code"
                   autoFocus
                   value={mfaCode}
                   onChange={(e) => setMfaCode(e.target.value)}
                   placeholder={isRecoveryCode ? 'XXXX-XXXX' : '123456'}
-                  style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', letterSpacing: '2px', textAlign: 'center' }}
                   required
                 />
               </div>
 
-              <button type="submit" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                {loading ? 'Verifying...' : 'Verify & Sign In'}
+              <button type="submit" className="btn-block" disabled={loading}>
+                {loading ? 'Verifying…' : 'Verify and sign in'}
               </button>
 
-              <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: '12px' }}
-                  onClick={() => setIsRecoveryCode(!isRecoveryCode)}
-                >
-                  {isRecoveryCode ? 'Use Authenticator App' : 'Use a Recovery Code'}
-                </button>
-              </div>
+              <button type="button" className="link-button" onClick={() => setIsRecoveryCode(!isRecoveryCode)}>
+                {isRecoveryCode ? 'Use your authenticator app' : 'Use a recovery code'}
+              </button>
             </form>
           ) : (
-            <form onSubmit={handleLogin}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: 'var(--ink)', marginBottom: '6px' }}>Username</label>
+            <form className="stack" onSubmit={handleLogin}>
+              <div className="field">
+                <label htmlFor="login-username">Username</label>
                 <input
+                  id="login-username"
                   type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   autoFocus
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin"
                   required
                 />
               </div>
 
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: 'var(--ink)', marginBottom: '6px' }}>Password</label>
+              <div className="field">
+                <label htmlFor="login-password">Password</label>
                 <input
+                  id="login-password"
                   type="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
                   required
                 />
               </div>
 
               <CaptchaWidget key={captchaKey} onToken={(tok) => setCaptchaToken(tok)} />
 
-              <button type="submit" style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }} disabled={loading}>
-                <LogIn size={16} />
-                <span>{loading ? 'Signing in...' : 'Sign In'}</span>
+              <button type="submit" className="btn-block" disabled={loading}>
+                <LogIn size={16} aria-hidden="true" />
+                <span>{loading ? 'Signing in…' : 'Sign in'}</span>
               </button>
 
               {signinName && (
-                <div style={{ marginTop: '20px', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
-                  <a
-                    href="/api/sso/kysignon/login"
-                    className="btn btn-secondary"
-                    style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
-                  >
-                    <Key size={16} style={{ color: 'var(--accent)' }} />
+                <div className="auth-alt">
+                  <a href="/api/sso/kysignon/login" className="btn btn-secondary btn-block">
+                    <Key size={16} aria-hidden="true" />
                     <span>Continue with {signinName}</span>
                   </a>
                 </div>
@@ -236,6 +201,6 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName }) 
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 };

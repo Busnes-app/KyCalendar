@@ -20,8 +20,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         { id: 'group-calendars', label: 'Group calendars', icon: CalendarDays },
         { id: 'signin', label: 'Sign-in', icon: KeyRound },
         { id: 'scim', label: 'Directory & SCIM', icon: Users },
-        { id: 'backup', label: 'KyBackup', icon: Archive },
-        { id: 'settings', label: 'Settings & DB', icon: SettingsIcon },
+        { id: 'backup', label: 'Backups', icon: Archive },
+        { id: 'settings', label: 'Settings', icon: SettingsIcon },
       ]
     : [
         { id: 'calendar', label: 'Calendar', icon: CalendarDays },
@@ -47,7 +47,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
                   className={active ? 'ky-nav-item active' : 'ky-nav-item'}
                   aria-current={active ? 'page' : undefined}
                 >
-                  <Icon size={16} />
+                  <Icon size={16} aria-hidden="true" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -59,16 +59,17 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
           {user && (
             <div className="app-user">
               <div className="app-user-copy">
-                <div style={{ fontWeight: 600, color: 'var(--ink-strong)' }}>{user.display_name || user.username}</div>
-                <div style={{ fontSize: '11px', color: 'var(--ink)' }}>{user.role}</div>
+                <div className="app-user-name">{user.display_name || user.username}</div>
+                <div className="app-user-role">{user.role === 'admin' ? 'Administrator' : 'Everyday account'}</div>
               </div>
               <button
+                type="button"
                 className="btn-secondary app-logout"
                 onClick={onLogout}
                 title="Sign out"
                 aria-label="Sign out"
               >
-                <LogOut size={16} />
+                <LogOut size={16} aria-hidden="true" />
               </button>
             </div>
           )}

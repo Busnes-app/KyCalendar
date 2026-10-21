@@ -49,3 +49,11 @@ Run npm ci, npm test (where configured), and npm run build in web/, then start t
 ## Approved interface polish — 2026-10-19
 
 See [UI-POLISH.md](UI-POLISH.md) for the implemented changes, preservation scope, checks, actual before/after screenshots and disposable capture conditions. Earlier captures above remain historical evidence.
+
+## Launch beauty pass — 2026-10-21
+
+Every page and dialog, before (main at `ff8496f`) and after, in Busnes Light and Dark at 1280×900 and 390×844 CSS pixels: [docs/screenshots/ui-pass/](docs/screenshots/ui-pass/). Each image is one page: the top row is before, the bottom row after; the first screen of each capture is shown.
+
+Capture conditions: the built server on disposable SQLite data, fictional people (`lgtm.llc`: Alex Morgan, Sam Rivera, Jordan Lee) and events, a clock fixed at 2026-10-21 10:15 America/New_York, Chromium with `calendar.lgtm.llc` mapped to loopback inside the browser only. 1920×1080 captures were inspected but are not committed. Phone captures are full-page, so the sticky header can show a blank band above the page on both sides.
+
+`npm test`, the production build and the Chromium suite (light/dark × 390/1280, including the new week-view and agent-setup overflow checks) passed on this revision. This is visual evidence, not a full accessibility audit.

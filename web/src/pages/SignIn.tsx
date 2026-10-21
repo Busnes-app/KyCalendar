@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { JSON_HEADERS, REAUTH, failure, send } from "../admin";
+import { PageHeader } from "../components/ui";
 
 interface Field {
   value: string;
@@ -52,7 +53,7 @@ function formOf(v: View): Form {
 }
 
 function EnvNote({ name }: { name: string }) {
-  return <small>Set by the environment ({name}); change it there.</small>;
+  return <span className="field-hint">Set by the environment ({name}); change it there.</span>;
 }
 
 export default function SignIn() {
@@ -78,7 +79,7 @@ export default function SignIn() {
   if (!view || !form) {
     return (
       <section className="page">
-        <h1>Sign-in</h1>
+        <PageHeader title="Sign-in" />
         {error && <p role="alert">{error}</p>}
       </section>
     );
@@ -141,71 +142,98 @@ export default function SignIn() {
 
   return (
     <section className="page">
-      <h1>Sign-in</h1>
-      <p>
-        Let people sign in with Single Sign On or another OpenID Connect provider. Only Single Sign On's <code>kycalendar.admin</code>{" "}
-        role makes an administrator; everyone from another provider is an everyday user. Switching provider or issuer disables
-        the previous provider's accounts.
-      </p>
-      {!view.sso_enabled && <p role="status">KY_SSO_ENABLED=false: single sign-on stays off whatever you save here.</p>}
-      {view.managed && <p role="status">Sign-in is managed by KyQuickStart. Change it through the installer.</p>}
+      <PageHeader
+        title="Sign-in"
+        lede={
+          <>
+            Let people sign in with Single Sign On or another OpenID Connect provider. Only Single Sign On's <code>kycalendar.admin</code>{" "}
+            role makes an administrator; everyone from another provider is an everyday user. Switching provider or issuer disables
+            the previous provider's accounts.
+          </>
+        }
+      />
+      <div className="notices">
+        {!view.sso_enabled && <p role="status">KY_SSO_ENABLED=false: single sign-on stays off whatever you save here.</p>}
+        {view.managed && <p role="status">Sign-in is managed by KyQuickStart. Change it through the installer.</p>}
+      </div>
       <form
+        className="card form-card"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <label htmlFor="signin-provider">Provider</label>
-        <select id="signin-provider" value={form.provider} onChange={set("provider")} disabled={view.managed || env(view.provider)}>
-          <option value="none">None (passwords only)</option>
-          <option value="kyidentity">Single Sign On</option>
-          <option value="oidc">Another OpenID Connect provider</option>
-        </select>
-        {env(view.provider) && <EnvNote name="the KY_KYSIGNON_ variables" />}
-        {form.provider !== "none" && (
-          <>
-            <label htmlFor="signin-name">Button label</label>
-            <input id="signin-name" disabled={view.managed} value={form.display_name} onChange={set("display_name")} maxLength={255} required={form.provider === "oidc"} />
-            <label htmlFor="signin-issuer">Issuer URL</label>
-            <input
-              id="signin-issuer"
-              type="url"
-              value={form.issuer}
-              onChange={set("issuer")}
-              disabled={view.managed || env(view.issuer)}
-              placeholder="https://id.example.com"
-              required
-            />
-            {env(view.issuer) && <EnvNote name="KY_KYSIGNON_ISSUER" />}
-            <label htmlFor="signin-client">Client ID</label>
-            <input id="signin-client" value={form.client_id} onChange={set("client_id")} disabled={view.managed || env(view.client_id)} required />
-            {env(view.client_id) && <EnvNote name="KY_KYSIGNON_CLIENT_ID" />}
-            <label htmlFor="signin-secret">Client secret</label>
-            <input
-              id="signin-secret"
-              type="password"
-              autoComplete="off"
-              value={form.client_secret}
-              onChange={set("client_secret")}
-              disabled={view.managed || secretLocked}
-              required={!secretLocked && !keepsSecret}
-              placeholder={keepsSecret ? "Stored; leave blank to keep it" : "Required"}
-            />
-            {secretLocked && <EnvNote name="KY_KYSIGNON_SECRET" />}
-            <p>
-              Redirect URI to register with the provider: <code>{view.callback_url}</code>{" "}
-              <button type="button" onClick={() => void copy(view.callback_url)}>
-                Copy
-              </button>
-            </p>
-            <button type="button" disabled={view.managed} onClick={() => void test()}>
+        <div className="form form-wide">
+          <div className="field">
+            <label htmlFor="signin-provider">Provider</label>
+            <select id="signin-provider" value={form.provider} onChange={set("provider")} disabled={view.managed || env(view.provider)}>
+              <option value="none">None (passwords only)</option>
+              <option value="kyidentity">Single Sign On</option>
+              <option value="oidc">Another OpenID Connect provider</option>
+            </select>
+            {env(view.provider) && <EnvNote name="the KY_KYSIGNON_ variables" />}
+          </div>
+          {form.provider !== "none" && (
+            <>
+              <div className="field">
+                <label htmlFor="signin-name">Button label</label>
+                <input id="signin-name" disabled={view.managed} value={form.display_name} onChange={set("display_name")} maxLength={255} required={form.provider === "oidc"} />
+                <span className="field-hint">The sign-in page shows “Continue with” this label.</span>
+              </div>
+              <div className="field">
+                <label htmlFor="signin-issuer">Issuer URL</label>
+                <input
+                  id="signin-issuer"
+                  type="url"
+                  value={form.issuer}
+                  onChange={set("issuer")}
+                  disabled={view.managed || env(view.issuer)}
+                  placeholder="https://id.example.com"
+                  required
+                />
+                {env(view.issuer) && <EnvNote name="KY_KYSIGNON_ISSUER" />}
+              </div>
+              <div className="field">
+                <label htmlFor="signin-client">Client ID</label>
+                <input id="signin-client" value={form.client_id} onChange={set("client_id")} disabled={view.managed || env(view.client_id)} required />
+                {env(view.client_id) && <EnvNote name="KY_KYSIGNON_CLIENT_ID" />}
+              </div>
+              <div className="field">
+                <label htmlFor="signin-secret">Client secret</label>
+                <input
+                  id="signin-secret"
+                  type="password"
+                  autoComplete="off"
+                  value={form.client_secret}
+                  onChange={set("client_secret")}
+                  disabled={view.managed || secretLocked}
+                  required={!secretLocked && !keepsSecret}
+                  placeholder={keepsSecret ? "Stored; leave blank to keep it" : "Required"}
+                />
+                {secretLocked && <EnvNote name="KY_KYSIGNON_SECRET" />}
+              </div>
+              <div className="field">
+                <span className="field-label">Redirect URI to register with the provider</span>
+                <div className="input-with-action">
+                  <code className="code-field">{view.callback_url}</code>
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => void copy(view.callback_url)}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {error && <p role="alert">{error}</p>}
+          {notice && <p role="status">{notice}</p>}
+        </div>
+        <div className="form-actions card-footer">
+          <button type="submit" disabled={view.managed}>Save</button>
+          {form.provider !== "none" && (
+            <button type="button" className="btn-secondary" disabled={view.managed} onClick={() => void test()}>
               Test
             </button>
-          </>
-        )}
-        {error && <p role="alert">{error}</p>}
-        {notice && <p role="status">{notice}</p>}
-        <button type="submit" disabled={view.managed}>Save</button>
+          )}
+        </div>
       </form>
     </section>
   );

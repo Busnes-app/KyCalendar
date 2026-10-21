@@ -27,9 +27,9 @@ export function pageURL(path: string, params: Record<string, string>, offset: nu
 export function LoadMore({ shown, total, busy, onMore }: { shown: number; total: number; busy: boolean; onMore: () => void }) {
   if (shown >= total) return null;
   return (
-    <p>
-      <span>{`Showing ${shown} of ${total}`}</span>{" "}
-      <button type="button" disabled={busy} onClick={onMore}>
+    <p className="load-more">
+      <span>{`Showing ${shown} of ${total}`}</span>
+      <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={onMore}>
         Load more
       </button>
     </p>

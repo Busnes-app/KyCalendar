@@ -93,6 +93,9 @@ describe("Groups", () => {
     expect(within(card).queryByRole("button", { name: "Add wally" })).toBeNull();
     fireEvent.click(add);
     await waitFor(() => expect(put).toHaveBeenCalled());
+    // The next search starts from an empty box, not "wal".
+    await waitFor(() => expect((within(card).getByLabelText("Find a person") as HTMLInputElement).value).toBe(""));
+    expect(within(card).queryByRole("list", { name: "Search results" })).toBeNull();
   });
 
   it("flags a local group whose name SCIM could not create", async () => {

@@ -81,32 +81,24 @@ export const CaptchaWidget: React.FC<CaptchaProps> = ({ onToken }) => {
   }, [onToken]);
 
   return (
-    <div
-      style={{
-        background: 'var(--panel)',
-        border: '1px solid var(--line)',
-        borderRadius: '6px',
-        padding: '12px',
-        margin: '12px 0',
-      }}
-    >
+    <div className={`auth-check ${status === 'done' ? 'ok' : status}`} aria-live="polite">
       {status === 'working' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--ink)' }}>
-          <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent)' }} />
-          <span>Verifying security check ({progress}%)...</span>
-        </div>
+        <>
+          <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+          <span>Checking this browser… {progress}%</span>
+        </>
       )}
       {status === 'done' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--success)' }}>
-          <ShieldCheck size={16} />
-          <span>Security check verified.</span>
-        </div>
+        <>
+          <ShieldCheck size={14} aria-hidden="true" />
+          <span>Browser check passed</span>
+        </>
       )}
       {status === 'failed' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--danger)' }}>
-          <AlertCircle size={16} />
-          <span>{errorMsg}</span>
-        </div>
+        <>
+          <AlertCircle size={14} aria-hidden="true" />
+          <span>Browser check failed: {errorMsg}. Reload the page to try again.</span>
+        </>
       )}
     </div>
   );

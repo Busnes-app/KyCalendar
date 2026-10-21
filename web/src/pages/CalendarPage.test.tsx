@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fcProps: Record<string, unknown>[] = [];
@@ -65,6 +65,33 @@ describe('CalendarPage', () => {
     await waitFor(() => expect(success).toHaveBeenCalled());
     const eventsCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).find((u) => u.startsWith('/api/events'))!;
     expect(new URL(eventsCall, 'http://x').searchParams.get('calendar')).toBe('cal_p');
+  });
+
+  it('opens day and week views on the working day in a scrolling grid, month and list at full height', async () => {
+    mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [] });
+    render(<CalendarPage />);
+    await screen.findByLabelText('Show Team');
+    expect(fcProps.at(-1)!.scrollTime).toBe('07:00:00');
+    const datesSet = fcProps.at(-1)!.datesSet as (arg: { view: { type: string } }) => void;
+    act(() => datesSet({ view: { type: 'dayGridMonth' } }));
+    expect(fcProps.at(-1)!.height).toBe('auto');
+    act(() => datesSet({ view: { type: 'timeGridWeek' } }));
+    expect(fcProps.at(-1)!.height).not.toBe('auto');
+  });
+
+  it('colours each calendar distinctly, with readable event text', async () => {
+    mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [ev, { ...ev, uid: 'u2', calendar_id: 'cal_p' }] });
+    render(<CalendarPage />);
+    await screen.findByLabelText('Show Team');
+    const success = vi.fn();
+    const fetchEvents = fcProps.at(-1)!.events as (info: { start: Date; end: Date }, ok: (e: unknown[]) => void, fail: (e: Error) => void) => void;
+    fetchEvents({ start: new Date('2026-10-05T00:00:00Z'), end: new Date('2026-10-12T00:00:00Z') }, success, vi.fn());
+    await waitFor(() => expect(success).toHaveBeenCalled());
+    const [team, mine] = success.mock.calls[0][0] as { backgroundColor: string; textColor?: string }[];
+    expect(mine.backgroundColor).toBe('#00aa11');
+    expect(team.backgroundColor).not.toBe(mine.backgroundColor);
+    expect(team.backgroundColor).toMatch(/^#[0-9a-f]{6}$/);
+    expect(team.textColor).toBe('#ffffff');
   });
 
   it('shows an alert when calendars cannot load', async () => {

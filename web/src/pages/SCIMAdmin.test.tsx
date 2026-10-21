@@ -34,7 +34,8 @@ describe("SCIMAdmin", () => {
     expect(screen.getByText("Enabled")).toBeTruthy();
     expect(screen.getByText(/bearer token is set/i)).toBeTruthy();
     expect((screen.getByLabelText("SCIM base URL") as HTMLInputElement).value).toBe("https://cal.example/scim/v2");
-    expect(screen.queryByRole("button")).toBeNull();
+    // Read-only: the one button copies the URL.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Copy the SCIM base URL"]);
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual(["/api/admin/scim"]);
   });
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Key, Archive, Database, Users, CheckCircle2, ArrowRight, UsersRound, UserRound } from 'lucide-react';
+import { Key, Archive, Users, ArrowRight, UsersRound, UserRound, CalendarDays } from 'lucide-react';
+import { PageHeader } from '../components/ui';
 
 interface DashboardProps {
   settings: any;
@@ -7,109 +8,92 @@ interface DashboardProps {
   onNavigate: (tab: string) => void;
 }
 
+interface Tile {
+  tab: string;
+  title: string;
+  desc: string;
+  action: string;
+  icon: typeof Key;
+  // Only facts the settings response states; nothing here claims a state it has not read.
+  status?: { label: string; on: boolean };
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate }) => {
-  const cards = [
+  const tiles: Tile[] = [
     {
+      tab: 'people',
       title: 'People',
-      desc: 'Add people who sign in with a password, reset them, make administrators, disable accounts.',
-      status: 'Local and synced',
-      statusType: 'accent',
+      desc: 'Add people who sign in with a password, reset passwords, make administrators and disable accounts.',
+      action: 'Manage people',
       icon: UserRound,
-      action: () => onNavigate('people'),
-      actionLabel: 'Manage people',
     },
     {
+      tab: 'groups',
       title: 'Groups',
-      desc: 'Local groups for group calendars, beside the groups your identity provider syncs.',
-      status: 'Local and synced',
-      statusType: 'accent',
+      desc: 'Local groups, beside any your identity provider syncs. A group gives its members its group calendars.',
+      action: 'Manage groups',
       icon: UsersRound,
-      action: () => onNavigate('groups'),
-      actionLabel: 'Manage groups',
     },
     {
-      title: 'KyBackup & Recovery',
-      desc: 'Encrypted capsule container generation and automated sandboxed restore drills.',
-      status: 'Verified Ready',
-      statusType: 'success',
-      icon: Archive,
-      action: () => onNavigate('backup'),
-      actionLabel: 'Run Restore Drill',
+      tab: 'group-calendars',
+      title: 'Group calendars',
+      desc: 'Calendars that belong to the organisation. Choose which groups read, edit or manage each one.',
+      action: 'Manage group calendars',
+      icon: CalendarDays,
     },
     {
-      title: 'SCIM 2.0 Inbound Provisioning',
-      desc: 'RFC 7643/7644 automatic user and group provisioning from enterprise IdPs.',
-      status: settings?.scim_enabled ? 'Active' : 'Disabled',
-      statusType: settings?.scim_enabled ? 'success' : 'neutral',
-      icon: Users,
-      action: () => onNavigate('scim'),
-      actionLabel: 'Manage Directory',
-    },
-    {
+      tab: 'signin',
       title: 'Sign-in',
-      desc: 'Single Sign On or any OpenID Connect provider, set here or locked by environment variables.',
-      status: settings?.signin_name ? `Continue with ${settings.signin_name}` : 'Passwords only',
-      statusType: settings?.signin_name ? 'success' : 'neutral',
+      desc: 'Single Sign On or another OpenID Connect provider, set here or locked by environment variables.',
+      action: 'Sign-in settings',
       icon: Key,
-      action: () => onNavigate('signin'),
-      actionLabel: 'Sign-in settings',
+      status: settings?.signin_name ? { label: settings.signin_name, on: true } : { label: 'Passwords only', on: false },
     },
     {
-      title: 'Pluggable Database Engine',
-      desc: `Current storage backend: ${settings?.db_driver?.toUpperCase() || 'SQLITE'} (zero-CGO with WAL mode & foreign keys).`,
-      status: `${settings?.db_driver || 'sqlite'} (active)`,
-      statusType: 'accent',
-      icon: Database,
-      action: () => onNavigate('settings'),
-      actionLabel: 'Database Config',
+      tab: 'scim',
+      title: 'Directory (SCIM)',
+      desc: 'Let your identity provider create, update and disable people and groups here automatically.',
+      action: 'Directory settings',
+      icon: Users,
+      status: settings?.scim_enabled ? { label: 'On', on: true } : { label: 'Off', on: false },
+    },
+    {
+      tab: 'backup',
+      title: 'Backups',
+      desc: 'Encrypted backups to KyRecovery or a local folder, on a schedule, with restore drills.',
+      action: 'Backups',
+      icon: Archive,
     },
   ];
 
   return (
-    <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '32px 20px' }}>
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '26px', fontWeight: 'bold', marginBottom: '6px' }}>
-          Welcome, {user?.display_name || user?.username}!
-        </h1>
-        <p style={{ color: 'var(--ink)', fontSize: '15px' }}>
-          {settings?.app_name || 'KyCalendar'} is initialized on the Ky Server Base platform.
-        </p>
-      </div>
+    <section className="page">
+      <PageHeader
+        title={`Welcome, ${user?.display_name || user?.username}`}
+        lede={`Manage who can sign in to ${settings?.app_name || 'KyCalendar'}, who shares which calendars, and how it is backed up. Administrators never see calendars or events.`}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-        {cards.map((c, i) => {
-          const Icon = c.icon;
+      <div className="tiles">
+        {tiles.map((t) => {
+          const Icon = t.icon;
           return (
-            <div key={i} className="panel" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <div style={{ padding: '8px', background: 'var(--accent-soft)', borderRadius: '6px', color: 'var(--accent)' }}>
-                    <Icon size={20} />
-                  </div>
-                  <span className={`badge badge-${c.statusType === 'success' ? 'success' : c.statusType === 'accent' ? 'accent' : 'secondary'}`}>
-                    {c.statusType === 'success' && <CheckCircle2 size={12} />}
-                    {c.status}
-                  </span>
-                </div>
-                <h3 style={{ fontSize: '16px', marginBottom: '6px' }}>{c.title}</h3>
-                <p style={{ color: 'var(--ink)', fontSize: '13px', lineHeight: 1.5 }}>{c.desc}</p>
+            <article key={t.tab} className="tile" aria-labelledby={`tile-${t.tab}`}>
+              <div className="tile-head">
+                <h2 className="tile-title" id={`tile-${t.tab}`}>
+                  <Icon size={18} aria-hidden="true" />
+                  {t.title}
+                </h2>
+                {t.status && <span className={t.status.on ? 'badge badge-success' : 'badge'}>{t.status.label}</span>}
               </div>
-
-              <div style={{ marginTop: '20px', borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ width: '100%', justifyContent: 'space-between', fontSize: '13px' }}
-                  onClick={c.action}
-                >
-                  <span>{c.actionLabel}</span>
-                  <ArrowRight size={14} />
-                </button>
-              </div>
-            </div>
+              <p className="tile-desc">{t.desc}</p>
+              <button type="button" className="btn-secondary btn-sm tile-action" onClick={() => onNavigate(t.tab)}>
+                {t.action}
+                <ArrowRight size={14} aria-hidden="true" />
+              </button>
+            </article>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 };

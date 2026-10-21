@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 
 async function signIn(page, username, password) {
   await page.goto('/');
-  await page.getByPlaceholder('admin', { exact: true }).fill(username);
+  await page.getByLabel('Username', { exact: true }).fill(username);
   await page.locator('input[type=password]').fill(password);
-  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
 // Own client address (the harness trusts loopback as a proxy) so this spec's sign-ins do not

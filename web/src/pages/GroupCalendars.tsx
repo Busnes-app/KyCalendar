@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { JSON_HEADERS, send } from "../admin";
+import { Plus } from "lucide-react";
 import { HOLDS, holdsOf, type Holds } from "../calendarApi";
+import { calendarColors, nextColor } from "../calendarColors";
+import { EmptyState, PageHeader } from "../components/ui";
 
 interface Grant {
   group_id: string;
@@ -22,6 +25,9 @@ interface Group {
 }
 
 const ROLES = ["reader", "editor", "manager"];
+const ROLE_LABEL: Record<string, string> = { reader: "Reader", editor: "Editor", manager: "Manager" };
+// Group calendars start further along the palette than personal ones, so the two rarely meet.
+const GROUP_PALETTE_START = 2;
 
 async function errorText(res: Response | null, fallback: string): Promise<string> {
   return (await res?.json().catch(() => null))?.error ?? fallback;
@@ -51,7 +57,7 @@ export default function GroupCalendars() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const res = await send("/api/admin/calendars", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name, components: HOLDS[holds].components }) });
+    const res = await send("/api/admin/calendars", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name, components: HOLDS[holds].components, color: nextColor(calendars.map((c) => c.color), GROUP_PALETTE_START) }) });
     if (!res?.ok) {
       setError(await errorText(res, "Could not create the calendar"));
       return;
@@ -96,32 +102,38 @@ export default function GroupCalendars() {
     await load();
   }
 
+  const colors = calendarColors(calendars);
+
   return (
     <section className="page">
-      <h1>Group calendars</h1>
-      <p>
-        Group calendars belong to the organisation. Readers see events, editors change them, and managers also rename the
-        calendar and change who has access. Administrators manage access but never see events.
-      </p>
-      <form onSubmit={create}>
-        <label>
-          Calendar name
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required />
-        </label>
-        <label>
-          Holds
-          <select value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
-            {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
-          </select>
-        </label>
-        <button type="submit">Create</button>
-      </form>
+      <PageHeader
+        title="Group calendars"
+        lede="Group calendars belong to the organisation. Readers see events, editors change them, and managers also rename the calendar and change who has access. Administrators manage access but never see events."
+      />
+      <div className="toolbar">
+        <form className="inline-form" onSubmit={create}>
+          <div className="field">
+            <label htmlFor="gcal-name">Calendar name</label>
+            <input id="gcal-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} placeholder="For example, Studio" required />
+          </div>
+          <div className="field field-narrow">
+            <label htmlFor="gcal-holds">Holds</label>
+            <select id="gcal-holds" value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
+              {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
+            </select>
+          </div>
+          <button type="submit">
+            <Plus size={16} aria-hidden="true" />
+            Create
+          </button>
+        </form>
+      </div>
       {error && <p role="alert">{error}</p>}
       {calendars.length === 0 ? (
-        <p>No group calendars yet.</p>
+        <EmptyState title="No group calendars yet.">Create one above, then give a group access so its members see it.</EmptyState>
       ) : (
         calendars.map((cal) => (
-          <CalendarCard key={cal.id} cal={cal} groups={groups} onSet={setGrant} onRemove={removeGrant} onDelete={remove} />
+          <CalendarCard key={cal.id} cal={cal} color={colors.get(cal.id)!} groups={groups} onSet={setGrant} onRemove={removeGrant} onDelete={remove} />
         ))
       )}
     </section>
@@ -130,40 +142,57 @@ export default function GroupCalendars() {
 
 interface CardProps {
   cal: GroupCalendar;
+  color: string;
   groups: Group[];
   onSet: (cal: string, group: string, role: string) => Promise<void>;
   onRemove: (cal: string, group: string) => Promise<void>;
   onDelete: (cal: GroupCalendar) => Promise<void>;
 }
 
-function CalendarCard({ cal, groups, onSet, onRemove, onDelete }: CardProps) {
+function CalendarCard({ cal, color, groups, onSet, onRemove, onDelete }: CardProps) {
   const [group, setGroup] = useState("");
   const [role, setRole] = useState("reader");
   const available = groups.filter((g) => !cal.grants.some((x) => x.group_id === g.id));
 
   return (
-    <article aria-labelledby={`cal-${cal.id}`}>
-      <h2 id={`cal-${cal.id}`}>{cal.name}</h2>
-      {cal.grants.length === 0 ? (
-        <p>No group has access. Members cannot see this calendar until you add a group.</p>
-      ) : (
-        <ul>
-          {cal.grants.map((g) => (
-            <li key={g.group_id}>
-              <span>{g.group_name}</span>{" "}
-              <select aria-label={`Role for ${g.group_name}`} value={g.role} onChange={(e) => void onSet(cal.id, g.group_id, e.target.value)}>
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>{" "}
-              <button type="button" aria-label={`Remove ${g.group_name}`} onClick={() => void onRemove(cal.id, g.group_id)}>
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <article className="card" aria-labelledby={`cal-${cal.id}`}>
+      <div className="card-header">
+        <div>
+          <h2 className="card-title" id={`cal-${cal.id}`}>
+            <span className="kc-swatch" style={{ background: color }} aria-hidden="true" />
+            {cal.name}
+          </h2>
+          <p className="card-meta">
+            {cal.grants.length === 0 ? "No access yet" : cal.grants.length === 1 ? "1 group has access" : `${cal.grants.length} groups have access`}
+          </p>
+        </div>
+        <button type="button" className="btn-danger btn-sm" onClick={() => void onDelete(cal)}>Delete calendar</button>
+      </div>
+      <div className="card-body">
+        {cal.grants.length === 0 ? (
+          <EmptyState compact title="No group has access.">Members cannot see this calendar until you add a group.</EmptyState>
+        ) : (
+          <ul className="record-list" aria-label={`Access to ${cal.name}`}>
+            {cal.grants.map((g) => (
+              <li key={g.group_id}>
+                <span className="record-main cell-strong">{g.group_name}</span>
+                <span className="record-actions">
+                  <select className="select-compact" aria-label={`Role for ${g.group_name}`} value={g.role} onChange={(e) => void onSet(cal.id, g.group_id, e.target.value)}>
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn-ghost btn-danger btn-sm" aria-label={`Remove ${g.group_name}`} onClick={() => void onRemove(cal.id, g.group_id)}>
+                    Remove
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <form
+        className="inline-form card-footer"
         onSubmit={(e) => {
           e.preventDefault();
           if (!group) return;
@@ -172,22 +201,25 @@ function CalendarCard({ cal, groups, onSet, onRemove, onDelete }: CardProps) {
         }}
       >
         {/* htmlFor, not nesting: a nested select's options would join the label's name. */}
-        <label htmlFor={`group-${cal.id}`}>Group</label>
-        <select id={`group-${cal.id}`} value={group} onChange={(e) => setGroup(e.target.value)} required>
-          <option value="">Choose a group</option>
-          {available.map((g) => (
-            <option key={g.id} value={g.id}>{g.display_name}</option>
-          ))}
-        </select>
-        <label htmlFor={`role-${cal.id}`}>Role</label>
-        <select id={`role-${cal.id}`} value={role} onChange={(e) => setRole(e.target.value)}>
-          {ROLES.map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <button type="submit">Add group</button>
+        <div className="field">
+          <label htmlFor={`group-${cal.id}`}>Group</label>
+          <select id={`group-${cal.id}`} value={group} onChange={(e) => setGroup(e.target.value)} required>
+            <option value="">{available.length === 0 ? "Every group has access" : "Choose a group"}</option>
+            {available.map((g) => (
+              <option key={g.id} value={g.id}>{g.display_name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field field-narrow">
+          <label htmlFor={`role-${cal.id}`}>Role</label>
+          <select id={`role-${cal.id}`} value={role} onChange={(e) => setRole(e.target.value)}>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className="btn-secondary">Add group</button>
       </form>
-      <button type="button" onClick={() => void onDelete(cal)}>Delete calendar</button>
     </article>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { secureFetch } from "../api";
 import { REAUTH } from "../admin";
+import { CodeBlock, CopyButton, EmptyState, PageHeader } from "../components/ui";
 
 type Scope = "dav" | "mcp:read" | "mcp:write-own" | "mcp:write-any";
 
@@ -111,122 +112,174 @@ export default function AppPasswords({ username }: { username: string }) {
     await load();
   }
 
+  const host = window.location.host;
+
   return (
     <section className="page">
-      <h1>Phones and apps</h1>
-      <p>Each device or AI agent gets its own app password. Revoke one and only that one stops working.</p>
+      <PageHeader title="Phones and apps" lede="Each device or AI agent gets its own app password. Revoke one and only that one stops working." />
 
-      <form onSubmit={create} className="kc-form">
-        <fieldset>
-          <legend>Kind</legend>
-          <label className="kc-check">
-            <input type="radio" name="kind" checked={!agent} onChange={() => setAgent(false)} />
-            Calendar app (CalDAV)
-          </label>
-          <label className="kc-check">
-            <input type="radio" name="kind" checked={agent} onChange={() => setAgent(true)} />
-            AI agent (OpenClaw, Hermes Agent)
-          </label>
-        </fieldset>
-        {agent && (
+      <div className="card">
+        <h2 className="section-title">Add a device or agent</h2>
+        <form onSubmit={create} className="form form-wide">
           <fieldset>
-            <legend>Agent access</legend>
-            <label className="kc-check">
-              <input type="radio" name="access" checked={!write} onChange={() => setWrite(false)} />
-              Read only
+            <legend>Kind</legend>
+            <label className="choice">
+              <input type="radio" name="kind" checked={!agent} onChange={() => setAgent(false)} />
+              <span>
+                Calendar app (CalDAV)
+                <span className="choice-hint">iPhone, iPad, Android with DAVx5, Thunderbird</span>
+              </span>
             </label>
-            <label className="kc-check">
-              <input type="radio" name="access" checked={write} onChange={() => setWrite(true)} />
-              Read and write
+            <label className="choice">
+              <input type="radio" name="kind" checked={agent} onChange={() => setAgent(true)} />
+              <span>
+                AI agent
+                <span className="choice-hint">OpenClaw, Hermes Agent</span>
+              </span>
             </label>
-            {write && (
-              <>
-                <p role="note">{WRITE_WARNING}</p>
-                <label className="kc-check">
-                  <input type="checkbox" checked={anyEvent} onChange={(e) => setAnyEvent(e.target.checked)} />
-                  Can also change events it did not create
-                </label>
-                {anyEvent && <p role="note">{ANY_WARNING}</p>}
-              </>
-            )}
           </fieldset>
-        )}
-        <label>
-          {agent ? "Agent name" : "Device name"}
-          <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={64} required />
-        </label>
-        <div className="kc-actions">
-          <button type="submit">Create</button>
-        </div>
-      </form>
-      {error && <p role="alert">{error}</p>}
+          {agent && (
+            <fieldset>
+              <legend>Agent access</legend>
+              <label className="choice">
+                <input type="radio" name="access" checked={!write} onChange={() => setWrite(false)} />
+                Read only
+              </label>
+              <label className="choice">
+                <input type="radio" name="access" checked={write} onChange={() => setWrite(true)} />
+                Read and write
+              </label>
+              {write && (
+                <>
+                  <p role="note">{WRITE_WARNING}</p>
+                  <label className="choice">
+                    <input type="checkbox" checked={anyEvent} onChange={(e) => setAnyEvent(e.target.checked)} />
+                    Can also change events it did not create
+                  </label>
+                  {anyEvent && <p role="note">{ANY_WARNING}</p>}
+                </>
+              )}
+            </fieldset>
+          )}
+          <div className="field">
+            <label htmlFor="app-label">{agent ? "Agent name" : "Device name"}</label>
+            <input id="app-label" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={64} placeholder={agent ? "For example, OpenClaw on laptop" : "For example, iPhone"} required />
+          </div>
+          <div className="form-actions">
+            <button type="submit">Create</button>
+          </div>
+        </form>
+      </div>
+      {error && <p role="alert" className="section">{error}</p>}
 
       {created &&
         (isAgent(created.scope) ? (
           <AgentSetup token={created.password} onDone={() => setCreated(null)} />
         ) : (
-          <div role="status">
-            <p>Enter these on the device now. The password is not shown again.</p>
-            <dl>
+          <div role="status" className="card card-created">
+            <h2 className="section-title">Enter these on the device now</h2>
+            <p className="section-lede">The password is not shown again.</p>
+            <dl className="facts">
               <dt>Server</dt>
-              <dd>{window.location.host}</dd>
+              <dd>{host}</dd>
               <dt>Username</dt>
               <dd>{username}</dd>
               <dt>Password</dt>
               <dd>
-                <code>{created.password}</code>
+                <div className="secret">
+                  <code>{created.password}</code>
+                  <CopyButton text={created.password} label="Copy the app password" />
+                </div>
               </dd>
             </dl>
-            <button type="button" onClick={() => setCreated(null)}>
-              Done
-            </button>
+            <div className="form-actions card-footer">
+              <button type="button" onClick={() => setCreated(null)}>
+                Done
+              </button>
+            </div>
           </div>
         ))}
 
-      <h2>Setup</h2>
-      <ul>
-        <li>iPhone and iPad: Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account.</li>
-        <li>
-          Android: DAVx5 → Add account → Login with URL and user name, URL <code>https://{window.location.host}/</code>.
-        </li>
-        <li>
-          Thunderbird: New Calendar → On the Network, location <code>https://{window.location.host}/</code>.
-        </li>
-        <li>AI agents: create an AI agent password above; the setup for OpenClaw and Hermes Agent is shown with it.</li>
-      </ul>
+      <section className="section" aria-labelledby="devices-title">
+        <h2 className="section-title" id="devices-title">Devices and agents</h2>
+        {list.length === 0 ? (
+          <EmptyState title="No app passwords yet.">Add your phone, a desktop calendar or an AI agent above.</EmptyState>
+        ) : (
+          <div className="table-card">
+            <table className="data-table stacked">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Access</th>
+                  <th>Last used</th>
+                  <th className="col-actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <span className="cell-strong">{p.label}</span>
+                      <span className="cell-sub">{isAgent(p.scope) ? "AI agent" : "Calendar app"}</span>
+                    </td>
+                    <td data-label="Access">
+                      {isAgent(p.scope) ? (
+                        <>
+                          <select
+                            className="select-compact"
+                            aria-label={`Access for ${p.label}`}
+                            value={p.scope}
+                            onChange={(e) => void changeAccess(p, e.target.value as Scope)}
+                          >
+                            {Object.entries(ACCESS).map(([value, name]) => (
+                              <option key={value} value={value}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                          {p.revoke_after && <span className="cell-sub">Revoked if unused by {new Date(p.revoke_after).toLocaleDateString()}</span>}
+                        </>
+                      ) : (
+                        "Calendars and events (CalDAV)"
+                      )}
+                    </td>
+                    <td data-label="Last used" className="cell-nowrap">
+                      {p.last_used_at ? new Date(p.last_used_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : <span className="muted">Never</span>}
+                    </td>
+                    <td className="col-actions">
+                      <button type="button" className="btn-danger btn-sm" aria-label={`Revoke ${p.label}`} onClick={() => revoke(p.id)}>
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
-      <h2>Devices and agents</h2>
-      {list.length === 0 ? (
-        <p>No app passwords yet.</p>
-      ) : (
-        <ul>
-          {list.map((p) => (
-            <li key={p.id}>
-              <span>{p.label}</span>{" "}
-              <small>{p.last_used_at ? `last used ${new Date(p.last_used_at).toLocaleString()}` : "never used"}</small>{" "}
-              {isAgent(p.scope) && (
-                <>
-                  <select
-                    aria-label={`Access for ${p.label}`}
-                    value={p.scope}
-                    onChange={(e) => void changeAccess(p, e.target.value as Scope)}
-                  >
-                    {Object.entries(ACCESS).map(([value, name]) => (
-                      <option key={value} value={value}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>{" "}
-                  {p.revoke_after && <small>Revoked if unused by {new Date(p.revoke_after).toLocaleDateString()}</small>}{" "}
-                </>
-              )}
-              <button type="button" aria-label={`Revoke ${p.label}`} onClick={() => revoke(p.id)}>
-                Revoke
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <section className="section" aria-labelledby="setup-title">
+        <h2 className="section-title" id="setup-title">Setup</h2>
+        <div className="card">
+          <dl className="facts facts-setup">
+            <dt>iPhone and iPad</dt>
+            <dd>Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account.</dd>
+            <dt>Android</dt>
+            <dd>
+              DAVx5 → Add account → Login with URL and user name, URL <code>https://{host}/</code>.
+            </dd>
+            <dt>Thunderbird</dt>
+            <dd>
+              New Calendar → On the Network, location <code>https://{host}/</code>.
+            </dd>
+            <dt>AI agents</dt>
+            <dd>Create an AI agent password above; the setup for OpenClaw and Hermes Agent is shown with it.</dd>
+          </dl>
+        </div>
+      </section>
     </section>
   );
 }
@@ -247,40 +300,42 @@ function AgentSetup({ token, onDone }: { token: string; onDone: () => void }) {
     headers:
       Authorization: "Bearer \${KYCAL_TOKEN}"`;
   return (
-    <div role="status">
-      <p>Set this as KYCAL_TOKEN in the agent's environment now. The token is not shown again.</p>
-      <p>
+    <div role="status" className="card card-created">
+      <h2 className="section-title">Set up the agent now</h2>
+      <p className="section-lede">Set this as KYCAL_TOKEN in the agent's environment now. The token is not shown again.</p>
+      <div className="secret">
         <code>{token}</code>
-      </p>
-      <p>The agent loses access if it does not use KyCalendar for 90 days; create a new token then.</p>
-      <h3>OpenClaw</h3>
-      <p>
-        Add to <code>openclaw.json</code>:
-      </p>
-      <pre>
-        <code>{openclaw}</code>
-      </pre>
-      <p>Install the skill:</p>
-      <pre>
-        <code>{`mkdir -p ~/.agents/skills/kycalendar\ncurl -fsSo ~/.agents/skills/kycalendar/SKILL.md ${skill}`}</code>
-      </pre>
-      <p>
-        With a custom <code>OPENCLAW_STATE_DIR</code>, use <code>&lt;workspace&gt;/skills</code> instead.
-      </p>
-      <h3>Hermes Agent</h3>
-      <p>
-        Add to <code>~/.hermes/config.yaml</code>:
-      </p>
-      <pre>
-        <code>{hermes}</code>
-      </pre>
-      <p>Install the skill:</p>
-      <pre>
-        <code>{`hermes skills install ${skill} --category productivity`}</code>
-      </pre>
-      <button type="button" onClick={onDone}>
-        Done
-      </button>
+        <CopyButton text={token} label="Copy the agent token" />
+      </div>
+      <p className="field-hint">The agent loses access if it does not use KyCalendar for 90 days; create a new token then.</p>
+      <div className="setup-grid">
+        <section aria-labelledby="setup-openclaw">
+          <h3 className="setup-title" id="setup-openclaw">OpenClaw</h3>
+          <p className="field-hint">
+            Add to <code>openclaw.json</code>:
+          </p>
+          <CodeBlock code={openclaw} label="OpenClaw configuration" />
+          <p className="field-hint">Install the skill:</p>
+          <CodeBlock code={`mkdir -p ~/.agents/skills/kycalendar\ncurl -fsSo ~/.agents/skills/kycalendar/SKILL.md ${skill}`} label="OpenClaw skill install commands" />
+          <p className="field-hint">
+            With a custom <code>OPENCLAW_STATE_DIR</code>, use <code>&lt;workspace&gt;/skills</code> instead.
+          </p>
+        </section>
+        <section aria-labelledby="setup-hermes">
+          <h3 className="setup-title" id="setup-hermes">Hermes Agent</h3>
+          <p className="field-hint">
+            Add to <code>~/.hermes/config.yaml</code>:
+          </p>
+          <CodeBlock code={hermes} label="Hermes Agent configuration" />
+          <p className="field-hint">Install the skill:</p>
+          <CodeBlock code={`hermes skills install ${skill} --category productivity`} label="Hermes Agent skill install command" />
+        </section>
+      </div>
+      <div className="form-actions card-footer">
+        <button type="button" onClick={onDone}>
+          Done
+        </button>
+      </div>
     </div>
   );
 }

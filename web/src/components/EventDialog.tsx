@@ -128,7 +128,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
       </ul>
       <div className="kc-actions" role="group" aria-label="Your answer">
         {BUTTONS.map(([value, label]) => (
-          <button key={value} type="button" className="btn-secondary" aria-pressed={event!.my_status === value} disabled={busy} onClick={() => answer(value)}>{label}</button>
+          <button key={value} type="button" className="btn-secondary kc-answer" aria-pressed={event!.my_status === value} disabled={busy} onClick={() => answer(value)}>{label}</button>
         ))}
       </div>
     </>
@@ -144,7 +144,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
           {invitation}
-          <div className="kc-actions">
+          <div className="modal-actions">
             <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
           </div>
         </div>
@@ -157,15 +157,21 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
               <label className="kc-check"><input type="radio" name="scope" checked={scope === 'all'} onChange={() => chooseScope('all')} /> All events</label>
             </fieldset>
           )}
-          {event?.recurring && scope === 'all' && <p>{MOVE_ALL_WARNING}</p>}
+          {event?.recurring && scope === 'all' && <p role="note">{MOVE_ALL_WARNING}</p>}
           {invitation}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
-          <label htmlFor="kc-start">Start</label>
-          <input id="kc-start" type={form.allDay ? 'date' : 'datetime-local'} value={form.start} required onChange={(e) => set({ start: e.target.value })} />
-          <label htmlFor="kc-end">End</label>
-          <input id="kc-end" type={form.allDay ? 'date' : 'datetime-local'} value={form.end} required onChange={(e) => set({ end: e.target.value })} />
+          <div className="kc-pair">
+            <div className="field">
+              <label htmlFor="kc-start">Start</label>
+              <input id="kc-start" type={form.allDay ? 'date' : 'datetime-local'} value={form.start} required onChange={(e) => set({ start: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="kc-end">End</label>
+              <input id="kc-end" type={form.allDay ? 'date' : 'datetime-local'} value={form.end} required onChange={(e) => set({ end: e.target.value })} />
+            </div>
+          </div>
           <label htmlFor="kc-location">Location</label>
           <input id="kc-location" value={form.location} maxLength={1000} onChange={(e) => set({ location: e.target.value })} />
           <label htmlFor="kc-description">Description</label>
@@ -180,7 +186,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
           )}
           {scope === 'all' && (
             form.freq === 'custom' ? (
-              <p>Repeats: <span>Custom (edit on your device)</span></p>
+              <p className="kc-hint">Repeats: <span>Custom (edit on your device)</span></p>
             ) : (
               <>
                 <label htmlFor="kc-repeat">Repeat</label>
@@ -200,7 +206,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
               </>
             )
           )}
-          {scope === 'this' && event && form.freq === 'custom' && <p>Repeats: <span>Custom (edit on your device)</span></p>}
+          {scope === 'this' && event && form.freq === 'custom' && <p className="kc-hint">Repeats: <span>Custom (edit on your device)</span></p>}
           {organizes && (
             <>
               <label htmlFor="kc-invite">People</label>
@@ -209,7 +215,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
                   {people.map((p) => (
                     <li key={p.email}>
                       <span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
-                      <button type="button" className="btn-secondary kc-small kc-push" aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
+                      <button type="button" className="btn-ghost btn-danger btn-sm kc-push" aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
                     </li>
                   ))}
                 </ul>
@@ -220,10 +226,10 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
               </div>
             </>
           )}
-          <div className="kc-actions">
-            <button type="submit" disabled={busy}>Save</button>
+          <div className="modal-actions">
+            {event && <button type="button" className="btn-danger push-start" disabled={busy} onClick={remove}>Delete</button>}
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            {event && <button type="button" className="btn-danger kc-push" disabled={busy} onClick={remove}>Delete</button>}
+            <button type="submit" disabled={busy}>Save</button>
           </div>
         </form>
       )}
