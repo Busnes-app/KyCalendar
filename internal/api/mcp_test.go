@@ -19,10 +19,10 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/agentskill"
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/apppass"
+	"github.com/Busnes-app/kycalendar/internal/appversion"
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
-	"github.com/Busnes-app/kycalendar/internal/version"
 )
 
 // mcpWorld is alice (everyday, editor on a group calendar) with her personal calendar.
@@ -259,8 +259,8 @@ func TestMCPEndToEnd(t *testing.T) {
 	if cs.InitializeResult().Instructions == "" {
 		t.Error("initialize carries no instructions")
 	}
-	if got := cs.InitializeResult().ServerInfo; got.Name != "kycalendar" || got.Version != version.Version {
-		t.Errorf("server info %+v, want kycalendar %s", got, version.Version)
+	if got := cs.InitializeResult().ServerInfo; got.Name != "kycalendar" || got.Version != appversion.String() {
+		t.Errorf("server info %+v, want kycalendar %s", got, appversion.String())
 	}
 	tools, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
@@ -721,7 +721,7 @@ func TestAgentSkill(t *testing.T) {
 	rec := httptest.NewRecorder()
 	w.srv.ServeHTTP(rec, httptest.NewRequest("GET", "/agent/skills/kycalendar/SKILL.md", nil))
 	body, _ := io.ReadAll(rec.Body)
-	if rec.Code != http.StatusOK || !bytes.Equal(body, agentskill.For(version.Version)) || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/markdown") {
+	if rec.Code != http.StatusOK || !bytes.Equal(body, agentskill.For(appversion.String())) || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/markdown") {
 		t.Fatalf("served %d %q, want the embedded skill as markdown", rec.Code, rec.Header().Get("Content-Type"))
 	}
 	if n := bytes.Count(agentskill.KyCalendar, []byte(agentskill.SourceVersion)); n != 1 {
@@ -744,8 +744,8 @@ func TestAgentSkill(t *testing.T) {
 	if want := []string{"name", "description", "version"}; !slices.Equal(keys, want) {
 		t.Errorf("frontmatter keys %v, want exactly %v", keys, want)
 	}
-	if !strings.Contains(front, `version: "`+version.Version+`"`) {
-		t.Errorf("served skill version is not the app version %s", version.Version)
+	if !strings.Contains(front, `version: "`+appversion.String()+`"`) {
+		t.Errorf("served skill version is not the app version %s", appversion.String())
 	}
 
 	_, tok := seedToken(t, w.st, "usr_alice", store.ScopeMCPRead)

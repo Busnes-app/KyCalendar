@@ -82,10 +82,10 @@ func TestComposeHealthcheckProbesHealthz(t *testing.T) {
 	}
 }
 
-// Every build that ships stamps internal/version.Version, the one variable every place that
-// reports a version reads, and the release stamps it from its tag.
+// Every build that ships stamps internal/appversion.release, which every place that reports a
+// version reads through appversion.String, and the release stamps it from its tag.
 func TestEveryBuildStampsTheVersion(t *testing.T) {
-	const stamp = "-X github.com/Busnes-app/kycalendar/internal/version.Version="
+	const stamp = "-X github.com/Busnes-app/kycalendar/internal/appversion.release="
 	for file, want := range map[string]string{
 		"Dockerfile":                          stamp + "${VERSION}",
 		"Makefile":                            stamp + "$(VERSION)",
