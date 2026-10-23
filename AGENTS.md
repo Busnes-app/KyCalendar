@@ -305,6 +305,7 @@ Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork
 - `third_party/go-webdav` is Busnes-app/go-webdav (`kycalendar`) byte for byte at `third_party/go-webdav.commit`; change the fork first, then `scripts/check-fork-sync.sh --write`. CI refuses a vendored edit that does not move the pin.
 - `TestCalDAVWireSurface` pins what clients see (OPTIONS headers; PROPFIND of the discovery and scheduling props); regenerate its golden only on purpose (`KY_UPDATE_GOLDEN=1`). `scripts/interop/run.sh` drives a built server with python `caldav` (`KY_INTEROP_FREEBUSY=1` adds free/busy, `KY_INTEROP_SCHEDULING=1` runs with scheduling on).
 - Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
+- The scheduling real-device gate (operator checklist and results; `KYCALENDAR_SCHEDULING` goes on for launch only if it passes): `docs/evidence/2026-11-scheduling-device-gate.md`.
 
 #### Plan 2 access contracts
 
