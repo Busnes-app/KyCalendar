@@ -17,7 +17,7 @@ var line string
 
 // release is set at link time, without the tag's "v":
 //
-//	go build -ldflags "-X github.com/Busnes-app/kycalendar/internal/appversion.release=0.5.0.1"
+//	go build -ldflags "-X github.com/Busnes-app/kycalendar/internal/appversion.release=0.4.3.1"
 //
 // The Dockerfile (VERSION build arg), the Makefile and ci.yml pass it: the release tag in
 // release-image.yml, a git describe elsewhere. Left empty, the build reports the line.

@@ -1,8 +1,8 @@
 name: dependency release
 
 # Once a day, if Dependabot changes have landed on main since the last release
-# on the current line, publish the next fourth-number release: v0.5.0 -> v0.5.0.1
-# -> v0.5.0.2. However many Dependabot PRs merged that day, the day gets one
+# on the current line, publish the next fourth-number release: v0.4.3 -> v0.4.3.1
+# -> v0.4.3.2. However many Dependabot PRs merged that day, the day gets one
 # release. Running it by hand releases main now, Dependabot or not, so a fix
 # can ship without waiting for the schedule.
 #
