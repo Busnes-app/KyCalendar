@@ -10,9 +10,9 @@ import (
 
 	"github.com/Busnes-app/ky-primitives/password"
 	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/appversion"
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/store"
-	"github.com/Busnes-app/kycalendar/internal/version"
 )
 
 // loginAs creates a user with the given role and returns its session cookie.
@@ -108,8 +108,8 @@ func TestSettingsExposureByRole(t *testing.T) {
 	if member["db_driver"] == nil {
 		t.Errorf("authenticated settings should include db_driver, got %v", member)
 	}
-	if member["version"] != version.Version {
-		t.Errorf("authenticated settings version %v, want %s", member["version"], version.Version)
+	if member["version"] != appversion.String() {
+		t.Errorf("authenticated settings version %v, want %s", member["version"], appversion.String())
 	}
 	if _, found := member["extra_settings"]; found {
 		t.Errorf("non-admin settings leaked extra_settings: %v", member)
