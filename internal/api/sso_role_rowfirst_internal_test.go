@@ -112,7 +112,7 @@ func TestAppPasswordCreatedAcrossAnSSORoleChangeIsRefused(t *testing.T) {
 	eve := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e", SSOIssuer: kyBinding}
 	createUsers(t, s, eve)
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-eve")), UserID: eve.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-eve")), UserID: eve.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store
@@ -178,7 +178,7 @@ func TestAppPasswordCreatedAcrossASCIMRoleChangeIsRefused(t *testing.T) {
 	dan := &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "d1", SSOIssuer: kyBinding}
 	createUsers(t, s, dan)
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-dan")), UserID: dan.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-dan")), UserID: dan.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store

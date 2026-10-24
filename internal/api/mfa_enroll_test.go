@@ -302,7 +302,7 @@ func TestTOTPEnrolmentRefusesSSOAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-sso")), UserID: "usr_sso", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-sso")), UserID: "usr_sso", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	session := &http.Cookie{Name: auth.SessionCookieName, Value: "tok-sso"}
@@ -310,5 +310,59 @@ func TestTOTPEnrolmentRefusesSSOAccounts(t *testing.T) {
 		if w := mfaPost(t, srv, session, path, map[string]string{"password": "x", "code": "123456"}); w.Code != http.StatusConflict {
 			t.Errorf("%s for an SSO account: got %d, want 409", path, w.Code)
 		}
+	}
+}
+
+// Wrong passwords on disable count per account and address, so a session without the password
+// cannot use up the owner's attempts; code guesses, which need the password, stay limited.
+func TestTOTPDisableLimits(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	session := loginAs(t, srv, st, "lena", "user")
+	_, recovery := enrol(t, srv, session)
+	disableFrom := func(addr, password, code string) int {
+		data, _ := json.Marshal(map[string]string{"password": password, "code": code})
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/mfa/disable", bytes.NewReader(data))
+		req.RemoteAddr = addr
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(session)
+		addCSRF(req, session)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		return w.Code
+	}
+	for i := 0; i < 5; i++ {
+		if code := disableFrom("198.51.100.7:1000", "wrong", recovery[0]); code != http.StatusUnauthorized {
+			t.Fatalf("wrong password %d: %d", i, code)
+		}
+	}
+	if code := disableFrom("198.51.100.7:1000", "wrong", recovery[0]); code != http.StatusTooManyRequests {
+		t.Fatalf("sixth wrong password from one address: %d", code)
+	}
+	// Correct passwords are refunded; wrong codes are not.
+	for i := 0; i < 5; i++ {
+		if code := disableFrom("203.0.113.9:1000", mfaPassword, "not-a-code"); code != http.StatusUnauthorized {
+			t.Fatalf("wrong code %d: %d", i, code)
+		}
+	}
+	if code := disableFrom("203.0.113.9:1000", mfaPassword, recovery[0]); code != http.StatusTooManyRequests {
+		t.Fatalf("sixth code guess: %d", code)
+	}
+	if !reload(t, st, "usr_lena").TOTPEnabled {
+		t.Fatal("TOTP went off past the limits")
+	}
+}
+
+// Enrolment and disabling have separate limits: wrong passwords on one do not lock the other.
+func TestTOTPEnrolLimitIsSeparateFromDisable(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	session := loginAs(t, srv, st, "nora", "user")
+	for i := 0; i < 6; i++ {
+		mfaPost(t, srv, session, "/api/auth/mfa/enroll", map[string]string{"password": "wrong"})
+	}
+	if w := mfaPost(t, srv, session, "/api/auth/mfa/enroll", map[string]string{"password": mfaPassword}); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("enrol after six wrong passwords: %d", w.Code)
+	}
+	if w := mfaPost(t, srv, session, "/api/auth/mfa/disable", map[string]string{"password": mfaPassword, "code": "x"}); w.Code != http.StatusConflict {
+		t.Fatalf("disable shares enrolment's limit: %d %s", w.Code, w.Body.String())
 	}
 }

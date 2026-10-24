@@ -41,7 +41,7 @@ func TestLoginSucceedsAfterReattach(t *testing.T) {
 	root := &store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"}
 	createUsers(t, s, root)
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-root")), UserID: root.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-root")), UserID: root.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("POST", "/api/admin/users/"+carol.ID+"/reattach", strings.NewReader(`{"binding":"`+b.Identity()+`"}`))

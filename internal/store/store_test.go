@@ -131,7 +131,7 @@ func TestSessionStoreLifecycle(t *testing.T) {
 		ExpiresAt: time.Now().UTC().Add(1 * time.Hour),
 	}
 
-	if err := st.Sessions().CreateSession(ctx, sess, user.PasswordHash); err != nil {
+	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: user.PasswordHash}); err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
 
@@ -367,7 +367,7 @@ func TestResetAfterRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess := &store.Session{TokenHash: "session", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
-	if err := st.Sessions().CreateSession(ctx, sess, "h"); err != nil {
+	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "h"}); err != nil {
 		t.Fatal(err)
 	}
 	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}

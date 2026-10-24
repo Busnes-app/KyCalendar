@@ -102,6 +102,7 @@ export default function TwoFactor({ enabled, onChange }: { enabled: boolean; onC
       {enabled && !recovery && (
         <div className="card">
           <h2 className="section-title">Two-step verification is on</h2>
+          <p className="section-lede">Turning it off signs you out everywhere else and revokes your app passwords.</p>
           <form onSubmit={disable} className="form">
             {passwordField}
             {codeField("Authenticator or recovery code")}
@@ -115,6 +116,7 @@ export default function TwoFactor({ enabled, onChange }: { enabled: boolean; onC
       {!enabled && !pending && (
         <div className="card">
           <h2 className="section-title">Two-step verification is off</h2>
+          <p className="section-lede">Turning it on signs you out everywhere else and revokes your app passwords.</p>
           <form onSubmit={start} className="form">
             {passwordField}
             <div className="form-actions">

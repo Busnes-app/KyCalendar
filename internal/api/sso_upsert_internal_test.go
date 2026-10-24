@@ -127,7 +127,7 @@ func TestUpsertSSOUserFailedRoleWriteChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_eve", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_eve", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.store.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "pw_eve", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {
@@ -205,7 +205,7 @@ func TestUpsertSSOUserFailedDemotionSignsOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_ada", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_ada", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store

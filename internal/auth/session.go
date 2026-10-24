@@ -63,7 +63,7 @@ func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWrite
 		ExpiresAt: time.Now().UTC().Add(ttl),
 	}
 
-	if err := sm.store.Sessions().CreateSession(ctx, sess, user.PasswordHash); err != nil {
+	if err := sm.store.Sessions().CreateSession(ctx, sess, user.Credentials()); err != nil {
 		return nil, "", err
 	}
 

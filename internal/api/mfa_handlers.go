@@ -62,7 +62,7 @@ func (s *Server) handleMFAEnroll(w http.ResponseWriter, r *http.Request) {
 	if !s.mfaAccount(w, user) {
 		return
 	}
-	if !s.allowAccountAttempt("mfa-manage:"+user.ID, 5, 5*time.Minute) {
+	if !s.allowAccountAttempt("mfa-enroll:"+user.ID, 5, 5*time.Minute) {
 		s.writeError(w, http.StatusTooManyRequests, "Too many attempts")
 		return
 	}
@@ -77,7 +77,7 @@ func (s *Server) handleMFAEnroll(w http.ResponseWriter, r *http.Request) {
 	if !s.verifyPassword(w, user, req.Password) {
 		return
 	}
-	s.refundAccountAttempt("mfa-manage:" + user.ID)
+	s.refundAccountAttempt("mfa-enroll:" + user.ID)
 	secret, err := auth.GenerateTOTPSecret()
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to start enrolment")
@@ -158,7 +158,10 @@ func (s *Server) handleMFADisable(w http.ResponseWriter, r *http.Request) {
 	if !s.mfaAccount(w, user) {
 		return
 	}
-	if !s.allowAccountAttempt("mfa-manage:"+user.ID, 5, 5*time.Minute) {
+	// Password guesses count per account and address, so a session without the password cannot
+	// use up the owner's attempts; code guesses, which need the password, count per account.
+	passwordKey, codeKey := "mfa-disable:"+user.ID+":"+s.limitIP(r), "mfa-disable-code:"+user.ID
+	if !s.allowAccountAttempt(passwordKey, 5, 5*time.Minute) {
 		s.writeError(w, http.StatusTooManyRequests, "Too many attempts")
 		return
 	}
@@ -171,6 +174,11 @@ func (s *Server) handleMFADisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.verifyPassword(w, user, req.Password) {
+		return
+	}
+	s.refundAccountAttempt(passwordKey)
+	if !s.allowAccountAttempt(codeKey, 5, 5*time.Minute) {
+		s.writeError(w, http.StatusTooManyRequests, "Too many attempts")
 		return
 	}
 	if !s.spendSecondFactor(r, user, req.Code) {

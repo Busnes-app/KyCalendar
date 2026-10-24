@@ -31,7 +31,7 @@ func TestMigration9RevokesSSOAdminSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 		now := time.Now().UTC()
-		if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + u.ID, UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.PasswordHash); err != nil {
+		if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + u.ID, UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: u.PasswordHash}); err != nil {
 			t.Fatal(err)
 		}
 	}
