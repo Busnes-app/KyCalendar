@@ -269,6 +269,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `make lint` equivalent: gofmt, `go vet`, `go mod tidy`/`verify`
+- The release binary is repeatable: two `git archive` builds with the Dockerfile's flags (`-trimpath`) in different directories must be byte-identical
 - `go test -race` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17
 - Frontend vitest suite, then typecheck/build plus a check that committed `web/dist` matches source (it is embedded in the binary)
 - `govulncheck` (pinned version in `ci.yml`, bumped by hand) and `npm audit --audit-level=high`
@@ -422,5 +423,7 @@ The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spe
 
 
 ## README and topic guides
+
+`CONTRIBUTING.md` holds the contribution process, test policy and coding standard; change it with the CI step it names. `docs/ASSURANCE-CASE.md` and `docs/VERIFYING-RELEASES.md` make claims about the code and the release workflow; a change that moves a trust boundary, a security requirement, the image build or its attestation identity updates them in the same change.
 
 Keep `README.md` as the concise product overview and navigation. Detailed procedures live in `docs/RUNNING.md`, `docs/ACCOUNTS-AND-GROUPS.md`, `docs/CLIENTS.md`, `docs/RECOVERY.md`. Update the owning topic guide and preserve README links when a procedure changes. Commands in these guides run from the repository root.

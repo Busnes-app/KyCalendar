@@ -23,3 +23,6 @@ Installer integration: [product-owned setup contract](docs/INSTALLER_SETUP.md).
 - [Accounts and groups](docs/ACCOUNTS-AND-GROUPS.md) — First sign-in, Local everyday accounts, Administrators and group calendars, People, and related procedures. <a id="first-sign-in"></a><a id="local-everyday-accounts"></a><a id="administrators-and-group-calendars"></a><a id="people"></a><a id="sign-in"></a><a id="groups"></a><a id="calendar-limits"></a>
 - [Clients](docs/CLIENTS.md) — Connect a phone, Connect an AI agent. <a id="connect-a-phone"></a><a id="connect-an-ai-agent"></a>
 - [Recovery](docs/RECOVERY.md) — Disaster recovery. <a id="disaster-recovery"></a><a id="two-ways-to-get-a-key"></a><a id="why-tls-matters-here"></a><a id="one-run-every-destination"></a><a id="environment"></a><a id="upgrading-from-plaintext-local-backups"></a><a id="upgrading-to-the-kycalendar-service-name"></a><a id="restoring"></a>
+- [Verifying releases](docs/VERIFYING-RELEASES.md) — Check a release image's signature and source commit, and rebuild its binary.
+- [Assurance case](docs/ASSURANCE-CASE.md) — Threat model, trust boundaries, and why the security requirements are met.
+- [Contributing](CONTRIBUTING.md) — How to report issues and send changes, test policy and coding standard.
