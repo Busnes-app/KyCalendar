@@ -12,8 +12,10 @@ COPY . ./
 # The release without its "v", X.Y.Z or X.Y.Z.N (the release workflow, ci.yml and
 # `make docker-build` pass it); left empty, the binary reports internal/appversion/VERSION. Declared after the copy so a new version reuses the
 # download layer.
+# -trimpath keeps the build directory out of the binary, so the same commit, Go version and
+# VERSION give the same bytes wherever it is built (docs/VERIFYING-RELEASES.md).
 ARG VERSION=
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X github.com/Busnes-app/kycalendar/internal/appversion.release=${VERSION}" -o kycalendar ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/Busnes-app/kycalendar/internal/appversion.release=${VERSION}" -o kycalendar ./cmd/server
 
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk --no-cache add ca-certificates tzdata
