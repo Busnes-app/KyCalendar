@@ -185,7 +185,7 @@ func (s *Server) handleMFADisable(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, "Password or code is incorrect")
 		return
 	}
-	err := s.store.Users().DisableTOTP(r.Context(), user.ID, user.PasswordHash, sessionOf(r.Context()).TokenHash, s.requestIP(r))
+	err := s.store.Users().DisableTOTP(r.Context(), user.ID, user.PasswordHash, user.TOTPSecretEnc, sessionOf(r.Context()).TokenHash, s.requestIP(r))
 	if errors.Is(err, store.ErrAlreadyExists) || errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusConflict, "Account changed; try again")
 		return

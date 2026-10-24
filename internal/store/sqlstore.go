@@ -414,10 +414,10 @@ func (u *userStore) EnableTOTP(ctx context.Context, userID, passwordHash, secret
 		true, recoveryHashes, time.Now().UTC(), userID, false, secretEnc)
 }
 
-func (u *userStore) DisableTOTP(ctx context.Context, userID, passwordHash, keepSession, ip string) error {
+func (u *userStore) DisableTOTP(ctx context.Context, userID, passwordHash, secretEnc, keepSession, ip string) error {
 	return u.totpTransition(ctx, userID, passwordHash, keepSession, ip, "auth.mfa_disabled",
-		"UPDATE users SET totp_enabled = ?, totp_secret_enc = '', recovery_codes_hash = '[]', updated_at = ? WHERE id = ? AND totp_enabled = ?",
-		false, time.Now().UTC(), userID, true)
+		"UPDATE users SET totp_enabled = ?, totp_secret_enc = '', recovery_codes_hash = '[]', updated_at = ? WHERE id = ? AND totp_enabled = ? AND totp_secret_enc = ?",
+		false, time.Now().UTC(), userID, true, secretEnc)
 }
 
 // totpTransition applies update (one row or ErrAlreadyExists) under withPassword, then revokes

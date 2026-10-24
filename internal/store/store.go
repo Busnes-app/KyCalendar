@@ -160,12 +160,12 @@ type UserStore interface {
 	// changed meanwhile, so it never replaces an enrolled secret.
 	SetPendingTOTP(ctx context.Context, userID, oldEnc, newEnc string) error
 	// EnableTOTP turns on the pending secret secretEnc with recoveryHashes; DisableTOTP clears
-	// secret and codes. Each runs in one transaction bound to passwordHash (ErrNotFound if the
+	// secret and codes if secretEnc, the secret the code was checked against, is still enrolled. Each runs in one transaction bound to passwordHash (ErrNotFound if the
 	// password or status changed), revokes every grant but the caller's session (keepSession is
 	// its token hash): sessions, MFA challenges, device pairings and app passwords, and audits.
 	// ErrAlreadyExists if the TOTP state changed.
 	EnableTOTP(ctx context.Context, userID, passwordHash, secretEnc, recoveryHashes, keepSession, ip string) error
-	DisableTOTP(ctx context.Context, userID, passwordHash, keepSession, ip string) error
+	DisableTOTP(ctx context.Context, userID, passwordHash, secretEnc, keepSession, ip string) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
 	// SCIMUserIDs returns those of ids that name an account in scope, in any order.

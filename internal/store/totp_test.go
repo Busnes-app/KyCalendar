@@ -46,7 +46,7 @@ func TestSessionCreationHoldsTheCheckedTOTPState(t *testing.T) {
 	if err := st.Sessions().CreateSession(ctx, newSession("mfa", u.ID), on); err != nil {
 		t.Fatal("MFA session refused:", err)
 	}
-	if err := st.Users().DisableTOTP(ctx, u.ID, "pw", "keep", ""); err != nil {
+	if err := st.Users().DisableTOTP(ctx, u.ID, "pw", "sealed-a", "keep", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Sessions().CreateSession(ctx, newSession("late-off", u.ID), on); !errors.Is(err, store.ErrNotFound) {
@@ -103,10 +103,38 @@ func TestTOTPTransitionsRevokeEveryOtherGrant(t *testing.T) {
 	}
 	check("enabling")
 	grant()
-	if err := st.Users().DisableTOTP(ctx, u.ID, "pw", "keep", ""); err != nil {
+	if err := st.Users().DisableTOTP(ctx, u.ID, "pw", "sealed", "keep", ""); err != nil {
 		t.Fatal(err)
 	}
 	check("disabling")
+}
+
+// A disable checked against one secret cannot land once the owner disabled and re-enrolled:
+// proving the replaced authenticator must not switch off the new one.
+func TestTOTPDisableHoldsTheCheckedSecret(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	u := newTOTPUser(t, st, "dora")
+	enable := func(secret string) {
+		t.Helper()
+		if err := st.Users().SetPendingTOTP(ctx, u.ID, "", secret); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Users().EnableTOTP(ctx, u.ID, "pw", secret, "[]", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enable("sealed-a")
+	if err := st.Users().DisableTOTP(ctx, u.ID, "pw", "sealed-a", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	enable("sealed-b")
+	if err := st.Users().DisableTOTP(ctx, u.ID, "pw", "sealed-a", "", ""); !errors.Is(err, store.ErrAlreadyExists) {
+		t.Fatal("disable checked against the replaced secret landed:", err)
+	}
+	if got := reload(t, st, u.ID); !got.TOTPEnabled || got.TOTPSecretEnc != "sealed-b" {
+		t.Fatalf("new enrolment lost: enabled=%v secret=%q", got.TOTPEnabled, got.TOTPSecretEnc)
+	}
 }
 
 // Both operator resets are the way back from a lost authenticator, so both turn TOTP off.
