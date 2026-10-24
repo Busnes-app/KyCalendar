@@ -112,7 +112,7 @@ func TestAppPasswordCreatedAcrossAnSSORoleChangeIsRefused(t *testing.T) {
 	eve := &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e", SSOIssuer: kyBinding}
 	createUsers(t, s, eve)
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-eve")), UserID: eve.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-eve")), UserID: eve.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store
@@ -124,8 +124,9 @@ func TestAppPasswordCreatedAcrossAnSSORoleChangeIsRefused(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone","scope":"dav"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-eve"})
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})
-	req.Header.Set(auth.HeaderCSRF, "csrf")
+	csrf := auth.SessionCSRFToken(s.config.Security.SessionSecret, "tok-eve")
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: csrf})
+	req.Header.Set(auth.HeaderCSRF, csrf)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -177,7 +178,7 @@ func TestAppPasswordCreatedAcrossASCIMRoleChangeIsRefused(t *testing.T) {
 	dan := &store.User{ID: "usr_dan", Username: "dan", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "d1", SSOIssuer: kyBinding}
 	createUsers(t, s, dan)
 	now := time.Now().UTC()
-	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-dan")), UserID: dan.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := s.store.Sessions().CreateSession(ctx, &store.Session{TokenHash: crypto.SHA256Hex([]byte("tok-dan")), UserID: dan.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	real := s.store
@@ -192,8 +193,9 @@ func TestAppPasswordCreatedAcrossASCIMRoleChangeIsRefused(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone","scope":"dav"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-dan"})
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})
-	req.Header.Set(auth.HeaderCSRF, "csrf")
+	csrf := auth.SessionCSRFToken(s.config.Security.SessionSecret, "tok-dan")
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: csrf})
+	req.Header.Set(auth.HeaderCSRF, csrf)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {

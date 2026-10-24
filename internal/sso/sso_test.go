@@ -157,7 +157,7 @@ func TestKySignOnWebhookUpdateRevokesAdminSessionsOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		now := time.Now()
-		if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + tc.role, UserID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+		if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_" + tc.role, UserID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 			t.Fatal(err)
 		}
 		body, _ := json.Marshal(map[string]any{
@@ -242,7 +242,7 @@ func TestKySignOnWebhookRevokesBeforeStoring(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := real.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_k", UserID: "usr_k", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+	if err := real.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_k", UserID: "usr_k", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 		t.Fatal(err)
 	}
 	if err := webhook(t, client, secret, map[string]any{"event": "user.updated", "id": "ext-k", "display_name": "Kim", "status": "active"}); err == nil {

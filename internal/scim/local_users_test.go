@@ -24,7 +24,7 @@ func localRow(t *testing.T, st store.Store) *store.User {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_local", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.PasswordHash); err != nil {
+	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_local", UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: u.PasswordHash}); err != nil {
 		t.Fatal(err)
 	}
 	return u

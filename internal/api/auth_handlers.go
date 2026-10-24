@@ -175,13 +175,13 @@ func (s *Server) handleMFATOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secretBytes, err := crypto.DecryptAESGCM(user.TOTPSecretEnc, s.config.Security.EncryptionKey)
+	secret, err := auth.OpenTOTPSecret(s.config.Security.EncryptionKey, user.TOTPSecretEnc)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to decrypt MFA secret")
 		return
 	}
 
-	counter, ok := auth.ValidateTOTP(string(secretBytes), req.Code)
+	counter, ok := auth.ValidateTOTP(secret, req.Code)
 	if !ok {
 		s.writeError(w, http.StatusUnauthorized, "Invalid TOTP verification code")
 		return
@@ -288,11 +288,14 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	user, _, err := s.sessions.AuthenticateRequest(r)
+	user, sess, err := s.sessions.AuthenticateRequest(r)
 	if err != nil {
+		// The sign-in form that follows needs a CSRF token bound to this browser.
+		s.sessions.IssuePreSession(w)
 		s.writeJSON(w, http.StatusOK, map[string]bool{"authenticated": false})
 		return
 	}
+	s.sessions.RefreshCSRF(w, r, sess)
 
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,

@@ -32,7 +32,7 @@ func restorableDB(t *testing.T) ([]byte, string) {
 	if err := st.Users().CreateUser(ctx, u); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "s", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, "h"); err != nil {
+	if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "s", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, store.Credentials{PasswordHash: "h"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "ap", UserID: u.ID, Label: "phone", Hash: "h"}, 0); err != nil {

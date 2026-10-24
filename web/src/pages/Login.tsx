@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Key, AlertCircle, LogIn } from 'lucide-react';
 import { CaptchaWidget } from '../components/CaptchaWidget';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
+import { ensureCSRF, secureFetch } from '../api';
 
 interface LoginProps {
   onSuccess: (user: any) => void;
@@ -34,7 +35,8 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, no
     setLoading(true);
 
     try {
-      const resp = await fetch('/api/auth/login', {
+      await ensureCSRF();
+      const resp = await secureFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,7 +76,8 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, no
 
     try {
       const endpoint = isRecoveryCode ? '/api/auth/mfa/recovery-code' : '/api/auth/mfa/totp';
-      const resp = await fetch(endpoint, {
+      await ensureCSRF();
+      const resp = await secureFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
