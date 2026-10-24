@@ -18,6 +18,7 @@ import { Login } from './Login';
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  document.cookie = 'ky_csrf=; Max-Age=0';
 });
 
 describe('Login captcha', () => {
@@ -27,6 +28,7 @@ describe('Login captcha', () => {
       sent.push(JSON.parse(String(init?.body)).captcha_token);
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 });
     });
+    document.cookie = 'ky_csrf=pre-session-token';
     render(<Login appName="Cal" onSuccess={() => {}} />);
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'alice' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } });

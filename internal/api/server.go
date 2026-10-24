@@ -292,6 +292,10 @@ func (s *Server) routes() {
 	s.handle("/api/auth/logout", http.HandlerFunc(s.handleLogout))
 	s.handle("/api/auth/me", http.HandlerFunc(s.handleMe))
 	s.handle("/api/auth/change-password", http.HandlerFunc(s.handleChangePassword))
+	// TOTP enrolment: session routes, so CSRF-checked unlike the pre-session MFA steps above.
+	s.handle("POST /api/auth/mfa/enroll", s.requireSession(s.handleMFAEnroll))
+	s.handle("POST /api/auth/mfa/enroll/confirm", s.requireSession(s.handleMFAEnrollConfirm))
+	s.handle("POST /api/auth/mfa/disable", s.requireSession(s.handleMFADisable))
 
 	// SSO
 	s.handle("/api/sso/kysignon/login", s.requireSSO(s.handleKySignOnLogin))
@@ -412,10 +416,15 @@ func withSessionUser(r *http.Request, u *store.User, sess *store.Session) *http.
 	return r.WithContext(context.WithValue(ctx, sessionKey{}, sess))
 }
 
+// sessionOf is the session requireSession, requireAdmin or requireEveryday authenticated.
+func sessionOf(ctx context.Context) *store.Session {
+	sess, _ := ctx.Value(sessionKey{}).(*store.Session)
+	return sess
+}
+
 // actorOf is the signed-in administrator as the store rechecks them inside an access write.
 func actorOf(ctx context.Context) store.Actor {
-	sess, _ := ctx.Value(sessionKey{}).(*store.Session)
-	return store.AdminActor(sessionUser(ctx).ID, sess.TokenHash)
+	return store.AdminActor(sessionUser(ctx).ID, sessionOf(ctx).TokenHash)
 }
 
 // sessionUser is the user requireSession, requireAdmin or requireEveryday authenticated.
@@ -483,7 +492,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if isUnsafeMethod(r.Method) && hasSessionCookie(r) && !csrfExempt(r.URL.Path) && !auth.ValidateCSRF(r) {
+	if isUnsafeMethod(r.Method) && !s.csrfValid(r) {
 		s.writeError(w, http.StatusForbidden, "Invalid CSRF token")
 		return
 	}
@@ -537,8 +546,33 @@ func (s *Server) requireSSO(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func csrfExempt(path string) bool {
-	return path == "/api/auth/login" || strings.HasPrefix(path, "/api/auth/mfa/") || path == "/api/sso/kysignon/sync"
+// csrfValid checks an unsafe request's X-CSRF-Token against the cookie it is bound to. Sign-in
+// and MFA run before a session exists: a browser must present the token of its pre-session
+// cookie (GET /api/auth/me hands one out). Every other route needs, when a session cookie
+// rides along, the token of that session. A request with no session cookie carries no ambient
+// credential to forge with; the signed directory webhook is server-to-server.
+func (s *Server) csrfValid(r *http.Request) bool {
+	switch {
+	case credentialRoute(r.URL.Path):
+		return !browserRequest(r) || s.sessions.ValidatePreSessionCSRF(r)
+	case r.URL.Path == "/api/sso/kysignon/sync" || !hasSessionCookie(r):
+		return true
+	default:
+		return s.sessions.ValidateCSRF(r)
+	}
+}
+
+// credentialRoute is a pre-session sign-in step. Exact paths: MFA enrolment shares the
+// /api/auth/mfa/ prefix and is a session route.
+func credentialRoute(path string) bool {
+	return path == "/api/auth/login" || path == "/api/auth/mfa/totp" || path == "/api/auth/mfa/recovery-code"
+}
+
+// browserRequest reports a request a browser sent: browsers attach Origin to every POST and
+// Sec-Fetch-Site to every request, and a page cannot remove either. Only a browser can be made
+// to forge a request, so native clients and scripts (neither header) sign in without a token.
+func browserRequest(r *http.Request) bool {
+	return r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != ""
 }
 
 func sameOrigin(origin, appURL string) bool {

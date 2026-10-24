@@ -81,27 +81,29 @@ key (they are the server), and a malicious administrator.
 | Weakness | Counter | Where |
 |---|---|---|
 | Password theft from the database | Argon2id through `ky-primitives/password`; a 12-character minimum; unknown usernames run a dummy verification so timing does not reveal them | `internal/api/auth_handlers.go`, `internal/api/password_handlers.go`, `internal/auth/policy.go` |
-| Credential guessing | 20 login attempts per address per minute and 10 failures per account per 15 minutes; MFA 20 per address per minute and 5 per account per 5 minutes; the limiter map is capped | `internal/api/auth_handlers.go`, `internal/api/server.go` |
+| Credential guessing | 20 login attempts per address per minute and 10 failures per account per 15 minutes; MFA 20 per address per minute and 5 per account per 5 minutes; TOTP enrolment, confirmation and disabling 5 per account per 5 minutes; the limiter map is capped | `internal/api/auth_handlers.go`, `internal/api/server.go` |
 | Session theft or fixation | A fresh 32-byte random token per sign-in, only its SHA-256 stored; `HttpOnly`, `SameSite=Lax` cookie; 7-day default lifetime; cross-site POSTs to `/api/auth/` refused by `Sec-Fetch-Site` | `internal/auth/session.go`, `crossSite` in `internal/api/server.go` |
-| CSRF | Central middleware: every unsafe request with a session cookie must send `X-CSRF-Token` equal to the CSRF cookie (constant-time compare), except login, MFA and the signed SCIM-sync endpoint | `ValidateCSRF` in `internal/auth/session.go`, `internal/api/server.go` |
+| CSRF | Central middleware: every unsafe request with a session cookie must send `X-CSRF-Token` equal to HMAC-SHA256 of that session token under a key derived from the session secret (constant-time compare); the `ky_csrf` cookie only carries the value to the page and is never trusted. Browser requests (`Origin` or `Sec-Fetch-Site` present) to login and MFA must send the HMAC of a random pre-session cookie that `GET /api/auth/me` and sign-out hand out. Only the signed SCIM-sync endpoint is exempt | `ValidateCSRF`, `ValidatePreSessionCSRF` in `internal/auth/session.go`, `csrfValid` in `internal/api/server.go` |
 | App-password theft | 256 random bits, stored as SHA-256, compared in constant time; shown once | `internal/apppass/apppass.go` |
 | Broken access control | Per-route authorization matrix; CalDAV path ownership check; per-calendar grants checked in the store | `internal/api/authz_matrix_test.go`, `internal/api/dav.go`, `internal/access` |
 | Server-side request forgery | One guarded client, address policy applied at dial time, HTTPS only, bodies capped, redirects refused (feeds: a bounded number) | `internal/sso/discovery.go`, `internal/feed/feed.go` |
 | Cross-site scripting | React escaping (no `dangerouslySetInnerHTML` in `web/src`); CSP with `script-src 'self'`, `frame-ancestors 'none'` | `internal/api/server.go` |
 | SQL injection | `database/sql` with `?` parameters, rebound per database driver | `internal/store` |
-| Secrets at rest | AES-256-GCM with a random nonce and per-purpose keys derived by HMAC-SHA256 from the deployment key; used for OIDC client secrets and subscription links | `internal/crypto/crypto.go`, `internal/sso/settings.go`, `internal/feed/feed.go` |
+| Secrets at rest | AES-256-GCM with a random nonce and per-purpose keys derived by HMAC-SHA256 from the deployment key; used for TOTP secrets, OIDC client secrets and subscription links | `internal/crypto/crypto.go`, `internal/auth/totp.go`, `internal/sso/settings.go`, `internal/feed/feed.go` |
 | Hostile iCalendar input | Object size limits, and a Go fuzz target for inbound iTIP | `internal/itip/fuzz_test.go`, `internal/calendar` |
 | Vulnerable dependencies | Dependabot for Go, npm, Actions and base images; `govulncheck` and `npm audit --audit-level=high` in CI | `.github/dependabot.yml`, `.github/workflows/ci.yml` |
 | Supply-chain tampering | Actions pinned by commit; base images pinned by digest; release images attested and built only from a commit that passed CI; the binary rebuilds to the same bytes | [VERIFYING-RELEASES.md](VERIFYING-RELEASES.md) |
 
 ## Residual risk
 
-- The CSRF token is compared with the CSRF cookie, not with the session it was issued for, so the
-  `SameSite=Lax` session cookie carries most of the weight; a sibling host that can set cookies
-  for this domain weakens it.
+- A sibling host that can set cookies for this domain can still plant a whole session of its own
+  (cookie and its token), signing the victim's browser in as the attacker; it cannot forge
+  requests on the victim's session.
+- Sign-in from a browser too old to send `Origin` or `Sec-Fetch-Site` skips the pre-session
+  token, as a native client does.
 - Rate limits are process-local and reset on restart.
-- A TOTP verification path exists, but this product has no route that enrols a TOTP secret, so
-  second factors are not available to local accounts yet.
+- TOTP guards the web sign-in of local accounts only. App passwords (CalDAV, MCP) are separate
+  credentials and are not revoked when TOTP is turned on.
 - No product in the suite has had an independent security audit.
 
 ## Evidence

@@ -44,6 +44,21 @@ first sign-in.
 same username as a local account: KyCalendar refuses that sign-in (409) rather than link the two
 by name. CalDAV clients of a renamed everyday account must sign in with the new name.
 
+## Two-step verification
+
+Local accounts, the administrator included, can add a code from an authenticator app to their
+sign-in. Open **Two-step verification**, enter your password and choose **Set up**. Open the
+setup link on your phone, or type the key into the app, then enter the code the app shows and
+choose **Turn on**. A wrong code leaves it off. Save the ten recovery codes it then shows: each
+signs you in once instead of a code, and they are not shown again. Turning it on signs you out
+everywhere else.
+
+From then on, sign-in asks for the code after the password. To change phones, choose
+**Turn off** with your password and a current code or a recovery code, then set it up again;
+it cannot be set up again while it is on. App passwords for calendar apps and agents keep
+working: two-step verification guards the web sign-in only. An operator password reset does not
+turn it off. SSO accounts use their identity provider's second factor instead.
+
 ## Administrators and group calendars
 
 KyCalendar administrators manage group calendars, access, backups and the audit log. They never see events and cannot use calendars on their devices. Give a dedicated KyIdentity login the admin role, and keep everyday logins for calendar use.

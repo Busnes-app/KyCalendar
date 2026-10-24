@@ -33,9 +33,20 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
+// testSessionSecret is setupTestServer's session secret, so addCSRF can compute a session's token.
+const testSessionSecret = "test-session-secret-of-at-least-32-chars"
+
+// addCSRF sets the ky_csrf cookie and X-CSRF-Token header the SPA would send with session.
+func addCSRF(req *http.Request, session *http.Cookie) {
+	token := auth.SessionCSRFToken(testSessionSecret, session.Value)
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: token})
+	req.Header.Set(auth.HeaderCSRF, token)
+}
+
 func setupTestServer(t *testing.T) (*api.Server, store.Store, *config.Config) {
 	t.Helper()
 	t.Setenv("KY_DATA_DIR", t.TempDir())
+	t.Setenv("KY_SESSION_SECRET", testSessionSecret)
 	cfg, _ := config.LoadFromEnv()
 	cfg.SCIM = config.SCIMConfig{Enabled: true, BearerToken: "test-scim-bearer-token-of-32-chars"}
 	db := testdb.Config(t)
@@ -216,7 +227,7 @@ func TestMFATOTPRefusesReplay(t *testing.T) {
 	srv, st, cfg := setupTestServer(t)
 	ctx := context.Background()
 	secret, _ := totp.GenerateSecret()
-	enc, _ := crypto.EncryptAESGCM([]byte(secret), cfg.Security.EncryptionKey)
+	enc, _ := auth.SealTOTPSecret(cfg.Security.EncryptionKey, secret)
 	_ = st.Users().CreateUser(ctx, &store.User{
 		ID: "usr_mfa", Username: "mfa", Role: "user", Status: "active", SSOProvider: "local",
 		TOTPEnabled: true, TOTPSecretEnc: enc,
@@ -284,8 +295,7 @@ func TestPairRemoteStoresTheRecoveryKey(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	cookie := loginAs(t, srv, st, "alice", "admin")
 	req.AddCookie(cookie)
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	addCSRF(req, cookie)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -349,8 +359,7 @@ func TestPairRemoteStoresTheRecoveryKey(t *testing.T) {
 	req2 := httptest.NewRequest("POST", "/api/backup/pair-remote", bytes.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.AddCookie(cookie)
-	req2.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req2.Header.Set(auth.HeaderCSRF, "test-csrf")
+	addCSRF(req2, cookie)
 	w2 := httptest.NewRecorder()
 	srv.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusConflict {
@@ -728,8 +737,7 @@ func adminPost(t *testing.T, srv *api.Server, session *http.Cookie, path string)
 	t.Helper()
 	req := httptest.NewRequest("POST", path, nil)
 	req.AddCookie(session)
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	addCSRF(req, session)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	return w
@@ -910,9 +918,9 @@ func TestDepositOutlivesTheRequest(t *testing.T) {
 	api.SetRecoveryClientForTest(srv, fake)
 
 	req := httptest.NewRequest("POST", "/api/backup/deposit", nil).WithContext(reqCtx)
-	req.AddCookie(loginAs(t, srv, st, "alice", "admin"))
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	session := loginAs(t, srv, st, "alice", "admin")
+	req.AddCookie(session)
+	addCSRF(req, session)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -943,7 +951,7 @@ func TestMFAChallengeRejectedAfterPasswordRotation(t *testing.T) {
 	srv, st, cfg := setupTestServer(t)
 	ctx := context.Background()
 	secret, _ := totp.GenerateSecret()
-	enc, _ := crypto.EncryptAESGCM([]byte(secret), cfg.Security.EncryptionKey)
+	enc, _ := auth.SealTOTPSecret(cfg.Security.EncryptionKey, secret)
 	if err := st.Users().CreateUser(ctx, &store.User{
 		ID: "usr_mfa", Username: "mfa", Role: "user", Status: "active", SSOProvider: "local",
 		PasswordHash: "old", TOTPEnabled: true, TOTPSecretEnc: enc,
@@ -980,8 +988,9 @@ func TestMFAChallengeRejectedAfterPasswordRotation(t *testing.T) {
 	}
 }
 
-// Login and MFA skip the CSRF token (no session exists yet), so a cross-site form could plant
-// the attacker's session; the browser's Sec-Fetch-Site header refuses it.
+// Login and MFA run before a session exists, so a cross-site form could plant the attacker's
+// session; the browser's Sec-Fetch-Site header refuses it, and a same-origin browser request
+// still needs the token of its pre-session cookie.
 func TestPreSessionRoutesRefuseCrossSiteRequests(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	hash, _ := password.Hash("SuperSecretPass123!")
@@ -1001,12 +1010,25 @@ func TestPreSessionRoutesRefuseCrossSiteRequests(t *testing.T) {
 			}
 		}
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
+	login := func(cookies []*http.Cookie, token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		if token != "" {
+			req.Header.Set(auth.HeaderCSRF, token)
+		}
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		return w
+	}
+	if w := login(nil, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("same-origin login without a pre-session token: %d, want 403", w.Code)
+	}
+	cookies, token := preSession(t, srv)
+	if w := login(cookies, token); w.Code != http.StatusOK {
 		t.Fatalf("same-origin login: %d %s", w.Code, w.Body.String())
 	}
 }

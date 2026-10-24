@@ -50,6 +50,7 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 - `store.Open(ctx, cfg)` initializes and auto-migrates the configured database backend.
 - SQLite runs with `foreign_keys(ON)` whatever the DSN says (appended last, so it wins; `Open` reads `PRAGMA foreign_keys` and fails startup if it is off: every `ON DELETE CASCADE` depends on it), and `busy_timeout(5000)`, `journal_mode(WAL)` and `synchronous(NORMAL)` unless the DSN sets that pragma itself. `TestSQLiteDSNPragmasKeepForeignKeysOn` pins it.
 - PostgreSQL queries are rebound dynamically from standard positional parameters.
+- `SetPendingTOTP` is a compare-and-swap on `totp_secret_enc` that matches only local rows with `totp_enabled` false, so it never replaces an enrolled secret. `EnableTOTP`/`DisableTOTP` run under `withPassword` (the verified hash, active status): a one-row CAS on the TOTP state (`ErrAlreadyExists` otherwise), then every other session (all but `keepSession`) and every MFA challenge of the user are deleted and `auth.mfa_enabled`/`auth.mfa_disabled` audited in the same transaction. App passwords stay.
 - MFA challenges and device pairings are consumed with database state transitions that permit exactly one successful use.
 - Recovery-code hash updates use optimistic concurrency so simultaneous redemption cannot reuse a code.
 - `CreateSession` stamps `users.last_login_at` with the session's `CreatedAt` in the same transaction; the People list shows it.

@@ -256,6 +256,10 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/subscriptions":          {method: "POST", path: "/api/subscriptions", body: `{"url":"http://matrix.invalid/x.ics","name":"M"}`, want: everyday},
 		"PATCH /api/subscriptions/{id}":    {method: "PATCH", path: "/api/subscriptions/" + w.sub.ID, body: `{"url":"http://matrix.invalid/x.ics"}`, want: ownerOnly},
 		"POST /api/calendars/{id}/refresh": {method: "POST", path: "/api/calendars/" + w.sub.ID + "/refresh", want: ownerOnly},
+		// Empty bodies: no password (400), no pending enrolment or TOTP off (409); nothing changes.
+		"POST /api/auth/mfa/enroll":         {method: "POST", path: "/api/auth/mfa/enroll", body: "{}", want: anySession},
+		"POST /api/auth/mfa/enroll/confirm": {method: "POST", path: "/api/auth/mfa/enroll/confirm", body: "{}", want: anySession},
+		"POST /api/auth/mfa/disable":        {method: "POST", path: "/api/auth/mfa/disable", body: "{}", want: anySession},
 	}
 }
 

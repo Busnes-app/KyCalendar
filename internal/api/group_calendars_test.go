@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
-	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -22,8 +21,7 @@ func call(t *testing.T, srv *api.Server, method, path, body string, cookie *http
 	}
 	if cookie != nil {
 		req.AddCookie(cookie)
-		req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-		req.Header.Set(auth.HeaderCSRF, "test-csrf")
+		addCSRF(req, cookie)
 	}
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)

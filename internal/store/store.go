@@ -153,6 +153,16 @@ type UserStore interface {
 	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is
 	// not greater than the stored one, which is how a replayed code inside the skew window fails.
 	SpendTOTPCounter(ctx context.Context, userID string, counter int64) error
+	// SetPendingTOTP replaces the sealed secret oldEnc with newEnc on a local account whose TOTP
+	// is off: the secret an enrolment confirms. ErrAlreadyExists if TOTP is on or the secret
+	// changed meanwhile, so it never replaces an enrolled secret.
+	SetPendingTOTP(ctx context.Context, userID, oldEnc, newEnc string) error
+	// EnableTOTP turns on the pending secret secretEnc with recoveryHashes; DisableTOTP clears
+	// secret and codes. Each runs in one transaction bound to passwordHash (ErrNotFound if the
+	// password or status changed), deletes every other session (keepSession is the caller's
+	// token hash) and every MFA challenge, and audits. ErrAlreadyExists if the TOTP state changed.
+	EnableTOTP(ctx context.Context, userID, passwordHash, secretEnc, recoveryHashes, keepSession, ip string) error
+	DisableTOTP(ctx context.Context, userID, passwordHash, keepSession, ip string) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
 	// SCIMUserIDs returns those of ids that name an account in scope, in any order.

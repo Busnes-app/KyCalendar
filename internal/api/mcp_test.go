@@ -20,7 +20,6 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/apppass"
 	"github.com/Busnes-app/kycalendar/internal/appversion"
-	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -489,8 +488,7 @@ func TestMCPWriteOwnOnlyChangesItsOwnEvents(t *testing.T) {
 func addSession(req *http.Request, cookie *http.Cookie) {
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	addCSRF(req, cookie)
 }
 
 func TestMCPNeverReachesGroupCalendars(t *testing.T) {

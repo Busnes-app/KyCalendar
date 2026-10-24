@@ -124,8 +124,9 @@ func TestAppPasswordCreatedAcrossAnSSORoleChangeIsRefused(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone","scope":"dav"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-eve"})
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})
-	req.Header.Set(auth.HeaderCSRF, "csrf")
+	csrf := auth.SessionCSRFToken(s.config.Security.SessionSecret, "tok-eve")
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: csrf})
+	req.Header.Set(auth.HeaderCSRF, csrf)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -192,8 +193,9 @@ func TestAppPasswordCreatedAcrossASCIMRoleChangeIsRefused(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/app-passwords", strings.NewReader(`{"label":"phone","scope":"dav"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok-dan"})
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf"})
-	req.Header.Set(auth.HeaderCSRF, "csrf")
+	csrf := auth.SessionCSRFToken(s.config.Security.SessionSecret, "tok-dan")
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: csrf})
+	req.Header.Set(auth.HeaderCSRF, csrf)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
