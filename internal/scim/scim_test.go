@@ -500,7 +500,7 @@ func TestSCIMAccessChangeWithAFailingProfileWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			now := time.Now().UTC()
-			if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_dan", UserID: "usr_dan", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, ""); err != nil {
+			if err := st.Sessions().CreateSession(ctx, &store.Session{TokenHash: "tok_dan", UserID: "usr_dan", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: ""}); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.AppPasswords().Create(ctx, store.Seed, &store.AppPassword{Scope: store.ScopeDAV, ID: "pw_dan", UserID: "usr_dan", Label: "phone", Hash: "h"}, 0); err != nil {

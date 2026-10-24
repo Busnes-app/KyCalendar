@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
-	"github.com/Busnes-app/kycalendar/internal/auth"
 )
 
 func doJSON(t *testing.T, srv *api.Server, method, path string, cookie *http.Cookie, body any) *httptest.ResponseRecorder {
@@ -17,8 +16,7 @@ func doJSON(t *testing.T, srv *api.Server, method, path string, cookie *http.Coo
 	req := httptest.NewRequest(method, path, bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	addCSRF(req, cookie)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	return w

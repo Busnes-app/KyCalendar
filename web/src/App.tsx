@@ -11,6 +11,7 @@ import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
 import People from './pages/People';
 import SignIn from './pages/SignIn';
+import TwoFactor from './pages/TwoFactor';
 import './styles/theme.css';
 import './styles/ui.css';
 import './ky-ui/tokens.css';
@@ -118,6 +119,9 @@ export const App: React.FC = () => {
       <main className="app-main">
         {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} /></Suspense>}
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
+        {activeTab === 'security' && user.sso_provider === 'local' && (
+          <TwoFactor enabled={user.totp_enabled === true} onChange={(on) => setUser({ ...user, totp_enabled: on })} />
+        )}
         {/* Admin pages: the API refuses everyday users anyway; never render them either. */}
         {isAdmin && activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
         {isAdmin && activeTab === 'people' && <People me={user.id} />}

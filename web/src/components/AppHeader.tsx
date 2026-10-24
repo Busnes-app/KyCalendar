@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound } from 'lucide-react';
+import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 
 interface AppHeaderProps {
@@ -27,6 +27,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         { id: 'calendar', label: 'Calendar', icon: CalendarDays },
         { id: 'devices', label: 'Phones & apps', icon: Smartphone },
       ];
+  // Two-step verification guards the local password; an SSO account's belongs to its provider.
+  if (user?.sso_provider === 'local') navItems.push({ id: 'security', label: 'Two-step verification', icon: ShieldCheck });
 
   return (
     <>

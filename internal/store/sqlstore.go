@@ -394,6 +394,60 @@ func (u *userStore) SpendTOTPCounter(ctx context.Context, userID string, counter
 	return nil
 }
 
+func (u *userStore) SetPendingTOTP(ctx context.Context, userID, oldEnc, newEnc string) error {
+	q := u.store.rebind("UPDATE users SET totp_secret_enc = ?, updated_at = ? WHERE id = ? AND totp_secret_enc = ? AND totp_enabled = ? AND sso_provider = 'local'")
+	res, err := u.store.db.ExecContext(ctx, q, newEnc, time.Now().UTC(), userID, oldEnc, false)
+	if err != nil {
+		return err
+	}
+	if rows, err := res.RowsAffected(); err != nil {
+		return err
+	} else if rows != 1 {
+		return ErrAlreadyExists
+	}
+	return nil
+}
+
+func (u *userStore) EnableTOTP(ctx context.Context, userID, passwordHash, secretEnc, recoveryHashes, keepSession, ip string) error {
+	return u.totpTransition(ctx, userID, passwordHash, keepSession, ip, "auth.mfa_enabled",
+		"UPDATE users SET totp_enabled = ?, recovery_codes_hash = ?, updated_at = ? WHERE id = ? AND totp_enabled = ? AND totp_secret_enc = ? AND totp_secret_enc <> ''",
+		true, recoveryHashes, time.Now().UTC(), userID, false, secretEnc)
+}
+
+func (u *userStore) DisableTOTP(ctx context.Context, userID, passwordHash, secretEnc, keepSession, ip string) error {
+	return u.totpTransition(ctx, userID, passwordHash, keepSession, ip, "auth.mfa_disabled",
+		"UPDATE users SET totp_enabled = ?, totp_secret_enc = '', recovery_codes_hash = '[]', updated_at = ? WHERE id = ? AND totp_enabled = ? AND totp_secret_enc = ?",
+		false, time.Now().UTC(), userID, true, secretEnc)
+}
+
+// totpTransition applies update (one row or ErrAlreadyExists) under withPassword, then revokes
+// every grant of userID but the caller's session, as a password change does, and audits action.
+func (u *userStore) totpTransition(ctx context.Context, userID, passwordHash, keepSession, ip, action, update string, args ...any) error {
+	return u.store.withPassword(ctx, userID, passwordHash, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, u.store.rebind(update), args...)
+		if err != nil {
+			return err
+		}
+		if rows, err := res.RowsAffected(); err != nil {
+			return err
+		} else if rows != 1 {
+			return ErrAlreadyExists
+		}
+		for _, table := range grantTables {
+			q, qargs := "DELETE FROM "+table+" WHERE user_id = ?", []any{userID}
+			if table == "sessions" {
+				q, qargs = q+" AND token_hash <> ?", append(qargs, keepSession)
+			}
+			if _, err := tx.ExecContext(ctx, u.store.rebind(q), qargs...); err != nil {
+				return err
+			}
+		}
+		_, err = tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+			userID, action, "user", "other sessions, device pairings and app passwords revoked", ip, time.Now().UTC())
+		return err
+	})
+}
+
 // DeleteUser also deletes the user's calendars (objects and changes cascade): calendars.owner_id
 // has no foreign key, and orphaned bytes would count against the instance cap forever.
 func (u *userStore) DeleteUser(ctx context.Context, id string) error {
@@ -541,12 +595,25 @@ type sessionStore struct {
 // withPassword serializes credential-derived grants with password replacement.
 // Updating the same user row takes a write lock on both supported databases.
 func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string, apply func(*sql.Tx) error) error {
+	return s.withLockedUser(ctx, "id = ? AND password_hash = ? AND status = 'active'", []any{userID, expectedHash}, apply)
+}
+
+// withCredentials is withPassword that also holds the TOTP state c was read with, so a sign-in
+// checked before TOTP was turned on or off cannot land after it.
+func (s *SQLStore) withCredentials(ctx context.Context, userID string, c Credentials, apply func(*sql.Tx) error) error {
+	return s.withLockedUser(ctx, "id = ? AND password_hash = ? AND status = 'active' AND totp_enabled = ? AND (totp_enabled = ? OR totp_secret_enc = ?)",
+		[]any{userID, c.PasswordHash, c.TOTPEnabled, false, c.TOTPSecretEnc}, apply)
+}
+
+// withLockedUser runs apply in a transaction that first write-locks the one user row where
+// matches, or returns ErrNotFound.
+func (s *SQLStore) withLockedUser(ctx context.Context, where string, args []any, apply func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, s.rebind("UPDATE users SET id = id WHERE id = ? AND password_hash = ? AND status = 'active'"), userID, expectedHash)
+	result, err := tx.ExecContext(ctx, s.rebind("UPDATE users SET id = id WHERE "+where), args...)
 	if err != nil {
 		return err
 	}
@@ -564,8 +631,8 @@ func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string
 }
 
 // CreateSession also records the sign-in as the user's last_login_at.
-func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expectedPasswordHash string) error {
-	return s.store.withPassword(ctx, sess.UserID, expectedPasswordHash, func(tx *sql.Tx) error {
+func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expected Credentials) error {
+	return s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt); err != nil {
 			return err
 		}
@@ -635,7 +702,8 @@ func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName strin
 	return tx.Commit()
 }
 
-// operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one transaction.
+// operatorReset runs update (hash, flag, time, id), turns TOTP off and revokes the user's grants
+// in one transaction.
 func (u *userStore) operatorReset(ctx context.Context, actor Actor, update, userID, newHash string) error {
 	var keys []string
 	if !actor.system {
@@ -660,6 +728,10 @@ func (u *userStore) operatorReset(ctx context.Context, actor Actor, update, user
 	}
 	if n != 1 {
 		return ErrNotFound
+	}
+	// A reset is also the way back from a lost authenticator, so it clears TOTP too.
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET totp_enabled = ?, totp_secret_enc = '', recovery_codes_hash = '[]' WHERE id = ?`), false, userID); err != nil {
+		return err
 	}
 	if err := u.revokePasswordGrants(ctx, tx, userID, "operator reset; sessions revoked", "", now); err != nil {
 		return err

@@ -10,3 +10,11 @@ export function secureFetch(input: RequestInfo | URL, init: RequestInit = {}): P
   if (csrf) headers.set('X-CSRF-Token', csrf);
   return fetch(input, { ...init, headers });
 }
+
+/**
+ * Sign-in and MFA posts need a CSRF token before any session exists: GET /api/auth/me hands a
+ * signed-out browser one, bound to its pre-session cookie. Fetch it when the cookie is gone.
+ */
+export async function ensureCSRF(): Promise<void> {
+  if (!cookieValue('ky_csrf')) await fetch('/api/auth/me');
+}

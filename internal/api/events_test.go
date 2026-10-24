@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
-	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -182,8 +181,7 @@ func withIfMatch(t *testing.T, srv *api.Server, method, path, body, etag string,
 		req.Header.Set("If-Match", `"`+etag+`"`)
 	}
 	req.AddCookie(cookie)
-	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-	req.Header.Set(auth.HeaderCSRF, "test-csrf")
+	addCSRF(req, cookie)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	return w
@@ -317,8 +315,7 @@ func TestEventIfMatchMustBeOneStrongETag(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("If-Match", bad)
 			req.AddCookie(cookie)
-			req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "test-csrf"})
-			req.Header.Set(auth.HeaderCSRF, "test-csrf")
+			addCSRF(req, cookie)
 			rec := httptest.NewRecorder()
 			srv.ServeHTTP(rec, req)
 			if rec.Code != http.StatusBadRequest {

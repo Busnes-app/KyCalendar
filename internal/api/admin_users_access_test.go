@@ -18,7 +18,7 @@ func sessionFor(t *testing.T, st store.Store, u *store.User) *http.Cookie {
 	t.Helper()
 	raw := "tok-" + u.ID
 	now := time.Now().UTC()
-	if err := st.Sessions().CreateSession(context.Background(), &store.Session{TokenHash: crypto.SHA256Hex([]byte(raw)), UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.PasswordHash); err != nil {
+	if err := st.Sessions().CreateSession(context.Background(), &store.Session{TokenHash: crypto.SHA256Hex([]byte(raw)), UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, store.Credentials{PasswordHash: u.PasswordHash}); err != nil {
 		t.Fatal(err)
 	}
 	return &http.Cookie{Name: auth.SessionCookieName, Value: raw}
