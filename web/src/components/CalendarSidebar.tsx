@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { calendarColors, nextColor } from '../calendarColors';
 import {
   ApiError, HOLDS, createCalendar, holdsOf, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo, type Holds,
@@ -29,6 +29,12 @@ function SubscriptionForm({ calendar, color, onSaved, onCancel }: { calendar?: C
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = calendar ? `link-${calendar.id}` : 'kc-sub';
+  const ref = useRef<HTMLFormElement>(null);
+  // Its trigger disappears when it opens: take focus, and show the form from its heading down.
+  useEffect(() => {
+    ref.current?.querySelector('input')?.focus({ preventScroll: true });
+    ref.current?.scrollIntoView({ block: 'nearest' });
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,7 +51,7 @@ function SubscriptionForm({ calendar, color, onSaved, onCancel }: { calendar?: C
   }
 
   return (
-    <form className="kc-form kc-cal-edit" aria-label={calendar ? `Change link of ${calendar.name}` : 'Subscribe to a calendar'} onSubmit={submit}>
+    <form ref={ref} className="kc-form kc-cal-edit" aria-label={calendar ? `Change link of ${calendar.name}` : 'Subscribe to a calendar'} onSubmit={submit}>
       {!calendar && <h3 className="kc-form-title">Subscribe to a calendar</h3>}
       {error && <p role="alert">{error}</p>}
       <label htmlFor={`${id}-url`}>Link</label>
@@ -164,7 +170,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
                 }}
               >
                 <label htmlFor={`name-${c.id}`}>Name</label>
-                <input id={`name-${c.id}`} value={draft.name} maxLength={255} required onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                <input id={`name-${c.id}`} value={draft.name} maxLength={255} required autoFocus onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
                 <label htmlFor={`color-${c.id}`}>Colour</label>
                 <input id={`color-${c.id}`} type="color" value={draft.color} onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
                 <div className="kc-actions">
@@ -206,7 +212,10 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
             <Plus size={14} aria-hidden="true" />
             New calendar
           </button>
-          <button type="button" className="btn-ghost btn-sm" onClick={() => setSubscribing(true)}>Subscribe to a calendar</button>
+          <button type="button" className="btn-secondary btn-sm" aria-label="Subscribe to a calendar" onClick={() => setSubscribing(true)}>
+            <Rss size={14} aria-hidden="true" />
+            Subscribe
+          </button>
         </div>
       )}
       {subscribing && <SubscriptionForm color={fresh()} onSaved={() => { setSubscribing(false); onChanged(); }} onCancel={() => setSubscribing(false)} />}

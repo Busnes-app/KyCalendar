@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 
@@ -8,9 +8,40 @@ interface AppHeaderProps {
   onTabChange: (tab: string) => void;
   user: any;
   onLogout: () => void;
+  /** Where a page renders its own sidebar content, below the navigation. */
+  sidebarSlot?: (el: HTMLDivElement | null) => void;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout }) => {
+// useScrollCue marks which ends of a scroll box hide content (`data-cue="start end"`), so CSS can
+// fade those edges and show there is more to scroll to.
+function useScrollCue() {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!el) return;
+    const update = () => {
+      const start = el.scrollTop > 1 || el.scrollLeft > 1;
+      const end = el.scrollTop + el.clientHeight < el.scrollHeight - 1 || el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      el.dataset.cue = `${start ? 'start' : ''} ${end ? 'end' : ''}`.trim();
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const resized = new ResizeObserver(update);
+    resized.observe(el);
+    const changed = new MutationObserver(update);
+    changed.observe(el, { childList: true, subtree: true });
+    return () => {
+      el.removeEventListener('scroll', update);
+      resized.disconnect();
+      changed.disconnect();
+    };
+  }, [el]);
+  return setEl;
+}
+
+export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot }) => {
+  const navCue = useScrollCue();
+  const slotCue = useScrollCue();
+  const slotRef = useCallback((el: HTMLDivElement | null) => { sidebarSlot?.(el); slotCue(el); }, [sidebarSlot, slotCue]);
   // Administrators run the instance and never see calendars; everyday users see nothing else.
   const navItems = user?.role === 'admin'
     ? [
@@ -38,7 +69,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
             <span>{appName || 'KyCalendar'}</span>
           </div>
 
-          <nav className="app-nav" aria-label="Primary">
+          <nav className="app-nav" aria-label="Primary" ref={navCue}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = activeTab === item.id;
@@ -55,6 +86,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
               );
             })}
           </nav>
+        <div className="app-sidebar-slot" ref={slotRef} />
         <div className="app-header-actions">
           <ThemeSwitcher />
 
@@ -64,14 +96,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
                 <div className="app-user-name">{user.display_name || user.username}</div>
                 <div className="app-user-role">{user.role === 'admin' ? 'Administrator' : 'Everyday account'}</div>
               </div>
-              <button
-                type="button"
-                className="btn-secondary app-logout"
-                onClick={onLogout}
-                title="Sign out"
-                aria-label="Sign out"
-              >
+              <button type="button" className="btn-ghost app-logout" onClick={onLogout}>
                 <LogOut size={16} aria-hidden="true" />
+                <span className="app-logout-label">Sign out</span>
               </button>
             </div>
           )}

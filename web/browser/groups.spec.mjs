@@ -42,6 +42,8 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
   const context = await browser.newContext({ extraHTTPHeaders: ownIP });
   const walter = await context.newPage();
   await signIn(walter, 'walter', 'WalterUpdated456!');
+  // Phones keep the calendar list behind the header's Calendars disclosure.
+  if (testInfo.project.use.viewport.width <= 720) await walter.locator('.app-header summary', { hasText: 'Calendars' }).click();
   await expect(walter.getByRole('complementary', { name: 'Calendars' }).getByLabel(`Show ${calendar}`)).toBeVisible();
   await context.close();
 });

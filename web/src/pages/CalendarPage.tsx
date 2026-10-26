@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import FullCalendar from '@fullcalendar/react';
-import { Plus } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
@@ -85,22 +86,44 @@ export function toFcEvent(ev: EventInfo, color: string): EventInput {
   };
 }
 
-const narrow = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
-// Day and week views scroll inside a fixed height that opens on the working day, not midnight.
-const TIME_GRID_HEIGHT = 'max(32rem, calc(100vh - 13rem))';
+const NARROW = '(max-width: 720px)';
+const narrow = () => typeof window.matchMedia === 'function' && window.matchMedia(NARROW).matches;
+
+// useNarrow follows the phone breakpoint, where the calendar list folds into a header disclosure.
+function useNarrow() {
+  const [isNarrow, setNarrow] = useState(narrow);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const m = window.matchMedia(NARROW);
+    const sync = () => setNarrow(m.matches);
+    m.addEventListener('change', sync);
+    return () => m.removeEventListener('change', sync);
+  }, []);
+  return isNarrow;
+}
+// Day and week views fill the window below the page heading and scroll inside it, opening on
+// the working day; the night hours stay a scroll away.
+const TIME_GRID_HEIGHT = 'max(30rem, calc(100vh - 7.5rem))';
 const SCROLL_TIME = '07:00:00';
 
-// scheduling and me (the user's email) let the event dialog offer invitations.
-export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boolean; me?: string }) {
+// scheduling and me (the user's email) let the event dialog offer invitations. sidebarSlot is the
+// app sidebar's slot: the calendar list always renders there, never as a second column.
+export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }: { scheduling?: boolean; me?: string; sidebarSlot?: HTMLElement | null }) {
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
+  // Event fetch state, so an empty view never claims "no events" while loading or after a failure.
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventsFailed, setEventsFailed] = useState(false);
   const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState } | null>(null);
   const [pending, setPending] = useState<MoveArg | null>(null);
   const dragError = useRef<string | null>(null);
   const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
   const [timeGrid, setTimeGrid] = useState(() => !narrow());
+  const isNarrow = useNarrow();
+  const [picker, setPicker] = useState(false);
+  const summary = useRef<HTMLElement>(null);
   // A view switched from month or list renders before its fixed height applies, so FullCalendar's
   // own scrollTime finds nothing to scroll: open on the working day once the height is in place.
   useEffect(() => {
@@ -141,10 +164,12 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
       listEvents(info.start, info.end, browserZone(), visible)
         .then((evs) => {
           setError(null);
+          setEventsFailed(false);
           success(evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id))));
         })
         .catch((e: Error) => {
           setError(e.message || 'Could not load events.');
+          setEventsFailed(true);
           failure(e);
         });
     },
@@ -236,11 +261,30 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
     else void saveMove(arg, 'all');
   };
 
+  // One portal target at every width, so crossing the breakpoint never remounts the list and its
+  // half-filled forms. Wide screens force the disclosure open and hide its summary.
+  const sidebar = (
+    <details
+      className="kc-picker"
+      open={!isNarrow || picker}
+      onKeyDown={(e) => { if (e.key === 'Escape' && isNarrow && picker) { setPicker(false); summary.current?.focus(); } }}
+    >
+      <summary ref={summary} onClick={(e) => { e.preventDefault(); setPicker(!picker); }}>
+        Calendars
+        <ChevronDown size={16} aria-hidden="true" />
+      </summary>
+      {/* Using the list keeps it open when the screen narrows. */}
+      <div className="kc-picker-panel" onFocus={() => setPicker(true)}>
+        <CalendarSidebar calendars={calendars} hidden={hidden} onToggle={toggle} onChanged={loadCalendars} />
+      </div>
+    </details>
+  );
+
   return (
     <section className="page kc-layout">
       <div className="kc-calendar">
         {error && <p role="alert">{error}</p>}
-        <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}</p></div>
+        <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p></div>
         <button type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
           <Plus size={16} aria-hidden="true" />
           New event
@@ -253,7 +297,13 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
           timeZone="local"
           height={timeGrid ? TIME_GRID_HEIGHT : 'auto'}
           scrollTime={SCROLL_TIME}
+          views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20 } }}
           datesSet={(arg) => setTimeGrid(arg.view.type.startsWith('timeGrid'))}
+          loading={setLoadingEvents}
+          // Grid events are focusable anchors without href; as buttons their whole text (time and
+          // title, also where the phone month hides the title visually) is their accessible name.
+          eventDidMount={(arg) => { if (arg.el.tagName === 'A') arg.el.setAttribute('role', 'button'); }}
+          noEventsContent={loadingEvents ? 'Loading events…' : eventsFailed ? 'Events could not be loaded.' : 'No events to display'}
           nowIndicator
           editable
           eventInteractive
@@ -281,7 +331,7 @@ export function CalendarPage({ scheduling = false, me = '' }: { scheduling?: boo
           />
         )}
       </div>
-      <CalendarSidebar calendars={calendars} hidden={hidden} onToggle={toggle} onChanged={loadCalendars} />
+      {sidebarSlot && createPortal(sidebar, sidebarSlot)}
     </section>
   );
 }

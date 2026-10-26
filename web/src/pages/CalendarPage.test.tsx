@@ -31,13 +31,29 @@ function mockFetch(handlers: Record<string, () => unknown>) {
   });
 }
 
+// The app shell's sidebar slot, which the calendar list always renders into.
+function renderPage() {
+  const slot = document.body.appendChild(document.createElement('div'));
+  return { slot, ...render(<CalendarPage sidebarSlot={slot} />) };
+}
+
+// A controllable (max-width: 720px) media query.
+function stubNarrow(matches: boolean) {
+  const listeners = new Set<() => void>();
+  const m = { matches, addEventListener: (_: string, f: () => void) => listeners.add(f), removeEventListener: (_: string, f: () => void) => listeners.delete(f) };
+  vi.stubGlobal('matchMedia', () => m);
+  return (next: boolean) => act(() => { m.matches = next; listeners.forEach((f) => f()); });
+}
+
 beforeEach(() => {
   fcProps.length = 0;
   localStorage.clear();
 });
 afterEach(() => {
   cleanup();
+  document.body.replaceChildren();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('CalendarPage', () => {
@@ -48,9 +64,49 @@ describe('CalendarPage', () => {
     expect(toFcEvent({ ...ev, editable: true, partial: true }, '#1').editable).toBe(false);
   });
 
+  it('puts the calendar list only in the app sidebar slot', async () => {
+    mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [ev] });
+    const { slot, container } = renderPage();
+    await waitFor(() => expect(slot.querySelector('aside[aria-label="Calendars"]')).not.toBeNull());
+    expect(container.querySelector('aside')).toBeNull();
+  });
+
+  it('keeps the same calendar list and its drafts across the phone breakpoint', async () => {
+    const narrow = stubNarrow(false);
+    mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [ev] });
+    const { slot } = renderPage();
+    const aside = await screen.findByRole('complementary', { name: 'Calendars' });
+    const details = slot.querySelector('details')!;
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Mine' }));
+    const rename = screen.getByLabelText('Name');
+    fireEvent.change(rename, { target: { value: 'Draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Subscribe to a calendar' }));
+    const link = screen.getByLabelText('Link');
+    fireEvent.change(link, { target: { value: 'https://example.test/a.ics' } });
+    expect(details.open).toBe(true);
+
+    // Opening the subscribe form moved focus into it, so narrowing keeps the disclosure open.
+    expect(document.activeElement).toBe(link);
+    narrow(true);
+    expect(details.open).toBe(true);
+    fireEvent.keyDown(link, { key: 'Escape' });
+    expect(details.open).toBe(false);
+    expect(document.activeElement).toBe(slot.querySelector('summary'));
+    fireEvent.click(slot.querySelector('summary')!);
+    expect(details.open).toBe(true);
+
+    narrow(false);
+    expect(details.open).toBe(true);
+    expect(screen.getByRole('complementary', { name: 'Calendars' })).toBe(aside);
+    expect(slot.contains(aside)).toBe(true);
+    expect(aside.contains(rename) && aside.contains(link)).toBe(true);
+    expect(rename).toHaveProperty('value', 'Draft');
+    expect(link).toHaveProperty('value', 'https://example.test/a.ics');
+  });
+
   it('loads calendars, offers the four views and fetches only visible calendars', async () => {
     mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [ev] });
-    render(<CalendarPage />);
+    renderPage();
     await screen.findByLabelText('Show Team');
     const props = fcProps.at(-1)!;
     expect(String((props.headerToolbar as { right: string }).right)).toBe('dayGridMonth,timeGridWeek,timeGridDay,listWeek');
@@ -69,7 +125,7 @@ describe('CalendarPage', () => {
 
   it('opens day and week views on the working day in a scrolling grid, month and list at full height', async () => {
     mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [] });
-    render(<CalendarPage />);
+    renderPage();
     await screen.findByLabelText('Show Team');
     expect(fcProps.at(-1)!.scrollTime).toBe('07:00:00');
     const datesSet = fcProps.at(-1)!.datesSet as (arg: { view: { type: string } }) => void;
@@ -81,7 +137,7 @@ describe('CalendarPage', () => {
 
   it('colours each calendar distinctly, with readable event text', async () => {
     mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [ev, { ...ev, uid: 'u2', calendar_id: 'cal_p' }] });
-    render(<CalendarPage />);
+    renderPage();
     await screen.findByLabelText('Show Team');
     const success = vi.fn();
     const fetchEvents = fcProps.at(-1)!.events as (info: { start: Date; end: Date }, ok: (e: unknown[]) => void, fail: (e: Error) => void) => void;
@@ -96,13 +152,13 @@ describe('CalendarPage', () => {
 
   it('shows an alert when calendars cannot load', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }));
-    render(<CalendarPage />);
+    renderPage();
     expect((await screen.findByRole('alert')).textContent).toMatch(/could not load/i);
   });
 
   it('does not request events when there are no calendars', async () => {
     mockFetch({ '/api/calendars': () => [] });
-    render(<CalendarPage />);
+    renderPage();
     await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
     const success = vi.fn();
     const fetchEvents = fcProps.at(-1)!.events as (info: { start: Date; end: Date }, ok: (e: unknown[]) => void, fail: (e: Error) => void) => void;
@@ -114,7 +170,7 @@ describe('CalendarPage', () => {
 
   it('keeps the same events function across unrelated renders', async () => {
     mockFetch({ '/api/calendars': () => calendars, '/api/events': () => [] });
-    render(<CalendarPage />);
+    renderPage();
     await screen.findByLabelText('Show Team');
     const first = fcProps.at(-1)!.events;
     fireEvent.click(screen.getByLabelText('Show Team'));
@@ -127,7 +183,7 @@ describe('CalendarPage', () => {
   it('offers no subscribed or read-only calendar for a new event', async () => {
     const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'], subscription: { host: 'outlook.office365.com', refreshed_at: null, checked_at: null } };
     mockFetch({ '/api/calendars': () => [sub, ...calendars], '/api/events': () => [] });
-    render(<CalendarPage />);
+    renderPage();
     await screen.findByLabelText('Show Work');
     fireEvent.click(screen.getByRole('button', { name: 'New event' }));
     const select = screen.getByLabelText('Calendar') as HTMLSelectElement;
@@ -138,7 +194,7 @@ describe('CalendarPage', () => {
   it('disables New event when only subscribed calendars exist', async () => {
     const sub = { id: 'cal_s', name: 'Work', color: '', description: '', kind: 'personal', role: 'owner', dav_path: '', components: ['VEVENT'], subscription: { host: 'h', refreshed_at: null, checked_at: null } };
     mockFetch({ '/api/calendars': () => [sub], '/api/events': () => [] });
-    render(<CalendarPage />);
+    renderPage();
     await screen.findByLabelText('Show Work');
     expect((screen.getByRole('button', { name: 'New event' }) as HTMLButtonElement).disabled).toBe(true);
     expect(fcProps.at(-1)!.selectable).toBe(false);

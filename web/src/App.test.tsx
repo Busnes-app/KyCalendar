@@ -27,7 +27,8 @@ describe('App landing', () => {
   it('lands everyday users on the calendar', async () => {
     signedInAs('user');
     render(<App />);
-    expect(await screen.findByTestId('fullcalendar')).toBeTruthy();
+    // The calendar page is a lazy chunk; its first import can pass 1s on a loaded machine.
+    expect(await screen.findByTestId('fullcalendar', {}, { timeout: 5000 })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Calendar/ })).toBeTruthy();
     expect(dashboard.renders).toBe(0); // no Overview flash before the calendar
   });

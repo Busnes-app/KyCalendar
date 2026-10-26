@@ -13,6 +13,16 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   // Everyday users land on the calendar; FullCalendar renders under the production CSP.
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Calendar' })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.fc')).toBeVisible();
+  // One left column: the calendar list lives in the app sidebar; phones open it from the header's
+  // Calendars disclosure, closed at first so the canvas leads.
+  const list = page.getByRole('complementary', { name: 'Calendars' });
+  if (testInfo.project.use.viewport.width <= 720) {
+    await expect(list).toBeHidden();
+    await page.locator('.app-header summary', { hasText: 'Calendars' }).click();
+  }
+  await expect(list.getByLabel('Show Calendar')).toBeVisible();
+  expect(await list.evaluate((el) => !!el.closest('.app-header'))).toBe(true);
+  if (testInfo.project.use.viewport.width <= 720) await page.locator('.app-header summary', { hasText: 'Calendars' }).click();
 
   await page.getByRole('button', { name: 'New event' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
