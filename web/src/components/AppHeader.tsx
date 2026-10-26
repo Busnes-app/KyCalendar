@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck } from 'lucide-react';
-import { ThemeSwitcher } from './ThemeSwitcher';
+import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck, Palette } from 'lucide-react';
 
 interface AppHeaderProps {
   appName: string;
@@ -60,6 +59,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
       ];
   // Two-step verification guards the local password; an SSO account's belongs to its provider.
   if (user?.sso_provider === 'local') navItems.push({ id: 'security', label: 'Two-step verification', icon: ShieldCheck });
+  navItems.push({ id: 'appearance', label: 'Appearance', icon: Palette });
 
   return (
     <>
@@ -88,8 +88,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
           </nav>
         <div className="app-sidebar-slot" ref={slotRef} />
         <div className="app-header-actions">
-          <ThemeSwitcher />
-
           {user && (
             <div className="app-user">
               <div className="app-user-copy">

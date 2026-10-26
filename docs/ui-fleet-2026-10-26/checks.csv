@@ -1,0 +1,7 @@
+product,check,command,result,exit,head,start_utc,end_utc,notes
+kycalendar,make ci (first final run),make ci,fail,2,1e78b53,2026-10-26T11:39:05Z,2026-10-26T11:43:46Z,"smoke version stamp: binary stamped 0.4.3-18-g21c3d79-dirty while commits landed mid-run; want 0.4.3-21-g1e78b53. Process artifact, superseded by the rerun"
+kycalendar,make ci (rerun on committed tree),make ci,pass,0,1e78b53,2026-10-26T12:00:06Z,2026-10-26T12:00:40Z,"tidy-check, gofmt/vet, go test -race (18/20 packages cached from the fresh 11:26 run on identical Go source; no Go change since base), test-fork, npm ci + vitest 159/159, smoke passed"
+kycalendar,make ci go test -race fresh source run,make ci,pass,0,uncommitted,2026-10-26T11:26:44Z,2026-10-26T11:33:38Z,"11:26 run: 20/20 Go packages fresh, 0 cached; its web step overlapped later source edits, so only its Go results are relied on"
+kycalendar,browser server build,go build -o .browser/server ./cmd/server,pass,0,1e78b53,2026-10-26T11:57:34Z,2026-10-26T11:57:34Z,
+kycalendar,npm run test:browser,npm run test:browser,pass,0,1e78b53,2026-10-26T11:57:34Z,2026-10-26T11:59:02Z,"36 passed in 1.5m (Chromium light/dark x 390/1280), incl. appearance.spec.mjs x4; earlier attempt could not bind :5391 (another worker held it)"
+kycalendar,committed web/dist current,git status --short -- web/dist,pass,0,,2026-10-26T11:43:48Z,2026-10-26T11:43:48Z,git status --short -- web/dist empty after builds

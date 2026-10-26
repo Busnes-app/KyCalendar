@@ -1,5 +1,4 @@
 import React from 'react';
-import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { PageHeader } from '../components/ui';
 
 interface SettingsProps {
@@ -13,18 +12,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const version = settings?.version ? String(settings.version) : '';
   return (
     <section className="page">
-      <PageHeader title="Settings" lede="How this browser shows KyCalendar, where the server keeps its data, and which version it runs." />
-
-      <div className="card">
-        <h2 className="section-title">Appearance</h2>
-        <div className="form">
-          <div className="field">
-            <span className="field-label">Colour theme</span>
-            <ThemeSwitcher />
-            <span className="field-hint">Saved in this browser only. System follows your device's light or dark setting.</span>
-          </div>
-        </div>
-      </div>
+      <PageHeader title="Settings" lede="Where the server keeps its data, and which version it runs. Themes are under Appearance." />
 
       <div className="card">
         <h2 className="section-title">Database</h2>
