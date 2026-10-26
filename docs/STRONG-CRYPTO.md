@@ -70,6 +70,9 @@ with synthetic inputs and starts no containers.
 
 Use `KY_ENV=production`, an HTTPS `KY_APP_URL`, the original durable session secret,
 secure cookies and exact trusted proxy address. SQLite is the local-data profile.
+For a native process, explicitly export its existing `KY_PORT` and
+`KY_DB_DRIVER=sqlite`: the restore drill checks both environment variables.
+Compose already supplies them. Retain the configured port and original data paths.
 For remote PostgreSQL, use `sslmode=verify-full` and the correct CA/hostname;
 backups retain the documented separate PostgreSQL operator procedure. The local
 database fixture does not verify a deployed PostgreSQL TLS configuration.
