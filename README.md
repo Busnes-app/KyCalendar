@@ -1,5 +1,7 @@
 # kycalendar
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15923/badge)](https://www.bestpractices.dev/projects/15923)
+
 **Start here:** [Standalone installation](INSTALL.md). Create personal calendars, events and local groups, share group calendars, and connect CalDAV clients using per-device app passwords. Local administrator and everyday accounts work without KyIdentity. KyPost invitation delivery and other suite integrations require separate setup.
 
 KyCalendar is the Busnes.app suite calendar: personal calendars served to the web app and to
