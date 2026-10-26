@@ -8,9 +8,11 @@ interface AppHeaderProps {
   onTabChange: (tab: string) => void;
   user: any;
   onLogout: () => void;
+  /** Where a page renders its own sidebar content, below the navigation. */
+  sidebarSlot?: (el: HTMLDivElement | null) => void;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout }) => {
+export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot }) => {
   // Administrators run the instance and never see calendars; everyday users see nothing else.
   const navItems = user?.role === 'admin'
     ? [
@@ -55,6 +57,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
               );
             })}
           </nav>
+        <div className="app-sidebar-slot" ref={sidebarSlot} />
         <div className="app-header-actions">
           <ThemeSwitcher />
 
@@ -64,14 +67,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
                 <div className="app-user-name">{user.display_name || user.username}</div>
                 <div className="app-user-role">{user.role === 'admin' ? 'Administrator' : 'Everyday account'}</div>
               </div>
-              <button
-                type="button"
-                className="btn-secondary app-logout"
-                onClick={onLogout}
-                title="Sign out"
-                aria-label="Sign out"
-              >
+              <button type="button" className="btn-ghost app-logout" onClick={onLogout}>
                 <LogOut size={16} aria-hidden="true" />
+                <span className="app-logout-label">Sign out</span>
               </button>
             </div>
           )}

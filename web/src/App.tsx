@@ -28,6 +28,7 @@ export const App: React.FC = () => {
   // null until the user picks a tab: the landing tab follows the role, so there is no flash.
   const [chosenTab, setActiveTab] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
+  const [sidebarSlot, setSidebarSlot] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -114,10 +115,11 @@ export const App: React.FC = () => {
         onTabChange={(tab) => setActiveTab(tab)}
         user={user}
         onLogout={handleLogout}
+        sidebarSlot={setSidebarSlot}
       />
 
       <main className="app-main">
-        {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} /></Suspense>}
+        {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
         {activeTab === 'security' && user.sso_provider === 'local' && (
           <TwoFactor enabled={user.totp_enabled === true} onChange={(on) => setUser({ ...user, totp_enabled: on })} />

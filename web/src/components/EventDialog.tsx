@@ -172,9 +172,9 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
               <input id="kc-end" type={form.allDay ? 'date' : 'datetime-local'} value={form.end} required onChange={(e) => set({ end: e.target.value })} />
             </div>
           </div>
-          <label htmlFor="kc-location">Location</label>
+          <label htmlFor="kc-location">Location <span className="field-optional">(optional)</span></label>
           <input id="kc-location" value={form.location} maxLength={1000} onChange={(e) => set({ location: e.target.value })} />
-          <label htmlFor="kc-description">Description</label>
+          <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
           {!event && (
             <>
