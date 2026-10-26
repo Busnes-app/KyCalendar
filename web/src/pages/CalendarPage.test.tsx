@@ -85,10 +85,9 @@ describe('CalendarPage', () => {
     fireEvent.change(link, { target: { value: 'https://example.test/a.ics' } });
     expect(details.open).toBe(true);
 
-    // Narrow: the list folds into a disclosure, closed unless the list was in use.
+    // Opening the subscribe form moved focus into it, so narrowing keeps the disclosure open.
+    expect(document.activeElement).toBe(link);
     narrow(true);
-    expect(details.open).toBe(false);
-    fireEvent.focus(link);
     expect(details.open).toBe(true);
     fireEvent.keyDown(link, { key: 'Escape' });
     expect(details.open).toBe(false);

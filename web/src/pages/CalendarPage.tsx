@@ -112,6 +112,9 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
+  // Event fetch state, so an empty view never claims "no events" while loading or after a failure.
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventsFailed, setEventsFailed] = useState(false);
   const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState } | null>(null);
   const [pending, setPending] = useState<MoveArg | null>(null);
   const dragError = useRef<string | null>(null);
@@ -161,10 +164,12 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
       listEvents(info.start, info.end, browserZone(), visible)
         .then((evs) => {
           setError(null);
+          setEventsFailed(false);
           success(evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id))));
         })
         .catch((e: Error) => {
           setError(e.message || 'Could not load events.');
+          setEventsFailed(true);
           failure(e);
         });
     },
@@ -279,7 +284,7 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
     <section className="page kc-layout">
       <div className="kc-calendar">
         {error && <p role="alert">{error}</p>}
-        <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}</p></div>
+        <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p></div>
         <button type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
           <Plus size={16} aria-hidden="true" />
           New event
@@ -294,6 +299,11 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           scrollTime={SCROLL_TIME}
           views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20 } }}
           datesSet={(arg) => setTimeGrid(arg.view.type.startsWith('timeGrid'))}
+          loading={setLoadingEvents}
+          // Grid events are focusable anchors without href; as buttons their whole text (time and
+          // title, also where the phone month hides the title visually) is their accessible name.
+          eventDidMount={(arg) => { if (arg.el.tagName === 'A') arg.el.setAttribute('role', 'button'); }}
+          noEventsContent={loadingEvents ? 'Loading events…' : eventsFailed ? 'Events could not be loaded.' : 'No events to display'}
           nowIndicator
           editable
           eventInteractive
