@@ -27,20 +27,21 @@ func TestStampKeepsRolesForKyIdentityOnly(t *testing.T) {
 type recordingTransport struct {
 	mu    sync.Mutex
 	paths []string
+	base  http.RoundTripper
 }
 
 func (rt *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	rt.mu.Lock()
 	rt.paths = append(rt.paths, r.URL.Path)
 	rt.mu.Unlock()
-	return http.DefaultTransport.RoundTrip(r)
+	return rt.base.RoundTrip(r)
 }
 
 // A provider built with a client sends discovery and the token exchange through it, never
 // through http.DefaultClient.
 func TestProviderClientCarriesDiscoveryAndExchange(t *testing.T) {
 	var idp *httptest.Server
-	idp = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idp = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/token" {
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer"})
 			return
@@ -51,7 +52,7 @@ func TestProviderClientCarriesDiscoveryAndExchange(t *testing.T) {
 		})
 	}))
 	t.Cleanup(idp.Close)
-	rt := &recordingTransport{}
+	rt := &recordingTransport{base: idp.Client().Transport}
 	p := NewProvider(KindOIDC, "Acme", idp.URL, "kc", "", &http.Client{Transport: rt})
 	if _, err := p.Exchange(context.Background(), "code", "verifier", "https://app.example/cb", "nonce"); err == nil {
 		t.Fatal("an exchange with no id_token succeeded")

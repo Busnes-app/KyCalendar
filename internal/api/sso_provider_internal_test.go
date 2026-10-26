@@ -17,13 +17,14 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/coreos/go-oidc/v3/oidc"
 )
 
 // fakeIdP serves discovery and a token endpoint that returns no id_token.
 func fakeIdP(t *testing.T) *httptest.Server {
 	t.Helper()
 	var idp *httptest.Server
-	idp = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idp = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/token" && r.FormValue("code") == "leak" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -45,9 +46,13 @@ func fakeIdP(t *testing.T) *httptest.Server {
 
 // startLogin runs the login route and returns a callback request carrying its state and cookies.
 func startLogin(t *testing.T, s *Server) *http.Request {
+	return startLoginWithContext(t, s, context.Background())
+}
+
+func startLoginWithContext(t *testing.T, s *Server, ctx context.Context) *http.Request {
 	t.Helper()
 	login := httptest.NewRecorder()
-	s.ServeHTTP(login, httptest.NewRequest("GET", "/api/sso/kysignon/login", nil))
+	s.ServeHTTP(login, httptest.NewRequestWithContext(ctx, "GET", "/api/sso/kysignon/login", nil))
 	if login.Code != http.StatusFound {
 		t.Fatalf("login: %d %s", login.Code, login.Body.String())
 	}
@@ -55,7 +60,7 @@ func startLogin(t *testing.T, s *Server) *http.Request {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/api/sso/kysignon/callback?code=c&state="+loc.Query().Get("state"), nil)
+	req := httptest.NewRequestWithContext(ctx, "GET", "/api/sso/kysignon/callback?code=c&state="+loc.Query().Get("state"), nil)
 	for _, c := range login.Result().Cookies() {
 		req.AddCookie(c)
 	}
@@ -67,10 +72,10 @@ func startLogin(t *testing.T, s *Server) *http.Request {
 func TestCallbackAfterProviderSwapFailsOnce(t *testing.T) {
 	s, _ := davInternalServer(t)
 	idp := fakeIdP(t)
-	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", nil))
+	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", idp.Client()))
 	req := startLogin(t, s)
 
-	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", nil))
+	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", idp.Client()))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "start again") {
@@ -107,13 +112,14 @@ func TestNewServerLeavesSignInClosed(t *testing.T) {
 type recordingTransport struct {
 	mu    sync.Mutex
 	paths []string
+	base  http.RoundTripper
 }
 
 func (rt *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	rt.mu.Lock()
 	rt.paths = append(rt.paths, r.URL.Path)
 	rt.mu.Unlock()
-	return http.DefaultTransport.RoundTrip(r)
+	return rt.base.RoundTrip(r)
 }
 
 func signinSettings(source, issuer string) sso.Settings {
@@ -129,7 +135,7 @@ func signinSettings(source, issuer string) sso.Settings {
 func TestSavedIssuerGoesThroughTheGuardedClient(t *testing.T) {
 	s, _ := davInternalServer(t)
 	idp := fakeIdP(t)
-	rt := &recordingTransport{}
+	rt := &recordingTransport{base: idp.Client().Transport}
 	s.signinHTTP = &http.Client{Transport: rt}
 
 	s.signin.Store(s.buildProvider(signinSettings(sso.SourceSaved, idp.URL)))
@@ -145,7 +151,7 @@ func TestSavedIssuerGoesThroughTheGuardedClient(t *testing.T) {
 	rt.paths = nil
 	s.signin.Store(s.buildProvider(signinSettings(sso.SourceEnvironment, idp.URL)))
 	w = httptest.NewRecorder()
-	s.ServeHTTP(w, startLogin(t, s))
+	s.ServeHTTP(w, startLoginWithContext(t, s, oidc.ClientContext(context.Background(), idp.Client())))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("environment issuer callback: %d %s, want 401", w.Code, w.Body.String())
 	}
@@ -194,7 +200,7 @@ func TestSavedLoopbackIssuerIsRefused(t *testing.T) {
 func TestCallbackExchangeErrorIsGeneric(t *testing.T) {
 	s, _ := davInternalServer(t)
 	idp := fakeIdP(t)
-	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", nil))
+	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", idp.Client()))
 	for _, code := range []string{"leak", "c"} {
 		req := startLogin(t, s)
 		q := req.URL.Query()

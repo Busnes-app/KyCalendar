@@ -8,9 +8,18 @@ Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 sign
 
 ## Local Contracts
 - `Provider` is the one OIDC flow for both kinds; saving sign-in settings replaces it whole and every build has a new random `ID`. `Exchange` labels claims: a `kyidentity` login becomes provider `kysignon` with its `roles`; an `oidc` login becomes `oidc` with its roles dropped, so no outside IdP can make an administrator. A provider built with a client sends discovery, the token exchange and key fetches through it (go-oidc and oauth2 both read the context's `oauth2.HTTPClient`); a nil client is the default transport. The issuer is used as given, untrimmed; `Provider.Binding` (`<kind> <issuer>`, equal to `Settings.Identity`) is what login requires on the account row. `KySignOnClient` only verifies and applies the directory webhook.
-- `KySignOnClient.HandleSyncWebhook` verifies HMAC-SHA256 signatures before modifying local user state.
+- `KySignOnClient.HandleSyncWebhook` refuses HMAC keys below
+  `crypto.MinHMACKeyBytes` and verifies signatures before modifying local user state.
 - PKCE with `S256` is enforced on all OAuth/OIDC authorization requests.
 - ID tokens require provider signature, issuer, audience, expiry, and one-time nonce verification before claims are trusted.
+- The private JWKS transport bounds input, refuses redirects and checks every
+  RSA modulus at 2048 bits. Match go-oidc envelope parsing and go-jose's
+  case-sensitive JWK members; retain the upstream cache and signature verifier.
+  Initialize the provider/verifier together under the discovery mutex.
+- `GODEBUG=fips140=on` requires direct HTTPS issuer/authorization/token/JWKS
+  endpoints without URL credentials and refuses discovery/token redirects.
+  Preserve caller trust roots and address guards. `docs/STRONG-CRYPTO.md` owns
+  process/edge configuration and data-preserving migration.
 - OAuth discovery, authorization URLs, PKCE parameters, code exchange, and token verification are delegated to `golang.org/x/oauth2` and `coreos/go-oidc`; application code only maps verified claims.
 - SAML assertion parsing is not implemented locally; metadata XML uses `encoding/xml` and no ACS route is exposed until a maintained SAML service-provider library is configured.
 - Directory webhook timestamps are accepted only within five minutes, and an empty user `id` is refused. A verified webhook is applied only while `signin_bound` names kind `kyidentity`; under any other binding, or none, it is logged and ignored (200). The `id` resolves to a `kysignon` user, else the `scim` user with that subject (KyIdentity's SCIM `externalId` is the same ID). The webhook only takes access away: it never sets an existing row active (a payload `active` status is ignored), so neither a secret left over from an earlier KyIdentity issuer nor a write racing `BindSignIn` can restore a row a login could then adopt. Its writes are column-scoped (`RevokeSSOUser`, `UpdateKySignOnProfile`, `DeleteUser`), never the whole-row `UpdateUser`. An unknown `id` on created/updated creates a fresh `kysignon` row (`active` unless the payload says otherwise) stamped with the stored binding (`Bound`); existing rows' `sso_issuer` is never written. A found row whose `sso_issuer` is not the stored binding (another issuer, or unstamped) is not the directory's: every event for its `id` is ignored and logged with the local user ID (no write, no delete, no second row). A non-active status deactivates; a deactivation, or any update for a stored admin, revokes the user's grants in the same transaction, before the profile write, so a failed profile write still signs an admin out; the stored role is untouched and the next login re-evaluates it. The profile write is display name and email of `kysignon` rows only; the username is never rewritten. Only a missing user is ignored on deactivate and delete; other store errors are returned. SCIM owns a SCIM-provisioned user: the webhook only deactivates it or ends an admin's sessions, never rewrites its profile or deletes it; `user.deleted` deactivates it and SCIM's own DELETE removes it. The webhook never sets the role: it has no `role` field, and new users are `user`. ID tokens are read for `roles` (`access.RoleValues`), never `role`.
@@ -22,6 +31,9 @@ Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 sign
 
 ## Verification
 - `go test -v ./internal/sso/...`
+- Repeat with `GODEBUG=fips140=on`; real signed-token casing/key-size regressions
+  retain cache/nonce behavior, and strong-leaf controls prove trusted-root TLS
+  refusal comes from the client. API fixtures use verified local TLS in both modes.
 
 ## Child DOX Index
 None.

@@ -31,6 +31,11 @@ Run the checks that apply to the files you changed, and the repository's
 full required checks before hand-off. Record the exact commands and their
 results in the pull request.
 
+Run the complete race suites with `GODEBUG=fips140=on` as well as ordinary mode,
+against SQLite and PostgreSQL. CI runs both within the existing Go jobs.
+`python3 docs/check-strong-crypto-compose.py` checks the optional overlay with
+synthetic inputs; `docs/STRONG-CRYPTO.md` owns key/profile migration and limits.
+
 ## AI attribution
 
 AI-assisted contributions are welcome; undisclosed ones are not. Disclose

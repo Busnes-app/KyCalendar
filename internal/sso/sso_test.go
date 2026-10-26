@@ -19,7 +19,7 @@ import (
 
 func TestOAuthAuthorizationURLUsesDiscoveryAndPKCE(t *testing.T) {
 	var issuer string
-	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/.well-known/openid-configuration" {
 			http.NotFound(w, r)
 			return
@@ -32,7 +32,7 @@ func TestOAuthAuthorizationURLUsesDiscoveryAndPKCE(t *testing.T) {
 	defer idp.Close()
 	issuer = idp.URL
 
-	p := sso.NewProvider(sso.KindKyIdentity, "KyIdentity", issuer, "client", "", nil)
+	p := sso.NewProvider(sso.KindKyIdentity, "KyIdentity", issuer, "client", "", idp.Client())
 	authURL, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce")
 	if err != nil {
 		t.Fatal(err)

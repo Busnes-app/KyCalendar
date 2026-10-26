@@ -1,0 +1,5 @@
+# Append to the existing COMPOSE_FILE chain; see docs/STRONG-CRYPTO.md.
+services:
+  app:
+    environment:
+      - GODEBUG=fips140=on
