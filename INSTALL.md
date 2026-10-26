@@ -2,6 +2,9 @@
 
 ## Before you start
 
+Read [Key strength and TLS](docs/STRONG-CRYPTO.md) for the supported configuration,
+signing-key requirements and preservation of existing credentials and recovery material.
+
 These steps are for a **new, independent installation** from this repository. Use the
 README’s upgrade/restore procedure for an existing instance. Keep its volumes, keys,
 configuration and Compose overlays; do not replace its environment files with examples.

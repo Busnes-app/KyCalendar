@@ -280,6 +280,10 @@ CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - On a push to `main` that passes every job, `publish` pushes the exact image the Docker check ran against (handed over as an artifact, no rebuild) to `ghcr.io/busnes-app/kycalendar:<commit sha>`, attests it and verifies the attestation pinned to this workflow on `main`; `promote` then moves `:latest` to that digest, only at the tip of `main`, and asserts the tag resolves to the attested digest. `docker-compose.yml` names the published image and never builds; source installs add `docker-compose.build.yml` to the `COMPOSE_FILE` chain in `.env` (overlay tags `kycalendar:local`) so every compose command, recovery docs included, uses the local build.
 
 Run the same checks locally with `make ci` (`tidy-check lint test-race test-fork test-web smoke`); add `make test-postgres` when a Postgres instance is available.
+Repeat the full race suite with `GODEBUG=fips140=on` against both backends.
+CI runs these within its existing required Go jobs. The synthetic checker
+`python3 docs/check-strong-crypto-compose.py` proves the optional overlay changes
+only the process setting across base/build/LAN-DNS/static-IP combinations.
 
 #### Plan 1 CalDAV contracts
 
@@ -427,3 +431,13 @@ The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spe
 `CONTRIBUTING.md` holds the contribution process, test policy and coding standard; change it with the CI step it names. `docs/ASSURANCE-CASE.md` and `docs/VERIFYING-RELEASES.md` make claims about the code and the release workflow; a change that moves a trust boundary, a security requirement, the image build or its attestation identity updates them in the same change.
 
 Keep `README.md` as the concise product overview and navigation. Detailed procedures live in `docs/RUNNING.md`, `docs/ACCOUNTS-AND-GROUPS.md`, `docs/CLIENTS.md`, `docs/RECOVERY.md`. Update the owning topic guide and preserve README links when a procedure changes. Commands in these guides run from the repository root.
+
+## Key strength and TLS configuration
+
+`docs/STRONG-CRYPTO.md` owns the supported process/edge configuration, per-boundary
+key rules and migration. Preserve the database, encryption/recovery keys, sealed
+credentials and all existing Compose overlays. TOTP delegates to the pinned
+merged primitive; keep historical records readable while rejecting short-key
+authentication. SSO owns verifier-matched JWKS parsing and configured direct HTTPS
+flows; retain signature/claim/replay and destination checks. Update the nearest
+SSO/config/auth/crypto contracts when these boundaries change.

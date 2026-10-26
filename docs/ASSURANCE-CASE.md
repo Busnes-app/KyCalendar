@@ -11,6 +11,14 @@ the repository root. Vulnerabilities are reported under the
 
 ## What KyCalendar must protect
 
+The supported [key-strength/TLS configuration](STRONG-CRYPTO.md) records each
+enabled boundary and its migration requirements. Configured HMAC inputs and
+TOTP authentication have key floors; OIDC's bounded JWKS guard checks the same
+case-sensitive members as the maintained verifier. The optional process policy
+filters verified TLS chains, including trusted roots, while preserving address
+guards and credentials. The external HTTPS proxy and live endpoint/custody
+readiness require separate operational verification.
+
 KyCalendar serves personal and group calendars to its web app, to CalDAV clients and to AI agents.
 Its security requirements:
 

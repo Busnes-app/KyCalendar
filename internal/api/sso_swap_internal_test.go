@@ -30,7 +30,7 @@ type signingIdP struct {
 	roles      []string
 }
 
-func newSigningIdP(t *testing.T) *signingIdP { return signingIdPFixture(t, false) }
+func newSigningIdP(t *testing.T) *signingIdP { return signingIdPFixture(t, true) }
 
 func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 	t.Helper()
@@ -124,7 +124,7 @@ func TestCallbackAcrossASaveDuringExchangeIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	createUsers(t, s, &store.User{ID: "usr_carol", Username: "carol", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-carol", SSOIssuer: "kyidentity " + idp.URL})
-	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", nil))
+	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client()))
 
 	// The account write runs under signinMu.
 	locked := false
@@ -152,7 +152,7 @@ func TestCallbackAcrossASaveDuringExchangeIsRefused(t *testing.T) {
 		if err := s.store.Users().UpdateUser(ctx, carol); err != nil {
 			t.Fatal(err)
 		}
-		s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", nil))
+		s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client()))
 		req := idp.login(t, s, sub)
 		next := "https://new" + sub + ".example"
 		idp.onToken = func() {
@@ -161,7 +161,7 @@ func TestCallbackAcrossASaveDuringExchangeIsRefused(t *testing.T) {
 			if _, _, err := s.commitSignIn(ctx, store.System, kyidentityAt(next), nil); err != nil {
 				t.Error(err)
 			}
-			s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", next, "kc", "", nil))
+			s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", next, "kc", "", idp.Client()))
 		}
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, req)
