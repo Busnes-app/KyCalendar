@@ -14,7 +14,7 @@ test('navigation hover: idle rows stay neutral, the selected row keeps its rail'
   await page.getByLabel('Username', { exact: true }).fill('walter');
   await page.locator('input[type=password]').fill('WalterUpdated456!');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.getByLabel('Color theme').selectOption(`busnes-${colorScheme}`);
+  // Nothing saved: Busnes Light or Dark follows the project's colour scheme.
   // The calendar page mounts the header's Calendars disclosure, which narrows the phone row: hover
   // only once that layout is final.
   await expect(page.locator('.fc')).toBeVisible();

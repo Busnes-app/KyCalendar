@@ -6,6 +6,7 @@ import { ChangePassword } from './pages/ChangePassword';
 import { Backup } from './pages/Backup';
 import { SCIMAdmin } from './pages/SCIMAdmin';
 import { Settings } from './pages/Settings';
+import { Appearance } from './pages/Appearance';
 import AppPasswords from './pages/AppPasswords';
 import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
@@ -16,6 +17,8 @@ import './styles/theme.css';
 import './styles/ui.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
+import './ky-ui/appearance.css';
+import './ky-ui/appearance-themes.css';
 import { secureFetch } from './api';
 
 // FullCalendar is the bulk of the bundle; load it only for the calendar (same-origin chunk).
@@ -121,6 +124,7 @@ export const App: React.FC = () => {
       <main className="app-main">
         {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
+        {activeTab === 'appearance' && <Appearance />}
         {activeTab === 'security' && user.sso_provider === 'local' && (
           <TwoFactor enabled={user.totp_enabled === true} onChange={(on) => setUser({ ...user, totp_enabled: on })} />
         )}
