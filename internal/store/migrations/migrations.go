@@ -563,7 +563,19 @@ CREATE TABLE sso_logouts (
     PRIMARY KEY (issuer, subject)
 );`,
 	},
+	{
+		// An SSO session from before migration 18 has no sid, so no back-channel logout can
+		// reach it, nor an SSO account's pending MFA challenge. Sign them out once; local
+		// password sessions and sessions issued with a sid stay.
+		Version:  20,
+		Name:     "drop_unreachable_sso_sessions",
+		SQLite:   dropUnreachableSSOSessions,
+		Postgres: dropUnreachableSSOSessions,
+	},
 }
+
+const dropUnreachableSSOSessions = `DELETE FROM sessions WHERE sso_sid = '' AND user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');
+DELETE FROM mfa_challenges WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');`
 
 const calendarComponents = `ALTER TABLE calendars ADD COLUMN components TEXT NOT NULL DEFAULT 'VEVENT';
 ALTER TABLE calendar_objects ADD COLUMN component TEXT NOT NULL DEFAULT 'VEVENT';`
