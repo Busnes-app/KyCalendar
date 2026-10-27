@@ -2,11 +2,13 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
 // A fenced sid's session is refused and leaves no row; EndSSOSession ends only its own sid, and
@@ -69,5 +71,36 @@ func TestSSOSessionFence(t *testing.T) {
 	}
 	if err := create("after", "sid-f", now.Add(2*time.Second)); err != nil {
 		t.Fatalf("login after the cutoff: %v", err)
+	}
+}
+
+// Migration 19 adds the subject fence to a database already at 18.
+func TestMigration19AddsTheSubjectFence(t *testing.T) {
+	ctx := context.Background()
+	cfg := testdb.Config(t)
+	st, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	driver := map[string]string{"sqlite": "sqlite", "postgres": "pgx"}[cfg.Driver]
+	raw, err := sql.Open(driver, cfg.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"DROP TABLE sso_subject_logouts", "DELETE FROM schema_migrations WHERE version = 19"} {
+		if _, err := raw.ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = raw.Close()
+	st, err = store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Now().UTC()
+	if err := st.Sessions().EndSSOSubject(ctx, "idp", "s", now, now.Add(time.Minute)); err != nil {
+		t.Fatalf("subject fence after migration 19: %v", err)
 	}
 }
