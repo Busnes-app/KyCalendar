@@ -543,6 +543,26 @@ CREATE TABLE sso_logouts (
     expires_at TIMESTAMPTZ NOT NULL
 );`,
 	},
+	{
+		// sso_subject_logouts fences a subject's logins issued before cutoff that a subject-wide
+		// back-channel logout ended, so a callback still in flight cannot revive them.
+		Version: 19,
+		Name:    "backchannel_subject_logout",
+		SQLite: `CREATE TABLE sso_subject_logouts (
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    cutoff DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    PRIMARY KEY (issuer, subject)
+);`,
+		Postgres: `CREATE TABLE sso_subject_logouts (
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    cutoff TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (issuer, subject)
+);`,
+	},
 }
 
 const calendarComponents = `ALTER TABLE calendars ADD COLUMN components TEXT NOT NULL DEFAULT 'VEVENT';

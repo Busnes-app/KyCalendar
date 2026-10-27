@@ -11,13 +11,11 @@ import (
 const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logout"
 
 // LogoutClaims names the login an OpenID Connect Back-Channel Logout token ended. SessionID is
-// empty when the provider ended every login of Subject issued by IssuedAt. Provider is the
-// account provider, as on IdentityClaims.
+// empty when the provider ended every login of Subject issued by IssuedAt.
 type LogoutClaims struct {
 	Subject   string
 	SessionID string
 	IssuedAt  time.Time
-	Provider  string
 }
 
 // verifyLogout checks a logout token per OpenID Connect Back-Channel Logout 1.0 §2.6: the ID

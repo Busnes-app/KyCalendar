@@ -53,12 +53,7 @@ func (p *Provider) VerifyLogout(ctx context.Context, raw string) (*LogoutClaims,
 	if err != nil {
 		return nil, err
 	}
-	claims, err := flow.verifyLogout(ctx, raw)
-	if err != nil {
-		return nil, err
-	}
-	claims.Provider = p.accountProvider()
-	return claims, nil
+	return flow.verifyLogout(ctx, raw)
 }
 
 // stamp sets the account provider. Only KyIdentity's roles mean anything here: an oidc
@@ -87,5 +82,5 @@ func (p *Provider) currentFlow() (*oauthFlow, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newOAuthFlow(p.flow.issuer, p.flow.clientID, secret, p.flow.client), nil
+	return p.flow.withSecret(secret), nil
 }

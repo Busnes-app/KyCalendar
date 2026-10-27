@@ -631,7 +631,7 @@ func (s *SQLStore) withLockedUser(ctx context.Context, where string, args []any,
 }
 
 // CreateSession also records the sign-in as the user's last_login_at. A session of an SSO login
-// whose sid is fenced is deleted again: ErrSSOSessionEnded.
+// whose sid, or whose subject's earlier logins, are fenced is deleted again: ErrSSOSessionEnded.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expected Credentials) error {
 	err := s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at, sso_sid) VALUES (?, ?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt, sess.SSOSID); err != nil {
@@ -640,13 +640,18 @@ func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expecte
 		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), sess.CreatedAt, sess.UserID)
 		return err
 	})
-	if err != nil || sess.SSOSID == "" {
+	if err != nil {
 		return err
 	}
-	// The fence is read only after the session committed: EndSSOSession commits the fence before
-	// it deletes, so under read committed one of the two always sees the other.
+	// The fences are read only after the session committed: EndSSOSession and EndSSOSubject
+	// commit their fence before they delete, so under read committed one of the two always sees
+	// the other.
+	now := time.Now().UTC()
 	var fenced int
-	if err := s.store.db.QueryRowContext(ctx, s.store.rebind(`SELECT COUNT(1) FROM sso_logouts WHERE sid = ? AND expires_at > ?`), sess.SSOSID, time.Now().UTC()).Scan(&fenced); err != nil || fenced > 0 {
+	if err := s.store.db.QueryRowContext(ctx, s.store.rebind(`SELECT
+ (SELECT COUNT(1) FROM sso_logouts WHERE sid = ? AND sid <> '' AND expires_at > ?) +
+ (SELECT COUNT(1) FROM sso_subject_logouts f JOIN users u ON u.sso_issuer = f.issuer AND u.sso_subject = f.subject
+  WHERE u.id = ? AND u.sso_provider <> 'local' AND f.cutoff > ? AND f.expires_at > ?)`), sess.SSOSID, now, sess.UserID, sess.CreatedAt.UTC(), now).Scan(&fenced); err != nil || fenced > 0 {
 		_ = s.DeleteSession(ctx, sess.TokenHash)
 		if err != nil {
 			return err
@@ -669,8 +674,18 @@ func (s *sessionStore) EndSSOSession(ctx context.Context, sid string, fenceUntil
 	return err
 }
 
-func (s *sessionStore) DeleteUserSessionsBefore(ctx context.Context, userID string, t time.Time) error {
-	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM sessions WHERE user_id = ? AND created_at < ?`), userID, t.UTC())
+// EndSSOSubject commits the subject's cutoff fence first, then deletes its sessions dated before
+// it (see CreateSession). The fence never moves back; expired ones are pruned here.
+func (s *sessionStore) EndSSOSubject(ctx context.Context, issuer, subject string, cutoff, fenceUntil time.Time) error {
+	if _, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM sso_subject_logouts WHERE expires_at <= ?`), time.Now().UTC()); err != nil {
+		return err
+	}
+	// Keyed by subject, not user, so it also fences a first login that is still provisioning.
+	if _, err := s.store.db.ExecContext(ctx, s.store.rebind(`INSERT INTO sso_subject_logouts (issuer, subject, cutoff, expires_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (issuer, subject) DO UPDATE SET cutoff = excluded.cutoff, expires_at = excluded.expires_at WHERE sso_subject_logouts.cutoff < excluded.cutoff`), issuer, subject, cutoff.UTC(), fenceUntil.UTC()); err != nil {
+		return err
+	}
+	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM sessions WHERE created_at < ? AND user_id IN (SELECT id FROM users WHERE sso_provider <> 'local' AND sso_issuer = ? AND sso_subject = ?)`), cutoff.UTC(), issuer, subject)
 	return err
 }
 

@@ -19,13 +19,24 @@ type oauthFlow struct {
 	clientID     string
 	clientSecret string
 	client       *http.Client // nil: the default transport
-	mu           sync.Mutex
-	provider     *oidc.Provider
-	verifier     *oidc.IDTokenVerifier
+	*discovery
+}
+
+// discovery is the issuer's discovered provider and ID-token verifier (with its key cache). A
+// flow re-made for a re-read secret shares it, so no request repeats discovery or the key fetch.
+type discovery struct {
+	mu       sync.Mutex
+	provider *oidc.Provider
+	verifier *oidc.IDTokenVerifier
 }
 
 func newOAuthFlow(issuer, clientID, clientSecret string, client *http.Client) *oauthFlow {
-	return &oauthFlow{issuer: issuer, clientID: clientID, clientSecret: clientSecret, client: client}
+	return &oauthFlow{issuer: issuer, clientID: clientID, clientSecret: clientSecret, client: client, discovery: &discovery{}}
+}
+
+// withSecret is f with another client secret and the same discovery.
+func (f *oauthFlow) withSecret(secret string) *oauthFlow {
+	return &oauthFlow{issuer: f.issuer, clientID: f.clientID, clientSecret: secret, client: f.client, discovery: f.discovery}
 }
 
 // withClient routes discovery, the token exchange and key fetches through f.client: go-oidc and
@@ -173,5 +184,5 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 		username = raw.Sub
 	}
 	// The global `role` claim is deliberately not read: it is never a KyCalendar admin.
-	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles), SessionID: raw.SID}, nil
+	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles), SessionID: raw.SID, IssuedAt: idToken.IssuedAt}, nil
 }
