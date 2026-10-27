@@ -25,9 +25,10 @@ import (
 // callback's first provider check, before it writes any account.
 type signingIdP struct {
 	*httptest.Server
-	sub, nonce string
-	onToken    func()
-	roles      []string
+	key             *rsa.PrivateKey
+	sub, nonce, sid string
+	onToken         func()
+	roles           []string
 }
 
 func newSigningIdP(t *testing.T) *signingIdP { return signingIdPFixture(t, true) }
@@ -39,7 +40,7 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 		t.Fatal(err)
 	}
 	b64 := base64.RawURLEncoding.EncodeToString
-	idp := &signingIdP{roles: []string{access.AdminAppRole}}
+	idp := &signingIdP{key: key, roles: []string{access.AdminAppRole}}
 	newServer := httptest.NewServer
 	if tls {
 		newServer = httptest.NewTLSServer
@@ -56,18 +57,11 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 			if idp.onToken != nil {
 				idp.onToken()
 			}
-			head, _ := json.Marshal(map[string]string{"alg": "RS256", "kid": "k1", "typ": "JWT"})
-			body, _ := json.Marshal(map[string]any{
-				"iss": idp.URL, "aud": "kc", "sub": idp.sub, "nonce": idp.nonce, "preferred_username": "user-" + idp.sub,
+			idToken := idp.sign(t, "JWT", map[string]any{
+				"iss": idp.URL, "aud": "kc", "sub": idp.sub, "sid": idp.sid, "nonce": idp.nonce, "preferred_username": "user-" + idp.sub,
 				"roles": idp.roles, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(),
 			})
-			signing := b64(head) + "." + b64(body)
-			sum := sha256.Sum256([]byte(signing))
-			sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
-			if err != nil {
-				t.Error(err)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer", "id_token": signing + "." + b64(sig)})
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer", "id_token": idToken})
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"issuer": idp.URL, "authorization_endpoint": idp.URL + "/authorize",
@@ -77,6 +71,23 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 	}))
 	t.Cleanup(idp.Close)
 	return idp
+}
+
+// sign signs claims with the IdP's key; an empty typ omits the header.
+func (idp *signingIdP) sign(t *testing.T, typ string, claims map[string]any) string {
+	header := map[string]string{"alg": "RS256", "kid": "k1"}
+	if typ != "" {
+		header["typ"] = typ
+	}
+	head, _ := json.Marshal(header)
+	body, _ := json.Marshal(claims)
+	signing := base64.RawURLEncoding.EncodeToString(head) + "." + base64.RawURLEncoding.EncodeToString(body)
+	sum := sha256.Sum256([]byte(signing))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, idp.key, crypto.SHA256, sum[:])
+	if err != nil {
+		t.Error(err)
+	}
+	return signing + "." + base64.RawURLEncoding.EncodeToString(sig)
 }
 
 // login starts a login for sub and returns its callback request.

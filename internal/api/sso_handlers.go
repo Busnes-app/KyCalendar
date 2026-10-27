@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
@@ -220,7 +221,11 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, _, err = s.sessions.IssueSession(r.Context(), w, r, user)
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID))
+	if errors.Is(err, store.ErrSSOSessionEnded) {
+		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
+		return
+	}
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Session creation failed")
 		return
@@ -259,6 +264,66 @@ func (s *Server) handleKySignOnSyncWebhook(w http.ResponseWriter, r *http.Reques
 	}
 
 	s.writeJSON(w, http.StatusOK, map[string]bool{"synced": true})
+}
+
+// ssoLogoutFence outlives the 5-minute login cookies, so a logout that lands while the browser
+// is still finishing that login ends it too.
+const ssoLogoutFence = 10 * time.Minute
+
+// ssoSID is sessions.sso_sid for a login of p: a sid is unique only within its issuer, so one
+// provider's logout never ends, or fences, another's login. "" stays "" (no sid, no fence).
+func ssoSID(p *sso.Provider, sid string) string {
+	if sid == "" {
+		return ""
+	}
+	return p.Binding + " " + sid
+}
+
+// handleBackchannelLogout is the OpenID Connect Back-Channel Logout receiver: the live provider
+// POSTs a signed logout_token when a login ends there, and every local session of it ends here.
+func (s *Server) handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	p := s.signin.Load()
+	if p == nil {
+		s.writeError(w, http.StatusNotFound, "Single sign-on is not configured")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	claims, err := p.VerifyLogout(r.Context(), r.PostFormValue("logout_token"))
+	if errors.Is(err, sso.ErrInvalidLogoutToken) {
+		s.writeError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if err != nil {
+		log.Printf("sso: %s back-channel logout: provider unusable: %v", p.Kind, err)
+		s.writeError(w, http.StatusBadGateway, "The sign-in provider could not be reached")
+		return
+	}
+	if claims.SessionID != "" {
+		err = s.store.Sessions().EndSSOSession(r.Context(), ssoSID(p, claims.SessionID), time.Now().Add(ssoLogoutFence))
+	} else {
+		var user *store.User
+		user, err = s.store.Users().GetUserBySSO(r.Context(), claims.Provider, claims.Subject)
+		if errors.Is(err, store.ErrNotFound) && claims.Provider == "kysignon" {
+			user, err = s.store.Users().GetUserBySSO(r.Context(), "scim", claims.Subject)
+		}
+		// A row of another binding is no account of this provider's, as at login.
+		if errors.Is(err, store.ErrNotFound) || (err == nil && user.SSOIssuer != p.Binding) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if err == nil {
+			// iat has whole-second precision: round up so a login from that second ends too.
+			err = s.store.Sessions().DeleteUserSessionsBefore(r.Context(), user.ID, claims.IssuedAt.Add(time.Second))
+		}
+	}
+	if err != nil {
+		log.Printf("sso: back-channel logout failed: %v", err)
+		s.writeError(w, http.StatusInternalServerError, "logout failed")
+		return
+	}
+	_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "auth.sso_backchannel_logout", Resource: "session", IPAddress: s.requestIP(r)})
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleSAMLMetadata(w http.ResponseWriter, r *http.Request) {

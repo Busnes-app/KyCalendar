@@ -45,6 +45,13 @@ func NewSessionManager(st store.Store, cfg config.SecurityConfig) *SessionManage
 // IssueSession creates an active session for credentials verified just now and writes the
 // HttpOnly cookie + CSRF token.
 func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User) (*store.Session, string, error) {
+	return sm.IssueSSOSession(ctx, w, r, user, "")
+}
+
+// IssueSSOSession is IssueSession for an SSO login the provider names by sid, so a back-channel
+// logout for that sid ends it. It fails with store.ErrSSOSessionEnded when the provider already
+// ended that login.
+func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, sid string) (*store.Session, string, error) {
 	authenticatedAt := time.Now().UTC()
 	rawToken := crypto.RandomHex(32)
 	tokenHash := crypto.SHA256Hex([]byte(rawToken))
@@ -61,6 +68,7 @@ func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWrite
 		IPAddress: ClientIP(r, sm.config.TrustedProxies),
 		CreatedAt: authenticatedAt,
 		ExpiresAt: time.Now().UTC().Add(ttl),
+		SSOSID:    sid,
 	}
 
 	if err := sm.store.Sessions().CreateSession(ctx, sess, user.Credentials()); err != nil {

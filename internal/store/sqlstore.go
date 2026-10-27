@@ -630,15 +630,48 @@ func (s *SQLStore) withLockedUser(ctx context.Context, where string, args []any,
 	return tx.Commit()
 }
 
-// CreateSession also records the sign-in as the user's last_login_at.
+// CreateSession also records the sign-in as the user's last_login_at. A session of an SSO login
+// whose sid is fenced is deleted again: ErrSSOSessionEnded.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expected Credentials) error {
-	return s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt); err != nil {
+	err := s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at, sso_sid) VALUES (?, ?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt, sess.SSOSID); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), sess.CreatedAt, sess.UserID)
 		return err
 	})
+	if err != nil || sess.SSOSID == "" {
+		return err
+	}
+	// The fence is read only after the session committed: EndSSOSession commits the fence before
+	// it deletes, so under read committed one of the two always sees the other.
+	var fenced int
+	if err := s.store.db.QueryRowContext(ctx, s.store.rebind(`SELECT COUNT(1) FROM sso_logouts WHERE sid = ? AND expires_at > ?`), sess.SSOSID, time.Now().UTC()).Scan(&fenced); err != nil || fenced > 0 {
+		_ = s.DeleteSession(ctx, sess.TokenHash)
+		if err != nil {
+			return err
+		}
+		return ErrSSOSessionEnded
+	}
+	return nil
+}
+
+// EndSSOSession commits the fence first, then deletes the sid's sessions (see CreateSession).
+// Expired fences are pruned here.
+func (s *sessionStore) EndSSOSession(ctx context.Context, sid string, fenceUntil time.Time) error {
+	if _, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM sso_logouts WHERE expires_at <= ?`), time.Now().UTC()); err != nil {
+		return err
+	}
+	if _, err := s.store.db.ExecContext(ctx, s.store.rebind(`INSERT INTO sso_logouts (sid, expires_at) VALUES (?, ?) ON CONFLICT (sid) DO UPDATE SET expires_at = excluded.expires_at`), sid, fenceUntil.UTC()); err != nil {
+		return err
+	}
+	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM sessions WHERE sso_sid = ?`), sid)
+	return err
+}
+
+func (s *sessionStore) DeleteUserSessionsBefore(ctx context.Context, userID string, t time.Time) error {
+	_, err := s.store.db.ExecContext(ctx, s.store.rebind(`DELETE FROM sessions WHERE user_id = ? AND created_at < ?`), userID, t.UTC())
+	return err
 }
 
 func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error {

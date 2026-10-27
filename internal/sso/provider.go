@@ -46,15 +46,37 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier, redirectURI, no
 	return p.stamp(claims), nil
 }
 
+// VerifyLogout verifies a back-channel logout token this provider signed for this client.
+// Every token failure is ErrInvalidLogoutToken; any other error means the provider is unusable.
+func (p *Provider) VerifyLogout(ctx context.Context, raw string) (*LogoutClaims, error) {
+	flow, err := p.currentFlow()
+	if err != nil {
+		return nil, err
+	}
+	claims, err := flow.verifyLogout(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	claims.Provider = p.accountProvider()
+	return claims, nil
+}
+
 // stamp sets the account provider. Only KyIdentity's roles mean anything here: an oidc
 // provider's roles are dropped, so no outside IdP can make an administrator.
 func (p *Provider) stamp(c *IdentityClaims) *IdentityClaims {
-	if p.Kind == KindKyIdentity {
-		c.Provider = "kysignon"
-		return c
+	c.Provider = p.accountProvider()
+	if p.Kind != KindKyIdentity {
+		c.Roles = nil
 	}
-	c.Provider, c.Roles = "oidc", nil
 	return c
+}
+
+// accountProvider is users.sso_provider for this provider's accounts.
+func (p *Provider) accountProvider() string {
+	if p.Kind == KindKyIdentity {
+		return "kysignon"
+	}
+	return "oidc"
 }
 
 func (p *Provider) currentFlow() (*oauthFlow, error) {

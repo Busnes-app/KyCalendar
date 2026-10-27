@@ -11,7 +11,8 @@ Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 sign
 - `KySignOnClient.HandleSyncWebhook` refuses HMAC keys below
   `crypto.MinHMACKeyBytes` and verifies signatures before modifying local user state.
 - PKCE with `S256` is enforced on all OAuth/OIDC authorization requests.
-- ID tokens require provider signature, issuer, audience, expiry, and one-time nonce verification before claims are trusted.
+- ID tokens require provider signature, issuer, audience, expiry, and one-time nonce verification before claims are trusted. `IdentityClaims.SessionID` carries the ID token's `sid`.
+- `Provider.VerifyLogout` (`backchannel.go`) checks a back-channel logout token with the same verifier, then requires `iat`, `sub` or `sid`, the `http://schemas.openid.net/event/backchannel-logout` event as a JSON object, and no `nonce` (a `null` one counts as present); a `typ` header, when present, must be `logout+jwt` or `application/logout+jwt`. Every token failure is `ErrInvalidLogoutToken`; any other error means the provider itself is unusable. `LogoutClaims.Provider` is the account provider, as `stamp` sets it.
 - The private JWKS transport bounds input, refuses redirects and checks every
   RSA modulus at 2048 bits. Match go-oidc envelope parsing and go-jose's
   case-sensitive JWK members; retain the upstream cache and signature verifier.
@@ -30,7 +31,7 @@ Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 sign
 - Verified claims retain the ID token issuer. An installer-built `Provider` rereads its protected client credential for authorization and exchange while keeping the provider ID stable; unavailable credentials close sign-in. Installer fields report source `installer`; ordinary saved/environment provider behavior remains unchanged.
 
 ## Verification
-- `go test -v ./internal/sso/...`
+- `go test -v ./internal/sso/...` (`TestVerifyLogoutToken` holds one rejection case per logout-token rule)
 - Repeat with `GODEBUG=fips140=on`; real signed-token casing/key-size regressions
   retain cache/nonce behavior, and strong-leaf controls prove trusted-root TLS
   refusal comes from the client. API fixtures use verified local TLS in both modes.

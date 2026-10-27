@@ -156,6 +156,7 @@ func strongOIDCContext(ctx context.Context) context.Context {
 func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 	var raw struct {
 		Sub               string `json:"sub"`
+		SID               string `json:"sid"`
 		Email             string `json:"email"`
 		Name              string `json:"name"`
 		PreferredUsername string `json:"preferred_username"`
@@ -172,5 +173,5 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 		username = raw.Sub
 	}
 	// The global `role` claim is deliberately not read: it is never a KyCalendar admin.
-	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles)}, nil
+	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles), SessionID: raw.SID}, nil
 }
