@@ -526,8 +526,9 @@ CREATE INDEX idx_scheduling_outbox_due ON scheduling_outbox(status, next_attempt
 CREATE INDEX idx_scheduling_outbox_due ON scheduling_outbox(status, next_attempt_at);`,
 	},
 	{
-		// sso_sid ties a session to the identity provider's login; sso_logouts fences a sid
-		// back-channel logout ended, so a callback still in flight cannot revive it.
+		// sso_sid ties a session to the identity provider's login. sso_logouts fences a sid, and
+		// sso_subject_logouts a subject's logins issued before cutoff, that back-channel logout
+		// ended, so a callback still in flight cannot revive them.
 		Version: 18,
 		Name:    "backchannel_logout",
 		SQLite: `ALTER TABLE sessions ADD COLUMN sso_sid TEXT NOT NULL DEFAULT '';
@@ -535,12 +536,26 @@ CREATE INDEX idx_sessions_sso_sid ON sessions(sso_sid) WHERE sso_sid <> '';
 CREATE TABLE sso_logouts (
     sid TEXT PRIMARY KEY,
     expires_at DATETIME NOT NULL
+);
+CREATE TABLE sso_subject_logouts (
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    cutoff DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    PRIMARY KEY (issuer, subject)
 );`,
 		Postgres: `ALTER TABLE sessions ADD COLUMN sso_sid TEXT NOT NULL DEFAULT '';
 CREATE INDEX idx_sessions_sso_sid ON sessions(sso_sid) WHERE sso_sid <> '';
 CREATE TABLE sso_logouts (
     sid TEXT PRIMARY KEY,
     expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE sso_subject_logouts (
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    cutoff TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (issuer, subject)
 );`,
 	},
 }

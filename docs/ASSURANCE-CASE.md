@@ -67,7 +67,8 @@ key (they are the server), and a malicious administrator.
    refuses any request carrying an `Origin` header (`internal/api/mcp.go`).
 5. **Identity provider → KyCalendar.** The back-channel logout route is anonymous; only a token the
    live provider signed for this client, with the logout event and no nonce, ends sessions
-   (`internal/sso/backchannel.go`). A forged or replayed ID token is refused.
+   (`internal/sso/backchannel.go`). A forged or replayed ID token is refused. The route reuses the
+   provider's discovery and key cache, so a request does not trigger discovery.
 6. **KyCalendar → its database.** Credentials are hashed and secrets sealed before they are stored.
 
 ## Secure design principles applied
@@ -95,7 +96,7 @@ key (they are the server), and a malicious administrator.
 | Credential guessing | 20 login attempts per address per minute and 10 failures per account per 15 minutes; MFA 20 per address per minute and 5 per account per 5 minutes; TOTP enrolment, confirmation and disabling 5 per account per 5 minutes each, wrong passwords on disabling counted per account and address; the limiter map is capped | `internal/api/auth_handlers.go`, `internal/api/server.go` |
 | Session theft or fixation | A fresh 32-byte random token per sign-in, only its SHA-256 stored; `HttpOnly`, `SameSite=Lax` cookie; 7-day default lifetime; cross-site POSTs to `/api/auth/` refused by `Sec-Fetch-Site` | `internal/auth/session.go`, `crossSite` in `internal/api/server.go` |
 | CSRF | Central middleware: every unsafe request with a session cookie must send `X-CSRF-Token` equal to HMAC-SHA256 of that session token under a key derived from the session secret (constant-time compare); the `ky_csrf` cookie only carries the value to the page and is never trusted. Browser requests (`Origin` or `Sec-Fetch-Site` present) to login and MFA must send the HMAC of a random pre-session cookie that `GET /api/auth/me` and sign-out hand out. Only the signed SCIM-sync endpoint is exempt | `ValidateCSRF`, `ValidatePreSessionCSRF` in `internal/auth/session.go`, `csrfValid` in `internal/api/server.go` |
-| Session outliving its sign-in-provider login | The provider's back-channel logout token is verified (signature, issuer, audience, expiry, `iat`, logout event, no nonce) before every session of its `sid` ends; the `sid` is fenced so an in-flight callback cannot revive it | `internal/sso/backchannel.go`, `internal/store/sqlstore.go`, `TestVerifyLogoutToken`, `TestBackchannelLogoutEndsTheSSOLogin` |
+| Session outliving its sign-in-provider login | The provider's back-channel logout token is verified (signature, issuer, audience, expiry, `iat`, logout event, no nonce) before every session of its `sid`, or of its subject issued before it, ends; the `sid` or the subject's cutoff is fenced so an in-flight callback cannot revive it; SSO sessions are dated by the ID token's `iat` | `internal/sso/backchannel.go`, `internal/store/sqlstore.go`, `TestVerifyLogoutToken`, `TestBackchannelLogoutEndsTheSSOLogin` |
 | App-password theft | 256 random bits, stored as SHA-256, compared in constant time; shown once | `internal/apppass/apppass.go` |
 | Broken access control | Per-route authorization matrix; CalDAV path ownership check; per-calendar grants checked in the store | `internal/api/authz_matrix_test.go`, `internal/api/dav.go`, `internal/access` |
 | Server-side request forgery | One guarded client, address policy applied at dial time, HTTPS only, bodies capped, redirects refused (feeds: a bounded number) | `internal/sso/discovery.go`, `internal/feed/feed.go` |

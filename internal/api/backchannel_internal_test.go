@@ -3,9 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -30,9 +33,15 @@ func (idp *signingIdP) logoutToken(t *testing.T, sub, sid string) string {
 
 // ssoLogin runs the login and callback for sub/sid and returns the callback response.
 func ssoLogin(t *testing.T, s *Server, idp *signingIdP, sub, sid string) *httptest.ResponseRecorder {
+	return ssoLoginAt(t, s, idp, sub, sid, time.Now())
+}
+
+// ssoLoginAt is ssoLogin with an ID token the provider issued at iat.
+func ssoLoginAt(t *testing.T, s *Server, idp *signingIdP, sub, sid string, iat time.Time) *httptest.ResponseRecorder {
 	t.Helper()
 	req := idp.login(t, s, sub)
-	idp.sid = sid
+	idp.sid, idp.iat = sid, iat
+	defer func() { idp.iat = time.Time{} }()
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	return w
@@ -136,6 +145,21 @@ func TestBackchannelLogoutEndsTheSSOLogin(t *testing.T) {
 		t.Fatalf("logout for an unknown subject: %d", w.Code)
 	}
 
+	// A subject-wide logout fences a callback already holding an ID token issued before it, even
+	// for a subject not yet provisioned here; a later login still works.
+	carolLogout := idp.sign(t, "logout+jwt", map[string]any{"iss": idp.URL, "aud": "kc", "sub": "carol", "jti": "carol",
+		"iat": time.Now().Add(-30 * time.Second).Unix(), "exp": time.Now().Add(2 * time.Minute).Unix(),
+		"events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}}})
+	if w := postLogout(s, carolLogout); w.Code != http.StatusOK {
+		t.Fatalf("subject-wide logout of an unprovisioned subject: %d", w.Code)
+	}
+	if w := ssoLoginAt(t, s, idp, "carol", "sid-c1", time.Now().Add(-time.Minute)); w.Code != http.StatusUnauthorized || ssoSession(w) != nil {
+		t.Fatalf("pending callback survived a subject-wide logout: %d", w.Code)
+	}
+	if c := ssoSession(ssoLoginAt(t, s, idp, "carol", "sid-c2", time.Now().Add(5*time.Second))); c == nil || !signedIn(s, c) {
+		t.Fatal("login issued after the subject-wide logout was refused")
+	}
+
 	// A login of an earlier provider, same sid and sub, is not this provider's to end.
 	old := sso.NewProvider(sso.KindKyIdentity, "old", "https://old.example", "kc", "", nil)
 	erin := &store.User{ID: "usr_erin", Username: "erin", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "erin", SSOIssuer: old.Binding}
@@ -163,12 +187,40 @@ func TestBackchannelLogoutEndsTheSSOLogin(t *testing.T) {
 			audits++
 		}
 	}
-	if audits != 6 {
-		t.Fatalf("back-channel logout audits: %d, want 6", audits)
+	if audits != 9 {
+		t.Fatalf("back-channel logout audits: %d, want 9", audits)
 	}
 
 	s.signin.Store(nil)
 	if w := postLogout(s, idp.logoutToken(t, "bob", "sid-b1")); w.Code != http.StatusNotFound || !signedIn(s, bob) {
 		t.Fatalf("logout with no provider: %d", w.Code)
+	}
+}
+
+// The anonymous logout route reuses the provider's discovery and key cache: many POSTs, also
+// with a managed credential file re-read per request, cost at most one discovery fetch.
+func TestBackchannelLogoutDiscoversOnce(t *testing.T) {
+	s, _ := davInternalServer(t)
+	idp := newSigningIdP(t)
+	if _, _, err := s.bindAccounts(context.Background(), kyidentityAt(idp.URL)); err != nil {
+		t.Fatal(err)
+	}
+	secretFile := filepath.Join(t.TempDir(), "client-secret")
+	if err := os.WriteFile(secretFile, []byte("disposable-private-credential"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"", secretFile} {
+		p := sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client())
+		p.CredentialFile = file
+		s.signin.Store(p)
+		idp.discoveries.Store(0)
+		for i := range 20 {
+			if w := postLogout(s, idp.logoutToken(t, "nobody", fmt.Sprintf("sid-%d", i))); w.Code != http.StatusOK {
+				t.Fatalf("credential file %q: logout %d: %d %s", file, i, w.Code, w.Body.String())
+			}
+		}
+		if n := idp.discoveries.Load(); n != 1 {
+			t.Fatalf("credential file %q: %d discovery fetches for 20 logouts, want 1", file, n)
+		}
 	}
 }

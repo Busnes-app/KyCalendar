@@ -63,10 +63,10 @@ func TestVerifyLogoutToken(t *testing.T) {
 		return map[string]string{"alg": "RS256", "kid": "fixture", "typ": "logout+jwt"}
 	}
 
-	for kind, account := range map[string]string{sso.KindKyIdentity: "kysignon", sso.KindOIDC: "oidc"} {
+	for _, kind := range []string{sso.KindKyIdentity, sso.KindOIDC} {
 		p := sso.NewProvider(kind, "fixture", issuer, "client", "", idp.Client())
 		got, err := p.VerifyLogout(ctx, signJWT(t, key, typed(), valid()))
-		if err != nil || got.SessionID != "sid-1" || got.Subject != "subject" || got.IssuedAt.IsZero() || got.Provider != account {
+		if err != nil || got.SessionID != "sid-1" || got.Subject != "subject" || got.IssuedAt.IsZero() {
 			t.Fatalf("%s valid token: claims=%+v error=%v", kind, got, err)
 		}
 	}

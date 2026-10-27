@@ -221,7 +221,7 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID))
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), claims.IssuedAt)
 	if errors.Is(err, store.ErrSSOSessionEnded) {
 		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
 		return
@@ -299,23 +299,13 @@ func (s *Server) handleBackchannelLogout(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadGateway, "The sign-in provider could not be reached")
 		return
 	}
+	fenceUntil := time.Now().Add(ssoLogoutFence)
 	if claims.SessionID != "" {
-		err = s.store.Sessions().EndSSOSession(r.Context(), ssoSID(p, claims.SessionID), time.Now().Add(ssoLogoutFence))
+		err = s.store.Sessions().EndSSOSession(r.Context(), ssoSID(p, claims.SessionID), fenceUntil)
 	} else {
-		var user *store.User
-		user, err = s.store.Users().GetUserBySSO(r.Context(), claims.Provider, claims.Subject)
-		if errors.Is(err, store.ErrNotFound) && claims.Provider == "kysignon" {
-			user, err = s.store.Users().GetUserBySSO(r.Context(), "scim", claims.Subject)
-		}
-		// A row of another binding is no account of this provider's, as at login.
-		if errors.Is(err, store.ErrNotFound) || (err == nil && user.SSOIssuer != p.Binding) {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		if err == nil {
-			// iat has whole-second precision: round up so a login from that second ends too.
-			err = s.store.Sessions().DeleteUserSessionsBefore(r.Context(), user.ID, claims.IssuedAt.Add(time.Second))
-		}
+		// By this provider's binding, as at login, so another provider's accounts are untouched.
+		// iat has whole-second precision: round up so a login from that second ends too.
+		err = s.store.Sessions().EndSSOSubject(r.Context(), p.Binding, claims.Subject, claims.IssuedAt.Add(time.Second), fenceUntil)
 	}
 	if err != nil {
 		log.Printf("sso: back-channel logout failed: %v", err)

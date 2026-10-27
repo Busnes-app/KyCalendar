@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,14 +22,16 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// signingIdP issues a signed id_token for sub. onToken runs inside the token request: after the
-// callback's first provider check, before it writes any account.
+// signingIdP issues a signed id_token for sub, issued at iat (zero: now). onToken runs inside the
+// token request: after the callback's first provider check, before it writes any account.
 type signingIdP struct {
 	*httptest.Server
 	key             *rsa.PrivateKey
 	sub, nonce, sid string
+	iat             time.Time
 	onToken         func()
 	roles           []string
+	discoveries     atomic.Int32
 }
 
 func newSigningIdP(t *testing.T) *signingIdP { return signingIdPFixture(t, true) }
@@ -57,12 +60,17 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 			if idp.onToken != nil {
 				idp.onToken()
 			}
+			iat := idp.iat
+			if iat.IsZero() {
+				iat = time.Now()
+			}
 			idToken := idp.sign(t, "JWT", map[string]any{
 				"iss": idp.URL, "aud": "kc", "sub": idp.sub, "sid": idp.sid, "nonce": idp.nonce, "preferred_username": "user-" + idp.sub,
-				"roles": idp.roles, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(),
+				"roles": idp.roles, "iat": iat.Unix(), "exp": time.Now().Add(time.Minute).Unix(),
 			})
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer", "id_token": idToken})
 		default:
+			idp.discoveries.Add(1)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"issuer": idp.URL, "authorization_endpoint": idp.URL + "/authorize",
 				"token_endpoint": idp.URL + "/token", "jwks_uri": idp.URL + "/keys",
