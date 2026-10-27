@@ -301,6 +301,7 @@ func (s *Server) routes() {
 	s.handle("/api/sso/kysignon/login", s.requireSSO(s.handleKySignOnLogin))
 	s.handle("/api/sso/kysignon/callback", s.requireSSO(s.handleKySignOnCallback))
 	s.handle("/api/sso/kysignon/sync", s.requireSSO(s.handleKySignOnSyncWebhook))
+	s.handle("POST /api/sso/kysignon/backchannel-logout", s.requireSSO(s.handleBackchannelLogout))
 	s.handle("/saml/metadata", http.HandlerFunc(s.handleSAMLMetadata))
 
 	// KyBackup and restore drills. Capsules carry site data and keys: admins only.
