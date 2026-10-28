@@ -2,7 +2,6 @@
 
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15923/badge)](https://www.bestpractices.dev/projects/15923)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Busnes-app/KyCalendar/badge)](https://scorecard.dev/viewer/?uri=github.com/Busnes-app/KyCalendar)
-[![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyCalendar/branch/main)](https://octocounts.com/github/Busnes-app/KyCalendar/tree/main)
 
 **Start here:** [Standalone installation](INSTALL.md). Create personal calendars, events and local groups, share group calendars, and connect CalDAV clients using per-device app passwords. Local administrator and everyday accounts work without KyIdentity. KyPost invitation delivery and other suite integrations require separate setup.
 
@@ -20,6 +19,12 @@ Installer integration: [product-owned setup contract](docs/INSTALLER_SETUP.md).
 - Local accounts/groups or optional KyIdentity sign-in and provisioning.
 - CalDAV clients with per-device app passwords and scoped agent access.
 - Sealed backups and a documented recovery procedure.
+
+## License
+
+kycalendar is released under the [MIT License](LICENSE.txt).
+
+[![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyCalendar/branch/main)](https://octocounts.com/github/Busnes-app/KyCalendar/tree/main)
 
 ## Documentation
 
