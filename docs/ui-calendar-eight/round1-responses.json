@@ -1,0 +1,21 @@
+{
+  "round": 1,
+  "implementation_stage": "01-after pending",
+  "batch": [
+    "Right-align phone sign-out within existing one-region shell.",
+    "Use readable internally scrolling week columns with keyboard access and a visible instruction.",
+    "Show short phone month titles with ellipsis; time and full title remain in the accessible name.",
+    "Prevent time-grid titles clipping mid-line.",
+    "Replace nested group-calendar empty state with plain guidance and correct no-group versus all-granted selector state.",
+    "Restore the corresponding reloaded event anchor after dialog close; fall back to New event after deletion.",
+    "Keep CAPTCHA callback stable while typing and refresh a single-use challenge after failure."
+  ],
+  "retained_or_qualified": [
+    "Orange calendar visibility and selected-day indicators are semantic states; preserve them.",
+    "Today disabled state is intentional when today is visible.",
+    "New event End-field focus in baseline was caused by capture fill; preserve app Title autofocus.",
+    "Full behavior/accessibility and external integrations remain separate from screenshot scores."
+  ],
+  "tests": "64 affected unit tests passed; CalendarPage unit confirmation rerun after focus target correction; real phone browser calendar/month confirmation passed; production login/CSP/theme check passed unchanged. Full required suites hostedCI only.",
+  "reviews_unchanged": true
+}

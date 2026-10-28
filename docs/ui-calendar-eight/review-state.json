@@ -4,7 +4,7 @@
   "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
   "branch": "ui/calendar-eight",
   "base_source": "0f01550",
-  "phase": "R1 verified and audited; first runtime batch built; after capture pending",
+  "phase": "bounded runtime batch verified locally; matched after capture next",
   "round": 1,
   "task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-capture-r1-20261027",
   "scores": {
@@ -86,7 +86,7 @@
     },
     "gemini": "unused; known exhausted quota"
   },
-  "next": "Inspect built targeted render/behavior once, resolve material failures in bounded batch, commit source and capture matched after; hosted CI required for full suites.",
+  "next": "Capture01-after from committed runtime with retained fixture; at most one confirmation if material problems. Parent will inspect originals and delegate Opus/SolR2 after capture verification.",
   "resource_limit": "targeted checks, capped sequential builds, one browser; full suites hostedCI",
   "myslop": "KnownHTTP401; no successful shared-board post; do not retry unchanged credential",
   "baseline": {
@@ -111,6 +111,7 @@
     "login_unit": "5passed,2files,singleworker",
     "build": "TypeScript/production build passed; exact current assets committed with source",
     "browser_syntax": "passed",
-    "full_suites": "hostedCIonly,not locally run"
+    "full_suites": "hostedCIonly,not locally run",
+    "targeted_browser": "light390calendar+month2passed after focus correction;login/CSP/theme1passed on unchanged Login source"
   }
 }

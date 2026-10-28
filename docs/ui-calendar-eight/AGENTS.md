@@ -9,6 +9,7 @@ Own fresh synthetic captures, independent ratings, provenance and visual progres
 - Parent owns review inputs, audits, comparison galleries and spreadsheet exports.
 - Capture worker owns its drivers, original screenshots, manifests and capture checks.
 - Each reviewer owns only its assigned raw Markdown/JSON pair; preserve published bytes.
+- Raw Markdown EOF whitespace stays intact; root `.gitattributes` excludes only its `blank-at-eof` warning.
 
 ## Local Contracts
 

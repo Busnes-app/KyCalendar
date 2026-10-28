@@ -1,1 +1,4 @@
 internal/calendar/testdata/recurrence/*.ics -text
+# Preserve independently published reviewer bytes, including their final blank line.
+docs/ui-calendar-eight/opus-round*.md whitespace=-blank-at-eof
+docs/ui-calendar-eight/sol-round*.md whitespace=-blank-at-eof

@@ -34,5 +34,24 @@
   ],
   "behavior_regressions": "Added real-server cases; execution pending after build.",
   "full_suites": "Hosted CI only; not run locally under owner hard-lock resource limit.",
-  "raw_score_preservation": "Original Opus/Sol R1 JSON/Markdown hashes rechecked after disagreement audit."
+  "raw_score_preservation": "Original Opus/Sol R1 JSON/Markdown hashes rechecked after disagreement audit.",
+  "initial_targeted_browser": {
+    "project": "light-390",
+    "results": "Month labels and login challenge checks passed; calendar flow failed focus return",
+    "root_cause": "FullCalendar list event mount gives a row wrapper; the focusable anchor is its descendant. Corrected data-event-id placement to the actual anchor."
+  },
+  "invalid_confirmation": {
+    "counted_as_pass": false,
+    "reason": "Frontend npm command ran from repo root without package.json; later steps tested stale dist. Failure logs retained privately; corrected command uses set-e and npm--prefixweb."
+  },
+  "raw_md_whitespace": {
+    "warning": "git diff--check reported final blank line in immutable raw reviewer Markdown",
+    "disposition": "Preserved raw bytes and configured only blank-at-eof exceptions for opus/sol raw Markdown in root.gitattributes; git show--check then passed."
+  },
+  "corrected_targeted_browser": {
+    "project": "light-390",
+    "calendar_and_month": "2passed; event close/deletion focus, keyboard week scroll, month title visibility, offline-state and CSP cases",
+    "unchanged_login_shell_result": "Initial production CSP/worker/theme/login-challenge regression passed. Login source unchanged by focus correction; result reused.",
+    "source_build": "Corrected npm--prefixweb frontend build and capped Go build passed."
+  }
 }

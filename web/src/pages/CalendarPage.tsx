@@ -331,7 +331,8 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           // title, including visually clipped content) is their accessible name.
           eventDidMount={(arg) => {
             if (arg.el.tagName === 'A') arg.el.setAttribute('role', 'button');
-            arg.el.dataset.eventId = arg.event.id;
+            const target = arg.el.querySelector<HTMLElement>('a, [tabindex]') ?? arg.el;
+            target.dataset.eventId = arg.event.id;
           }}
           viewDidMount={(arg) => {
             if (arg.view.type === 'timeGridWeek') {
