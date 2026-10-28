@@ -20,6 +20,12 @@ Installer integration: [product-owned setup contract](docs/INSTALLER_SETUP.md).
 - CalDAV clients with per-device app passwords and scoped agent access.
 - Sealed backups and a documented recovery procedure.
 
+## License
+
+kycalendar is released under the [MIT License](LICENSE.txt).
+
+[![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyCalendar/branch/main)](https://octocounts.com/github/Busnes-app/KyCalendar/tree/main)
+
 ## Documentation
 
 - [Key strength and TLS](docs/STRONG-CRYPTO.md) — supported process/edge configuration and migration while retaining existing data and recovery keys.
