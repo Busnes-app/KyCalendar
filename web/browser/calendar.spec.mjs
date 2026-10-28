@@ -80,24 +80,29 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   const slot7 = page.locator('.fc-timegrid-slot[data-time="07:00:00"]').first();
   await expect.poll(() => page.evaluate(() => document.querySelector('.fc-timegrid .fc-scroller-liquid-absolute')?.scrollTop ?? 0)).toBeGreaterThan(200);
   await expect(slot7).toBeInViewport();
+  // A transformed cell can have an in-viewport rectangle while its text is clipped by an
+  // ancestor. Verify that the visible gutter actually paints above the event grid.
+  await expect.poll(() => slot7.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const painted = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return !!painted && el.contains(painted);
+  })).toBe(true);
   if (testInfo.project.use.viewport.width <= 720) {
     const week = page.getByRole('region', { name: 'Week calendar' });
     await expect(page.getByText('Scroll across the week to see other days.')).toBeVisible();
     expect(await week.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-    // Entering Week positions today's entire column inside the internal scroller, even at
-    // the end of the week where scrollLeft must clamp. The page never scrolls sideways.
-    await expect.poll(() => week.evaluate((el) => {
-      const day = el.querySelector('.fc-col-header-cell.fc-day-today');
-      if (!day) return false;
-      const d = day.getBoundingClientRect(), w = el.getBoundingClientRect();
-      return d.left >= w.left - 1 && d.right <= w.right + 1;
-    })).toBe(true);
     await week.focus();
     const start = await week.evaluate((el) => el.scrollLeft);
     await page.keyboard.press(start > 0 ? 'ArrowLeft' : 'ArrowRight');
     await expect.poll(() => week.evaluate((el) => el.scrollLeft)).not.toBe(start);
     await expect(slot7).toBeInViewport();
   }
+
+  // FullCalendar reuses time-grid DOM across Day/Week; neither view inherits the other's name.
+  await page.locator('.fc-timeGridDay-button').click();
+  await expect(page.locator('.fc-timeGridDay-view')).not.toHaveAttribute('aria-label', 'Week calendar');
+  await page.locator('.fc-timeGridWeek-button').click();
+  await expect(page.getByRole('region', { name: 'Week calendar' })).toHaveAttribute('tabindex', '0');
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 

@@ -19,6 +19,14 @@ test('navigation hover: idle rows stay neutral, the selected row keeps its rail'
   // only once that layout is final.
   await expect(page.locator('.fc')).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Primary' });
+  for (const button of await nav.getByRole('button').all()) {
+    await button.focus();
+    await expect.poll(() => button.evaluate((el) => {
+      const item = el.getBoundingClientRect(), strip = el.closest('nav').getBoundingClientRect();
+      return item.left >= strip.left - 1 && item.right <= strip.right + 1;
+    })).toBe(true);
+    if (viewport.width <= 720) await expect(nav).toHaveCSS('mask-image', 'none');
+  }
 
   // Colours after the hover transition has finished, normalised through a 1px canvas (the hover
   // mixes colours, which compute to color(srgb …)), with the text's contrast on its background.

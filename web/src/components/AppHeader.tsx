@@ -77,6 +77,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
+                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}
                   className={active ? 'ky-nav-item active' : 'ky-nav-item'}
                   aria-current={active ? 'page' : undefined}
                 >

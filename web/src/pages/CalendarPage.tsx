@@ -129,26 +129,23 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const isNarrow = useNarrow();
   const [picker, setPicker] = useState(false);
   const summary = useRef<HTMLElement>(null);
-  // Move only the internal Week scroller; keep today (or the selected date) in view on phones.
-  const positionWeek = useCallback(() => {
-    if (!narrow()) return;
-    const week = calendarElement.current?.querySelector<HTMLElement>('.fc-timeGridWeek-view');
-    const date = ref.current?.getApi().getDate();
-    if (!week || !date) return;
-    const day = week.querySelector<HTMLElement>('.fc-col-header-cell.fc-day-today')
-      ?? week.querySelector<HTMLElement>(`.fc-col-header-cell[data-date="${localDate(date)}"]`);
-    const axisWidth = week.querySelector('.fc-timegrid-slot-label')?.getBoundingClientRect().width ?? 0;
-    if (day) week.scrollLeft += day.getBoundingClientRect().left - week.getBoundingClientRect().left - axisWidth;
-    week.style.setProperty('--kc-week-scroll', `${week.scrollLeft}px`);
-  }, []);
   const datesSet = useCallback((arg: DatesSetArg) => {
     setTimeGrid(arg.view.type.startsWith('timeGrid'));
-    requestAnimationFrame(positionWeek);
-  }, [positionWeek]);
-  useEffect(() => {
-    const frame = requestAnimationFrame(positionWeek);
-    return () => cancelAnimationFrame(frame);
-  }, [isNarrow, positionWeek]);
+    // Day and Week reuse FullCalendar's time-grid DOM, without another viewDidMount call.
+    requestAnimationFrame(() => {
+      const grid = calendarElement.current?.querySelector<HTMLElement>('.fc-timegrid');
+      if (!grid) return;
+      if (arg.view.type === 'timeGridWeek') {
+        grid.tabIndex = 0;
+        grid.setAttribute('role', 'region');
+        grid.setAttribute('aria-label', 'Week calendar');
+      } else {
+        grid.removeAttribute('tabindex');
+        grid.removeAttribute('role');
+        grid.removeAttribute('aria-label');
+      }
+    });
+  }, []);
   // A view switched from month or list renders before its fixed height applies, so FullCalendar's
   // own scrollTime finds nothing to scroll: open on the working day once the height is in place.
   useEffect(() => {
@@ -328,11 +325,7 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
 
   return (
     <section className="page kc-layout">
-      <div className="kc-calendar" ref={calendarElement} onScrollCapture={(e) => {
-        if (e.target instanceof HTMLElement && e.target.matches('.fc-timeGridWeek-view')) {
-          e.target.style.setProperty('--kc-week-scroll', `${e.target.scrollLeft}px`);
-        }
-      }}>
+      <div className="kc-calendar" ref={calendarElement}>
         {error && <p role="alert">{error}</p>}
         <div className="kc-workspace-heading"><h1>Calendar</h1>
         <button ref={newEvent} type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
@@ -358,13 +351,6 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
             if (arg.el.tagName === 'A') arg.el.setAttribute('role', 'button');
             const target = arg.el.querySelector<HTMLElement>('a, [tabindex]') ?? arg.el;
             target.dataset.eventId = arg.event.id;
-          }}
-          viewDidMount={(arg) => {
-            if (arg.view.type === 'timeGridWeek') {
-              arg.el.tabIndex = 0;
-              arg.el.setAttribute('role', 'region');
-              arg.el.setAttribute('aria-label', 'Week calendar');
-            }
           }}
           noEventsContent={loadingEvents ? 'Loading events…' : eventsFailed ? 'Events could not be loaded.' : 'No events to display'}
           nowIndicator

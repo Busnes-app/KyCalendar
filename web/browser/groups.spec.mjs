@@ -19,6 +19,13 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
   await page.setExtraHTTPHeaders(ownIP);
   await signIn(page, 'admin', 'BrowserUpdated456!');
   const nav = page.getByRole('navigation', { name: 'Primary' });
+  for (const button of await nav.getByRole('button').all()) {
+    await button.focus();
+    await expect.poll(() => button.evaluate((el) => {
+      const item = el.getBoundingClientRect(), strip = el.closest('nav').getBoundingClientRect();
+      return item.left >= strip.left - 1 && item.right <= strip.right + 1;
+    })).toBe(true);
+  }
   await nav.getByRole('button', { name: 'Groups', exact: true }).click();
   await page.getByLabel('Group name').fill(group);
   await page.getByRole('button', { name: 'Create group' }).click();
@@ -34,6 +41,15 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
   await page.getByLabel('Calendar name').fill(calendar);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   const calCard = page.getByRole('article', { name: calendar });
+  await expect(calCard.getByRole('button', { name: 'Add group' })).toBeDisabled();
+  if (testInfo.project.use.viewport.width <= 720) {
+    for (const label of ['Group', 'Role']) {
+      expect(await calCard.getByLabel(label, { exact: true }).evaluate((el) => {
+        const form = el.closest('form').getBoundingClientRect();
+        return Math.abs(form.width - el.getBoundingClientRect().width);
+      })).toBeLessThan(2);
+    }
+  }
   await calCard.getByLabel('Group', { exact: true }).selectOption({ label: group });
   await calCard.getByRole('button', { name: 'Add group' }).click();
   await expect(calCard.getByRole('button', { name: `Remove ${group}` })).toBeVisible();
