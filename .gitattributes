@@ -2,3 +2,5 @@ internal/calendar/testdata/recurrence/*.ics -text
 # Preserve independently published reviewer bytes, including their final blank line.
 docs/ui-calendar-eight/opus-round*.md whitespace=-blank-at-eof
 docs/ui-calendar-eight/sol-round*.md whitespace=-blank-at-eof
+# Preserve the exact captured driver bytes bound by the confirmation manifest.
+docs/ui-calendar-eight/capture-round3-confirmation.mjs whitespace=-blank-at-eol

@@ -10,6 +10,7 @@ Own fresh synthetic captures, independent ratings, provenance and visual progres
 - Capture worker owns its drivers, original screenshots, manifests and capture checks.
 - Each reviewer owns only its assigned raw Markdown/JSON pair; preserve published bytes.
 - Raw Markdown EOF whitespace stays intact; root `.gitattributes` excludes only its `blank-at-eof` warning.
+- The captured `capture-round3-confirmation.mjs` trailing whitespace stays byte-identical to its manifest; root `.gitattributes` exempts `blank-at-eol` only for that driver.
 
 ## Local Contracts
 
