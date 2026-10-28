@@ -1,0 +1,1017 @@
+{
+  "schema": "kycalendar-disagreement-audit/1",
+  "round": 3,
+  "status": "terminal factual audit; numerical disagreement retained; no acceptance",
+  "auditor": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "role": "review sub-agent; post-review factual audit, not a blind scoring round",
+    "peer_reports_read": true
+  },
+  "scope": {
+    "owned_outputs": [
+      "docs/ui-calendar-eight/round3-disagreement-audit.json",
+      "docs/ui-calendar-eight/round3-disagreement-audit.md"
+    ],
+    "captured_source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+    "source_runtime_sha256": "2fe32fb65ce4151b54edd81947e41c74d4b6e0f7a357446742129496f2d9da2b",
+    "stage": "04-confirmation",
+    "rubric": "ky-suite-v2",
+    "rubric_sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+    "source_inspection": "git show/rev-parse 3aca6fc:<path> only; current runtime/source is not substituted",
+    "prohibitions_respected": [
+      "No browser or new capture",
+      "No build or application tests",
+      "No runtime, fixture, capture, raw report, input or AGENTS edits",
+      "No commit, push or subdelegation",
+      "No new rating, score repair, adjusted aggregate, peer/history/brand pooling or new round request",
+      "No MySlop retry"
+    ]
+  },
+  "outcome": {
+    "numeric_gate": {
+      "reviewer": "Claude Opus 5.5",
+      "existing_exact": "633/80",
+      "existing_half_up": "7.9",
+      "threshold": "8.0",
+      "result": "existing numeric progression condition is not met; audit does not alter the grade"
+    },
+    "separate_sol": {
+      "existing_exact": "43/5",
+      "existing_half_up": "8.6",
+      "independent_satisfaction": false,
+      "pooled": false
+    },
+    "opus_independent_satisfaction": false,
+    "owner_rejection": "Owner rejected round3 phone Month and prefers original baseline start times over title fragments; this overrides progression regardless of ratings.",
+    "current_parent_correction": "Parent is restoring start-time-led phone Month. That newer implementation is UNSCORED and not inspected, captured, rated or accepted by this audit.",
+    "acceptance": "No acceptance issued; no new rating or review round requested to erase calibration.",
+    "material_actions": "Record the concrete Month correction; do not require Role disabling, People restyling, new auto-positioning or numerical spinning."
+  },
+  "inputs": {
+    "initial_snapshot": {
+      "artifacts-v4.json": {
+        "bytes": 384253,
+        "sha256": "6acfe660babc5681de88087486aba5143eb2c7af10876c1316098558cd4de207"
+      },
+      "inventory-v4.json": {
+        "bytes": 83245,
+        "sha256": "a378fe2b7d98d23860bbe7903cc3911fd1e29376022912af1a9966d083b84a31"
+      },
+      "opus-round3.json": {
+        "bytes": 225557,
+        "sha256": "2c649996931bc02d7906f9cc9d33b59f7743733392264bc2b557a08f9600d5c6"
+      },
+      "opus-round3.md": {
+        "bytes": 19220,
+        "sha256": "7f4c94807807719779334fefb0f897e31f5ccaa22bc277559064e0532028bd75"
+      },
+      "review-inputs-v3.json": {
+        "bytes": 85914,
+        "sha256": "ba99ffd97280c01c575851caaebf0c6ac55790c037a357ee7d49a9ace5ebb283"
+      },
+      "round3-parent-opus-check.json": {
+        "bytes": 1015,
+        "sha256": "a8655392a69861ba30b11f90919b9dc53a139b9c33a3e40c9223be8e5c566023"
+      },
+      "round3-parent-review-check.json": {
+        "bytes": 5786,
+        "sha256": "3e8522faa528b5ebd2ab3f52c2b4181bfd087f676087e7030d283e385a2c3716"
+      },
+      "sol-round3.json": {
+        "bytes": 645447,
+        "sha256": "93ab92c6d8b7c3004e7f723bb4d191ab1387af86255e128e78f7af2fdf0520b1"
+      },
+      "sol-round3.md": {
+        "bytes": 187834,
+        "sha256": "f65e7136d33711af1277f30b5c6ad65d789c362e18a7c6f64f6996047a2eb459"
+      }
+    },
+    "pinned_inputs": {
+      "authority.json": {
+        "sha256": "2c4abf7b3d659eb16e2ba19095907ede6b8720bf80e06de82b55dcb3e8133e49",
+        "bytes": 1398
+      },
+      "rubric.md": {
+        "sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+        "bytes": 7817
+      },
+      "design-contract.md": {
+        "sha256": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+        "bytes": 6593
+      },
+      "runtime-tokens.css": {
+        "sha256": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4",
+        "bytes": 3980
+      },
+      "inventory-v4.json": {
+        "sha256": "a378fe2b7d98d23860bbe7903cc3911fd1e29376022912af1a9966d083b84a31",
+        "bytes": 83245
+      },
+      "artifacts-v4.json": {
+        "sha256": "6acfe660babc5681de88087486aba5143eb2c7af10876c1316098558cd4de207",
+        "bytes": 384253
+      },
+      "manifest-04-confirmation.json": {
+        "sha256": "5a84094984aab6d44a6c3509caddebdf0e0c1ea512e99a04c2c0cf2e6d3c0905",
+        "bytes": 3029055
+      }
+    },
+    "read_terminal_raw_reports": [
+      "opus-round3.json",
+      "opus-round3.md",
+      "sol-round3.json",
+      "sol-round3.md"
+    ],
+    "supplemental_closeout_owner_record": {"file":"owner-decisions.json","sha256":"4963545993b827b6d98a07562d2dd549857334b9d8e57fffd4a5721e684d7163","scope":"Parent added during this audit; read at closeout, not an original review pin or frozen reviewer input.","owner_quote":"round 3 mobile month is a downgrade.","clarification":"The fresh baseline with the time of the calendar item looks better than 3 letters and some dots","read_only":true},
+    "read_parent_checks": [
+      "round3-parent-review-check.json",
+      "round3-parent-opus-check.json"
+    ],
+    "read_pinned_sets": [
+      "review-inputs-v3.json",
+      "inventory-v4.json",
+      "artifacts-v4.json",
+      "manifest-04-confirmation.json",
+      "authority.json",
+      "rubric.md",
+      "design-contract.md",
+      "runtime-tokens.css"
+    ],
+    "annotation_authority": "All seven Opus annotations remain outside the immutable files array; their dispositions are recorded below.",
+    "stale_historical_wording": "The input supersession note and raw reports' 'user did not reject layout' describe the earlier stage03 rejection history. They do not override the owner's later explicit rejection of R3 phone Month."
+  },
+  "capture_conditions": {
+    "desktop": [
+      1280,
+      900
+    ],
+    "mobile": [
+      390,
+      844
+    ],
+    "dpr": 1,
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "os_schemes": [
+      "light",
+      "dark"
+    ],
+    "saved_theme": "none",
+    "full_page": false,
+    "cropping_or_resizing": false,
+    "clock": "real; no emulation",
+    "display_date_method": "Day view and bounded Previous/Next controls, then requested view",
+    "workers": "allowed; real production registration",
+    "font_wait": "document.fonts.ready and two animation frames, stable UI + 400ms",
+    "pointer": "neutral bottom-right pixel",
+    "workflow": "documented capture.mjs via proven round3 driver; one new confirmation batch; all context screenshots before supplemental probes",
+    "workflow_references": [
+      "web/browser/AGENTS.md",
+      "web/browser/server.mjs",
+      "web/browser/setup.mjs",
+      "docs/ui-fleet-2026-10-26/drivers/capture-base.mjs.txt"
+    ],
+    "fleet_driver_differences": [
+      "No fixed clock",
+      "America/New_York",
+      "DPR1 explicit",
+      "Service workers allowed",
+      "Fixture retained",
+      "No credentials or filled setup captured"
+    ],
+    "browser": {
+      "version": "153.0.8010.12",
+      "engine": "Chromium",
+      "executable": "/home/yoshi/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome",
+      "executable_sha256": "8c599d43aec53f2460a31ae2f4af6bd863f8258b34ff519564bc5d4726bfaa1e",
+      "playwright_module": "/home/yoshi/git/busnes.app/KyCalendar/web/node_modules/@playwright/test/index.mjs",
+      "playwright_version": "1.63.0"
+    },
+    "capture_started_at": "2026-10-28T11:59:49.824Z",
+    "capture_finished_at": "2026-10-28T12:02:01.202Z"
+  },
+  "inspection": {
+    "method": "Each listed original individually opened through tools.view_image(detail='original'), forwarded with image detail='original'; original PNG bytes, no crop, resize, montage or browser.",
+    "opened_count": 20,
+    "parent_affected_count": 9,
+    "all_parent_affected_opened": true,
+    "additional_current_images": 11,
+    "no_history_or_diagnostic_images_opened": true,
+    "opened": [
+      {
+        "order": 1,
+        "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+        "sha256": "d5b0f4c0b5334c5aa7d84e87bfe6bbc07ddeb8217d22a9b452d2d6ccaca48b85",
+        "bytes": 67563,
+        "width": 1280,
+        "height": 900,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 2,
+        "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+        "sha256": "3b06f2b1ffb2dc431c1dc413be8f0fc90a18c1e74f05d43d2f83f09c3d04b766",
+        "bytes": 67616,
+        "width": 1280,
+        "height": 900,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 3,
+        "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+        "sha256": "4dcbee2cce50e3165aff10d09bec1f5f558a17969dbd7f5d894ca59c812b7206",
+        "bytes": 44782,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 4,
+        "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png",
+        "sha256": "8b16973600e64f6901cd3efaa42285aef4738e51fd720a111b7050591257ba37",
+        "bytes": 44779,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 5,
+        "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+        "sha256": "17daa61802253461750d54e4a839c364610756e353801c63f55ec6507d136683",
+        "bytes": 39346,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 6,
+        "file": "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+        "sha256": "df2c06702a304a41e1590999a164f825b28198ac2cdd462d81cfe8253eb6b856",
+        "bytes": 39030,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 7,
+        "file": "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+        "sha256": "b836b0b8276e317efa64efc9a964e1ee59fae1d9180cef04e3f92a3f7d748325",
+        "bytes": 38866,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 8,
+        "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+        "sha256": "284aa79a9e90f85396268fb075636a8eb5b31d89716cd47e84b36b1ec1edca37",
+        "bytes": 61243,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 9,
+        "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+        "sha256": "77252dcd49460f381ee79ffd9270234bfd5c8c70206183f1964ca076d45f57fc",
+        "bytes": 61331,
+        "width": 390,
+        "height": 844,
+        "scope": "parent >=2 spread",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 10,
+        "file": "screenshots/kycalendar-04-confirmation-month-mobile-dark.png",
+        "sha256": "68ad52fc8a2606d9703d69a0fb6b59fcb494fe6c0af03180a39a9bfb4915ce0c",
+        "bytes": 45585,
+        "width": 390,
+        "height": 844,
+        "scope": "owner-rejected phone Month",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 11,
+        "file": "screenshots/kycalendar-04-confirmation-month-mobile-light.png",
+        "sha256": "fc79c96ec6b0274cd0c2e7eb253cfed456f1ebe15b877250cecb529bf772931d",
+        "bytes": 45585,
+        "width": 390,
+        "height": 844,
+        "scope": "owner-rejected phone Month",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 12,
+        "file": "screenshots/kycalendar-04-confirmation-week-mobile-dark.png",
+        "sha256": "f5d5c653a86954ecd2264ee8d465e2f0c210241f969307f71d544ada4d4147d0",
+        "bytes": 42503,
+        "width": 390,
+        "height": 844,
+        "scope": "Week premise and title context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 13,
+        "file": "screenshots/kycalendar-04-confirmation-week-mobile-light.png",
+        "sha256": "c48d26384dc85331b42108ac259793f351f6a6e1d4a9b31c2f75d94e4d70923d",
+        "bytes": 42421,
+        "width": 390,
+        "height": 844,
+        "scope": "Week premise and title context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 14,
+        "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-light.png",
+        "sha256": "f6837c6d43d89ad35781385e2ea5e9d04b51f95f8b7ea8f85ecdd10825c1a8cf",
+        "bytes": 38448,
+        "width": 390,
+        "height": 844,
+        "scope": "matching light Appearance context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 15,
+        "file": "screenshots/kycalendar-04-confirmation-admin-people-desktop-dark.png",
+        "sha256": "f1b895133c97a12447138a87fb51ea95df37464da58a79c713dc2694aef70294",
+        "bytes": 73911,
+        "width": 1280,
+        "height": 900,
+        "scope": "optional People finding context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 16,
+        "file": "screenshots/kycalendar-04-confirmation-admin-people-desktop-light.png",
+        "sha256": "8480d18746ecda83249593ffdccdcabbce6384d02be60abfaf5fe32ee33b711a",
+        "bytes": 73953,
+        "width": 1280,
+        "height": 900,
+        "scope": "optional People finding context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 17,
+        "file": "screenshots/kycalendar-04-confirmation-admin-people-mobile-dark.png",
+        "sha256": "3c05ce58927033ee4997c73716b7607e6eb9e71bbdfa4e6ff2ea2798f5360b0d",
+        "bytes": 47142,
+        "width": 390,
+        "height": 844,
+        "scope": "optional People finding context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 18,
+        "file": "screenshots/kycalendar-04-confirmation-admin-people-mobile-light.png",
+        "sha256": "b552e625441602206e9b041d1a7fed6122aba23054f08401887f000447d7be1e",
+        "bytes": 46753,
+        "width": 390,
+        "height": 844,
+        "scope": "optional People finding context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 19,
+        "file": "screenshots/kycalendar-04-confirmation-week-desktop-dark.png",
+        "sha256": "1993596e8e0198d050a796f28f37ed9a360ed9d4fce69a9efe2c6d737197a0dc",
+        "bytes": 83516,
+        "width": 1280,
+        "height": 900,
+        "scope": "Week premise and title context",
+        "opened_at_original_resolution": true
+      },
+      {
+        "order": 20,
+        "file": "screenshots/kycalendar-04-confirmation-week-desktop-light.png",
+        "sha256": "a05b35ea4a9354b1f2bb39c59dc7d44c7721a741e1bb2f9a2b8b5210eba220eb",
+        "bytes": 83260,
+        "width": 1280,
+        "height": 900,
+        "scope": "Week premise and title context",
+        "opened_at_original_resolution": true
+      }
+    ]
+  },
+  "spreads_ge2": [
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two different disabled treatments (filled select vs ghost button) in one row.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region.",
+      "disposition_ref": "D1",
+      "audit_resolution": "States are visible; mandatory disabled-state symmetry and demonstrated task harm are not established. Two-point coherence spread remains a reviewer calibration difference.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two different disabled treatments (filled select vs ghost button) in one row.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region.",
+      "disposition_ref": "D1",
+      "audit_resolution": "States are visible; mandatory disabled-state symmetry and demonstrated task harm are not established. Two-point coherence spread remains a reviewer calibration difference.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two disabled treatments in one form.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region.",
+      "disposition_ref": "D1",
+      "audit_resolution": "States are visible; mandatory disabled-state symmetry and demonstrated task harm are not established. Two-point coherence spread remains a reviewer calibration difference.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two disabled treatments in one form.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region.",
+      "disposition_ref": "D1",
+      "audit_resolution": "States are visible; mandatory disabled-state symmetry and demonstrated task harm are not established. Two-point coherence spread remains a reviewer calibration difference.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Selected card unambiguous, but the unselected 'Two-step verification' tab shows a filled panel background that reads like a second active/hover state; nav has no left-scroll cue.",
+      "sol_observation": "Match system has an orange outline and checked radio; every alternative shows an unchecked radio.",
+      "disposition_ref": "D2",
+      "audit_resolution": "Both the sole selected theme and raised neighbor are visible; this is a narrower navigation-emphasis judgment with unproven cause, not a second theme selection.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' is clipped by the scroller with no fade/scroll cue; other states read correctly.",
+      "sol_observation": "Previous/next, Today and the view switcher are clearly bounded; event times precede their titles.",
+      "disposition_ref": "D3",
+      "audit_resolution": "A visible trailing fade disproves literal no-fade wording; clear toolbar controls are also supported. At-rest discoverability judgment remains separate from behavior.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' is clipped by the scroller with no fade/scroll cue; other states read correctly.",
+      "sol_observation": "Previous/next, Today and the view switcher are clearly bounded; event times precede their titles.",
+      "disposition_ref": "D3",
+      "audit_resolution": "A visible trailing fade disproves literal no-fade wording; clear toolbar controls are also supported. At-rest discoverability judgment remains separate from behavior.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' clipped by scroller without cue; List segment selected; Today disabled.",
+      "sol_observation": "Bounded date arrows, Today and underlined List selection make the view controls apparent.",
+      "disposition_ref": "D3",
+      "audit_resolution": "A visible trailing fade disproves literal no-fade wording; clear toolbar controls are also supported. At-rest discoverability judgment remains separate from behavior.",
+      "score_change": false
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' clipped by scroller without cue; List segment selected; Today disabled.",
+      "sol_observation": "Bounded date arrows, Today and underlined List selection make the view controls apparent.",
+      "disposition_ref": "D3",
+      "audit_resolution": "A visible trailing fade disproves literal no-fade wording; clear toolbar controls are also supported. At-rest discoverability judgment remains separate from behavior.",
+      "score_change": false
+    }
+  ],
+  "dispositions": [
+    {
+      "id": "D1",
+      "topic": "Group availability, Role preselection and disabled styling",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+        "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+        "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png"
+      ],
+      "disposition": "visible-state facts supported; mandatory Role-disable fix not established; coherence severity is calibration",
+      "supported": [
+        "All four originals show Group labelled 'No groups available', a faded Add group button, and a normal Reader Role selector.",
+        "Create is filled orange; Delete calendar is an outline inside the existing calendar card. The phone Group and Role fields fill their card width.",
+        "The Groups navigation destination is visible in all four originals."
+      ],
+      "qualifications": [
+        "A disabled select and disabled secondary button need not share their fill: they are different control types. Both communicate unavailability in the capture.",
+        "Enabled Role can intentionally allow permission preselection. At pinned source, changing Role updates local state; submission returns when group is empty and Add group is disabled until a group is selected. No accidental grant, false success, unsafe access or blocked task is demonstrated.",
+        "Opus's 'no inline link to create a group' is literally true. Its broader phone 'no path to create a group' is not supported: Groups is visibly in navigation. Do not infer missing group creation from this screen.",
+        "The recommendation to disable Role solely for cosmetic symmetry is not a required fix. There is no requirement here to change destructive-action styling or add a shortcut link."
+      ],
+      "source": [
+        "3aca6fc:web/src/pages/GroupCalendars.tsx:153-155",
+        "3aca6fc:web/src/pages/GroupCalendars.tsx:194-221"
+      ],
+      "action": "Retain the current audit disposition; no group-control change or capture round required by these facts."
+    },
+    {
+      "id": "D2",
+      "topic": "Appearance dark navigation pill and selected theme",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-appearance-mobile-light.png"
+      ],
+      "disposition": "real at-rest visual difference; cause and task harm unproven; calibration remains separate",
+      "supported": [
+        "Dark Appearance shows a raised/filled Two-step verification neighbor while Appearance has the orange bottom rail. Match system alone has the selected radio and orange card outline.",
+        "The matching light original does not show the same contrasting neighbor fill."
+      ],
+      "qualifications": [
+        "The neighboring pill is visible and may read as hover/emphasis, so Sol's theme-selection evidence does not address every navigation detail.",
+        "There are not two selected themes or two orange active navigation rails. Stale hover is a hypothesis, not a proven cause; A3 correctly leaves that unknown.",
+        "A missing or subtle left continuation cue is an at-rest discoverability judgment; this still cannot prove unreachable previous tabs or a focus failure. The pinned CSS defines edge fades and removes the mask during focus."
+      ],
+      "source": [
+        "3aca6fc:web/src/ky-ui/navigation.css:3-29",
+        "3aca6fc:web/src/styles/theme.css:192-196",
+        "3aca6fc:web/src/components/AppHeader.tsx:14-36,75-82"
+      ],
+      "action": "Preserve the captured caveat and both raw scores; no theme-card or navigation restyle required by the audit."
+    },
+    {
+      "id": "D3",
+      "topic": "Phone Day/List navigation fade and date controls",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+        "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png"
+      ],
+      "disposition": "literal no-fade premise rejected; at-rest discoverability preference retained only as calibration",
+      "supported": [
+        "All four originals visibly fade the trailing 'Phones &' text before the Calendars disclosure.",
+        "Previous/next and view controls have visible bounds and the selected segment has a bottom rail. Today appears enabled on Oct 27 Day and muted on the Oct 25-31 List range that includes the live Oct 28 date.",
+        "Day event time ranges precede titles; List has separate time and title columns."
+      ],
+      "qualifications": [
+        "Opus's frozen 'no fade/scroll cue' wording is too strong. A2 correctly qualifies the same pixels as a designed continuation fade.",
+        "Sol's clear-control observation is supported but does not itself establish full navigation, keyboard or focus usability.",
+        "No missing route or broken date-control behavior follows from these screenshots. Focus probes are pre-existing recorded evidence, not a fresh audit execution."
+      ],
+      "source": [
+        "3aca6fc:web/src/styles/theme.css:192-196",
+        "3aca6fc:web/src/components/AppHeader.tsx:80"
+      ],
+      "action": "Keep the factual correction outside raw files; no navigation-fix round solely to close the two-point spread."
+    },
+    {
+      "id": "D4",
+      "topic": "Owner-rejected phone Month: title fragments replace useful start times",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-month-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-month-mobile-light.png"
+      ],
+      "disposition": "supported substantive task-readability concern; owner rejection remains controlling",
+      "supported": [
+        "Both originals break words into fragments: Library day crosses a word boundary mid-word; Design review, Lunch break and Planning... have split/ellipsized prefixes. Release preparation fits across its multiday bar, so not every event is equally affected.",
+        "Timed Month events show colored dots and title fragments without visible start times. A user scanning the month cannot read their start times in this capture.",
+        "Pinned calendar.css uses a two-line title clamp with overflow-wrap:anywhere and visually clips the event-time element."
+      ],
+      "qualifications": [
+        "Opus's frozen '2-3 lines' wording overstates the captured title line count: source clamps to two and the originals show two title rows. This does not erase the real fragmentation.",
+        "Opus's 'mid-glyph' drift phrase is imprecise: the visible problem is a break between letters within a word, not evidence of sliced glyphs.",
+        "Four unpopulated calendar weeks reflect the synthetic captured state and ordinary month chronology; empty rows alone are not a product defect or a reason to add fixture data.",
+        "Word-boundary wrapping or hyphenation alone would not satisfy the owner preference for original baseline start times. Sol's wider-day/selected-day alternatives are suggestions, not selected work."
+      ],
+      "source": [
+        "3aca6fc:web/src/styles/calendar.css:165-170"
+      ],
+      "action": "Record the owner's preference for start-time-led phone Month and the parent's concrete correction. That newer layout is UNSCORED; do not inspect its runtime, request a new capture, invent a score, or claim the correction validated here."
+    },
+    {
+      "id": "D5",
+      "topic": "Phone Week false empty-Monday/hidden-Today premise; residual title truncation",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-week-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-week-mobile-light.png",
+        "screenshots/kycalendar-04-confirmation-week-desktop-dark.png",
+        "screenshots/kycalendar-04-confirmation-week-desktop-light.png"
+      ],
+      "disposition": "false premise rejected; native week-start layout retained; bounded title truncation supported",
+      "supported": [
+        "Both phone originals show Sun 25, Mon 26 and Tue 27. Monday visibly contains Team check-in around 9am; Tuesday is a fully visible column, including Library day and its timed events.",
+        "The time gutter is painted and legible at the captured zero offset. The explicit instruction says 'Scroll across the week to see other days.'",
+        "Only three of seven day columns are initially visible. Phone Design review and workshop titles end in ellipses; the desktop originals also retain workshop/Morning appointment truncation."
+      ],
+      "qualifications": [
+        "Sunday is empty; Monday is not. A1 and both reviewers' dispositions correctly withdraw the repeated empty-Monday premise.",
+        "Wednesday 28 is offscreen at week start, but it is the live-clock today, not the Oct 27 displayed reference date. This is not a demonstrated failure to reveal the intended Tuesday, nor a requirement for auto-positioning.",
+        "The narrower initial overview and lack of a peeking fourth column are composition tradeoffs with an explicit scroll instruction; do not invent an automatic-current-day or fixed-gutter-after-scroll contract.",
+        "Screenshots do not establish keyboard scrolling or complete accessible names. Existing recorded 0->40->0 probes are not rerun.",
+        "Truncated titles can remain a low-priority readability observation without requiring another line-limit or cosmetic review round."
+      ],
+      "source": [
+        "3aca6fc:web/src/styles/calendar.css:161-164"
+      ],
+      "action": "Preserve A1 outside the frozen rows, acknowledge the repeated misreading, retain week-start behavior, and make no score repair/counterfactual adjustment."
+    },
+    {
+      "id": "D6",
+      "topic": "Phone header height and Sol Day line-count annotation",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+        "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+        "screenshots/kycalendar-04-confirmation-month-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-month-mobile-light.png",
+        "screenshots/kycalendar-04-confirmation-week-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-week-mobile-light.png"
+      ],
+      "disposition": "observable geometry; resolved versus partly improved is calibration, not a new blocker",
+      "supported": [
+        "The timezone occupies one line. Day/Month/List grids start around y281; Week starts around y309 after the scroll instruction.",
+        "Day workshop has a time line plus two title lines, with its entire title readable."
+      ],
+      "qualifications": [
+        "Sol's frozen 'three clear title lines' is inaccurate and already corrected outside its freeze: the third line is time.",
+        "Whether this header is resolved (Opus) or still somewhat tall (Sol) is a judgment about the same visible composition. The extra Week instruction has a clear purpose.",
+        "No new compact-header pass is required simply to reconcile that wording."
+      ],
+      "source": [],
+      "action": "Keep both factual annotations and the distinct raw judgments; no extra round."
+    },
+    {
+      "id": "D7",
+      "topic": "People row action density",
+      "files": [
+        "screenshots/kycalendar-04-confirmation-admin-people-desktop-dark.png",
+        "screenshots/kycalendar-04-confirmation-admin-people-desktop-light.png",
+        "screenshots/kycalendar-04-confirmation-admin-people-mobile-dark.png",
+        "screenshots/kycalendar-04-confirmation-admin-people-mobile-light.png"
+      ],
+      "disposition": "supported optional styling observation; deferral accepted",
+      "supported": [
+        "Everyday casey has Edit, Reset password, Make admin and Disable. Disable wraps onto its own phone row; all four labels are readable.",
+        "The desktop administrator row shows only Edit and Reset password. The phone administrator record continues below the viewport, so its full action row is not visually verified here."
+      ],
+      "qualifications": [
+        "Four outlined actions do add visual weight, but Disable already has a distinct danger color; 'equally outlined' does not mean identical semantics.",
+        "No clipped everyday action, missing task, authorization failure or new gate failure is shown. Last-sign-in time differences are live-clock effects."
+      ],
+      "source": [],
+      "action": "Keep People action styling optional and deferred. Do not add it to the parent's concrete Month correction."
+    }
+  ],
+  "opus_annotations": [
+    {
+      "id": "A1",
+      "original_annotation": {
+        "id": "A1",
+        "type": "correction",
+        "files": [
+          "screenshots/kycalendar-04-confirmation-week-mobile-light.png",
+          "screenshots/kycalendar-04-confirmation-week-mobile-dark.png"
+        ],
+        "fact": "My frozen density/hierarchy observations call Sun/Mon empty and fault today (Wed) being off-screen. Monday visibly holds Team check-in; the displayed date (Tue 27) is fully visible; Wednesday-as-today is a live-clock effect. This repeats the round-2 premise the audit corrected. Remaining valid concern: three of seven days visible with a text-only scroll hint.",
+        "effect": "Scores stand frozen. Counterfactual density 7 gives 7.45 -> 7.5 for both files and overall 1901/240 = 7.920833 -> 7.9; the gate result is unchanged."
+      },
+      "audit_disposition": "Confirmed on both full-resolution phone Week originals: Monday contains Team check-in; Tuesday is fully visible. Repeated false premise materially qualifies evidence reliability. No vector or grade rewrite and no counterfactual adjustment."
+    },
+    {
+      "id": "A2",
+      "original_annotation": {
+        "id": "A2",
+        "type": "qualification",
+        "files": "phone calendar views (month, week, day, default list)",
+        "fact": "The cut 'Phones &' label is the designed continuation fade at rest; capture checks record all 56 focused navigation rows fully visible and unmasked. My affordance 7 judges the at-rest cue only; no route-reachability claim."
+      },
+      "audit_disposition": "Confirmed on full-resolution phone Day/List/Month/Week originals and pinned edge-mask source. The raw no-fade claim is too strong; at-rest discoverability can still be judged separately from reachability."
+    },
+    {
+      "id": "A3",
+      "original_annotation": {
+        "id": "A3",
+        "type": "artifact (cause unproven)",
+        "files": [
+          "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png"
+        ],
+        "fact": "Raised Two-step verification pill persists from round 2; my round-2 note matched it to the nav hover token (--panel-hover equals the light sidebar, so light shows nothing). Stale-hover cause unproven; affordance 7 stands as captured."
+      },
+      "audit_disposition": "Raised dark Two-step verification neighbor confirmed; light counterpart differs. Hover-like appearance is visible; stale-hover cause unproven. No duplicated selected theme or duplicated active orange rail."
+    },
+    {
+      "id": "A4",
+      "original_annotation": {
+        "id": "A4",
+        "type": "artifact",
+        "files": "new-event x4",
+        "fact": "End-field focus and blue native segment selection are the retained driver artifact; scored as captured. No palette or focus change recommended."
+      },
+      "audit_disposition": "Recorded driver-artifact qualification retained. New-event originals were not opened for this disagreement audit; no independent focus, palette or behavior conclusion added."
+    },
+    {
+      "id": "A5",
+      "original_annotation": {
+        "id": "A5",
+        "type": "source confirmation",
+        "files": "month-mobile x2",
+        "fact": "git show 3aca6fc:web/src/styles/calendar.css:167 sets -webkit-line-clamp:2 with overflow-wrap:anywhere on phone Month titles, which produces the visible mid-word breaks."
+      },
+      "audit_disposition": "Confirmed against both phone Month originals and Git 3aca6fc calendar.css:167. Two-line clamp and within-word breaking are real; raw 2-3-line/mid-glyph wording is imprecise."
+    },
+    {
+      "id": "A6",
+      "original_annotation": {
+        "id": "A6",
+        "type": "source confirmation",
+        "files": "admin-group-calendars x4",
+        "fact": "GroupCalendars.tsx at 3aca6fc: Group select disabled when available.length===0 (:206), Add group disabled when !group||available.length===0 (:221), Role select (:215) has no disabled state — matching the mixed captured state."
+      },
+      "audit_disposition": "Pinned disabled/enabled conditions confirmed. The inference that Role must be disabled is not established: independent permission preselection can be intentional; no harmful grant or task failure is shown."
+    },
+    {
+      "id": "A7",
+      "original_annotation": {
+        "id": "A7",
+        "type": "clock",
+        "files": "month, week, people",
+        "fact": "Today highlight on Oct 28, the week time indicator and People last-sign-in times are live-clock effects; no credit or penalty intended for them."
+      },
+      "audit_disposition": "Consistent with pinned real-clock capture conditions. Current-day/time-indicator/sign-in-age differences are capture-state effects, not implementation credit or penalty."
+    }
+  ],
+  "reliability": {
+    "opus_prefreeze_exposure": "COUNCIL.md (directory index) was read before the freeze while reading the directory contract; it lists round-1/2 aggregate means for Opus (7.5, 7.8) and Sol (7.9, 8.5), no per-file scores or findings.",
+    "qualification": "Partially unblinded to prior aggregate means, not a fully blind baseline. No evidence here of prefreeze peer per-file exposure or deliberate score tuning. Repeated false Week premise warrants an explicit reliability qualification despite the post-freeze correction.",
+    "calibration": {
+      "opus_reported": {
+        "all_48_vs_round2": {
+          "n": 48,
+          "exact": "31/240",
+          "decimal_6dp": "0.129167",
+          "half_up_1dp": "0.1"
+        },
+        "byte_identical_to_round2": {
+          "n": 18,
+          "exact": "43/180",
+          "decimal_6dp": "0.238889",
+          "half_up_1dp": "0.2",
+          "range": [
+            0.1,
+            0.4
+          ]
+        },
+        "changed_vs_round2": {
+          "n": 30,
+          "exact": "19/300",
+          "decimal_6dp": "0.063333",
+          "half_up_1dp": "0.1"
+        },
+        "byte_identical_to_round1_baseline": {
+          "n": 16,
+          "exact": "9/40",
+          "decimal_6dp": "0.225000",
+          "half_up_1dp": "0.2",
+          "range": [
+            0,
+            0.4
+          ]
+        }
+      },
+      "sol_reported": {
+        "status": "postfreeze; own prior reports only",
+        "prior_report": "sol-round2.json",
+        "ky_mean_drift": {
+          "fraction": "2/15",
+          "numerator": 2,
+          "denominator": 15,
+          "decimal_90_significant_digits": "0.133333333333333333333333333333333333333333333333333333333333333333333333333333333333333333",
+          "rounded_half_up_1dp": "0.1"
+        },
+        "unchanged_capture_mean_drift": {
+          "fraction": "1/9",
+          "numerator": 1,
+          "denominator": 9,
+          "decimal_90_significant_digits": "0.111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+          "rounded_half_up_1dp": "0.1"
+        },
+        "changed_capture_mean_delta": {
+          "fraction": "11/75",
+          "numerator": 11,
+          "denominator": 75,
+          "decimal_90_significant_digits": "0.146666666666666666666666666666666666666666666666666666666666666666666666666666666666666667",
+          "rounded_half_up_1dp": "0.1"
+        },
+        "byte_identical_count": 18,
+        "baseline_byte_identical_count": 16,
+        "baseline_unchanged_mean_drift": {
+          "fraction": "5/8",
+          "numerator": 5,
+          "denominator": 8,
+          "decimal_90_significant_digits": "0.625",
+          "rounded_half_up_1dp": "0.6"
+        },
+        "competitor_mean_drift": "N/A",
+        "cause_definition": "anchor means independent calibration under unchanged ky-suite-v2. Changed capture deltas may include implementation, capture state and clock effects; they are not isolated causal gains.",
+        "calibration_limit": "R3-R2 identical18 rise1/9 on average; R3-R1 identical16 rise5/8. The1.1 desktop List shift sinceR1 is reviewer calibration, not product improvement."
+      },
+      "interpretation": "Both report shifts on byte-identical captures. These are reviewer calibration, not product improvement. Historical raw scores remain historical; no new history/peer average or adjusted grade is computed by this audit."
+    },
+    "sol_day_annotation": "Frozen three-title-line claim is corrected to two title lines plus time; confirmed from both current Day originals.",
+    "no_repair": "Factual dispositions live only in this audit; all original vectors, observations, satisfaction and aggregates remain unchanged."
+  },
+  "pinned_source_inspection": {
+    "web/src/pages/GroupCalendars.tsx": {
+      "git_blob": "24296bdfe808fa30c39508be461cf0f0ac89c2eb",
+      "sha256": "cda871699bbd5448a8d2b880c88283a3ed30e748fe5e6b40ca874a9d5f3bcf3e",
+      "bytes": 8975
+    },
+    "web/src/components/AppHeader.tsx": {
+      "git_blob": "51f067a57aa3c3c5255a2473cc56bad57ae00f18",
+      "sha256": "4c77b78d13a1d035bd0a1a549abb87d271a299b24651bd246fae169430fe0b57",
+      "bytes": 4710
+    },
+    "web/src/styles/calendar.css": {
+      "git_blob": "41db2ef9020705f213243a41e04698c490d27bac",
+      "sha256": "8097a5a1e57d9d4cd1ce289b5a740182657d880b5ae37475ddc5c6ff4e0802b4",
+      "bytes": 14574
+    },
+    "web/src/styles/theme.css": {
+      "git_blob": "78647dc5b9eed6a1f8fbc83055572a04585f3b82",
+      "sha256": "589c29f19649539a0f2680d003e415f8a1419094a94472ab30ace9abf26a8be0",
+      "bytes": 20780
+    },
+    "web/src/ky-ui/navigation.css": {
+      "git_blob": "f9bdf846159f0f25db0202a5ed57bf15d0458653",
+      "sha256": "cc6dbaa07a01f4ed088d38d41ff6cf95155a480bcb29327f413cbfa1ec11ac55",
+      "bytes": 1338
+    }
+  },
+  "verification": {
+    "fresh_integrity_only": {
+      "images_sha256_bytes_png_dimensions": 206,
+      "unique_candidate_membership": 48,
+      "input_pins": 7,
+      "raw_entire_array_freezes": 2,
+      "weighted_totals_checked": 96,
+      "spread_rows_recomputed": 9,
+      "affected_file_set_matches_parent": true,
+      "notes": "Read-only integrity/arithmetic validation of existing reports, not application tests or new scoring."
+    },
+    "before": {
+      "phase": "initial read, before any audit output writes",
+      "protected_files": {
+        "artifacts-v4.json": {
+          "bytes": 384253,
+          "sha256": "6acfe660babc5681de88087486aba5143eb2c7af10876c1316098558cd4de207"
+        },
+        "inventory-v4.json": {
+          "bytes": 83245,
+          "sha256": "a378fe2b7d98d23860bbe7903cc3911fd1e29376022912af1a9966d083b84a31"
+        },
+        "opus-round3.json": {
+          "bytes": 225557,
+          "sha256": "2c649996931bc02d7906f9cc9d33b59f7743733392264bc2b557a08f9600d5c6"
+        },
+        "opus-round3.md": {
+          "bytes": 19220,
+          "sha256": "7f4c94807807719779334fefb0f897e31f5ccaa22bc277559064e0532028bd75"
+        },
+        "review-inputs-v3.json": {
+          "bytes": 85914,
+          "sha256": "ba99ffd97280c01c575851caaebf0c6ac55790c037a357ee7d49a9ace5ebb283"
+        },
+        "round3-parent-opus-check.json": {
+          "bytes": 1015,
+          "sha256": "a8655392a69861ba30b11f90919b9dc53a139b9c33a3e40c9223be8e5c566023"
+        },
+        "round3-parent-review-check.json": {
+          "bytes": 5786,
+          "sha256": "3e8522faa528b5ebd2ab3f52c2b4181bfd087f676087e7030d283e385a2c3716"
+        },
+        "sol-round3.json": {
+          "bytes": 645447,
+          "sha256": "93ab92c6d8b7c3004e7f723bb4d191ab1387af86255e128e78f7af2fdf0520b1"
+        },
+        "sol-round3.md": {
+          "bytes": 187834,
+          "sha256": "f65e7136d33711af1277f30b5c6ad65d789c362e18a7c6f64f6996047a2eb459"
+        }
+      },
+      "freezes": {
+        "opus": {
+          "sha256": "f10f0c22e95312d689315de62cad07dfc1cfa22453e7851171e9a5aef049c455",
+          "bytes": 111936,
+          "timestamp_utc": "2026-10-28T12:20:20Z"
+        },
+        "sol": {
+          "sha256": "f60651a6b6b6cb28ca4af219853c65e4969ab37458100e2729e49a7346c044b6",
+          "bytes": 181740,
+          "timestamp_utc": "2026-10-28T12:18:32.298661+00:00"
+        }
+      }
+    },
+    "after": {
+      "phase": "after all original-image/source inspection, before publication; followed by final publication recheck",
+      "checked_at_utc": "2026-10-28T12:55:15.107834+00:00",
+      "protected_files": {
+        "opus-round3.json": {
+          "sha256": "2c649996931bc02d7906f9cc9d33b59f7743733392264bc2b557a08f9600d5c6",
+          "bytes": 225557
+        },
+        "opus-round3.md": {
+          "sha256": "7f4c94807807719779334fefb0f897e31f5ccaa22bc277559064e0532028bd75",
+          "bytes": 19220
+        },
+        "sol-round3.json": {
+          "sha256": "93ab92c6d8b7c3004e7f723bb4d191ab1387af86255e128e78f7af2fdf0520b1",
+          "bytes": 645447
+        },
+        "sol-round3.md": {
+          "sha256": "f65e7136d33711af1277f30b5c6ad65d789c362e18a7c6f64f6996047a2eb459",
+          "bytes": 187834
+        },
+        "round3-parent-review-check.json": {
+          "sha256": "3e8522faa528b5ebd2ab3f52c2b4181bfd087f676087e7030d283e385a2c3716",
+          "bytes": 5786
+        },
+        "round3-parent-opus-check.json": {
+          "sha256": "a8655392a69861ba30b11f90919b9dc53a139b9c33a3e40c9223be8e5c566023",
+          "bytes": 1015
+        },
+        "review-inputs-v3.json": {
+          "sha256": "ba99ffd97280c01c575851caaebf0c6ac55790c037a357ee7d49a9ace5ebb283",
+          "bytes": 85914
+        },
+        "inventory-v4.json": {
+          "sha256": "a378fe2b7d98d23860bbe7903cc3911fd1e29376022912af1a9966d083b84a31",
+          "bytes": 83245
+        },
+        "artifacts-v4.json": {
+          "sha256": "6acfe660babc5681de88087486aba5143eb2c7af10876c1316098558cd4de207",
+          "bytes": 384253
+        }
+      },
+      "freezes": {
+        "opus": {
+          "sha256": "f10f0c22e95312d689315de62cad07dfc1cfa22453e7851171e9a5aef049c455",
+          "bytes": 111936,
+          "timestamp_utc": "2026-10-28T12:20:20Z"
+        },
+        "sol": {
+          "sha256": "f60651a6b6b6cb28ca4af219853c65e4969ab37458100e2729e49a7346c044b6",
+          "bytes": 181740,
+          "timestamp_utc": "2026-10-28T12:18:32.298661+00:00"
+        }
+      }
+    },
+    "protected_bytes_equal_at_postinspection_snapshot": true,
+    "terminal_preservation_recheck": {"checked_at_utc":"2026-10-28T13:02:34.381982+00:00","result":"pass for raw reports, freezes, pinned inputs and all206 originals; concurrent parent check change disclosed","raw_md_json_pairs_byte_identical":true,"complete_array_freezes_identical":true,"all_206_image_identities_match":true,"all_7_input_pins_match":true,"changed_parent_context":{"round3-parent-opus-check.json":{"sha256":"e330f1ab97b7d7aea673dcd9cc8ccb8f180e8e43c0d22f556c439161ff1e6e03","bytes":1012,"reason":"Concurrent parent changed owner_rejection wording from single-line restoration to time-led restoration; existing 633/80,7.9, raw hashes and freeze unchanged."}},"exact_opened_list_count":20,"spread_dispositions":9,"application_tests_run":false},
+    "full_checks": "Not run: explicit evidence-audit-only assignment prohibits browser, build and tests. Existing capture/reviewer checks are not represented as fresh execution.",
+    "behavior_gates": {
+      "keyboard": "untested",
+      "focus": "untested",
+      "contrast": "untested",
+      "states": "untested",
+      "responsive": "untested"
+    },
+    "dox": "Applicable parent/root, local docs/ui-calendar-eight and relevant web source contracts rechecked. Auditor left AGENTS untouched: only the assigned evidence pair is added, with no auditor change to durable ownership, workflow, contract or child index. Parent concurrently added the owner-decisions.json rule; latest local AGENTS re-read at closeout.",
+    "concurrent_parent_work": "Parent-owned AGENTS.md, COUNCIL.md, workbook/exporter/ratings and owner-decisions.json changed during audit. They were not edited, reverted, committed or validated as auditor output. Raw R3 pairs, pinned inputs and images remained byte-identical.",
+    "final_publication_recheck": {
+      "checked_at_utc": "2026-10-28T13:00:12.208016+00:00",
+      "result": "pass",
+      "raw_md_json_pairs_byte_identical": true,
+      "complete_array_freezes_identical": true,
+      "all_206_image_identities_match": true,
+      "all_7_input_pins_match": true,
+      "all_9_parent_spreads_dispositioned": true,
+      "all_9_affected_images_individually_opened_at_original_resolution": true,
+      "exact_opened_list_count": 20,
+      "audit_json_parses": true,
+      "owned_outputs_no_trailing_whitespace": true,
+      "application_tests_run": false,
+      "behavior_or_progression_acceptance": false
+    }
+  },
+  "handoff": {
+    "myslop": "Known revoked credential returns 401; per user instruction no retry, read, post or board status change attempted.",
+    "delivery": "Only the assigned audit JSON/Markdown pair; parent continues the concrete Month correction. No acceptance, rating or new round."
+  }
+}

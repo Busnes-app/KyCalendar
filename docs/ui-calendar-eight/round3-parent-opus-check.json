@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-10-28T12:36:00.950690+00:00",
+  "reviewer": "Opus5.5",
+  "round": 3,
+  "exact": "633/80",
+  "half_up": "7.9",
+  "brand_exact": "1361/160",
+  "freeze": {
+    "sha256": "f10f0c22e95312d689315de62cad07dfc1cfa22453e7851171e9a5aef049c455",
+    "bytes": 111936
+  },
+  "raw_json_sha256": "2c649996931bc02d7906f9cc9d33b59f7743733392264bc2b557a08f9600d5c6",
+  "raw_md_sha256": "7f4c94807807719779334fefb0f897e31f5ccaa22bc277559064e0532028bd75",
+  "independent_satisfaction": false,
+  "caveats": [
+    "Reviewer read prior aggregate means in COUNCIL.md before freeze; disclose as partially unblinded.",
+    "Week empty-Monday/current-day premise is factually invalid and corrected outside frozen array; no grade rewriting."
+  ],
+  "owner_rejection": "Owner rejected round3 phoneMonth; this reopens progression regardless of score. Current time-led restoration is a new, unscored source.",
+  "scope": "Keep report unchanged; no point-budget optimization. Owner Month correction is concrete task."
+}

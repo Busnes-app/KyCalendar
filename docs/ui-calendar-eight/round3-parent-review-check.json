@@ -1,0 +1,117 @@
+{
+  "checked_at": "2026-10-28T12:51:56.384366+00:00",
+  "reports": {
+    "opus": {
+      "n": 48,
+      "exact": "633/80",
+      "half_up": "7.9",
+      "freeze_sha256": "f10f0c22e95312d689315de62cad07dfc1cfa22453e7851171e9a5aef049c455",
+      "freeze_bytes": 111936,
+      "raw_json_sha256": "2c649996931bc02d7906f9cc9d33b59f7743733392264bc2b557a08f9600d5c6",
+      "raw_md_sha256": "7f4c94807807719779334fefb0f897e31f5ccaa22bc277559064e0532028bd75",
+      "satisfied": false
+    },
+    "sol": {
+      "n": 48,
+      "exact": "43/5",
+      "half_up": "8.6",
+      "freeze_sha256": "f60651a6b6b6cb28ca4af219853c65e4969ab37458100e2729e49a7346c044b6",
+      "freeze_bytes": 181740,
+      "raw_json_sha256": "93ab92c6d8b7c3004e7f723bb4d191ab1387af86255e128e78f7af2fdf0520b1",
+      "raw_md_sha256": "f65e7136d33711af1277f30b5c6ad65d789c362e18a7c6f64f6996047a2eb459",
+      "satisfied": false
+    }
+  },
+  "spreads_ge2": [
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two different disabled treatments (filled select vs ghost button) in one row.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two different disabled treatments (filled select vs ghost button) in one row.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two disabled treatments in one form.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Two disabled treatments in one form.",
+      "sol_observation": "Rounded inputs and outline destructive action use the same component vocabulary as the single navigation region."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Selected card unambiguous, but the unselected 'Two-step verification' tab shows a filled panel background that reads like a second active/hover state; nav has no left-scroll cue.",
+      "sol_observation": "Match system has an orange outline and checked radio; every alternative shows an unchecked radio."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' is clipped by the scroller with no fade/scroll cue; other states read correctly.",
+      "sol_observation": "Previous/next, Today and the view switcher are clearly bounded; event times precede their titles."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' is clipped by the scroller with no fade/scroll cue; other states read correctly.",
+      "sol_observation": "Previous/next, Today and the view switcher are clearly bounded; event times precede their titles."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' clipped by scroller without cue; List segment selected; Today disabled.",
+      "sol_observation": "Bounded date arrows, Today and underlined List selection make the view controls apparent."
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav item 'Phones &' clipped by scroller without cue; List segment selected; Today disabled.",
+      "sol_observation": "Bounded date arrows, Today and underlined List selection make the view controls apparent."
+    }
+  ],
+  "affected_images": [
+    "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+    "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+    "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+    "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png",
+    "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+    "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+    "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+    "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+    "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png"
+  ],
+  "gate": "owner rejected round3 phoneMonth; Opus7.9 below threshold independently",
+  "restoration": "new time-led source unscored; no historic/peer pooling",
+  "limitations": [
+    "Opus prior aggregate means visible before freeze.",
+    "Opus repeated false Week premise annotated outside array.",
+    "Raw scores and all vectors unchanged."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "decisions": [
+    {
+      "review_round": 3,
+      "captured_source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+      "status": "rejected",
+      "owner_quote": "round 3 mobile month is a downgrade.",
+      "clarification": "The fresh baseline with the time of the calendar item looks better than 3 letters and some dots",
+      "summary": "Owner rejected phone Month in this title-based batch and prefers baseline start times. PR95 restores the time-led phone Month treatment; its source is separate from these historical ratings.",
+      "followup_pr": "https://github.com/Busnes-app/KyCalendar/pull/95"
+    }
+  ]
+}
