@@ -8,7 +8,14 @@
   "verification": {
     "frontend": "TypeScript/production build and ky-ui0.4.3 integrity passed",
     "targeted_browser": "Month light390,dark390,light1280:3 passed in8.7s; visible start times/full accessible title, open/delete, contrast, offline/CSP.",
-    "matched_phone_captures": "pending06-after time-led source",
+    "matched_phone_captures": {
+      "manifest": "manifest-06-after.json",
+      "source": "a465aa04bea5f9bfa5ad7d736cd3d6fade9e3a41",
+      "images": 2,
+      "failures": 0,
+      "parent_visual_check": "Light/dark originals show start times for timed entries; full titles remain accessible; all-day bars retain labels.",
+      "scope": "Targeted owner correction; no fresh Council score."
+    },
     "full_required_checks": "Hosted CI on forthcoming updatedPR95 head."
   },
   "rating_scope": "No score assigned to the restored source. OpusR3 exact633/80=>7.9 describes rejected04 batch; SolR3 remains separate/pending until terminal.",
