@@ -19,11 +19,13 @@ Own fresh synthetic captures, independent ratings, provenance and visual progres
 - Use the pinned `ky-suite-v2` rubric. Keep quality and Ky brand fit separate.
 - Freeze the complete per-file score vectors and observations before reading peer/prior reviews, historical quality images or parent audits. Missing evidence is N/A.
 - Progression uses only current-round Opus overall quality, rounded half-up to one decimal; 8.0 accepts. No peer/history/brand pooling or individual-cohort veto. Owner rejection reopens progression.
+- `owner-decisions.json` binds explicit owner rejections to their round/source; exports show that disposition without changing frozen ratings.
 - Show all round scores with pending/unused reviewers. Gemini is advisory after both primary reviewers are satisfied; its known exhausted quota is not retried or a progression blocker.
 
 ## Work Guidance
 
 - KyCalendar is the owner's highest-priority remaining web product. Begin from a fresh baseline of everyday calendar tasks and separate administrator screens.
+- Phone Month prioritizes start times for timed entries, as in the fresh baseline; retain full accessible titles and all-day labels. The owner rejected wrapped or abbreviated timed titles.
 - Use real local sign-in and synthetic calendar data in an owned private fixture. No production or external integrations; no authentication mocks or relaxed security.
 - Match 1280×900 and 390×844, DPR1, OS light/dark, locale/timezone, displayed dates, fixture and saved-choice state across before/after views.
 - Preserve raw failures and originals. Permit one bounded correction/confirmation per batch; do not overwrite earlier attempts.

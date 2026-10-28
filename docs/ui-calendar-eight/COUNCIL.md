@@ -10,11 +10,20 @@ Quality and brand stay separate. Current-round Opus alone controls progression; 
 | 2 | opus | Reviewed | 48 | 467/60 | 7.8 | Below 8.0 | False |
 | 2 | sol | Reviewed | 48 | 127/15 | 8.5 | Does not control progression | False |
 | 2 | gemini | Unused: known exhausted quota | — | — | — | — | — |
+| 3 | opus | Reviewed | 48 | 633/80 | 7.9 | Owner rejected | False |
+| 3 | sol | Reviewed | 48 | 43/5 | 8.6 | Does not control progression | False |
+| 3 | gemini | Unused: known exhausted quota | — | — | — | — | — |
 
-PR: https://github.com/Busnes-app/KyCalendar/pull/92
+PR: Not opened yet; source captures in PR94, correction in PR95
 
 [Workbook](KyCalendar-Council.xlsx) · [Per-file CSV](ratings.csv). Raw reviews and source images remain unchanged.
 
 Coverage summaries are not rankings or full behavior/accessibility/production acceptance. Gemini is unused because its quota is exhausted.
 
-Current round 3 uses the corrected 04-confirmation batch at `3aca6fc`; stage03 remains diagnostic. Opus and Sol reviews are pending; Gemini unused (exhausted quota). Workbook/CSV currently contain the two terminal rounds only.
+Owner decision (round 3): Owner rejected phone Month in this title-based batch and prefers baseline start times. PR95 restores the time-led phone Month treatment; its source is separate from these historical ratings.
+
+Review limitations (raw scores preserved):
+
+- Round 3: Opus prior aggregate means visible before freeze.
+- Round 3: Opus repeated false Week premise annotated outside array.
+- Round 3: Raw scores and all vectors unchanged.

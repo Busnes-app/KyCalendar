@@ -20,6 +20,8 @@ load = lambda path: json.loads(path.read_text())
 sha = lambda data: hashlib.sha256(data).hexdigest()
 weights = dict(zip(['hierarchy', 'typography', 'density_layout', 'color', 'visible_affordances', 'coherence'], [20, 15, 20, 15, 15, 15]))
 brand_keys = ['palette_tokens', 'type_geometry', 'shell', 'accent_discipline', 'suite_cohesion']
+decision_path = root / 'owner-decisions.json'
+decisions = load(decision_path)['decisions'] if decision_path.exists() else []
 
 
 def rounded(value):
@@ -72,12 +74,14 @@ for turn in range(1, args.current_round + 1):
             scores = brand['scores'] if isinstance(brand, dict) else row['ky_fit_scores']
             reasons = brand.get('observations', brand.get('reasons', {})) if isinstance(brand, dict) else row['ky_fit_observations']
             values = [Fraction(str(value)) for value in scores.values() if isinstance(value, (int, float))]
-            book['Brand evidence'].append([turn, who, row['file'], *[scores.get(key, 'N/A') for key in brand_keys], str(sum(values) / len(values)), *[reasons.get(key, 'N/A') for key in brand_keys]])
+            book['Brand evidence'].append([turn, who, row['file'], *[scores.get(key) if scores.get(key) is not None else 'N/A' for key in brand_keys], str(sum(values) / len(values)), *[reasons.get(key, 'N/A') for key in brand_keys]])
         mean = sum(totals) / len(totals)
         satisfaction = report.get('satisfied', report.get('independent_satisfied', report.get('independent_satisfaction')))
         if isinstance(satisfaction, dict):
             satisfaction = satisfaction['satisfied']
         gate = ('Accepted' if Decimal(rounded(mean)) >= 8 else 'Below 8.0') if who == 'opus' else 'Does not control progression'
+        if who == 'opus' and any(d['review_round'] == turn and d['captured_source'] == inputs['captured_source'] and d['status'] == 'rejected' for d in decisions):
+            gate = 'Owner rejected'
         book['Rounds'].append([turn, who, 'Reviewed', len(rows), str(mean), rounded(mean), gate, satisfaction, sha(path.read_bytes())])
         for cohort, values in sorted(cohorts.items()):
             mean = sum(values) / len(values)
@@ -95,6 +99,15 @@ for label, evidence in [
     ('Full required checks', 'Hosted CI only under owner hard-lock resource restriction; verify current PR head separately.'),
 ]:
     book['Checks'].append([label, evidence])
+for decision in decisions:
+    book['Checks'].append([f"Owner decision, round {decision['review_round']}", json.dumps(decision, ensure_ascii=False)])
+limitations = []
+for turn in range(1, args.current_round + 1):
+    check_path = root / f'round{turn}-parent-review-check.json'
+    if check_path.exists():
+        for note in load(check_path).get('limitations', []):
+            limitations.append(f'Round {turn}: {note}')
+            book['Checks'].append([f'Review limitation, round {turn}', note])
 
 # Stdlib XLSX writer shared in shape with the Drive/DNS exports: preserve fractions as text.
 ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -127,5 +140,9 @@ lines = ['# KyCalendar Council', '', 'Quality and brand stay separate. Current-r
 for row in book['Rounds'][1:]:
     lines.append('| ' + ' | '.join(str(value) if value != '' else '—' for value in row[:8]) + ' |')
 lines += ['', f'PR: {args.pr}', '', '[Workbook](KyCalendar-Council.xlsx) · [Per-file CSV](ratings.csv). Raw reviews and source images remain unchanged.', '', 'Coverage summaries are not rankings or full behavior/accessibility/production acceptance. Gemini is unused because its quota is exhausted.', '']
+for decision in decisions:
+    lines += [f"Owner decision (round {decision['review_round']}): {decision['summary']}", '']
+if limitations:
+    lines += ['Review limitations (raw scores preserved):', '', *['- ' + note for note in limitations], '']
 (root / 'COUNCIL.md').write_text('\n'.join(lines))
 print(f'Validated {args.current_round} round(s); exported workbook, CSV and score history; XLSX CRC/XML/data round-trip passed.')
