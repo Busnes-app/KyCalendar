@@ -4,8 +4,8 @@
   "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
   "branch": "ui/calendar-eight",
   "base_source": "0f01550",
-  "phase": "bounded runtime batch verified locally; matched after capture next",
-  "round": 1,
+  "phase": "matched captures verified; independent Opus/Sol round2 running; CodeQL helper fix committed",
+  "round": 2,
   "task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-capture-r1-20261027",
   "scores": {
     "opus": {
@@ -86,7 +86,7 @@
     },
     "gemini": "unused; known exhausted quota"
   },
-  "next": "Capture01-after from committed runtime with retained fixture; at most one confirmation if material problems. Parent will inspect originals and delegate Opus/SolR2 after capture verification.",
+  "next": "Collect terminal round2 reviews, validate freezes/arithmetic and audit spreads. Observe hosted CI and CodeQL at the new head through the PR watcher.",
   "resource_limit": "targeted checks, capped sequential builds, one browser; full suites hostedCI",
   "myslop": "KnownHTTP401; no successful shared-board post; do not retry unchanged credential",
   "baseline": {
@@ -113,5 +113,53 @@
     "browser_syntax": "passed",
     "full_suites": "hostedCIonly,not locally run",
     "targeted_browser": "light390calendar+month2passed after focus correction;login/CSP/theme1passed on unchanged Login source"
+  },
+  "pr": "https://github.com/Busnes-app/KyCalendar/pull/92",
+  "pr_head": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+  "after_capture_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-matched-after-capture-r2-20261027",
+  "codeql_findings": {
+    "alerts": [
+      32,
+      33
+    ],
+    "head": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+    "files": [
+      "capture-fixture.mjs",
+      "capture-checks.mjs"
+    ],
+    "finding": "Both runnable tools trust file-derived fixture origins without explicit literal-loopback validation.",
+    "prepared_fix": [
+      "fixture-network.mjs: canonical127.0.0.1 unprivileged origin and safe relative path validation; redirects rejected.",
+      "fixture-network.test.mjs: malformed/remote/traversal inputs rejected and redirect destination never contacted;2tests passed."
+    ],
+    "status": "Shared validation module/test prepared; existing helper wiring deferred while active after-capture task preserves and binds original driver bytes.",
+    "next": "When capture task is terminal, preserve original helper bytes by explicit historical-driver archive mapping, wire hardened tools, add CI check, run targeted checks, commit/push and reply to both CodeQL threads. Then verify CodeQL at new head."
+  },
+  "round2_review_tasks": {
+    "opus": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-readable-views-opus-r2-20261028",
+    "sol": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-readable-views-sol-r2-20261028"
+  },
+  "round2_scores": {
+    "opus": "pending",
+    "sol": "pending",
+    "gemini": "unused; known exhausted quota"
+  },
+  "after_capture_summary": {
+    "originals_preserved": 106,
+    "current_quality_candidates": 48,
+    "checks_passed": 29,
+    "checks_failed": 0,
+    "source": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+    "byte_identical_to_baseline": 22,
+    "full_behavior_gates": "untested",
+    "settled_phone_navigation_visibility": "unverified"
+  },
+  "codeql_fix": {
+    "commit": "725d9ea",
+    "targeted_node_tests": "2 passed",
+    "syntax": "capture-fixture and capture-checks passed",
+    "ci_yaml": "parsed",
+    "driver_archive_hashes": "verified",
+    "scan_status": "pending new-head hosted scan"
   }
 }
