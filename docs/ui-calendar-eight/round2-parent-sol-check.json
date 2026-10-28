@@ -1,0 +1,23 @@
+{
+  "reviewer": "Sol",
+  "round": 2,
+  "checked_at": "2026-10-28T04:23:52.555610+00:00",
+  "raw_json_sha256": "65b5696db8cfee3845b068142a5154ca0a0235e72d51422b08199a9ab37654f4",
+  "raw_md_sha256": "cc75dcd21926dfa821c8ec72cfd0f8294e5badbb458ce2c0fe9bd27460670f8a",
+  "freeze": {
+    "sha256": "a413eecad0c0f633a4bf81b68c580633e824f74ea84f05478e4c8f4f94be7895",
+    "bytes": 646487
+  },
+  "quality_exact": "127/15",
+  "quality_half_up": "8.5",
+  "unrounded_vector_mean": "1351/160",
+  "brand_exact": "26/3",
+  "brand_half_up": "8.7",
+  "candidate_count": 48,
+  "preserved_image_hash_header_checks": 106,
+  "unchanged_pixels": 22,
+  "independent_satisfaction": false,
+  "progression": "pending Opus; Sol does not control progression",
+  "raw_reports_modified": false,
+  "calibration_note": "22 byte-identical images were scored differently; retain blind frozen scores and do not describe all rating gains as implementation improvement."
+}

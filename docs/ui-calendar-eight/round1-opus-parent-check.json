@@ -1,0 +1,47 @@
+{
+  "reviewer": "claude-opus-5-5",
+  "round": 1,
+  "n": 48,
+  "overall_exact": "3617/480",
+  "overall_decimal": "7.535416666666666666666666667",
+  "half_up": "7.5",
+  "freeze_sha256": "3576acfb8e039337529c19c4a73d89bf3a74c6248424e85ea770ee4f1016e0c5",
+  "freeze_bytes": 102803,
+  "raw_json_sha256": "7d5ad791a69b9cc35cd80fed25da5370456e518c52ead7d6d87867bc1e59a84e",
+  "raw_md_sha256": "a17b69d642dc1f53d7afdfa7436638900f58a85c10630e5a9acfecbd6f688586",
+  "cohorts": {
+    "admin-console": {
+      "n": 12,
+      "exact": "149/20",
+      "half_up": "7.5"
+    },
+    "settings": {
+      "n": 8,
+      "exact": "127/16",
+      "half_up": "7.9"
+    },
+    "calendar-grid": {
+      "n": 12,
+      "exact": "85/12",
+      "half_up": "7.1"
+    },
+    "calendar-list": {
+      "n": 4,
+      "exact": "151/20",
+      "half_up": "7.6"
+    },
+    "event-editor": {
+      "n": 8,
+      "exact": "153/20",
+      "half_up": "7.7"
+    },
+    "auth": {
+      "n": 4,
+      "exact": "81/10",
+      "half_up": "8.1"
+    }
+  },
+  "sol": "pending; partial report unread",
+  "scores_changed": false,
+  "summary_correction": "Terminal agent summary misstated settings cohort. Frozen raw rows and published Markdown recompute127/16=7.9375 ->7.9; use that exact value. Overall3617/480->7.5 is correct. Raw bytes preserved."
+}

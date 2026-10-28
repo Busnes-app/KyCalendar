@@ -1,0 +1,150 @@
+{
+  "checked_at": "2026-10-28T04:26:29.169448+00:00",
+  "reports": {
+    "opus": {
+      "n": 48,
+      "quality_exact": "467/60",
+      "quality_half_up": "7.8",
+      "unrounded_vector_mean": "7457/960",
+      "brand_exact": "79/10",
+      "freeze_sha256": "9341638318d1603fd79f80ee435c096f5b96dbd65297581bab1f396ee4b076ab",
+      "freeze_bytes": 174890,
+      "raw_json_sha256": "8e22839bb087a901647621b81b95b5fde5f3d3071e2924b0ef8dd1ccaf8d3558",
+      "raw_md_sha256": "3a2949205d6bb5bb257010a1985a80023b8345961a69f2525bfe67d47a1a180e"
+    },
+    "sol": {
+      "n": 48,
+      "quality_exact": "127/15",
+      "quality_half_up": "8.5",
+      "unrounded_vector_mean": "1351/160",
+      "brand_exact": "26/3",
+      "freeze_sha256": "a413eecad0c0f633a4bf81b68c580633e824f74ea84f05478e4c8f4f94be7895",
+      "freeze_bytes": 646487,
+      "raw_json_sha256": "65b5696db8cfee3845b068142a5154ca0a0235e72d51422b08199a9ab37654f4",
+      "raw_md_sha256": "cc75dcd21926dfa821c8ec72cfd0f8294e5badbb458ce2c0fe9bd27460670f8a"
+    }
+  },
+  "progression": "below gate; current-round Opus7.8",
+  "spreads_ge2": [
+    {
+      "file": "screenshots/kycalendar-01-after-existing-event-desktop-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "dark Delete (danger #ff8176 family) and Save (accent #f5865f family) are both salmon; separated only by outline vs fill",
+      "sol_observation": "Neutral dialog with orange title focus and Save; Delete has a separate red outline."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-existing-event-mobile-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "dark Delete salmon text/outline is close in hue to the salmon Save fill",
+      "sol_observation": "Neutral overlay and surface keep focus and Save in orange, Delete in red."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-month-mobile-dark.png",
+      "dimension": "typography",
+      "opus": 7,
+      "sol": 5,
+      "opus_observation": "event labels in 51px cells are cut to 3-4 characters plus ellipsis ('Tea...', 'Des...', 'Lun...'); legible as truncation but carry little meaning",
+      "sol_observation": "Month cells reduce most event names to fragments such as Tea..., Des... and Pla...; dates remain readable."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-month-mobile-light.png",
+      "dimension": "typography",
+      "opus": 7,
+      "sol": 5,
+      "opus_observation": "event labels in 51px cells are cut to 3-4 characters plus ellipsis ('Tea...', 'Des...', 'Lun...'); legible as truncation but carry little meaning",
+      "sol_observation": "Month cells reduce most event names to fragments such as Tea..., Des... and Pla...; dates remain readable."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "modal on panel surface over a grey-washed page; a native blue segment highlight on the End month ('10') is off-palette",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "modal on panel surface over a grey-washed page; a native blue segment highlight on the End month ('10') is off-palette",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "native blue segment highlight on End month is off-palette; backdrop grey wash",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "native blue segment highlight on End month is off-palette; backdrop grey wash",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-week-mobile-dark.png",
+      "dimension": "density_layout",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "only Sun-Tue visible; the view opens on two empty days with today (Tue) clipped at the right edge, so the populated part of the week is mostly off-screen",
+      "sol_observation": " Wider day columns show Sunday through Tuesday; the time gutter stays separate and other days lie outside the capture."
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-week-mobile-light.png",
+      "dimension": "density_layout",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "only Sun-Tue visible; the view opens on two empty days with today (Tue) clipped at the right edge, so the populated part of the week is mostly off-screen",
+      "sol_observation": " Wider day columns show Sunday through Tuesday; the time gutter stays separate and other days lie outside the capture."
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "selected card clear; nav row is scrolled so Calendar and Phones & apps are off-screen left with no visible cue at the left edge",
+      "sol_observation": "Match system has both an orange border and selected radio; every theme has a preview and scheme label."
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "in dark only, the off-selection 'Two-step verification' nav item shows a tinted pill background that the light capture does not",
+      "sol_observation": "The card previews, radios and shared navigation form one consistent appearance control system."
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "selected card clear; nav row is scrolled so Calendar and Phones & apps are off-screen left with no visible cue at the left edge",
+      "sol_observation": "Match system has both an orange border and selected radio; every theme has a preview and scheme label."
+    }
+  ],
+  "affected_images": [
+    "screenshots/kycalendar-01-after-existing-event-desktop-dark.png",
+    "screenshots/kycalendar-01-after-existing-event-mobile-dark.png",
+    "screenshots/kycalendar-01-after-month-mobile-dark.png",
+    "screenshots/kycalendar-01-after-month-mobile-light.png",
+    "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+    "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+    "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+    "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+    "screenshots/kycalendar-01-after-week-mobile-dark.png",
+    "screenshots/kycalendar-01-after-week-mobile-light.png",
+    "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+    "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png"
+  ],
+  "raw_reports_modified": false,
+  "export_check": "2 rounds validated; XLSX CRC/XML/data roundtrip passed"
+}

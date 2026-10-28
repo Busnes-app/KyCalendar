@@ -1,0 +1,515 @@
+{
+  "protected": [
+    {
+      "file": "AGENTS.md",
+      "before_sha256": "8292511b06aea622430cdaff733711a26bf6b3834f109b749aa15ca7f79462f6",
+      "after_sha256": "8292511b06aea622430cdaff733711a26bf6b3834f109b749aa15ca7f79462f6",
+      "identical": true
+    },
+    {
+      "file": "COUNCIL.md",
+      "before_sha256": "cce8e5f679c8721fab982a8ab64fca640882212d6f7f69458f5b2997b2b2b576",
+      "after_sha256": "cce8e5f679c8721fab982a8ab64fca640882212d6f7f69458f5b2997b2b2b576",
+      "identical": true
+    },
+    {
+      "file": "KyCalendar-Council.xlsx",
+      "before_sha256": "7f593208e4e9fac41ad6b764647e93c27adfcf576feee7d46b7d021910ddb2ae",
+      "after_sha256": "7f593208e4e9fac41ad6b764647e93c27adfcf576feee7d46b7d021910ddb2ae",
+      "identical": true
+    },
+    {
+      "file": "artifacts-v1.json",
+      "before_sha256": "98dab08b6bf04dc67528112ae33c1b353f4d582c57c292f577b872af4030d9ae",
+      "after_sha256": "98dab08b6bf04dc67528112ae33c1b353f4d582c57c292f577b872af4030d9ae",
+      "identical": true
+    },
+    {
+      "file": "authority.json",
+      "before_sha256": "2c4abf7b3d659eb16e2ba19095907ede6b8720bf80e06de82b55dcb3e8133e49",
+      "after_sha256": "2c4abf7b3d659eb16e2ba19095907ede6b8720bf80e06de82b55dcb3e8133e49",
+      "identical": true
+    },
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-dark.png",
+      "before_sha256": "c4b743800560bc2a82089d27a2313b31bc107f2a41371eb5b2ae44243d3d89b9",
+      "after_sha256": "c4b743800560bc2a82089d27a2313b31bc107f2a41371eb5b2ae44243d3d89b9",
+      "identical": true
+    },
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-light.png",
+      "before_sha256": "e04e982e67675940082bde40ed094ef3aa3f7f5b76d1dac649c0e922ee941773",
+      "after_sha256": "e04e982e67675940082bde40ed094ef3aa3f7f5b76d1dac649c0e922ee941773",
+      "identical": true
+    },
+    {
+      "file": "build-report.py",
+      "before_sha256": "3ac70f5385c7fcae5b2ccc2e3efd2f7c2fb932d55ded1b0dec984093bfce7a8b",
+      "after_sha256": "3ac70f5385c7fcae5b2ccc2e3efd2f7c2fb932d55ded1b0dec984093bfce7a8b",
+      "identical": true
+    },
+    {
+      "file": "capture-checks.json",
+      "before_sha256": "4980617f32f667601dcb6bfda5f40070ce51e80158e7acfb83e0d525e773b52a",
+      "after_sha256": "4980617f32f667601dcb6bfda5f40070ce51e80158e7acfb83e0d525e773b52a",
+      "identical": true
+    },
+    {
+      "file": "capture-checks.md",
+      "before_sha256": "8a7043cdddca18341a068f9d6f970c18f6893543e6819426a5f72a26f994f7b2",
+      "after_sha256": "8a7043cdddca18341a068f9d6f970c18f6893543e6819426a5f72a26f994f7b2",
+      "identical": true
+    },
+    {
+      "file": "capture-checks.mjs",
+      "before_sha256": "7d7810b058c65b181111f3ef475892e1596901287e69d48cdb4aadff3f2a02f2",
+      "after_sha256": "7d7810b058c65b181111f3ef475892e1596901287e69d48cdb4aadff3f2a02f2",
+      "identical": true
+    },
+    {
+      "file": "capture-fixture.mjs",
+      "before_sha256": "1a59cd5e646042543ab5f55a3a498735a224852c004714b48c7af9e0d34b8a60",
+      "after_sha256": "1a59cd5e646042543ab5f55a3a498735a224852c004714b48c7af9e0d34b8a60",
+      "identical": true
+    },
+    {
+      "file": "capture-inventory.mjs",
+      "before_sha256": "0c8eeee86799dc6ecb68ba854bd29b3a229c95ab08d970df6576fe6a5bf99dc3",
+      "after_sha256": "0c8eeee86799dc6ecb68ba854bd29b3a229c95ab08d970df6576fe6a5bf99dc3",
+      "identical": true
+    },
+    {
+      "file": "capture.mjs",
+      "before_sha256": "b0c5d7d416c0f8b97d74a2e5424dd715e33a375a61233e351d266f5aca66bf7e",
+      "after_sha256": "b0c5d7d416c0f8b97d74a2e5424dd715e33a375a61233e351d266f5aca66bf7e",
+      "identical": true
+    },
+    {
+      "file": "design-contract.md",
+      "before_sha256": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+      "after_sha256": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+      "identical": true
+    },
+    {
+      "file": "inventory-v1.json",
+      "before_sha256": "dbd4250c021c882db41ed3f59b38ddfc14325dc3367820b3303609a04a38937f",
+      "after_sha256": "dbd4250c021c882db41ed3f59b38ddfc14325dc3367820b3303609a04a38937f",
+      "identical": true
+    },
+    {
+      "file": "manifest-00-before.json",
+      "before_sha256": "86ddf34e219b342c48287b1a0dd76715d15a04a38476a3ff77022210c4ec1225",
+      "after_sha256": "86ddf34e219b342c48287b1a0dd76715d15a04a38476a3ff77022210c4ec1225",
+      "identical": true
+    },
+    {
+      "file": "opus-round1.json",
+      "before_sha256": "7d5ad791a69b9cc35cd80fed25da5370456e518c52ead7d6d87867bc1e59a84e",
+      "after_sha256": "7d5ad791a69b9cc35cd80fed25da5370456e518c52ead7d6d87867bc1e59a84e",
+      "identical": true
+    },
+    {
+      "file": "opus-round1.md",
+      "before_sha256": "a17b69d642dc1f53d7afdfa7436638900f58a85c10630e5a9acfecbd6f688586",
+      "after_sha256": "a17b69d642dc1f53d7afdfa7436638900f58a85c10630e5a9acfecbd6f688586",
+      "identical": true
+    },
+    {
+      "file": "ratings.csv",
+      "before_sha256": "40dd0d4376fa26d165460c566aefdfc932792db4f79a0d79dbb141ac837a99c3",
+      "after_sha256": "40dd0d4376fa26d165460c566aefdfc932792db4f79a0d79dbb141ac837a99c3",
+      "identical": true
+    },
+    {
+      "file": "review-inputs-v1.json",
+      "before_sha256": "f7e408267454203c8760989542a80fe036f5e2ec997e68e4e411e17e061e7021",
+      "after_sha256": "f7e408267454203c8760989542a80fe036f5e2ec997e68e4e411e17e061e7021",
+      "identical": true
+    },
+    {
+      "file": "round1-disagreement-audit.json",
+      "before_sha256": "9726720ae73366045975f8f89a089f453a1e3804167446f6e1da703379216f34",
+      "after_sha256": "9726720ae73366045975f8f89a089f453a1e3804167446f6e1da703379216f34",
+      "identical": true
+    },
+    {
+      "file": "round1-disagreement-audit.md",
+      "before_sha256": "34e9e99dbfb8cb03f9b31d03090956d8fc7aae80876b24774e208c8dc38905fa",
+      "after_sha256": "34e9e99dbfb8cb03f9b31d03090956d8fc7aae80876b24774e208c8dc38905fa",
+      "identical": true
+    },
+    {
+      "file": "round1-opus-parent-check.json",
+      "before_sha256": "c2851dd6a56f6bef8c3d9d5b9cf5e354a0ad12edd6203e68659932e85a836bb1",
+      "after_sha256": "c2851dd6a56f6bef8c3d9d5b9cf5e354a0ad12edd6203e68659932e85a836bb1",
+      "identical": true
+    },
+    {
+      "file": "round1-parent-capture-check.json",
+      "before_sha256": "d2f15fbd5538a7ba3d37595421c76fe327116e545973fa493e19cc5691abb838",
+      "after_sha256": "d2f15fbd5538a7ba3d37595421c76fe327116e545973fa493e19cc5691abb838",
+      "identical": true
+    },
+    {
+      "file": "round1-parent-review-check.json",
+      "before_sha256": "696e65b3bcd11cb0f18d6c0ceeba87605efc1df7171382a05b2f2d1041ea9d8e",
+      "after_sha256": "696e65b3bcd11cb0f18d6c0ceeba87605efc1df7171382a05b2f2d1041ea9d8e",
+      "identical": true
+    },
+    {
+      "file": "round1-responses.json",
+      "before_sha256": "953fd68bbda24a5939d14691e6ee39472b271f65800f2dc86cb441baffca48b2",
+      "after_sha256": "953fd68bbda24a5939d14691e6ee39472b271f65800f2dc86cb441baffca48b2",
+      "identical": true
+    },
+    {
+      "file": "round2-iteration-checks.json",
+      "before_sha256": "c52684cbd996625e48a5e748a3156b0e95e17491de6a14c80feabd600e18e1d3",
+      "after_sha256": "c52684cbd996625e48a5e748a3156b0e95e17491de6a14c80feabd600e18e1d3",
+      "identical": true
+    },
+    {
+      "file": "rubric.md",
+      "before_sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+      "after_sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+      "identical": true
+    },
+    {
+      "file": "runtime-tokens.css",
+      "before_sha256": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4",
+      "after_sha256": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-desktop-dark.png",
+      "before_sha256": "d6597e5ea6de9c1df2d30754015306edca596f1a80adfad9485fcd28746e0b97",
+      "after_sha256": "d6597e5ea6de9c1df2d30754015306edca596f1a80adfad9485fcd28746e0b97",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-desktop-light.png",
+      "before_sha256": "5ea90e7d2de9626fafcaded5cc188bc65dbc910aa228d9b46a5dce8f0f654091",
+      "after_sha256": "5ea90e7d2de9626fafcaded5cc188bc65dbc910aa228d9b46a5dce8f0f654091",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-mobile-dark.png",
+      "before_sha256": "e952a3e7b3e4c10af0e3499514895c56650cab616e2a42aa86e146287c59e409",
+      "after_sha256": "e952a3e7b3e4c10af0e3499514895c56650cab616e2a42aa86e146287c59e409",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-mobile-light.png",
+      "before_sha256": "912510c2260e2f6234d7125778e462aec6d973644730c18226d6d0cb5c6a7747",
+      "after_sha256": "912510c2260e2f6234d7125778e462aec6d973644730c18226d6d0cb5c6a7747",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-desktop-dark.png",
+      "before_sha256": "b8d5c8b7f2f32800727719d87366cee2165a79814298ff19a9f799751d41179a",
+      "after_sha256": "b8d5c8b7f2f32800727719d87366cee2165a79814298ff19a9f799751d41179a",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-desktop-light.png",
+      "before_sha256": "14a2abe19d540c35468de3b2ce44212487cd17d506135e0588d5bb2a61faf08c",
+      "after_sha256": "14a2abe19d540c35468de3b2ce44212487cd17d506135e0588d5bb2a61faf08c",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-mobile-dark.png",
+      "before_sha256": "cb2305a70978d42e1b37ebedcfdb12f457bc46610bc4ec15f3e22379fce35436",
+      "after_sha256": "cb2305a70978d42e1b37ebedcfdb12f457bc46610bc4ec15f3e22379fce35436",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-mobile-light.png",
+      "before_sha256": "44178d205dd165350f073ff1d2ed045f21b0edf97d17cfa4057bbd09569ec8d7",
+      "after_sha256": "44178d205dd165350f073ff1d2ed045f21b0edf97d17cfa4057bbd09569ec8d7",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-desktop-dark.png",
+      "before_sha256": "6b52a139eda11f33c5a3f4f7cc4bb9dbfd5ee4a68f25dc9d4c7aa34393232315",
+      "after_sha256": "6b52a139eda11f33c5a3f4f7cc4bb9dbfd5ee4a68f25dc9d4c7aa34393232315",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-desktop-light.png",
+      "before_sha256": "0f4351ad491aab51e5d4558e78517306aac0e4039a81af2c4fb6c8cd7f182f0d",
+      "after_sha256": "0f4351ad491aab51e5d4558e78517306aac0e4039a81af2c4fb6c8cd7f182f0d",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-mobile-dark.png",
+      "before_sha256": "3358131a44f927cda048ed6d8a1ea9509541ff783535dbf80ba1960d744e1c5c",
+      "after_sha256": "3358131a44f927cda048ed6d8a1ea9509541ff783535dbf80ba1960d744e1c5c",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-mobile-light.png",
+      "before_sha256": "d860dc0259c56d6f960a0e075ad9e19acc47431bdfad25fe36e32a548cbdefb5",
+      "after_sha256": "d860dc0259c56d6f960a0e075ad9e19acc47431bdfad25fe36e32a548cbdefb5",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-desktop-dark.png",
+      "before_sha256": "eaf70d9c310f9ad8679d51547e78a93e76adfa881748ef70a7a26457672e4f7c",
+      "after_sha256": "eaf70d9c310f9ad8679d51547e78a93e76adfa881748ef70a7a26457672e4f7c",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-desktop-light.png",
+      "before_sha256": "856d1d3a96175b6a3edb2aefff73306edabe516da2cdba2654598686ee3a4fc1",
+      "after_sha256": "856d1d3a96175b6a3edb2aefff73306edabe516da2cdba2654598686ee3a4fc1",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-mobile-dark.png",
+      "before_sha256": "b20fe2e52c870c426df7ffefae237b3a460ab3d47d79e569209040228686b7b5",
+      "after_sha256": "b20fe2e52c870c426df7ffefae237b3a460ab3d47d79e569209040228686b7b5",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-mobile-light.png",
+      "before_sha256": "e09ec8eb31549e609c7d7d7cf38a71440301cb6df4bc3a110b0fbcb1cc10392d",
+      "after_sha256": "e09ec8eb31549e609c7d7d7cf38a71440301cb6df4bc3a110b0fbcb1cc10392d",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-desktop-dark.png",
+      "before_sha256": "497bd1713f1fe93919d0243c0fc00f0592c2199f8de52fe72a8cb6358314de12",
+      "after_sha256": "497bd1713f1fe93919d0243c0fc00f0592c2199f8de52fe72a8cb6358314de12",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-desktop-light.png",
+      "before_sha256": "34a03d0a2aee8f169cdeeac7fee1c2f2ff36cf6297ca1668ccf2362f430bb65b",
+      "after_sha256": "34a03d0a2aee8f169cdeeac7fee1c2f2ff36cf6297ca1668ccf2362f430bb65b",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-dark.png",
+      "before_sha256": "e503202569c3e367b77bf5c50aef4985ffe88bd7a001806438cd813233025e0b",
+      "after_sha256": "e503202569c3e367b77bf5c50aef4985ffe88bd7a001806438cd813233025e0b",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-light.png",
+      "before_sha256": "af749f175745eb86f834304aca861aacc6d12c05c6beb247be9ca92b8e6a1c71",
+      "after_sha256": "af749f175745eb86f834304aca861aacc6d12c05c6beb247be9ca92b8e6a1c71",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+      "before_sha256": "5611cea03c6fbda65b5e7fe0491c1b911d4cf7bf348d4b8e9f40ea1bcd8526ad",
+      "after_sha256": "5611cea03c6fbda65b5e7fe0491c1b911d4cf7bf348d4b8e9f40ea1bcd8526ad",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+      "before_sha256": "797f4ab1af744b97fb50744fc038dc011fc4e7d305ff8de12131b5f3f7327496",
+      "after_sha256": "797f4ab1af744b97fb50744fc038dc011fc4e7d305ff8de12131b5f3f7327496",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+      "before_sha256": "d0f3835470fa02f3d077eaa5785afd2b88c9fe95c89a483c941354814b37c9ae",
+      "after_sha256": "d0f3835470fa02f3d077eaa5785afd2b88c9fe95c89a483c941354814b37c9ae",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+      "before_sha256": "627c5b7d968238509d7673a9320a67011e077833219d97389576db849ec22395",
+      "after_sha256": "627c5b7d968238509d7673a9320a67011e077833219d97389576db849ec22395",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+      "before_sha256": "370aabaa2ea1a9486a6384a63b2398aecc343fe19c28f4b1daed28ac06b89774",
+      "after_sha256": "370aabaa2ea1a9486a6384a63b2398aecc343fe19c28f4b1daed28ac06b89774",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+      "before_sha256": "86e237d61482fc9bf44343262fa26866d76e2d9e6b52fa437c8299475a4934eb",
+      "after_sha256": "86e237d61482fc9bf44343262fa26866d76e2d9e6b52fa437c8299475a4934eb",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-desktop-dark.png",
+      "before_sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+      "after_sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-desktop-light.png",
+      "before_sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+      "after_sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-mobile-dark.png",
+      "before_sha256": "bba354d52afc8ee570bb44d06ee6cbb8ebe3f7c98b0099ee365ee7c7634810d3",
+      "after_sha256": "bba354d52afc8ee570bb44d06ee6cbb8ebe3f7c98b0099ee365ee7c7634810d3",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-mobile-light.png",
+      "before_sha256": "e9bf0249942223c11f810e83398e33d38d4ddffb41ab97280f310fde9d1cf91e",
+      "after_sha256": "e9bf0249942223c11f810e83398e33d38d4ddffb41ab97280f310fde9d1cf91e",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-desktop-dark.png",
+      "before_sha256": "479a79849358177a96c582ce1b366d54d2733927efcff4a7588752f26d17d16d",
+      "after_sha256": "479a79849358177a96c582ce1b366d54d2733927efcff4a7588752f26d17d16d",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-desktop-light.png",
+      "before_sha256": "110de186dd99e738c4512dafcd495021719b8bdb5f599bf78cba2f1e003148ad",
+      "after_sha256": "110de186dd99e738c4512dafcd495021719b8bdb5f599bf78cba2f1e003148ad",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-mobile-dark.png",
+      "before_sha256": "e9c28f02c223cb807304183ce4dd93661f7c615c21b472566795e0f852d3c667",
+      "after_sha256": "e9c28f02c223cb807304183ce4dd93661f7c615c21b472566795e0f852d3c667",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-mobile-light.png",
+      "before_sha256": "4682130636d2250f01a007dad70f6b88352904eaea74efb80f40a743371a4190",
+      "after_sha256": "4682130636d2250f01a007dad70f6b88352904eaea74efb80f40a743371a4190",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-desktop-dark.png",
+      "before_sha256": "7b073f252a70d9e52d00139937e78f5f9ef1379a115e434a27f4dd8267895576",
+      "after_sha256": "7b073f252a70d9e52d00139937e78f5f9ef1379a115e434a27f4dd8267895576",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-desktop-light.png",
+      "before_sha256": "58c1aa6eee33002993a2acc488bc8ee68990298cdfe9ec8bda79be6856f1909c",
+      "after_sha256": "58c1aa6eee33002993a2acc488bc8ee68990298cdfe9ec8bda79be6856f1909c",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-mobile-dark.png",
+      "before_sha256": "f77733da1a54007927bef08392f1567e5b174cf7e70d0cca28e8516ebc85fcbf",
+      "after_sha256": "f77733da1a54007927bef08392f1567e5b174cf7e70d0cca28e8516ebc85fcbf",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-mobile-light.png",
+      "before_sha256": "58cd3ed22aaed9f02bf7106391843ac0e76254794e87430c8e1d46a07a2c2130",
+      "after_sha256": "58cd3ed22aaed9f02bf7106391843ac0e76254794e87430c8e1d46a07a2c2130",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+      "before_sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+      "after_sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+      "before_sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+      "after_sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+      "before_sha256": "7636b2bd81fc0d915735107c8790fdeb7972ac4c5e354c9c44390a00ed147231",
+      "after_sha256": "7636b2bd81fc0d915735107c8790fdeb7972ac4c5e354c9c44390a00ed147231",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+      "before_sha256": "4bd1ed8fb26914ce8078a600c4622be837dce8ea3466ff275bc3a2d5d8339127",
+      "after_sha256": "4bd1ed8fb26914ce8078a600c4622be837dce8ea3466ff275bc3a2d5d8339127",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-desktop-dark.png",
+      "before_sha256": "3e19671f81a1c77ad39a4d79602ca2774fbd752908756c0372bb182924e39e7e",
+      "after_sha256": "3e19671f81a1c77ad39a4d79602ca2774fbd752908756c0372bb182924e39e7e",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-desktop-light.png",
+      "before_sha256": "0186944ea81f9acc95d34b64c0112f0fa21d14c2947f67e8877c590355b6b0e6",
+      "after_sha256": "0186944ea81f9acc95d34b64c0112f0fa21d14c2947f67e8877c590355b6b0e6",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-mobile-dark.png",
+      "before_sha256": "3eec7a3aa979a863a57c8b342874dd9ccf7895541b504a2ad79bf23bcd489ad2",
+      "after_sha256": "3eec7a3aa979a863a57c8b342874dd9ccf7895541b504a2ad79bf23bcd489ad2",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-mobile-light.png",
+      "before_sha256": "e391531e9c4da72164942fcd3fcaf06e27a023b387091ad2a8da77e2ed5011bd",
+      "after_sha256": "e391531e9c4da72164942fcd3fcaf06e27a023b387091ad2a8da77e2ed5011bd",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-desktop-dark.png",
+      "before_sha256": "9922335a70bd79a455a7ada1392a9e699ae1e9ae8deba2606a841cef3220b16a",
+      "after_sha256": "9922335a70bd79a455a7ada1392a9e699ae1e9ae8deba2606a841cef3220b16a",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-desktop-light.png",
+      "before_sha256": "303281e6114fddf3d17f6140a4b3d7521edb04f9e9e591a851e1eeb876c05ad4",
+      "after_sha256": "303281e6114fddf3d17f6140a4b3d7521edb04f9e9e591a851e1eeb876c05ad4",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-dark.png",
+      "before_sha256": "bb0dcdccbcf5b1241847abd2f31c2099db49edaf463c435a5b970fb934c7de36",
+      "after_sha256": "bb0dcdccbcf5b1241847abd2f31c2099db49edaf463c435a5b970fb934c7de36",
+      "identical": true
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-light.png",
+      "before_sha256": "f7c2dbfdb5e8d02276123d453fe55ae218766fa9ece84a5b69ef6a33fd6ac941",
+      "after_sha256": "f7c2dbfdb5e8d02276123d453fe55ae218766fa9ece84a5b69ef6a33fd6ac941",
+      "identical": true
+    },
+    {
+      "file": "sol-round1.json",
+      "before_sha256": "730488d9d45ec4dcce63e5ede8af37924894d3bf8ff56690386763fcf51d45e0",
+      "after_sha256": "730488d9d45ec4dcce63e5ede8af37924894d3bf8ff56690386763fcf51d45e0",
+      "identical": true
+    },
+    {
+      "file": "sol-round1.md",
+      "before_sha256": "9d034eaff007ec0c58fa8ea5f43a3365766a5858a5db58ce6b4f820d6cc40457",
+      "after_sha256": "9d034eaff007ec0c58fa8ea5f43a3365766a5858a5db58ce6b4f820d6cc40457",
+      "identical": true
+    }
+  ],
+  "parent_live_state": [
+    {
+      "file": "review-state.json",
+      "before_sha256": "ee75fb4ecf133ebac1315f45add59db2fbf7f53d840fd155d5ccedf399bb595e",
+      "after_sha256": "007388b86ee09e8f9e3c369b05e562972f3b5218bd806c88b29b1571221842d6",
+      "identical": false,
+      "ownership": "parent-owned live state; not capture-worker output"
+    }
+  ],
+  "protected_files": 82,
+  "all_protected_identical": true,
+  "baseline_images": 50,
+  "original_drivers": [
+    "capture.mjs",
+    "capture-fixture.mjs",
+    "capture-inventory.mjs",
+    "capture-checks.mjs"
+  ],
+  "policy": "Original baseline PNGs, original manifest, checks, inventories and drivers must retain their exact original bytes."
+}

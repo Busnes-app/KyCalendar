@@ -1,0 +1,46 @@
+{
+  "schema": "ky-ui-review-authority/1",
+  "rubric": "ky-suite-v2",
+  "product": "KyCalendar",
+  "base_source": "0f01550",
+  "runtime_ky_ui_version": "0.4.3",
+  "files": [
+    {
+      "file": "rubric.md",
+      "sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+      "bytes": 7817
+    },
+    {
+      "file": "design-contract.md",
+      "sha256": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+      "bytes": 6593
+    },
+    {
+      "file": "runtime-tokens.css",
+      "sha256": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4",
+      "bytes": 3980
+    }
+  ],
+  "progression": "Current-round Opus overall mean of unique rubric-rounded file totals; half-up one decimal >=8.0. No cohort veto or peer/history/brand pooling.",
+  "known_gemini": "quota exhausted; no retry or delay",
+  "owner_priority": "KyCalendar precedes KyYard and KyMessages.",
+  "capture_conditions": {
+    "desktop": [
+      1280,
+      900
+    ],
+    "phone": [
+      390,
+      844
+    ],
+    "DPR": 1,
+    "themes": [
+      "OSlight",
+      "OSdark"
+    ],
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "saved_theme": "none"
+  },
+  "source_note": "Parent adds evidence contracts while capture worker prepares. Runtime and committed web/dist remain unchanged from base. Record actual vcs.modified metadata without claiming a clean rebuild."
+}

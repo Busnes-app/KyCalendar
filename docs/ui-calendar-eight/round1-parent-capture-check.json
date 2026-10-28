@@ -1,0 +1,37 @@
+{
+  "round": 1,
+  "source": "0f0155027a87f3510740afe1b524a96846002fd3",
+  "all_image_hashes_bytes_dimensions_verified": 50,
+  "quality_candidates": 48,
+  "source_files_verified": 427,
+  "served_assets_verified": 15,
+  "same_size_pair_membership_verified": 601,
+  "near_duplicate_diffs_recomputed": 2,
+  "brand_only_verified": [
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-light.png",
+      "sha256": "e04e982e67675940082bde40ed094ef3aa3f7f5b76d1dac649c0e922ee941773",
+      "bytes": 90075,
+      "width": 1280,
+      "height": 900,
+      "role": "brand reference only; never quality-scored",
+      "source_commit": "df8daef1cc7c2c11eccab288334ef0ee20f6634b",
+      "source_image": "screenshots/kyidentity-02-after-appearance-desktop-light.png"
+    },
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-dark.png",
+      "sha256": "c4b743800560bc2a82089d27a2313b31bc107f2a41371eb5b2ae44243d3d89b9",
+      "bytes": 90473,
+      "width": 1280,
+      "height": 900,
+      "role": "brand reference only; never quality-scored",
+      "source_commit": "df8daef1cc7c2c11eccab288334ef0ee20f6634b",
+      "source_image": "screenshots/kyidentity-02-after-appearance-desktop-dark.png"
+    }
+  ],
+  "owned_process_identity_verified": true,
+  "review_input_sha256": "f7e408267454203c8760989542a80fe036f5e2ec997e68e4e411e17e061e7021",
+  "behavior_probe": "focus-return failure retained; no complete gates passed",
+  "runtime_edited": false,
+  "verification_note": "Initial brand extraction assumed DOM image tags; gallery embeds JSON data URLs. Corrected extraction by exact independently recorded original hash, without changing screenshots."
+}

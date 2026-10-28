@@ -1,0 +1,516 @@
+{
+  "round": 1,
+  "reviewers": {
+    "opus": {
+      "n": 48,
+      "exact": "3617/480",
+      "decimal": "7.535416666666666666666666667",
+      "half_up": "7.5",
+      "brand_exact": "123/16",
+      "freeze_sha256": "3576acfb8e039337529c19c4a73d89bf3a74c6248424e85ea770ee4f1016e0c5",
+      "freeze_bytes": 102803,
+      "raw_json_sha256": "7d5ad791a69b9cc35cd80fed25da5370456e518c52ead7d6d87867bc1e59a84e",
+      "raw_md_sha256": "a17b69d642dc1f53d7afdfa7436638900f58a85c10630e5a9acfecbd6f688586",
+      "independent_satisfaction": false,
+      "cohorts": {
+        "admin-console": {
+          "n": 12,
+          "exact": "149/20"
+        },
+        "settings": {
+          "n": 8,
+          "exact": "127/16"
+        },
+        "calendar-grid": {
+          "n": 12,
+          "exact": "85/12"
+        },
+        "calendar-list": {
+          "n": 4,
+          "exact": "151/20"
+        },
+        "event-editor": {
+          "n": 8,
+          "exact": "153/20"
+        },
+        "auth": {
+          "n": 4,
+          "exact": "81/10"
+        }
+      }
+    },
+    "sol": {
+      "n": 48,
+      "exact": "1889/240",
+      "decimal": "7.870833333333333333333333333",
+      "half_up": "7.9",
+      "brand_exact": "25/3",
+      "freeze_sha256": "a7e63724cf2bed6b5a9991c2c47512dcbaf02fb80e6febf61cfb6b3fab7a715b",
+      "freeze_bytes": 191970,
+      "raw_json_sha256": "730488d9d45ec4dcce63e5ede8af37924894d3bf8ff56690386763fcf51d45e0",
+      "raw_md_sha256": "9d034eaff007ec0c58fa8ea5f43a3365766a5858a5db58ce6b4f820d6cc40457",
+      "independent_satisfaction": false,
+      "cohorts": {
+        "admin-console": {
+          "n": 12,
+          "exact": "77/10"
+        },
+        "settings": {
+          "n": 8,
+          "exact": "33/4"
+        },
+        "calendar-grid": {
+          "n": 12,
+          "exact": "143/20"
+        },
+        "calendar-list": {
+          "n": 4,
+          "exact": "79/10"
+        },
+        "event-editor": {
+          "n": 8,
+          "exact": "17/2"
+        },
+        "auth": {
+          "n": 4,
+          "exact": "17/2"
+        }
+      }
+    }
+  },
+  "disagreements": [
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-mobile-dark.png",
+      "category": "quality",
+      "dimension": "visible_affordances",
+      "opus": 6,
+      "sol": 9,
+      "opus_observation": "Nav strip is scrolled so only 'Two-step verification' and 'Appearance' show; sign-out icon now at the right edge, unlike calendar pages. Dark: the filled Two-step tab looks like a second selected/hover state.",
+      "sol_observation": "Match system has both an orange border and checked radio; all other options retain visible unselected radio circles."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-mobile-light.png",
+      "category": "quality",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Nav strip is scrolled so only 'Two-step verification' and 'Appearance' show; sign-out icon now at the right edge, unlike calendar pages.",
+      "sol_observation": "Match system has both an orange border and checked radio; all other options retain visible unselected radio circles."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-desktop-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange marks New event, calendar selections, the selected view and the highlighted current day."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-desktop-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange marks New event, calendar selections, the selected view and the highlighted current day."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-dark.png",
+      "category": "quality",
+      "dimension": "visible_affordances",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "Same phone-header ambiguity: clipped 'Phones &' tab and floating unlabeled sign-out icon; Today looks disabled.",
+      "sol_observation": "Previous/next arrows, Today, view segments and New event read as distinct controls; colored events show times and titles."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange marks New event, calendar selections, the selected view and the highlighted current day."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-light.png",
+      "category": "quality",
+      "dimension": "visible_affordances",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "Same phone-header ambiguity: clipped 'Phones &' tab and floating unlabeled sign-out icon; Today looks disabled.",
+      "sol_observation": "Previous/next arrows, Today, view segments and New event read as distinct controls; colored events show times and titles."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange marks New event, calendar selections, the selected view and the highlighted current day."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+      "category": "quality",
+      "dimension": "visible_affordances",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "Horizontal nav clips 'Phones &' under a fade beside the 'Calendars' disclosure; an unlabeled sign-out icon floats mid-header at x~272, not at the right edge.",
+      "sol_observation": "New event, previous/next, Today and four view tabs read as controls; calendar dots communicate categories but row click behavior is unproven."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange is limited to the primary action, selected navigation and selected List tab."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+      "category": "quality",
+      "dimension": "visible_affordances",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "Horizontal nav clips 'Phones &' under a fade beside the 'Calendars' disclosure; an unlabeled sign-out icon floats mid-header at x~272, not at the right edge.",
+      "sol_observation": "New event, previous/next, Today and four view tabs read as controls; calendar dots communicate categories but row click behavior is unproven."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange is limited to the primary action, selected navigation and selected List tab."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+      "sol_observation": "Raised charcoal foreground on a dimmed list makes the dialog prominent; peach Save and red Delete retain distinct meanings."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event.",
+      "sol_observation": "Consistent field radii, plain labels, overlay shadow and separated footer actions form a single coherent editing surface."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+      "sol_observation": "Foreground orange is confined to Save and the focused Title field; background accent is subdued by the overlay."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+      "sol_observation": "White foreground on a dimmed cream list makes the dialog prominent; orange Save and red Delete retain distinct meanings."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event.",
+      "sol_observation": "Consistent field radii, plain labels, overlay shadow and separated footer actions form a single coherent editing surface."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+      "sol_observation": "Foreground orange is confined to Save and the focused Title field; background accent is subdued by the overlay."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+      "sol_observation": "Charcoal modal on a dimmed background preserves pale text and distinct peach Save versus red Delete."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event.",
+      "sol_observation": "All fields and actions retain consistent borders and corners in the single modal surface."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+      "sol_observation": "Orange marks focused Title and Save; destructive Delete uses a separate red outline."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+      "sol_observation": "White modal on a dimmed background preserves dark text and distinct orange Save versus red Delete."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event.",
+      "sol_observation": "All fields and actions retain consistent borders and corners in the single modal surface."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+      "sol_observation": "Orange marks focused Title and Save; destructive Delete uses a separate red outline."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-desktop-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange is limited to primary New event and selected calendar/navigation/view states."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-desktop-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange is limited to primary New event and selected calendar/navigation/view states."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-desktop-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange marks New event, checked calendars, selected navigation/view and current-date state."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-desktop-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange marks New event, checked calendars, selected navigation/view and current-date state."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-mobile-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange marks New event, checked calendars, selected navigation/view and current-date state."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-mobile-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange marks New event, checked calendars, selected navigation/view and current-date state."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+      "sol_observation": "Charcoal modal against the dimmed month gives strong separation; peach is confined to Save and the End focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit.",
+      "sol_observation": "Consistent corners, labels and footer buttons form a coherent modal, with shadow used for the overlay."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+      "category": "brand",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+      "sol_observation": "Charcoal surface and peach action match the dark reference palette."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+      "sol_observation": "White modal against the dimmed cream month gives strong separation; orange is confined to Save and the End focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit.",
+      "sol_observation": "Consistent corners, labels and footer buttons form a coherent modal, with shadow used for the overlay."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+      "category": "brand",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+      "sol_observation": "White surface and burnt orange action match the light reference palette."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+      "sol_observation": "Charcoal modal against the dimmed month gives strong separation; peach is confined to Save and the End focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit.",
+      "sol_observation": "Consistent corners, labels and footer buttons form a coherent modal, with shadow used for the overlay."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+      "category": "brand",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+      "sol_observation": "Charcoal surface and peach action match the dark reference palette."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+      "category": "quality",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+      "sol_observation": "White modal against the dimmed cream month gives strong separation; orange is confined to Save and the End focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+      "category": "quality",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit.",
+      "sol_observation": "Consistent corners, labels and footer buttons form a coherent modal, with shadow used for the overlay."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+      "category": "brand",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+      "sol_observation": "White surface and burnt orange action match the light reference palette."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-desktop-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange marks the primary action and selected navigation/view/calendar/current-day states."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-desktop-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+      "sol_observation": "Orange marks the primary action and selected navigation/view/calendar/current-day states."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-dark.png",
+      "category": "brand",
+      "dimension": "type_geometry",
+      "opus": 6,
+      "sol": 4,
+      "opus_observation": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+      "sol_observation": "Toolbar heights remain regular, but very narrow clipped text blocks fall far below the reference's readable type geometry."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-dark.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange marks the primary action and selected navigation/view/calendar/current-day states."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-light.png",
+      "category": "brand",
+      "dimension": "type_geometry",
+      "opus": 6,
+      "sol": 4,
+      "opus_observation": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+      "sol_observation": "Toolbar heights remain regular, but very narrow clipped text blocks fall far below the reference's readable type geometry."
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-light.png",
+      "category": "brand",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+      "sol_observation": "Orange marks the primary action and selected navigation/view/calendar/current-day states."
+    }
+  ],
+  "raw_scores_changed": false
+}

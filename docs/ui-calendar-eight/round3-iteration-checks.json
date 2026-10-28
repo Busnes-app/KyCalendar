@@ -1,0 +1,52 @@
+{
+  "round": 3,
+  "checked_at": "2026-10-28T04:32:20.887110+00:00",
+  "scope": "bounded Week positioning/time-axis, Month/title readability, phone heading and group grant availability batch",
+  "units": {
+    "files": 2,
+    "passed": 18,
+    "workers": 1,
+    "command": "npm --prefix web run test -- src/pages/CalendarPage.test.tsx src/pages/GroupCalendars.test.tsx --maxWorkers=1 --no-file-parallelism"
+  },
+  "frontend": "TypeScript and production Vite build pass; ky-ui0.4.3 vendor files verified",
+  "browser": {
+    "command": "npm run test:browser -- browser/calendar.spec.mjs browser/month.spec.mjs --project=light-390 --project=dark-390 --project=light-1280",
+    "passed": 6,
+    "workers": 1,
+    "real_server": true,
+    "csp_workers_auth_retained": true,
+    "includes": [
+      "Enter/Escape replacement event focus",
+      "deleted event New event focus",
+      "Week opens07:00",
+      "today column fully visible",
+      "time axis visible before/after keyboard horizontal scrolling",
+      "phone Month two-line title and full accessible name",
+      "other-month contrast",
+      "offline failure message"
+    ]
+  },
+  "failure_history": [
+    {
+      "command": "calendar/month in light390 and light1280 after first Week alignment",
+      "passed": 3,
+      "failed": 1,
+      "raw_error": "expect(locator).toBeInViewport() failed; .fc-timegrid-slot[data-time=\"07:00:00\"] first label; viewport ratio0; calendar.spec.mjs82",
+      "cause": "New horizontal positioning hid the time-label column; vertical07:00 scrolling itself passed.",
+      "fix": "Counter-scroll the axis with the actual internal scrollLeft; reserve axis width when positioning the day.",
+      "confirmation": "phone calendar1/1 then final targeted suite6/6 passed"
+    }
+  ],
+  "design_detector": [
+    {
+      "rule": "side-tab",
+      "file": "web/src/styles/calendar.css",
+      "snippet": "fc-col-header-cell.fc-day-today inset3px bottom stripe",
+      "disposition": "Retain: semantic current-day indicator is the existing approved calendar state, not decorative card styling."
+    }
+  ],
+  "full_required_checks": "Hosted CI only; must recheck new pushed head. All hosted checks passed at previous3b1c140 before this runtime batch.",
+  "full_behavior_gates": "Not claimed; targeted checks only. Physical touch/device and settled complete navigation visibility remain untested.",
+  "export_check": "Both terminalR2 freezes/arithmetic validated; XLSX CRC/XML/data roundtrip pass. Raw reports unchanged.",
+  "dox": "Updated web and browser contracts for changed runtime; evidence exporter contract clarified. Root unchanged: no root-level workflow/ownership change."
+}

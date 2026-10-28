@@ -1,0 +1,60 @@
+{
+  "schema": "kycalendar-round2-source-provenance/1",
+  "head": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+  "process": {
+    "pid": 595033,
+    "startticks": "2696963",
+    "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final",
+    "sha256": "e216cb1fc54afc51bae13a46fc52ac1e7e020948bf081f1d59848b283b1785cd",
+    "started_at": "2026-10-28T03:55:50.275Z",
+    "build_info": "/tmp/kycalendar-eight-Fqv5Ll/server-final: go1.27.3\n\tpath\tgithub.com/Busnes-app/kycalendar/cmd/server\n\tmod\tgithub.com/Busnes-app/kycalendar\tv0.4.4-0.20261028035313-d7e3b89843c5\t\n\tdep\tgithub.com/Busnes-app/ky-primitives\tv0.10.2-0.20261026050236-bae5c14dba4c\th1:0UinS4BAYgN4vhZXmksdf8CkHncONw8VhillN1cNewI=\n\tdep\tgithub.com/coreos/go-oidc/v3\tv3.21.0\th1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=\n\tdep\tgithub.com/dustin/go-humanize\tv1.1.0\th1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=\n\tdep\tgithub.com/elimity-com/scim\tv0.0.0-20260728105928-2641426a1539\th1:xZWHbTeRWqbowyZgmf6NYgCa6gw94g+ekG4f8TfIp3Q=\n\tdep\tgithub.com/emersion/go-ical\tv0.0.0-20240127095438-fc1c9d8fb2b6\th1:kHoSgklT8weIDl6R6xFpBJ5IioRdBU1v2X2aCZRVCcM=\n\tdep\tgithub.com/emersion/go-webdav\tv0.7.0\n\t=>\t./third_party/go-webdav\t(devel)\t\n\t\n\tdep\tgithub.com/go-jose/go-jose/v4\tv4.1.6\th1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=\n\tdep\tgithub.com/google/jsonschema-go\tv0.4.3\th1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+DQPd0=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/jackc/pgpassfile\tv1.0.0\th1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=\n\tdep\tgithub.com/jackc/pgservicefile\tv0.0.0-20240606120523-5a60cdf6a761\th1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=\n\tdep\tgithub.com/jackc/pgx/v5\tv5.11.0\th1:IzBBtyK9AHqf98cctWFifYSci2hgQR/cd56wB4p+ogg=\n\tdep\tgithub.com/jackc/puddle/v2\tv2.2.2\th1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=\n\tdep\tgithub.com/modelcontextprotocol/go-sdk\tv1.8.0\th1:KIvahhYqwtbeniWVPs3TcXEA7b8jEtwfBpOTAI+Urx4=\n\tdep\tgithub.com/q-uint/parser\tv0.3.1\th1:VCHob90UXy0L5oMgny5EjbDC2YeEGNc6qahWa8+tUhQ=\n\tdep\tgithub.com/q-uint/xsd-datetime\tv1.0.0\th1:D2LCjbiDGeh121e1EH0XdOMPjDs/mmSq9yurbIYNWYY=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgithub.com/scim2/filter-parser/v2\tv2.3.1\th1:o24v+z9drjtWoF6XLtXOFWpkmo1GGfBKZqrAjy6npQM=\n\tdep\tgithub.com/segmentio/asm\tv1.1.3\th1:WM03sfUOENvvKexOLp+pCqgb/WDjsi7EK8gIsICtzhc=\n\tdep\tgithub.com/segmentio/encoding\tv0.5.4\th1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfvNt0=\n\tdep\tgithub.com/teambition/rrule-go\tv1.8.2\th1:lIjpjvWTj9fFUZCmuoVDrKVOtdiyzbzc93qTmRVe/J8=\n\tdep\tgithub.com/yosida95/uritemplate/v3\tv3.0.2\th1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=\n\tdep\tgolang.org/x/crypto\tv0.58.0\th1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=\n\tdep\tgolang.org/x/oauth2\tv0.37.0\th1:JUlcxA8oAtauLfiH8FX2/FkAWHAdi0QtGCGc+hofE98=\n\tdep\tgolang.org/x/sync\tv0.24.0\th1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tdep\tgolang.org/x/text\tv0.43.0\th1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=\n\tdep\tgolang.org/x/time\tv0.15.0\th1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U=\n\tdep\tmodernc.org/libc\tv1.79.0\th1:9Dvvv++bAMSkSuBzuOFAatbTV5OIoq6Y6FohmD3e7q8=\n\tdep\tmodernc.org/mathutil\tv1.7.1\th1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=\n\tdep\tmodernc.org/memory\tv1.12.1\th1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=\n\tdep\tmodernc.org/sqlite\tv1.61.0\th1:sQi63oLQ9uquAUA4CzOisH35Q3pEszkPBuHM0tFL8CY=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=d7e3b89843c5893af0d18cc7e3ac147880cc91c4\n\tbuild\tvcs.time=2026-10-28T03:53:13Z\n\tbuild\tvcs.modified=false\n",
+    "build_command": "CGO_ENABLED=0 GOMAXPROCS=2 go build -p 1 -trimpath -o PRIVATE_DIRECTORY/server ./cmd/server",
+    "tracked_status_at_start": ""
+  },
+  "actual_running_executable_go_version_m": "/proc/595033/exe: go1.27.3\n\tpath\tgithub.com/Busnes-app/kycalendar/cmd/server\n\tmod\tgithub.com/Busnes-app/kycalendar\tv0.4.4-0.20261028035313-d7e3b89843c5\t\n\tdep\tgithub.com/Busnes-app/ky-primitives\tv0.10.2-0.20261026050236-bae5c14dba4c\th1:0UinS4BAYgN4vhZXmksdf8CkHncONw8VhillN1cNewI=\n\tdep\tgithub.com/coreos/go-oidc/v3\tv3.21.0\th1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=\n\tdep\tgithub.com/dustin/go-humanize\tv1.1.0\th1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=\n\tdep\tgithub.com/elimity-com/scim\tv0.0.0-20260728105928-2641426a1539\th1:xZWHbTeRWqbowyZgmf6NYgCa6gw94g+ekG4f8TfIp3Q=\n\tdep\tgithub.com/emersion/go-ical\tv0.0.0-20240127095438-fc1c9d8fb2b6\th1:kHoSgklT8weIDl6R6xFpBJ5IioRdBU1v2X2aCZRVCcM=\n\tdep\tgithub.com/emersion/go-webdav\tv0.7.0\n\t=>\t./third_party/go-webdav\t(devel)\t\n\t\n\tdep\tgithub.com/go-jose/go-jose/v4\tv4.1.6\th1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=\n\tdep\tgithub.com/google/jsonschema-go\tv0.4.3\th1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+DQPd0=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/jackc/pgpassfile\tv1.0.0\th1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=\n\tdep\tgithub.com/jackc/pgservicefile\tv0.0.0-20240606120523-5a60cdf6a761\th1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=\n\tdep\tgithub.com/jackc/pgx/v5\tv5.11.0\th1:IzBBtyK9AHqf98cctWFifYSci2hgQR/cd56wB4p+ogg=\n\tdep\tgithub.com/jackc/puddle/v2\tv2.2.2\th1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=\n\tdep\tgithub.com/modelcontextprotocol/go-sdk\tv1.8.0\th1:KIvahhYqwtbeniWVPs3TcXEA7b8jEtwfBpOTAI+Urx4=\n\tdep\tgithub.com/q-uint/parser\tv0.3.1\th1:VCHob90UXy0L5oMgny5EjbDC2YeEGNc6qahWa8+tUhQ=\n\tdep\tgithub.com/q-uint/xsd-datetime\tv1.0.0\th1:D2LCjbiDGeh121e1EH0XdOMPjDs/mmSq9yurbIYNWYY=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgithub.com/scim2/filter-parser/v2\tv2.3.1\th1:o24v+z9drjtWoF6XLtXOFWpkmo1GGfBKZqrAjy6npQM=\n\tdep\tgithub.com/segmentio/asm\tv1.1.3\th1:WM03sfUOENvvKexOLp+pCqgb/WDjsi7EK8gIsICtzhc=\n\tdep\tgithub.com/segmentio/encoding\tv0.5.4\th1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfvNt0=\n\tdep\tgithub.com/teambition/rrule-go\tv1.8.2\th1:lIjpjvWTj9fFUZCmuoVDrKVOtdiyzbzc93qTmRVe/J8=\n\tdep\tgithub.com/yosida95/uritemplate/v3\tv3.0.2\th1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=\n\tdep\tgolang.org/x/crypto\tv0.58.0\th1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=\n\tdep\tgolang.org/x/oauth2\tv0.37.0\th1:JUlcxA8oAtauLfiH8FX2/FkAWHAdi0QtGCGc+hofE98=\n\tdep\tgolang.org/x/sync\tv0.24.0\th1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tdep\tgolang.org/x/text\tv0.43.0\th1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=\n\tdep\tgolang.org/x/time\tv0.15.0\th1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U=\n\tdep\tmodernc.org/libc\tv1.79.0\th1:9Dvvv++bAMSkSuBzuOFAatbTV5OIoq6Y6FohmD3e7q8=\n\tdep\tmodernc.org/mathutil\tv1.7.1\th1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=\n\tdep\tmodernc.org/memory\tv1.12.1\th1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=\n\tdep\tmodernc.org/sqlite\tv1.61.0\th1:sQi63oLQ9uquAUA4CzOisH35Q3pEszkPBuHM0tFL8CY=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=d7e3b89843c5893af0d18cc7e3ac147880cc91c4\n\tbuild\tvcs.time=2026-10-28T03:53:13Z\n\tbuild\tvcs.modified=false\n",
+  "actual_running_executable_sha256": "e216cb1fc54afc51bae13a46fc52ac1e7e020948bf081f1d59848b283b1785cd",
+  "baseline_private_record": "/tmp/kycalendar-eight-Fqv5Ll/baseline-process.json",
+  "baseline_binary_retained": "/tmp/kycalendar-eight-Fqv5Ll/server",
+  "seed_unchanged": true,
+  "fixture_reused_without_init": true,
+  "rebuild_performed_by_capture_worker": false,
+  "process_record_build_command_caveat": "capture-fixture.mjs records a generic build-command string ending /server; actual parent-built executable is server-final. Actual go version -m and executable hash verified separately.",
+  "driver_copy": {
+    "from": "capture.mjs",
+    "to": "capture-round2.mjs",
+    "from_sha256": "b0c5d7d416c0f8b97d74a2e5424dd715e33a375a61233e351d266f5aca66bf7e",
+    "to_sha256": "24aaebdc269e4352732a5c1d42657b7018d072f66ac241d123a103bd1279ae0e",
+    "changes": [
+      "Round2 native-preview and workflow provenance replaces baseline-only prose",
+      "Include original TTF response bindings",
+      "Per-image signout/week/event-label/group-hint/today/time-indicator geometry",
+      "Week ArrowRight movement probe after screenshot; reset scroll after probe",
+      "Retain original event handle and logical ID to verify replacement anchor after close/refetch",
+      "Real role-denial GETs and nav focus reachability",
+      "Empty login captured before non-secret username typing/clear stability probe; no submission",
+      "Record driver hashes"
+    ]
+  },
+  "one_bounded_correction": {
+    "driver": {
+      "file": "capture-round2-confirmation.mjs",
+      "sha256": "cfac1534afaff46ffffbb7b095954f4063c9006e30e70dfea183074d62951348",
+      "copied_from": "capture.mjs",
+      "original_sha256": "b0c5d7d416c0f8b97d74a2e5424dd715e33a375a61233e351d266f5aca66bf7e"
+    },
+    "manifest": "manifest-02-confirmation.json",
+    "superseded": "Four Appearance originals in 01-after only; untouched raw files remain diagnostic",
+    "reason": "Capture-side navigation focus probe added unmatched focus outline",
+    "changes_from_original_driver": [
+      "Only Appearance screenshot writes; original interaction sequence to that point",
+      "Actual Month accessible snapshots during calendar sequence",
+      "Signout via accessible-name locator; navigation and disclosure probes after screenshots",
+      "No extra corrections or runtime mutations"
+    ],
+    "source_sha256": "74b254ee137c3cbca35870f7f8ff786d3be89a1514c011c2105e8bdf6ca77633",
+    "browser_closed": true
+  },
+  "current_membership": "inventory-v2.json",
+  "private_seed_verified_against_baseline": true,
+  "source_and_dist_unchanged_during_both_batches": true
+}

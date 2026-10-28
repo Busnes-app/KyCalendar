@@ -1,0 +1,186 @@
+{
+  "product": "KyCalendar",
+  "priority": "highest remaining product per owner",
+  "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
+  "branch": "ui/calendar-eight",
+  "base_source": "0f01550",
+  "phase": "round2 terminal, Opus7.8 below gate; bounded round3 readability batch tested, matched recapture next",
+  "round": 2,
+  "task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-capture-r1-20261027",
+  "scores": {
+    "opus": {
+      "n": 48,
+      "exact": "3617/480",
+      "decimal": "7.535416666666666666666666667",
+      "half_up": "7.5",
+      "brand_exact": "123/16",
+      "freeze_sha256": "3576acfb8e039337529c19c4a73d89bf3a74c6248424e85ea770ee4f1016e0c5",
+      "freeze_bytes": 102803,
+      "raw_json_sha256": "7d5ad791a69b9cc35cd80fed25da5370456e518c52ead7d6d87867bc1e59a84e",
+      "raw_md_sha256": "a17b69d642dc1f53d7afdfa7436638900f58a85c10630e5a9acfecbd6f688586",
+      "independent_satisfaction": false,
+      "cohorts": {
+        "admin-console": {
+          "n": 12,
+          "exact": "149/20"
+        },
+        "settings": {
+          "n": 8,
+          "exact": "127/16"
+        },
+        "calendar-grid": {
+          "n": 12,
+          "exact": "85/12"
+        },
+        "calendar-list": {
+          "n": 4,
+          "exact": "151/20"
+        },
+        "event-editor": {
+          "n": 8,
+          "exact": "153/20"
+        },
+        "auth": {
+          "n": 4,
+          "exact": "81/10"
+        }
+      }
+    },
+    "sol": {
+      "n": 48,
+      "exact": "1889/240",
+      "decimal": "7.870833333333333333333333333",
+      "half_up": "7.9",
+      "brand_exact": "25/3",
+      "freeze_sha256": "a7e63724cf2bed6b5a9991c2c47512dcbaf02fb80e6febf61cfb6b3fab7a715b",
+      "freeze_bytes": 191970,
+      "raw_json_sha256": "730488d9d45ec4dcce63e5ede8af37924894d3bf8ff56690386763fcf51d45e0",
+      "raw_md_sha256": "9d034eaff007ec0c58fa8ea5f43a3365766a5858a5db58ce6b4f820d6cc40457",
+      "independent_satisfaction": false,
+      "cohorts": {
+        "admin-console": {
+          "n": 12,
+          "exact": "77/10"
+        },
+        "settings": {
+          "n": 8,
+          "exact": "33/4"
+        },
+        "calendar-grid": {
+          "n": 12,
+          "exact": "143/20"
+        },
+        "calendar-list": {
+          "n": 4,
+          "exact": "79/10"
+        },
+        "event-editor": {
+          "n": 8,
+          "exact": "17/2"
+        },
+        "auth": {
+          "n": 4,
+          "exact": "17/2"
+        }
+      }
+    },
+    "gemini": "unused; known exhausted quota"
+  },
+  "next": "Capture round3 from committed runtime in retained fixture without reseeding; preserve all older images/reports, validate current membership before independent Opus/Sol review.",
+  "resource_limit": "targeted checks, capped sequential builds, one browser; full suites hostedCI",
+  "myslop": "KnownHTTP401; no successful shared-board post; do not retry unchanged credential",
+  "baseline": {
+    "originals": 50,
+    "unique_quality_candidates": 48,
+    "near_duplicate_exclusions": 2,
+    "source": "0f0155027a87f3510740afe1b524a96846002fd3",
+    "parent_check": "round1-parent-capture-check.json",
+    "private_fixture": "/tmp/kycalendar-eight-Fqv5Ll",
+    "origin": "http://127.0.0.1:36827",
+    "browser_closed": true,
+    "behavior_failure": "event-dialog focus return failed4/4 probes; needs independent behavioral audit"
+  },
+  "tasks": {
+    "opus": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-opus-r1-20261027",
+    "sol": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-sol-r1-20261027"
+  },
+  "raw_summary_correction": "Terminal agent summary misstated settings cohort. Frozen raw rows and published Markdown recompute127/16=7.9375 ->7.9; use that exact value. Overall3617/480->7.5 is correct. Raw bytes preserved.",
+  "round1_audit_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-r1-disagreement-audit-20261027",
+  "checks": {
+    "affected_calendar_unit": "59passed,4files,singleworker",
+    "login_unit": "5passed,2files,singleworker",
+    "build": "TypeScript/production build passed; exact current assets committed with source",
+    "browser_syntax": "passed",
+    "full_suites": "hostedCIonly,not locally run",
+    "targeted_browser": "light390calendar+month2passed after focus correction;login/CSP/theme1passed on unchanged Login source"
+  },
+  "pr": "https://github.com/Busnes-app/KyCalendar/pull/92",
+  "pr_head": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+  "after_capture_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-matched-after-capture-r2-20261027",
+  "codeql_findings": {
+    "alerts": [
+      32,
+      33
+    ],
+    "head": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+    "files": [
+      "capture-fixture.mjs",
+      "capture-checks.mjs"
+    ],
+    "finding": "Both runnable tools trust file-derived fixture origins without explicit literal-loopback validation.",
+    "prepared_fix": [
+      "fixture-network.mjs: canonical127.0.0.1 unprivileged origin and safe relative path validation; redirects rejected.",
+      "fixture-network.test.mjs: malformed/remote/traversal inputs rejected and redirect destination never contacted;2tests passed."
+    ],
+    "status": "Shared validation module/test prepared; existing helper wiring deferred while active after-capture task preserves and binds original driver bytes.",
+    "next": "When capture task is terminal, preserve original helper bytes by explicit historical-driver archive mapping, wire hardened tools, add CI check, run targeted checks, commit/push and reply to both CodeQL threads. Then verify CodeQL at new head."
+  },
+  "round2_review_tasks": {
+    "opus": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-readable-views-opus-r2-20261028",
+    "sol": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-readable-views-sol-r2-20261028"
+  },
+  "round2_scores": {
+    "opus": {
+      "n": 48,
+      "quality_exact": "467/60",
+      "quality_half_up": "7.8",
+      "unrounded_vector_mean": "7457/960",
+      "brand_exact": "79/10",
+      "freeze_sha256": "9341638318d1603fd79f80ee435c096f5b96dbd65297581bab1f396ee4b076ab",
+      "freeze_bytes": 174890,
+      "raw_json_sha256": "8e22839bb087a901647621b81b95b5fde5f3d3071e2924b0ef8dd1ccaf8d3558",
+      "raw_md_sha256": "3a2949205d6bb5bb257010a1985a80023b8345961a69f2525bfe67d47a1a180e"
+    },
+    "sol": {
+      "n": 48,
+      "quality_exact": "127/15",
+      "quality_half_up": "8.5",
+      "unrounded_vector_mean": "1351/160",
+      "brand_exact": "26/3",
+      "freeze_sha256": "a413eecad0c0f633a4bf81b68c580633e824f74ea84f05478e4c8f4f94be7895",
+      "freeze_bytes": 646487,
+      "raw_json_sha256": "65b5696db8cfee3845b068142a5154ca0a0235e72d51422b08199a9ab37654f4",
+      "raw_md_sha256": "cc75dcd21926dfa821c8ec72cfd0f8294e5badbb458ce2c0fe9bd27460670f8a"
+    },
+    "gemini": "unused; known exhausted quota"
+  },
+  "after_capture_summary": {
+    "originals_preserved": 106,
+    "current_quality_candidates": 48,
+    "checks_passed": 29,
+    "checks_failed": 0,
+    "source": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+    "byte_identical_to_baseline": 22,
+    "full_behavior_gates": "untested",
+    "settled_phone_navigation_visibility": "unverified"
+  },
+  "codeql_fix": {
+    "commit": "725d9ea",
+    "targeted_node_tests": "2 passed",
+    "syntax": "capture-fixture and capture-checks passed",
+    "ci_yaml": "parsed",
+    "driver_archive_hashes": "verified",
+    "scan_status": "pending new-head hosted scan"
+  },
+  "round2_disagreement_audit_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-r2-disagreement-audit-20261028"
+}

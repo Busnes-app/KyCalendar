@@ -24,6 +24,29 @@ const team = { id: "cal_1", name: "Team", color: "", description: "", created_at
 const groups = { groups: [{ id: "grp_1", display_name: "Sales" }], total: 1 };
 
 describe("GroupCalendars", () => {
+  it("distinguishes no available groups from all groups already having access", async () => {
+    mockFetch({
+      "GET /api/admin/calendars": () => [team],
+      "GET /api/admin/groups": () => ({ groups: [], total: 0 }),
+    });
+    const view = render(<GroupCalendars />);
+    await screen.findByRole("option", { name: "No groups available" });
+    expect(screen.getByLabelText("Group")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("option", { name: "Every group has access" })).toBeNull();
+    view.unmount();
+    vi.restoreAllMocks();
+
+    mockFetch({
+      "GET /api/admin/calendars": () => [{ ...team, grants: [{ group_id: "grp_1", group_name: "Sales", role: "reader" }] }],
+      "GET /api/admin/groups": () => groups,
+    });
+    render(<GroupCalendars />);
+    await screen.findByRole("option", { name: "Every group has access" });
+    expect(screen.getByLabelText("Group")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", true);
+  });
+
   it("grants a group a role", async () => {
     let putBody: unknown;
     const put = vi.fn((init?: RequestInit) => {
@@ -37,7 +60,9 @@ describe("GroupCalendars", () => {
     });
     render(<GroupCalendars />);
     await screen.findByRole("heading", { name: "Team" });
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Group"), { target: { value: "grp_1" } });
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Role"), { target: { value: "editor" } });
     fireEvent.click(screen.getByRole("button", { name: /add group/i }));
     await waitFor(() => expect(put).toHaveBeenCalled());
