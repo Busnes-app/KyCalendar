@@ -61,12 +61,13 @@ for turn in range(1, args.current_round + 1):
             assert len(data) == row['bytes'] == source['bytes']
             assert all(type(row['scores'][key]) is int and 0 <= row['scores'][key] <= 10 for key in weights)
             exact = sum(Fraction(row['scores'][key] * weight, 100) for key, weight in weights.items())
-            assert exact == Fraction(str(row['total_unrounded']))
+            assert exact == Fraction(str(row.get('total_unrounded', row.get('weighted_total_unrounded'))))
             assert rounded(exact) == str(Decimal(str(row['total'])).quantize(Decimal('.1')))
             total = Fraction(str(row['total']))
             totals.append(total)
             cohorts[row['cohort']].append(total)
-            book['Quality evidence'].append([turn, who, row['file'], source['observed_surface'], row['cohort'], row['theme'], row['viewport'], row['state'], *[row['scores'][key] for key in weights], str(exact), row['total'], *[row['observations'][key] for key in weights], row['sha256'], row['caveat']])
+            viewport = row['viewport']['kind'] if isinstance(row['viewport'], dict) else row['viewport']
+            book['Quality evidence'].append([turn, who, row['file'], source['observed_surface'], row['cohort'], row['theme'], viewport, row['state'], *[row['scores'][key] for key in weights], str(exact), row['total'], *[row['observations'][key] for key in weights], row['sha256'], row['caveat']])
             brand = row['ky_fit']
             scores = brand['scores'] if isinstance(brand, dict) else row['ky_fit_scores']
             reasons = brand.get('observations', brand.get('reasons', {})) if isinstance(brand, dict) else row['ky_fit_observations']

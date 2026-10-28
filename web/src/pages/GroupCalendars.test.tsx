@@ -32,6 +32,7 @@ describe("GroupCalendars", () => {
     const view = render(<GroupCalendars />);
     await screen.findByRole("option", { name: "No groups available" });
     expect(screen.getByLabelText("Group")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", true);
     expect(screen.queryByRole("option", { name: "Every group has access" })).toBeNull();
     view.unmount();
     vi.restoreAllMocks();
@@ -43,6 +44,7 @@ describe("GroupCalendars", () => {
     render(<GroupCalendars />);
     await screen.findByRole("option", { name: "Every group has access" });
     expect(screen.getByLabelText("Group")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", true);
   });
 
   it("grants a group a role", async () => {
@@ -58,7 +60,9 @@ describe("GroupCalendars", () => {
     });
     render(<GroupCalendars />);
     await screen.findByRole("heading", { name: "Team" });
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Group"), { target: { value: "grp_1" } });
+    expect(screen.getByRole("button", { name: "Add group" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Role"), { target: { value: "editor" } });
     fireEvent.click(screen.getByRole("button", { name: /add group/i }));
     await waitFor(() => expect(put).toHaveBeenCalled());

@@ -102,6 +102,11 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 .kc-calendar .fc .fc-timegrid-event .fc-event-main { padding: 2px var(--ky-space-1); line-height: 1.3; }
 .kc-calendar .fc .fc-timegrid-event .fc-event-title-container { min-width: 0; min-height: 0; }
 .kc-calendar .fc .fc-timegrid-event .fc-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A tall block can show a second complete line; short events keep their single-line title. */
+.kc-calendar .fc .fc-timegrid-event { container-type: size; }
+@container (min-height: 60px) {
+  .kc-calendar .fc .fc-timegrid-event .fc-event-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+}
 /* A short event has room for one line: the title, which the time axis already places. */
 .kc-calendar .fc .fc-timegrid-event-short .fc-event-time { display: none; }
 .kc-calendar .fc .fc-daygrid-dot-event .fc-event-title { color: var(--ink-strong); }
@@ -131,15 +136,16 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .app-sidebar-slot .kc-cal-actions { position: absolute; inset-block: 0; right: 0; align-items: center; padding-left: var(--ky-space-2); background: var(--sidebar-end, var(--panel)); opacity: 0; }
   .app-sidebar-slot .kc-cal-row:hover .kc-cal-actions, .app-sidebar-slot .kc-cal-row:focus-within .kc-cal-actions { opacity: 1; }
 }
-.kc-workspace-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ky-space-3); margin-bottom: var(--ky-space-3); }
+.kc-workspace-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ky-space-1) var(--ky-space-3); margin-bottom: var(--ky-space-3); }
 .kc-workspace-heading h1 { margin: 0; font-size: var(--ky-type-title); line-height: 1.25; font-weight: 600; letter-spacing: -.01em; color: var(--ink-strong); }
-.kc-workspace-heading p { margin-top: var(--ky-space-1); color: var(--ink); font-size: var(--ky-type-meta); overflow-wrap: anywhere; }
-.kc-workspace-heading .kc-new { margin: 0; }
-/* The title column wraps its own lines (a loading note) instead of pushing New event down. */
-.kc-workspace-heading > div { flex: 1 1 12rem; min-width: 0; }
+.kc-workspace-heading p { grid-column: 1; color: var(--ink); font-size: var(--ky-type-meta); overflow-wrap: anywhere; }
+.kc-workspace-heading .kc-new { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
 .kc-week-hint { display: none; }
 @media (max-width: 720px) {
   .page.kc-layout { padding: var(--ky-space-3); }
+  .kc-workspace-heading { margin-bottom: var(--ky-space-2); }
+  .kc-workspace-heading .kc-new { grid-row: 1; }
+  .kc-workspace-heading p { grid-column: 1 / -1; }
   .kc-picker > summary { display: flex; align-items: center; gap: var(--ky-space-1); min-height: var(--ky-control-size); padding: 0 var(--ky-space-2) 0 var(--ky-space-3); border-radius: var(--ky-control-radius); color: var(--ink); font-size: var(--ky-type-nav); font-weight: 500; white-space: nowrap; cursor: pointer; list-style: none; }
   .kc-picker > summary::-webkit-details-marker { display: none; }
   .kc-picker > summary:hover { background: var(--panel-hover); color: var(--ink-strong); }
@@ -149,15 +155,19 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .kc-picker-panel { position: absolute; inset-inline: 0; top: 100%; max-height: 70vh; overflow-y: auto; padding: 0 var(--ky-space-3) var(--ky-space-3); background: var(--sidebar-end, var(--panel)); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-modal); }
   .app-sidebar-slot .kc-picker-panel .kc-sidebar { border-top: 0; }
   .kc-picker-panel .kc-sidebar h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .kc-calendar .fc .fc-toolbar { justify-content: flex-start; }
+  .kc-calendar .fc .fc-toolbar { justify-content: flex-start; gap: var(--ky-space-2); margin-bottom: var(--ky-space-2); }
   .kc-calendar .fc .fc-toolbar-chunk { max-width: 100%; }
   .kc-calendar .fc .fc-toolbar-title { font-size: 1.125rem; }
   /* Keep readable day columns inside a keyboard-scrollable Week region. */
   .kc-calendar:has(.fc-timeGridWeek-view) .kc-week-hint { display: block; margin-bottom: var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
   .kc-calendar .fc-timeGridWeek-view { overflow-x: auto; }
   .kc-calendar .fc-timeGridWeek-view > .fc-scrollgrid { min-width: 48rem; }
-  /* Month prioritizes a short event name; time remains in its accessible name. */
-  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* FullCalendar nests vertical scrollers, so sticky cannot reach the horizontal ancestor.
+     Counter its scroll offset to keep the time axis beside the visible days. */
+  .kc-calendar .fc-timeGridWeek-view :is(.fc-timegrid-axis, .fc-timegrid-slot-label) { position: relative; z-index: 3; transform: translateX(var(--kc-week-scroll, 0px)); background: var(--bg); }
+  /* Two lines reveal more than a three-letter prefix; full time/title remain accessible. */
+  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event { align-items: flex-start; }
+  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
   .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event-dot { border-width: 3px; margin: 0 3px 0 0; }
   .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-time { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .kc-calendar .fc-dayGridMonth-view .fc-daygrid-block-event .fc-event-main { min-height: 1.1rem; }

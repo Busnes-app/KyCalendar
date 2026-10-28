@@ -45,6 +45,9 @@ test('month: legible other-month days, labelled events, honest offline state', a
   await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(1);
   expect(await event.locator('.fc-event-title').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(8);
   await expect(event.locator('.fc-event-title')).toHaveCSS('clip-path', 'none');
+  if (viewport.width <= 720) {
+    expect(await event.locator('.fc-event-title').evaluate((el) => el.getBoundingClientRect().height > parseFloat(getComputedStyle(el).lineHeight))).toBe(true);
+  }
   await event.click();
   await expect(page.getByLabel('Title')).toHaveValue(title);
   page.once('dialog', (d) => d.accept());

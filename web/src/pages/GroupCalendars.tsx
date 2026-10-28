@@ -192,7 +192,7 @@ function CalendarCard({ cal, color, groups, onSet, onRemove, onDelete }: CardPro
         )}
       </div>
       <form
-        className="inline-form card-footer"
+        className="inline-form card-footer group-calendar-grant"
         onSubmit={(e) => {
           e.preventDefault();
           if (!group) return;
@@ -218,7 +218,7 @@ function CalendarCard({ cal, color, groups, onSet, onRemove, onDelete }: CardPro
             ))}
           </select>
         </div>
-        <button type="submit" className="btn-secondary">Add group</button>
+        <button type="submit" className="btn-secondary" disabled={!group || available.length === 0}>Add group</button>
       </form>
     </article>
   );

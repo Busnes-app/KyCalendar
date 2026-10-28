@@ -6,7 +6,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
-import type { DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
+import type { DatesSetArg, DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import { ApiError, browserZone, canAddEvents, listCalendars, listEvents, updateEvent, type CalendarInfo, type EventInfo } from '../calendarApi';
 import { calendarColors, textOn } from '../calendarColors';
@@ -129,6 +129,26 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const isNarrow = useNarrow();
   const [picker, setPicker] = useState(false);
   const summary = useRef<HTMLElement>(null);
+  // Move only the internal Week scroller; keep today (or the selected date) in view on phones.
+  const positionWeek = useCallback(() => {
+    if (!narrow()) return;
+    const week = calendarElement.current?.querySelector<HTMLElement>('.fc-timeGridWeek-view');
+    const date = ref.current?.getApi().getDate();
+    if (!week || !date) return;
+    const day = week.querySelector<HTMLElement>('.fc-col-header-cell.fc-day-today')
+      ?? week.querySelector<HTMLElement>(`.fc-col-header-cell[data-date="${localDate(date)}"]`);
+    const axisWidth = week.querySelector('.fc-timegrid-slot-label')?.getBoundingClientRect().width ?? 0;
+    if (day) week.scrollLeft += day.getBoundingClientRect().left - week.getBoundingClientRect().left - axisWidth;
+    week.style.setProperty('--kc-week-scroll', `${week.scrollLeft}px`);
+  }, []);
+  const datesSet = useCallback((arg: DatesSetArg) => {
+    setTimeGrid(arg.view.type.startsWith('timeGrid'));
+    requestAnimationFrame(positionWeek);
+  }, [positionWeek]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(positionWeek);
+    return () => cancelAnimationFrame(frame);
+  }, [isNarrow, positionWeek]);
   // A view switched from month or list renders before its fixed height applies, so FullCalendar's
   // own scrollTime finds nothing to scroll: open on the working day once the height is in place.
   useEffect(() => {
@@ -308,13 +328,18 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
 
   return (
     <section className="page kc-layout">
-      <div className="kc-calendar" ref={calendarElement}>
+      <div className="kc-calendar" ref={calendarElement} onScrollCapture={(e) => {
+        if (e.target instanceof HTMLElement && e.target.matches('.fc-timeGridWeek-view')) {
+          e.target.style.setProperty('--kc-week-scroll', `${e.target.scrollLeft}px`);
+        }
+      }}>
         {error && <p role="alert">{error}</p>}
-        <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p></div>
+        <div className="kc-workspace-heading"><h1>Calendar</h1>
         <button ref={newEvent} type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
           <Plus size={16} aria-hidden="true" />
           New event
-        </button></div>
+        </button>
+        <p>Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p></div>
         <p className="kc-week-hint">Scroll across the week to see other days.</p>
         <FullCalendar
           ref={ref}
@@ -325,7 +350,7 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           height={timeGrid ? TIME_GRID_HEIGHT : 'auto'}
           scrollTime={SCROLL_TIME}
           views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20 } }}
-          datesSet={(arg) => setTimeGrid(arg.view.type.startsWith('timeGrid'))}
+          datesSet={datesSet}
           loading={setLoadingEvents}
           // Grid events are focusable anchors without href; as buttons their whole text (time and
           // title, including visually clipped content) is their accessible name.

@@ -84,9 +84,19 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
     const week = page.getByRole('region', { name: 'Week calendar' });
     await expect(page.getByText('Scroll across the week to see other days.')).toBeVisible();
     expect(await week.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    // Entering Week positions today's entire column inside the internal scroller, even at
+    // the end of the week where scrollLeft must clamp. The page never scrolls sideways.
+    await expect.poll(() => week.evaluate((el) => {
+      const day = el.querySelector('.fc-col-header-cell.fc-day-today');
+      if (!day) return false;
+      const d = day.getBoundingClientRect(), w = el.getBoundingClientRect();
+      return d.left >= w.left - 1 && d.right <= w.right + 1;
+    })).toBe(true);
     await week.focus();
-    await page.keyboard.press('ArrowRight');
-    await expect.poll(() => week.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    const start = await week.evaluate((el) => el.scrollLeft);
+    await page.keyboard.press(start > 0 ? 'ArrowLeft' : 'ArrowRight');
+    await expect.poll(() => week.evaluate((el) => el.scrollLeft)).not.toBe(start);
+    await expect(slot7).toBeInViewport();
   }
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

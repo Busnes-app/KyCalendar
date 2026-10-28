@@ -4,7 +4,7 @@
   "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
   "branch": "ui/calendar-eight",
   "base_source": "0f01550",
-  "phase": "matched captures verified; independent Opus/Sol round2 running; CodeQL helper fix committed",
+  "phase": "round2 terminal, Opus7.8 below gate; bounded round3 readability batch tested, matched recapture next",
   "round": 2,
   "task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-capture-r1-20261027",
   "scores": {
@@ -86,7 +86,7 @@
     },
     "gemini": "unused; known exhausted quota"
   },
-  "next": "Collect terminal round2 reviews, validate freezes/arithmetic and audit spreads. Observe hosted CI and CodeQL at the new head through the PR watcher.",
+  "next": "Capture round3 from committed runtime in retained fixture without reseeding; preserve all older images/reports, validate current membership before independent Opus/Sol review.",
   "resource_limit": "targeted checks, capped sequential builds, one browser; full suites hostedCI",
   "myslop": "KnownHTTP401; no successful shared-board post; do not retry unchanged credential",
   "baseline": {
@@ -140,8 +140,28 @@
     "sol": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-readable-views-sol-r2-20261028"
   },
   "round2_scores": {
-    "opus": "pending",
-    "sol": "pending",
+    "opus": {
+      "n": 48,
+      "quality_exact": "467/60",
+      "quality_half_up": "7.8",
+      "unrounded_vector_mean": "7457/960",
+      "brand_exact": "79/10",
+      "freeze_sha256": "9341638318d1603fd79f80ee435c096f5b96dbd65297581bab1f396ee4b076ab",
+      "freeze_bytes": 174890,
+      "raw_json_sha256": "8e22839bb087a901647621b81b95b5fde5f3d3071e2924b0ef8dd1ccaf8d3558",
+      "raw_md_sha256": "3a2949205d6bb5bb257010a1985a80023b8345961a69f2525bfe67d47a1a180e"
+    },
+    "sol": {
+      "n": 48,
+      "quality_exact": "127/15",
+      "quality_half_up": "8.5",
+      "unrounded_vector_mean": "1351/160",
+      "brand_exact": "26/3",
+      "freeze_sha256": "a413eecad0c0f633a4bf81b68c580633e824f74ea84f05478e4c8f4f94be7895",
+      "freeze_bytes": 646487,
+      "raw_json_sha256": "65b5696db8cfee3845b068142a5154ca0a0235e72d51422b08199a9ab37654f4",
+      "raw_md_sha256": "cc75dcd21926dfa821c8ec72cfd0f8294e5badbb458ce2c0fe9bd27460670f8a"
+    },
     "gemini": "unused; known exhausted quota"
   },
   "after_capture_summary": {
@@ -161,5 +181,6 @@
     "ci_yaml": "parsed",
     "driver_archive_hashes": "verified",
     "scan_status": "pending new-head hosted scan"
-  }
+  },
+  "round2_disagreement_audit_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-r2-disagreement-audit-20261028"
 }
