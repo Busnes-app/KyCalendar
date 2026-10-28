@@ -40,17 +40,13 @@ test('month: legible other-month days, labelled events, honest offline state', a
   testInfo.annotations.push({ type: 'other-month day contrast', description: ratio.toFixed(2) });
   expect(ratio).toBeGreaterThanOrEqual(4.5);
 
-  // Month events keep a visible title and their full time/title accessible name on phones too.
+  // Phones show start times rather than abbreviated names; accessible names retain the title.
   const event = page.locator('.fc-daygrid-event').filter({ hasText: title });
   await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(1);
-  expect(await event.locator('.fc-event-title').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(8);
-  await expect(event.locator('.fc-event-title')).toHaveCSS('clip-path', 'none');
-  if (viewport.width <= 720) {
-    expect(await event.locator('.fc-event-title').evaluate((el) => {
-      const style = getComputedStyle(el);
-      return style.whiteSpace === 'nowrap' && el.getBoundingClientRect().height <= parseFloat(style.lineHeight) + 1;
-    })).toBe(true);
-  }
+  const visibleLabel = event.locator(viewport.width <= 720 ? '.fc-event-time' : '.fc-event-title');
+  expect(await visibleLabel.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(8);
+  await expect(visibleLabel).toHaveCSS('clip-path', 'none');
+  await expect(visibleLabel).not.toHaveText('');
   await event.click();
   await expect(page.getByLabel('Title')).toHaveValue(title);
   page.once('dialog', (d) => d.accept());

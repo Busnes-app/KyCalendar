@@ -162,10 +162,11 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .kc-calendar:has(.fc-timeGridWeek-view) .kc-week-hint { display: block; margin-bottom: var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
   .kc-calendar .fc-timeGridWeek-view { overflow-x: auto; }
   .kc-calendar .fc-timeGridWeek-view > .fc-scrollgrid { min-width: 48rem; }
-  /* Keep Month labels on one line; the owner rejected forced mid-word wrapping. */
-  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event-dot { border-width: 3px; margin: 0 3px 0 0; }
-  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-time { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* Phone Month uses the owner's preferred start times; full titles stay accessible. */
+  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-dot-event .fc-event-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-block-event .fc-event-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event-dot { margin: 0 2px; }
+  .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-time { margin-right: 0; }
   .kc-calendar .fc-dayGridMonth-view .fc-daygrid-block-event .fc-event-main { min-height: 1.1rem; }
 }
 dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw - 2rem); }

@@ -11,6 +11,8 @@ process.umask(0o077);
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const out = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const dir = resolve(process.argv[2]);
+const stage = process.argv[3] ?? '05-after';
+assert(['05-after', '06-after'].includes(stage));
 const config = JSON.parse(await readFile(join(dir, 'fixture.json'), 'utf8'));
 const origin = fixtureOrigin(config.origin);
 assert.equal(Number(new URL(origin).port), config.port);
@@ -21,12 +23,12 @@ const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8'
 assert.equal(git('diff', 'HEAD', '--', 'web/src', 'web/dist'), '');
 const paths = git('ls-files', '-z', '--', 'web/src/styles/calendar.css', 'web/dist').split('\0').filter(Boolean);
 const sourceFiles = await Promise.all(paths.map(async file => ({ file, sha256: sha(await readFile(join(root, file))) })));
-const manifest = { stage: '05-after', purpose: 'Owner rejected round3 mobile Month; restore single-line labels',
+const manifest = { stage, purpose: stage === '06-after' ? 'Owner prefers baseline start times in phone Month' : 'Owner rejected round3 mobile Month; restore single-line labels',
   started_at: new Date().toISOString(), source: git('rev-parse', 'HEAD').trim(), source_files: sourceFiles,
   process: processRecord, seed_sha256: sha(await readFile(join(dir, 'seed.json'))), files: [], assets: [], failures: [],
   conditions: { viewport: [390, 844], dpr: 1, locale: 'en-US', timezone: config.timezone, saved_theme: 'none',
     display_date: config.display_date, clock: 'real; no mocks', pointer: [389, 843], service_workers: 'allowed' } };
-const manifestPath = join(out, 'manifest-05-after.json');
+const manifestPath = join(out, `manifest-${stage}.json`);
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
 const { chromium } = await import('/home/yoshi/git/busnes.app/KyCalendar/web/node_modules/@playwright/test/index.mjs');
 const browser = await chromium.launch({ args: ['--renderer-process-limit=2'] });
@@ -67,12 +69,14 @@ try {
       const geometry = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth,
         saved_theme: localStorage.getItem('ky_theme'), theme: document.documentElement.dataset.theme,
         heading: document.querySelector('.fc-toolbar-title').textContent, real_time: new Date().toISOString(),
+        times: [...document.querySelectorAll('.fc-daygrid-dot-event .fc-event-time')].map(el => ({ text: el.textContent, width: el.getBoundingClientRect().width, clip: getComputedStyle(el).clipPath })),
         titles: [...document.querySelectorAll('.fc-daygrid-event .fc-event-title')].map(el => ({ text: el.textContent,
           white_space: getComputedStyle(el).whiteSpace, height: el.getBoundingClientRect().height, line_height: getComputedStyle(el).lineHeight })) }));
       assert.equal(geometry.overflow, 0); assert.equal(geometry.saved_theme, null);
       assert(geometry.titles.length > 0 && geometry.titles.every(t => t.white_space === 'nowrap'));
+      if (stage === '06-after') assert(geometry.times.length > 0 && geometry.times.every(t => t.text && t.width > 8 && t.clip === 'none'));
       const bytes = await page.screenshot({ fullPage: false });
-      const file = `screenshots/kycalendar-05-after-month-mobile-${scheme}.png`;
+      const file = `screenshots/kycalendar-${stage}-month-mobile-${scheme}.png`;
       await writeFile(join(out, file), bytes, { flag: 'wx' });
       manifest.files.push({ file, sha256: sha(bytes), bytes: bytes.length, width: 390, height: 844, scheme,
         captured_at: new Date().toISOString(), geometry });
