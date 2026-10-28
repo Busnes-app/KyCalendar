@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-10-28T11:53:14.476458+00:00",
+  "captured_source": "27690a367bf1808224aba7ef4b39ab0c8937bcf7",
+  "images_hash_dimensions": 156,
+  "current_unique_diagnostic_candidates": 48,
+  "source_git_blob_bindings": 427,
+  "served_asset_bindings": 9,
+  "worker_checks": {
+    "pass": 19,
+    "fail": 4
+  },
+  "raw_review_freezes": "R1/R2 Opus/Sol unchanged",
+  "worker_preservation_proof": "181 protected files matched before source-freeze release",
+  "post_release_protected_changes": {
+    "AGENTS.md": "Parent added the new offline-gallery workflow contract after worker finished; original captured bytes remain in git27690a3."
+  },
+  "classification": "03-after is diagnostic history; not a reviewed/accepted product batch",
+  "annotation": "Capture report owner/owner rejected means the parent agent rejected a demonstrated regression. The user did not reject this layout or impose a new owner-rejection gate.",
+  "correction": "Remove optional automatic Week positioning and counter-transform; update region attributes at datesSet; scroll focused nav items fully into view; fix grant-field cascade. Preserve every03 original."
+}

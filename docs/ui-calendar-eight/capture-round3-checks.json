@@ -1,0 +1,926 @@
+{
+  "schema": "kycalendar-capture-checks/3",
+  "checked_at": "2026-10-28T11:45:29.248383+00:00",
+  "head": "27690a367bf1808224aba7ef4b39ab0c8937bcf7",
+  "capture_batch_status": "diagnostic; owner rejected27690a3 implementation; no scores/progression",
+  "audit_correction": {
+    "preserved_prior_audit": "round3-audit-attempt1/",
+    "corrections": [
+      "Do not require vcs.modified=false: actual binary is dirty-flagged; retain metadata and independently prove source/dist bindings and exact owner-supplied executable hash.",
+      "Month row derivation must select Month originals only; earlier selection included Week/Day all-day title nodes. No new browser run or screenshot modification."
+    ]
+  },
+  "checks": [
+    {
+      "name": "all protected bytes preserved",
+      "status": "pass",
+      "evidence": "round3-preservation-proof.json: all prior images, manifests, inventories, audits, raw reviews and existing drivers"
+    },
+    {
+      "name": "50 originals and exact original role/surface/order",
+      "status": "pass",
+      "evidence": {
+        "files": 50,
+        "matrix": 48
+      }
+    },
+    {
+      "name": "source HEAD and runtime frozen",
+      "status": "pass",
+      "evidence": {
+        "head": "27690a367bf1808224aba7ef4b39ab0c8937bcf7",
+        "runtime_sha256": "2dec5ab7f0e03dbc14f02e56ef2479a5eb45606607bd46de00349bb0a9ee0002"
+      }
+    },
+    {
+      "name": "owned live fixture identity and Go metadata",
+      "status": "pass",
+      "evidence": {
+        "pid": 629822,
+        "startticks": "2918321",
+        "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final",
+        "sha256": "9d15c2a64705c2de4029b2a11e34f5cee65e57e56f72289d895581928de85477"
+      }
+    },
+    {
+      "name": "unchanged seed and display contract",
+      "status": "pass",
+      "evidence": "No seed/calendar/account writes; sign-ins update sessions and last-sign-in timestamps."
+    },
+    {
+      "name": "one bounded completion; no originals replaced",
+      "status": "pass",
+      "evidence": {
+        "attempt1": 21,
+        "new_files_in_completion": 29,
+        "raw_failures_retained": [
+          {
+            "step": "capture batch",
+            "raw_error": "locator.evaluate: Timeout 12000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('region', { name: 'Week calendar', exact: true })\u001b[22m\n\n    at weekProbes (/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight/docs/ui-calendar-eight/capture-round3.mjs:209:31)\n    at async file:///home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight/docs/ui-calendar-eight/capture-round3.mjs:262:7"
+          }
+        ],
+        "browser": "One Chromium at a time, renderer limit2, sequential contexts; both passes closed; no further capture passes."
+      }
+    },
+    {
+      "name": "156 unique originals with complete identities",
+      "status": "pass",
+      "evidence": "106 preserved +50 round3; two brand refs stay separately unscored; every PNG rehashed and decoded."
+    },
+    {
+      "name": "current membership and pinned duplicate protocol",
+      "status": "pass",
+      "evidence": {
+        "counts": {
+          "all_images": 156,
+          "matrix_images": 48,
+          "scored_candidates": 48,
+          "pairwise_comparisons": 601,
+          "current_images": 50,
+          "historical_images": 104,
+          "brand_reference": 2,
+          "current_supporting": 2,
+          "all_preserved_images": 106
+        },
+        "duplicate_groups": [
+          [
+            "screenshots/kycalendar-03-after-default-phone-list-mobile-dark.png",
+            "screenshots/kycalendar-03-after-list-mobile-dark.png"
+          ],
+          [
+            "screenshots/kycalendar-03-after-default-phone-list-mobile-light.png",
+            "screenshots/kycalendar-03-after-list-mobile-light.png"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "matched capture conditions",
+      "status": "pass",
+      "evidence": "DPR1;1280x900/390x844; OS light/dark;no saved theme;en-US;America/New_York;initial viewport;zero horizontal PAGE overflow;real fonts;uncropped originals."
+    },
+    {
+      "name": "browser HTTP CSP console and network diagnostics",
+      "status": "pass",
+      "evidence": "All raw diagnostics preserved. No role-denial requests added in round3; no external requests, CSP relaxation, routes or auth mocks."
+    },
+    {
+      "name": "production CSP and real service workers",
+      "status": "pass",
+      "evidence": "ServiceWorkers allow; no worker or CSP substitution."
+    },
+    {
+      "name": "original and supplemental served-asset bindings",
+      "status": "pass",
+      "evidence": "sourceprovenance-round3.json;actual body hashes vs frozen disk;local GET only;redirects refused;includes worker/fonts."
+    },
+    {
+      "name": "Enter Escape replacement event focus in four conditions",
+      "status": "pass",
+      "evidence": {
+        "conditions": [
+          [
+            "desktop",
+            "dark"
+          ],
+          [
+            "desktop",
+            "light"
+          ],
+          [
+            "mobile",
+            "dark"
+          ],
+          [
+            "mobile",
+            "light"
+          ]
+        ],
+        "observations": 5,
+        "note": "Mobile light repeated only during bounded missing-file completion interaction; no duplicate screenshot."
+      }
+    },
+    {
+      "name": "stable challenge typing clearing four conditions",
+      "status": "pass",
+      "evidence": [
+        {
+          "probe": "login challenge count while typing and clearing",
+          "size": "desktop",
+          "scheme": "light",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "stable": true,
+          "submitted": false,
+          "diagnostics": {
+            "page_errors": [],
+            "console_errors": [],
+            "csp": [],
+            "request_failures": [],
+            "http_errors": [],
+            "request_counts": {
+              "/": 1,
+              "/assets/index-BLM3CivF.js": 1,
+              "/assets/index-AViaZHr0.css": 1,
+              "/api/auth/me": 1,
+              "/api/settings": 1,
+              "/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf": 1,
+              "/app-icon.png": 1,
+              "/api/auth/pow-challenge": 1
+            },
+            "external_requests": [],
+            "document_csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          }
+        },
+        {
+          "probe": "login challenge count while typing and clearing",
+          "size": "mobile",
+          "scheme": "light",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "stable": true,
+          "submitted": false,
+          "diagnostics": {
+            "page_errors": [],
+            "console_errors": [],
+            "csp": [],
+            "request_failures": [],
+            "http_errors": [],
+            "request_counts": {
+              "/": 1,
+              "/assets/index-BLM3CivF.js": 1,
+              "/assets/index-AViaZHr0.css": 1,
+              "/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf": 1,
+              "/api/auth/me": 1,
+              "/api/settings": 1,
+              "/app-icon.png": 1,
+              "/api/auth/pow-challenge": 1
+            },
+            "external_requests": [],
+            "document_csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          }
+        },
+        {
+          "probe": "login challenge count while typing and clearing",
+          "size": "desktop",
+          "scheme": "dark",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "stable": true,
+          "submitted": false,
+          "diagnostics": {
+            "page_errors": [],
+            "console_errors": [],
+            "csp": [],
+            "request_failures": [],
+            "http_errors": [],
+            "request_counts": {
+              "/": 1,
+              "/assets/index-BLM3CivF.js": 1,
+              "/assets/index-AViaZHr0.css": 1,
+              "/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf": 1,
+              "/api/auth/me": 1,
+              "/api/settings": 1,
+              "/app-icon.png": 1,
+              "/api/auth/pow-challenge": 1
+            },
+            "external_requests": [],
+            "document_csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          }
+        },
+        {
+          "probe": "login challenge count while typing and clearing",
+          "size": "mobile",
+          "scheme": "dark",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "stable": true,
+          "submitted": false,
+          "diagnostics": {
+            "page_errors": [],
+            "console_errors": [],
+            "csp": [],
+            "request_failures": [],
+            "http_errors": [],
+            "request_counts": {
+              "/": 1,
+              "/assets/index-BLM3CivF.js": 1,
+              "/assets/index-AViaZHr0.css": 1,
+              "/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf": 1,
+              "/api/auth/me": 1,
+              "/api/settings": 1,
+              "/app-icon.png": 1,
+              "/api/auth/pow-challenge": 1
+            },
+            "external_requests": [],
+            "document_csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          }
+        }
+      ]
+    },
+    {
+      "name": "phone Week keyboard movement and original offset restoration",
+      "status": "pass",
+      "evidence": [
+        {
+          "size": "mobile",
+          "scheme": "light",
+          "direction": "ArrowLeft",
+          "moved": true,
+          "offsets": [
+            307,
+            267,
+            307
+          ]
+        },
+        {
+          "size": "mobile",
+          "scheme": "dark",
+          "direction": "ArrowLeft",
+          "moved": true,
+          "offsets": [
+            307,
+            267,
+            307
+          ]
+        }
+      ]
+    },
+    {
+      "name": "initial phone Week today header and column within internal viewport",
+      "status": "pass",
+      "evidence": [
+        {
+          "file": "screenshots/kycalendar-03-after-week-mobile-light.png",
+          "scrollLeft": 307,
+          "today_header": {
+            "x": 67.421875,
+            "y": 309,
+            "right": 169.5625,
+            "bottom": 365,
+            "width": 102.140625,
+            "height": 56,
+            "clientWidth": 101,
+            "scrollWidth": 101,
+            "clientHeight": 56,
+            "scrollHeight": 56,
+            "display": "table-cell",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "file": "screenshots/kycalendar-03-after-week-mobile-dark.png",
+          "scrollLeft": 307,
+          "today_header": {
+            "x": 67.421875,
+            "y": 309,
+            "right": 169.5625,
+            "bottom": 365,
+            "width": 102.140625,
+            "height": 56,
+            "clientWidth": 101,
+            "scrollWidth": 101,
+            "clientHeight": 56,
+            "scrollHeight": 56,
+            "display": "table-cell",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        }
+      ]
+    },
+    {
+      "name": "phone Week time gutter actually painted before and after movement",
+      "status": "fail",
+      "evidence": "FAIL: bounding boxes stay x17..68, but originals show no labels; hit test at7am returns fc-timegrid-now-indicator-container. Counter-scrolled table cell clipping/stacking suspected. Bounding box visibility alone is insufficient."
+    },
+    {
+      "name": "phone Week accessible region and tabindex after Day to Week/remount",
+      "status": "fail",
+      "evidence": [
+        {
+          "probe": "Week region attributes after remount",
+          "size": "mobile",
+          "scheme": "light",
+          "attributes": {
+            "role": null,
+            "label": null,
+            "tabindex": null
+          }
+        },
+        {
+          "probe": "Week region attributes after remount",
+          "size": "mobile",
+          "scheme": "dark",
+          "attributes": {
+            "role": null,
+            "label": null,
+            "tabindex": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "settled focus probes show full phone navigation controls",
+      "status": "fail",
+      "evidence": [
+        {
+          "size": "mobile",
+          "scheme": "light",
+          "role": "everyday",
+          "items": [
+            {
+              "name": "Phones & apps",
+              "focused": true,
+              "x": 136,
+              "right": 291,
+              "nav_left": 16,
+              "nav_right": 247,
+              "viewport": 390,
+              "fully_visible": false
+            }
+          ]
+        },
+        {
+          "size": "mobile",
+          "scheme": "light",
+          "role": "administrator",
+          "items": [
+            {
+              "name": "Sign-in",
+              "focused": true,
+              "x": 282,
+              "right": 388,
+              "nav_left": 16,
+              "nav_right": 374,
+              "viewport": 390,
+              "fully_visible": false
+            },
+            {
+              "name": "Backups",
+              "focused": true,
+              "x": 283,
+              "right": 397,
+              "nav_left": 16,
+              "nav_right": 374,
+              "viewport": 390,
+              "fully_visible": false
+            },
+            {
+              "name": "Two-step verification",
+              "focused": true,
+              "x": 255,
+              "right": 456,
+              "nav_left": 16,
+              "nav_right": 374,
+              "viewport": 390,
+              "fully_visible": false
+            }
+          ]
+        },
+        {
+          "size": "mobile",
+          "scheme": "dark",
+          "role": "everyday",
+          "items": [
+            {
+              "name": "Phones & apps",
+              "focused": true,
+              "x": 136,
+              "right": 291,
+              "nav_left": 16,
+              "nav_right": 247,
+              "viewport": 390,
+              "fully_visible": false
+            }
+          ]
+        },
+        {
+          "size": "mobile",
+          "scheme": "dark",
+          "role": "administrator",
+          "items": [
+            {
+              "name": "Sign-in",
+              "focused": true,
+              "x": 282,
+              "right": 388,
+              "nav_left": 16,
+              "nav_right": 374,
+              "viewport": 390,
+              "fully_visible": false
+            },
+            {
+              "name": "Backups",
+              "focused": true,
+              "x": 283,
+              "right": 397,
+              "nav_left": 16,
+              "nav_right": 374,
+              "viewport": 390,
+              "fully_visible": false
+            },
+            {
+              "name": "Two-step verification",
+              "focused": true,
+              "x": 255,
+              "right": 456,
+              "nav_left": 16,
+              "nav_right": 374,
+              "viewport": 390,
+              "fully_visible": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Add group disabled with no selection in zero-group fixture",
+      "status": "pass",
+      "evidence": "4/4 real read-only DOM probes; no blank submission; no group/account fixture mutation."
+    },
+    {
+      "name": "phone grant fields use full card width",
+      "status": "fail",
+      "evidence": "FAIL both themes: Group288px, Role160px, available content324px. ui.css phone flex-basis rule is weaker than later .inline-form.card-footer field/field-narrow flex shorthands."
+    },
+    {
+      "name": "phone Month two visible title rows without page overflow",
+      "status": "pass",
+      "evidence": "22 title boxes across2 originals; many titles remain ellipsized, full text retained in DOM. Actual visible prefixes documented by inspection; complete accessibility gate untested."
+    },
+    {
+      "name": "tall timed titles permit two lines",
+      "status": "pass",
+      "evidence": "8 long-title blocks across Week/Day and4 conditions; desktop Day needs only1 line; phone Day shows full title in2; Week remains ellipsized after2."
+    }
+  ],
+  "summary": {
+    "pass": 19,
+    "fail": 4
+  },
+  "raw_failures": [
+    {
+      "step": "capture batch",
+      "raw_error": "locator.evaluate: Timeout 12000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('region', { name: 'Week calendar', exact: true })\u001b[22m\n\n    at weekProbes (/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight/docs/ui-calendar-eight/capture-round3.mjs:209:31)\n    at async file:///home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight/docs/ui-calendar-eight/capture-round3.mjs:262:7"
+    }
+  ],
+  "inspection_tool_failure": {
+    "raw_error": "unable to locate image .../kycalendar-03-after-login-desktop-light.png: No such file or directory (os error2)",
+    "reason": "Inspection attempted before screenshot had been written; original successfully inspected later; no capture replacement."
+  },
+  "behavior_gates": "untested; targeted observations only; failed product checks do not invalidate the truthful retained originals",
+  "private_process": {
+    "pid": 629822,
+    "startticks": "2918321",
+    "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final",
+    "sha256": "9d15c2a64705c2de4029b2a11e34f5cee65e57e56f72289d895581928de85477"
+  },
+  "current_membership": "inventory-v3.json",
+  "all_artifacts": "artifacts-v3.json",
+  "per_file_inspection": "round3-per-file-inspection.json",
+  "title_geometry": "round3-title-geometry.json",
+  "supplemental_assets": [
+    {
+      "path": "/",
+      "file": "web/dist/index.html",
+      "sha256": "663aa77544200ff0bfb272f8c54093aad63d695eba8f2e1eabd9ea1bd16523ad",
+      "disk_sha256": "663aa77544200ff0bfb272f8c54093aad63d695eba8f2e1eabd9ea1bd16523ad",
+      "matches": true,
+      "bytes": 576
+    },
+    {
+      "path": "/app-icon.png",
+      "file": "web/dist/app-icon.png",
+      "sha256": "dda4d838c4a782611a55496b28f497fd689c1339ea481733e9855ad9c3e940f8",
+      "disk_sha256": "dda4d838c4a782611a55496b28f497fd689c1339ea481733e9855ad9c3e940f8",
+      "matches": true,
+      "bytes": 52765
+    },
+    {
+      "path": "/assets/CalendarPage-BH14O089.js",
+      "file": "web/dist/assets/CalendarPage-BH14O089.js",
+      "sha256": "b4732373f8da4d6f37fb12ec546122d7bbc430d4076c35449720370ef9df46f6",
+      "disk_sha256": "b4732373f8da4d6f37fb12ec546122d7bbc430d4076c35449720370ef9df46f6",
+      "matches": true,
+      "bytes": 296006
+    },
+    {
+      "path": "/assets/CalendarPage-Bfmo6fkv.css",
+      "file": "web/dist/assets/CalendarPage-Bfmo6fkv.css",
+      "sha256": "12c8f985fb72e7c3006f0a90254cfbe1fcadd22cee6531f467328210407cdddc",
+      "disk_sha256": "12c8f985fb72e7c3006f0a90254cfbe1fcadd22cee6531f467328210407cdddc",
+      "matches": true,
+      "bytes": 11643
+    },
+    {
+      "path": "/assets/index-AViaZHr0.css",
+      "file": "web/dist/assets/index-AViaZHr0.css",
+      "sha256": "7dc59add80a3d44969db4b5e402b601bab4422b951a4f6581847fa2c674b7fa4",
+      "disk_sha256": "7dc59add80a3d44969db4b5e402b601bab4422b951a4f6581847fa2c674b7fa4",
+      "matches": true,
+      "bytes": 38801
+    },
+    {
+      "path": "/assets/index-BLM3CivF.js",
+      "file": "web/dist/assets/index-BLM3CivF.js",
+      "sha256": "83c07369c8b285cbf74646062211fbbde387aa6831d6d88bd3e2a67f78aba081",
+      "disk_sha256": "83c07369c8b285cbf74646062211fbbde387aa6831d6d88bd3e2a67f78aba081",
+      "matches": true,
+      "bytes": 325173
+    },
+    {
+      "path": "/fonts/IBM_Plex_Mono/IBMPlexMono-Regular.ttf",
+      "file": "web/dist/fonts/IBM_Plex_Mono/IBMPlexMono-Regular.ttf",
+      "sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd",
+      "disk_sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd",
+      "matches": true,
+      "bytes": 133796
+    },
+    {
+      "path": "/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf",
+      "file": "web/dist/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf",
+      "sha256": "697a7905c71f7c61d071648bc73449541796af865b51c86a672795f3b452b142",
+      "disk_sha256": "697a7905c71f7c61d071648bc73449541796af865b51c86a672795f3b452b142",
+      "matches": true,
+      "bytes": 134112
+    },
+    {
+      "path": "/sw.js",
+      "file": "web/dist/sw.js",
+      "sha256": "66f463e0de474bb732ba07c1e59d7571b6c418134d10cf1ee60751d538b6b4f2",
+      "disk_sha256": "66f463e0de474bb732ba07c1e59d7571b6c418134d10cf1ee60751d538b6b4f2",
+      "matches": true,
+      "bytes": 1803
+    }
+  ],
+  "clock_states": [
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:09.254Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:10.230Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:11.197Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:12.144Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:13.145Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:14.144Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:15.507Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:16.440Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:22.692Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:23.625Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:24.558Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-light.png",
+      "real_browser_time": "2026-10-28T04:36:33.509Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:38.732Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:40.695Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:41.662Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:42.612Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:43.562Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:44.613Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:45.610Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:46.957Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-light.png",
+      "real_browser_time": "2026-10-28T04:36:47.889Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-light.png",
+      "real_browser_time": "2026-10-28T11:38:50.398Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-light.png",
+      "real_browser_time": "2026-10-28T11:38:51.316Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-light.png",
+      "real_browser_time": "2026-10-28T11:38:52.234Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-light.png",
+      "real_browser_time": "2026-10-28T11:39:01.133Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:08.193Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:09.171Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:10.169Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:11.135Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:12.171Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:13.236Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:14.650Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:15.598Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:21.979Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:22.897Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:23.830Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-dark.png",
+      "real_browser_time": "2026-10-28T11:39:32.804Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:39.673Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:41.654Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:42.740Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:44.383Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:45.301Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:46.401Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:47.538Z",
+      "today_dates": [
+        "2026-10-28"
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:49.935Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:39:50.914Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:40:02.304Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:40:03.220Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:40:04.139Z",
+      "today_dates": []
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-dark.png",
+      "real_browser_time": "2026-10-28T11:40:13.072Z",
+      "today_dates": []
+    }
+  ],
+  "limitations": [
+    "Complete behavior/accessibility/integration and physical-device gates remain untested. No full tests/builds rerun: user capture-only scope; previous parent test results are not this worker fresh evidence.",
+    "Real Oct28 clock retained. Today moves toWednesday28; time indicator and People last-sign-in changes are clock state. Captures span initial attempt and bounded missing-file completion; use per-image timestamps.",
+    "Week opens today/current anchor by selected refinement. Previous Monday-empty/Tuesday-clipped premise was disproved; Tuesday already fit. Raw R1/R2 opinions remain unchanged; no false repair or rerating claimed.",
+    "Native date End segment selection remains original driver artifact; no focus cleared or product focus changed.",
+    "No extra capture attempt after the one bounded completion. Role-locator timeout is retained and maps to a possible product Day/Week DOM lifecycle defect, not merely driver error.",
+    "MySlop unavailable: user reports known revoked401; no retry or external requests.",
+    "Owner terminal direction: preserve27690a3 as diagnostic history. Parent plans removing optional auto-Week positioning/counter-transform and reapplying Week role/tabindex in datesSet, then its own bounded touched-view confirmation. This worker did not perform those edits or captures.",
+    "DOX pass: root/web/browser/evidence AGENTS intentionally unchanged; this task adds evidence under existing ownership/contracts and is expressly scoped away from runtime/instruction edits."
+  ]
+}

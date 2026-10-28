@@ -37,6 +37,7 @@ Own fresh synthetic captures, independent ratings, provenance and visual progres
 - `node --test docs/ui-calendar-eight/fixture-network.test.mjs` checks origin/path rejection and redirect refusal; the frontend CI job runs it.
 - Recompute weighted totals and half-up means; verify review membership, complete-vector freezes, image hashes/dimensions and source/served-asset bindings before publishing scores.
 - Accept frozen `total_unrounded` or `weighted_total_unrounded` values in the exporter; normalize viewport display labels there without rewriting raw rows.
+- `build-gallery.py --round R --scored-through T --output FILE` verifies and embeds 48 matched original pairs in an offline gallery; T explicitly limits reads to terminal review rounds. Run the HTML-page offline/contrast checker on its output.
 - Export rating history and per-file evidence to a spreadsheet, preserving raw reports and unscored evidence. `python3 docs/ui-calendar-eight/build-report.py --current-round N --pr URL` validates terminal freezes/arithmetic and XLSX CRC/XML/data round-trip; it reads only rounds through N so later partial reports stay unread.
 
 ## Child DOX Index

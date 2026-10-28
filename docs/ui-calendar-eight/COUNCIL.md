@@ -16,3 +16,5 @@ PR: https://github.com/Busnes-app/KyCalendar/pull/92
 [Workbook](KyCalendar-Council.xlsx) · [Per-file CSV](ratings.csv). Raw reviews and source images remain unchanged.
 
 Coverage summaries are not rankings or full behavior/accessibility/production acceptance. Gemini is unused because its quota is exhausted.
+
+Current round 3 uses the corrected 04-confirmation batch at `3aca6fc`; stage03 remains diagnostic. Opus and Sol reviews are pending; Gemini unused (exhausted quota). Workbook/CSV currently contain the two terminal rounds only.

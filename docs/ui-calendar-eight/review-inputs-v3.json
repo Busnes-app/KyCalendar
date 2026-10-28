@@ -1,0 +1,2108 @@
+{
+  "schema": "kycalendar-review-inputs/1",
+  "round": 3,
+  "current_inventory": "inventory-v4.json",
+  "all_images": "artifacts-v4.json",
+  "quality_candidates": [
+    {
+      "captured_at_utc": "2026-10-28T12:01:14.186Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+      "sha256": "d5b0f4c0b5334c5aa7d84e87bfe6bbc07ddeb8217d22a9b452d2d6ccaca48b85",
+      "bytes": 67563,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:08.773Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+      "sha256": "3b06f2b1ffb2dc431c1dc413be8f0fc90a18c1e74f05d43d2f83f09c3d04b766",
+      "bytes": 67616,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:48.508Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+      "sha256": "4dcbee2cce50e3165aff10d09bec1f5f558a17969dbd7f5d894ca59c812b7206",
+      "bytes": 44782,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:42.944Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png",
+      "sha256": "8b16973600e64f6901cd3efaa42285aef4738e51fd720a111b7050591257ba37",
+      "bytes": 44779,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:12.312Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-desktop-dark.png",
+      "sha256": "b8d5c8b7f2f32800727719d87366cee2165a79814298ff19a9f799751d41179a",
+      "bytes": 87904,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:06.931Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-desktop-light.png",
+      "sha256": "14a2abe19d540c35468de3b2ce44212487cd17d506135e0588d5bb2a61faf08c",
+      "bytes": 87772,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:46.675Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-mobile-dark.png",
+      "sha256": "cb2305a70978d42e1b37ebedcfdb12f457bc46610bc4ec15f3e22379fce35436",
+      "bytes": 44536,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:41.111Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-mobile-light.png",
+      "sha256": "44178d205dd165350f073ff1d2ed045f21b0edf97d17cfa4057bbd09569ec8d7",
+      "bytes": 43681,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:13.259Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-desktop-dark.png",
+      "sha256": "f1b895133c97a12447138a87fb51ea95df37464da58a79c713dc2694aef70294",
+      "bytes": 73911,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:07.844Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-desktop-light.png",
+      "sha256": "8480d18746ecda83249593ffdccdcabbce6384d02be60abfaf5fe32ee33b711a",
+      "bytes": 73953,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:47.592Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-mobile-dark.png",
+      "sha256": "3c05ce58927033ee4997c73716b7607e6eb9e71bbdfa4e6ff2ea2798f5360b0d",
+      "bytes": 47142,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:42.027Z",
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-mobile-light.png",
+      "sha256": "b552e625441602206e9b041d1a7fed6122aba23054f08401887f000447d7be1e",
+      "bytes": 46753,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "administrator",
+      "cohort": "admin-console",
+      "state": "sparse",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:04.992Z",
+      "file": "screenshots/kycalendar-04-confirmation-appearance-desktop-dark.png",
+      "sha256": "eaf70d9c310f9ad8679d51547e78a93e76adfa881748ef70a7a26457672e4f7c",
+      "bytes": 69013,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:59.777Z",
+      "file": "screenshots/kycalendar-04-confirmation-appearance-desktop-light.png",
+      "sha256": "856d1d3a96175b6a3edb2aefff73306edabe516da2cdba2654598686ee3a4fc1",
+      "bytes": 68309,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:36.672Z",
+      "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+      "sha256": "17daa61802253461750d54e4a839c364610756e353801c63f55ec6507d136683",
+      "bytes": 39346,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:31.091Z",
+      "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-light.png",
+      "sha256": "f6837c6d43d89ad35781385e2ea5e9d04b51f95f8b7ea8f85ecdd10825c1a8cf",
+      "bytes": 38448,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:00.542Z",
+      "file": "screenshots/kycalendar-04-confirmation-day-desktop-dark.png",
+      "sha256": "f35041783cb2ae729054bb6bc8e4df404bdbabd23398bffc4989e938738d7398",
+      "bytes": 62856,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:55.357Z",
+      "file": "screenshots/kycalendar-04-confirmation-day-desktop-light.png",
+      "sha256": "1785208348f18a16b4b4a023d609d367bc6e1e013a9d394760af1eacbe275cde",
+      "bytes": 62673,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:32.341Z",
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+      "sha256": "df2c06702a304a41e1590999a164f825b28198ac2cdd462d81cfe8253eb6b856",
+      "bytes": 39030,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:26.806Z",
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+      "sha256": "b836b0b8276e317efa64efc9a964e1ee59fae1d9180cef04e3f92a3f7d748325",
+      "bytes": 38866,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:28.395Z",
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+      "sha256": "284aa79a9e90f85396268fb075636a8eb5b31d89716cd47e84b36b1ec1edca37",
+      "bytes": 61243,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "default-phone-list",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-list",
+      "state": "populated",
+      "membership": "supporting evidence only",
+      "caveat": "Separate evidence of the native phone default; not a substitute for explicit calendar views.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:22.926Z",
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+      "sha256": "77252dcd49460f381ee79ffd9270234bfd5c8c70206183f1964ca076d45f57fc",
+      "bytes": 61331,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "default-phone-list",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-list",
+      "state": "populated",
+      "membership": "supporting evidence only",
+      "caveat": "Separate evidence of the native phone default; not a substitute for explicit calendar views.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:03.601Z",
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-desktop-dark.png",
+      "sha256": "8c00319a2025737bd788bd964213ec35c0ba9d6e8e560b5590e547048f98027c",
+      "bytes": 105958,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Genuine owner-editable synthetic event; opened with Enter from List.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:58.411Z",
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-desktop-light.png",
+      "sha256": "7efad1d52831254969c00168e962977f45d1d402b662caeb6f154934cc69ea3f",
+      "bytes": 109453,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Genuine owner-editable synthetic event; opened with Enter from List.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:35.324Z",
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-mobile-dark.png",
+      "sha256": "deea95b533a12b63c6ab3cd33aea25d7b40fa368b26f0822d6530cd1a1a6c227",
+      "bytes": 41491,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Genuine owner-editable synthetic event; opened with Enter from List.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:29.759Z",
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-mobile-light.png",
+      "sha256": "12756855e0a77c1ac7cad47f84a05a220cc74539598d1b96d1d53c7f87b933e2",
+      "bytes": 42485,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Genuine owner-editable synthetic event; opened with Enter from List.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:01.515Z",
+      "file": "screenshots/kycalendar-04-confirmation-list-desktop-dark.png",
+      "sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+      "bytes": 95215,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "list",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-list",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:56.335Z",
+      "file": "screenshots/kycalendar-04-confirmation-list-desktop-light.png",
+      "sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+      "bytes": 95202,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "list",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-list",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:23.134Z",
+      "file": "screenshots/kycalendar-04-confirmation-login-desktop-dark.png",
+      "sha256": "479a79849358177a96c582ce1b366d54d2733927efcff4a7588752f26d17d16d",
+      "bytes": 23768,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "signed-out",
+      "cohort": "auth",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:17.669Z",
+      "file": "screenshots/kycalendar-04-confirmation-login-desktop-light.png",
+      "sha256": "110de186dd99e738c4512dafcd495021719b8bdb5f599bf78cba2f1e003148ad",
+      "bytes": 24043,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "signed-out",
+      "cohort": "auth",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:57.401Z",
+      "file": "screenshots/kycalendar-04-confirmation-login-mobile-dark.png",
+      "sha256": "e9c28f02c223cb807304183ce4dd93661f7c615c21b472566795e0f852d3c667",
+      "bytes": 20334,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "signed-out",
+      "cohort": "auth",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:51.857Z",
+      "file": "screenshots/kycalendar-04-confirmation-login-mobile-light.png",
+      "sha256": "4682130636d2250f01a007dad70f6b88352904eaea74efb80f40a743371a4190",
+      "bytes": 20512,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "signed-out",
+      "cohort": "auth",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:58.569Z",
+      "file": "screenshots/kycalendar-04-confirmation-month-desktop-dark.png",
+      "sha256": "722a6ffe747790c559d73a81f6e9bc5a8940af71348f89144e4401e0e2250245",
+      "bytes": 75200,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:53.447Z",
+      "file": "screenshots/kycalendar-04-confirmation-month-desktop-light.png",
+      "sha256": "e4e16d8fd399e2b767f9b2a3869ec81c88925b9b58f5b72c8bee732b84b6c9a4",
+      "bytes": 75560,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:30.375Z",
+      "file": "screenshots/kycalendar-04-confirmation-month-mobile-dark.png",
+      "sha256": "68ad52fc8a2606d9703d69a0fb6b59fcb494fe6c0af03180a39a9bfb4915ce0c",
+      "bytes": 45585,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:24.907Z",
+      "file": "screenshots/kycalendar-04-confirmation-month-mobile-light.png",
+      "sha256": "fc79c96ec6b0274cd0c2e7eb253cfed456f1ebe15b877250cecb529bf772931d",
+      "bytes": 45585,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:02.546Z",
+      "file": "screenshots/kycalendar-04-confirmation-new-event-desktop-dark.png",
+      "sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+      "bytes": 75954,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Unsaved blank event on fixed display date; underlying month.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:57.380Z",
+      "file": "screenshots/kycalendar-04-confirmation-new-event-desktop-light.png",
+      "sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+      "bytes": 78204,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Unsaved blank event on fixed display date; underlying month.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:34.322Z",
+      "file": "screenshots/kycalendar-04-confirmation-new-event-mobile-dark.png",
+      "sha256": "bf576f01b3601eb1c9c5d3ed0dabddf0c7c4dba86cffa09eb32a29b929bef2e7",
+      "bytes": 32671,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Unsaved blank event on fixed display date; underlying month.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:28.758Z",
+      "file": "screenshots/kycalendar-04-confirmation-new-event-mobile-light.png",
+      "sha256": "576811a0b198a305d7a256667a40661faef62131cdd2e7193ae4b10ff1b4ebf0",
+      "bytes": 34083,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "event-editor",
+      "state": "empty",
+      "membership": "candidate",
+      "caveat": "Unsaved blank event on fixed display date; underlying month.",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:05.944Z",
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-desktop-dark.png",
+      "sha256": "3e19671f81a1c77ad39a4d79602ca2774fbd752908756c0372bb182924e39e7e",
+      "bytes": 83946,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:00.722Z",
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-desktop-light.png",
+      "sha256": "0186944ea81f9acc95d34b64c0112f0fa21d14c2947f67e8877c590355b6b0e6",
+      "bytes": 82846,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:37.605Z",
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-mobile-dark.png",
+      "sha256": "20f479f3c16eb11629ba73522c2308f4de541f841c16b10e7ff046c255231161",
+      "bytes": 45710,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:32.024Z",
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-mobile-light.png",
+      "sha256": "94a8a57b4366d93a37660e7ab0ee46c044f25c4bc359a05c6527c43091c13ba2",
+      "bytes": 44952,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "settings",
+      "state": "empty",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:59.562Z",
+      "file": "screenshots/kycalendar-04-confirmation-week-desktop-dark.png",
+      "sha256": "1993596e8e0198d050a796f28f37ed9a360ed9d4fce69a9efe2c6d737197a0dc",
+      "bytes": 83516,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T11:59:54.423Z",
+      "file": "screenshots/kycalendar-04-confirmation-week-desktop-light.png",
+      "sha256": "a05b35ea4a9354b1f2bb39c59dc7d44c7721a741e1bb2f9a2b8b5210eba220eb",
+      "bytes": 83260,
+      "width": 1280,
+      "height": 900,
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "desktop",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:01:31.359Z",
+      "file": "screenshots/kycalendar-04-confirmation-week-mobile-dark.png",
+      "sha256": "f5d5c653a86954ecd2264ee8d465e2f0c210241f969307f71d544ada4d4147d0",
+      "bytes": 42503,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "dark",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    },
+    {
+      "captured_at_utc": "2026-10-28T12:00:25.874Z",
+      "file": "screenshots/kycalendar-04-confirmation-week-mobile-light.png",
+      "sha256": "c48d26384dc85331b42108ac259793f351f6a6e1d4a9b31c2f75d94e4d70923d",
+      "bytes": 42421,
+      "width": 390,
+      "height": 844,
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_content": true,
+      "stage": "04-confirmation",
+      "viewport": "mobile",
+      "theme": "light",
+      "role": "everyday",
+      "cohort": "calendar-grid",
+      "state": "populated",
+      "membership": "candidate",
+      "duplicate_of": null,
+      "scoring_candidate": true,
+      "unscored_reason": null,
+      "artifact_role": "current-quality"
+    }
+  ],
+  "unscored_duplicates_and_history": [
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Separate KyIdentity brand reference only; never current quality.",
+      "artifact_role": "brand-reference"
+    },
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Separate KyIdentity brand reference only; never current quality.",
+      "artifact_role": "brand-reference"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-group-calendars-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-overview-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-admin-people-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-appearance-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-day-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-list-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-login-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-month-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-phones-and-apps-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-00-before-week-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-baseline"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-overview-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-overview-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-overview-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-overview-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-people-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-people-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-people-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-admin-people-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-appearance-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "superseded-capture-diagnostic"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-appearance-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "superseded-capture-diagnostic"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-appearance-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "superseded-capture-diagnostic"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-appearance-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "superseded-capture-diagnostic"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-day-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-day-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-day-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-day-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-default-phone-list-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-default-phone-list-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-existing-event-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-existing-event-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-existing-event-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-existing-event-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-list-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-list-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-list-mobile-dark.png",
+      "duplicate_of": "screenshots/kycalendar-01-after-default-phone-list-mobile-dark.png",
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-list-mobile-light.png",
+      "duplicate_of": "screenshots/kycalendar-01-after-default-phone-list-mobile-light.png",
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-login-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-login-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-login-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-login-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-month-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-month-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-month-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-month-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-phones-and-apps-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-phones-and-apps-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-phones-and-apps-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-phones-and-apps-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-week-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-week-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-week-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-01-after-week-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Historical/diagnostic original; excluded from current quality.",
+      "artifact_role": "historical-round2"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-dark.png",
+      "duplicate_of": "screenshots/kycalendar-03-after-default-phone-list-mobile-dark.png",
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-light.png",
+      "duplicate_of": "screenshots/kycalendar-03-after-default-phone-list-mobile-light.png",
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-dark.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-light.png",
+      "duplicate_of": null,
+      "reason": "Stage03 actual product regressions; parent rejected implementation, USER did not reject layout. Preserved diagnostic history; excluded from current quality.",
+      "artifact_role": "diagnostic-round3-rejected-implementation"
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-list-mobile-dark.png",
+      "duplicate_of": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+      "reason": "duplicate; score first file by name once",
+      "artifact_role": "current-supporting"
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-list-mobile-light.png",
+      "duplicate_of": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+      "reason": "duplicate; score first file by name once",
+      "artifact_role": "current-supporting"
+    }
+  ],
+  "brand_only": [
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-light.png",
+      "sha256": "e04e982e67675940082bde40ed094ef3aa3f7f5b76d1dac649c0e922ee941773",
+      "bytes": 90075,
+      "width": 1280,
+      "height": 900,
+      "role": "brand reference only; never quality-scored",
+      "source_commit": "df8daef1cc7c2c11eccab288334ef0ee20f6634b",
+      "source_image": "screenshots/kyidentity-02-after-appearance-desktop-light.png"
+    },
+    {
+      "file": "brand-reference-kyidentity-appearance-desktop-dark.png",
+      "sha256": "c4b743800560bc2a82089d27a2313b31bc107f2a41371eb5b2ae44243d3d89b9",
+      "bytes": 90473,
+      "width": 1280,
+      "height": 900,
+      "role": "brand reference only; never quality-scored",
+      "source_commit": "df8daef1cc7c2c11eccab288334ef0ee20f6634b",
+      "source_image": "screenshots/kyidentity-02-after-appearance-desktop-dark.png"
+    }
+  ],
+  "input_hashes": {
+    "authority.json": "2c4abf7b3d659eb16e2ba19095907ede6b8720bf80e06de82b55dcb3e8133e49",
+    "rubric.md": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+    "design-contract.md": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+    "runtime-tokens.css": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4",
+    "inventory-v4.json": "a378fe2b7d98d23860bbe7903cc3911fd1e29376022912af1a9966d083b84a31",
+    "artifacts-v4.json": "6acfe660babc5681de88087486aba5143eb2c7af10876c1316098558cd4de207",
+    "manifest-04-confirmation.json": "5a84094984aab6d44a6c3509caddebdf0e0c1ea512e99a04c2c0cf2e6d3c0905"
+  },
+  "capture_conditions": {
+    "desktop": [
+      1280,
+      900
+    ],
+    "mobile": [
+      390,
+      844
+    ],
+    "dpr": 1,
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "os_schemes": [
+      "light",
+      "dark"
+    ],
+    "saved_theme": "none",
+    "full_page": false,
+    "cropping_or_resizing": false,
+    "clock": "real; no emulation",
+    "display_date_method": "Day view and bounded Previous/Next controls, then requested view",
+    "workers": "allowed; real production registration",
+    "font_wait": "document.fonts.ready and two animation frames, stable UI + 400ms",
+    "pointer": "neutral bottom-right pixel",
+    "workflow": "documented capture.mjs via proven round3 driver; one new confirmation batch; all context screenshots before supplemental probes",
+    "workflow_references": [
+      "web/browser/AGENTS.md",
+      "web/browser/server.mjs",
+      "web/browser/setup.mjs",
+      "docs/ui-fleet-2026-10-26/drivers/capture-base.mjs.txt"
+    ],
+    "fleet_driver_differences": [
+      "No fixed clock",
+      "America/New_York",
+      "DPR1 explicit",
+      "Service workers allowed",
+      "Fixture retained",
+      "No credentials or filled setup captured"
+    ]
+  },
+  "source_manifests": [
+    "manifest-04-confirmation.json"
+  ],
+  "captured_source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+  "source_runtime_sha256": "2fe32fb65ce4151b54edd81947e41c74d4b6e0f7a357446742129496f2d9da2b",
+  "supersession": "04-confirmation current;03-after diagnostic. All206 originals retained. Stage04/inventory-v4 does not imply a fourth review round. User did not reject layout.",
+  "not_ranking": "Ky-only coverage, separate brand references, history/diagnostics unscored.",
+  "blind_review": "Freeze entire files array before own prior/peer reports, historical or diagnostic images, audits or findings.",
+  "clock_note": "DisplayedOct27 via real controls; actualOct28 clock remains live. Today/timeindicator/signin-age changes are clockeffects. Native End date selection is retained driver artifact.",
+  "byte_identical_counts": {
+    "to_baseline": 16,
+    "to_round2": 18
+  }
+}

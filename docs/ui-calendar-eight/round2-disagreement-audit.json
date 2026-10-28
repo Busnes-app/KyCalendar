@@ -1,0 +1,1185 @@
+{
+  "schema": "kycalendar-disagreement-audit/2",
+  "round": 2,
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "role": "independent screenshot disagreement audit sub-agent",
+    "blind_scoring": false,
+    "new_scores_issued": false
+  },
+  "scope": {
+    "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
+    "owned_files": [
+      "docs/ui-calendar-eight/round2-disagreement-audit.json",
+      "docs/ui-calendar-eight/round2-disagreement-audit.md"
+    ],
+    "authorization": "Owner Council authorizes independent disagreement audits; parent is preparing a bounded task-readability batch.",
+    "runtime_edits": false,
+    "raw_report_edits": false,
+    "builds": false,
+    "application_tests": false,
+    "browser_use": false,
+    "commits": false,
+    "subdelegation": false
+  },
+  "rubric": "ky-suite-v2",
+  "capture": {
+    "source": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+    "source_runtime_sha256": "74b254ee137c3cbca35870f7f8ff786d3be89a1514c011c2105e8bdf6ca77633",
+    "desktop": [
+      1280,
+      900
+    ],
+    "phone": [
+      390,
+      844
+    ],
+    "DPR": 1,
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "themes": [
+      "OS light",
+      "OS dark"
+    ],
+    "saved_choice": "none",
+    "fixture": "synthetic standalone everyday/admin accounts; displayed date October 27, 2026",
+    "clock": "real; initial captures Oct27 23:56–23:57 EDT; Appearance confirmation after midnight. Clock/state changes are not UI improvements.",
+    "supersession": "Only 02-confirmation Appearance originals are current. No historical or superseded images opened for this audit."
+  },
+  "progression": {
+    "opus": {
+      "quality_exact": "467/60",
+      "quality_half_up": "7.8",
+      "independent_satisfaction": false
+    },
+    "sol": {
+      "quality_exact": "127/15",
+      "quality_half_up": "8.5",
+      "independent_satisfaction": false
+    },
+    "controlling_reviewer": "Opus",
+    "threshold_half_up": "8.0",
+    "accepted": false,
+    "rule": "Current-round Opus mean of 48 unique rubric-rounded quality totals; half-up to one decimal. No peer, history, brand, cohort or audit pooling. This audit changes no score or gate input.",
+    "longer_term_target": "9/10; not achieved or asserted"
+  },
+  "raw_report_integrity": {
+    "before": {
+      "opus-round2.json": {
+        "sha256": "8e22839bb087a901647621b81b95b5fde5f3d3071e2924b0ef8dd1ccaf8d3558",
+        "bytes": 320411
+      },
+      "opus-round2.md": {
+        "sha256": "3a2949205d6bb5bb257010a1985a80023b8345961a69f2525bfe67d47a1a180e",
+        "bytes": 22995
+      },
+      "sol-round2.json": {
+        "sha256": "65b5696db8cfee3845b068142a5154ca0a0235e72d51422b08199a9ab37654f4",
+        "bytes": 1406823
+      },
+      "sol-round2.md": {
+        "sha256": "cc75dcd21926dfa821c8ec72cfd0f8294e5badbb458ce2c0fe9bd27460670f8a",
+        "bytes": 42276
+      }
+    },
+    "after": {
+      "opus-round2.json": {
+        "sha256": "8e22839bb087a901647621b81b95b5fde5f3d3071e2924b0ef8dd1ccaf8d3558",
+        "bytes": 320411
+      },
+      "opus-round2.md": {
+        "sha256": "3a2949205d6bb5bb257010a1985a80023b8345961a69f2525bfe67d47a1a180e",
+        "bytes": 22995
+      },
+      "sol-round2.json": {
+        "sha256": "65b5696db8cfee3845b068142a5154ca0a0235e72d51422b08199a9ab37654f4",
+        "bytes": 1406823
+      },
+      "sol-round2.md": {
+        "sha256": "cc75dcd21926dfa821c8ec72cfd0f8294e5badbb458ce2c0fe9bd27460670f8a",
+        "bytes": 42276
+      }
+    },
+    "unchanged": true,
+    "canonical_freezes": {
+      "opus": {
+        "canonical_sha256": "9341638318d1603fd79f80ee435c096f5b96dbd65297581bab1f396ee4b076ab",
+        "canonical_bytes": 174890,
+        "freeze_matches": true,
+        "file_count": 48
+      },
+      "sol": {
+        "canonical_sha256": "a413eecad0c0f633a4bf81b68c580633e824f74ea84f05478e4c8f4f94be7895",
+        "canonical_bytes": 646487,
+        "freeze_matches": true,
+        "file_count": 48
+      }
+    },
+    "score_vectors_immutable": true,
+    "observations_immutable": true
+  },
+  "input_identities": {
+    "authority.json": {
+      "sha256": "2c4abf7b3d659eb16e2ba19095907ede6b8720bf80e06de82b55dcb3e8133e49",
+      "bytes": 1398
+    },
+    "rubric.md": {
+      "sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+      "bytes": 7817
+    },
+    "design-contract.md": {
+      "sha256": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+      "bytes": 6593
+    },
+    "runtime-tokens.css": {
+      "sha256": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4",
+      "bytes": 3980
+    },
+    "inventory-v2.json": {
+      "sha256": "fd4aa5f233486c64f7afdf18b28c7ba83cc062e9ccce421b7f253ba0f27e3c46",
+      "bytes": 48933
+    },
+    "artifacts-v2.json": {
+      "sha256": "8ce01cc4c1dbc7db024d613bf37c6e078569725762175c328a21bd4408d15cb5",
+      "bytes": 289606
+    },
+    "review-inputs-v2.json": {
+      "sha256": "ae8428ec108ce39562d410a645a392a9f2acba367da9c14b7ccfe2668789de94",
+      "bytes": 51949
+    },
+    "manifest-01-after.json": {
+      "sha256": "46e6d52287733fb20221b16bcb7b6d60110ba7e489275e73cbe052f598a4071e",
+      "bytes": 1026401
+    },
+    "manifest-02-confirmation.json": {
+      "sha256": "07037955d3fe063c23d907ceb0faf6b44e6ced3cae45e89dce87de2c402ee2f5",
+      "bytes": 220093
+    },
+    "capture-round2-checks.json": {
+      "sha256": "63a63f00ccdbcb1ec6e1883b824374f1a3391f114c84be1bab511c2d0c252e8e",
+      "bytes": 203408
+    },
+    "capture-round2-checks.md": {
+      "sha256": "da53b3e6becb85917f3627ddbb00e9d6d23ce800f39844fed6b463cfc1b51881",
+      "bytes": 22077
+    },
+    "round2-parent-capture-check.json": {
+      "sha256": "03b66cad9b8e59ea025655e2d33a8913b48d6c120bd7af820618d737e4e243ed",
+      "bytes": 2405
+    },
+    "round2-parent-review-check.json": {
+      "sha256": "2e3539e33590f87208c63cb4070db9ef7501a54cd91d9ab0d5ddfcafc07af650",
+      "bytes": 7571
+    }
+  },
+  "pinned_authority_matches": {
+    "rubric.md": true,
+    "design-contract.md": true,
+    "runtime-tokens.css": true
+  },
+  "inventory_integrity": {
+    "rows_checked": 106,
+    "identity_errors": [],
+    "counts": {
+      "all_images": 106,
+      "current_images": 50,
+      "matrix_images": 48,
+      "scored_candidates": 48,
+      "pairwise_comparisons": 601,
+      "all_preserved_images": 106,
+      "historical_baseline": 50,
+      "superseded_diagnostic": 4,
+      "brand_reference": 2,
+      "current_originals": 50
+    }
+  },
+  "coverage": {
+    "required_affected_images": [
+      "screenshots/kycalendar-01-after-existing-event-desktop-dark.png",
+      "screenshots/kycalendar-01-after-existing-event-mobile-dark.png",
+      "screenshots/kycalendar-01-after-month-mobile-dark.png",
+      "screenshots/kycalendar-01-after-month-mobile-light.png",
+      "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+      "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+      "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+      "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+      "screenshots/kycalendar-01-after-week-mobile-dark.png",
+      "screenshots/kycalendar-01-after-week-mobile-light.png",
+      "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png"
+    ],
+    "required_image_count": 12,
+    "required_images_all_individually_opened": true,
+    "quality_spreads_ge2_count": 13,
+    "brand_spreads_ge2_count": 8,
+    "complete_spread_count": 21,
+    "opened_original_count": 32,
+    "all_opened_at_original_resolution": true,
+    "spread_resolution": "Individual reinspection and factual disposition; no score averaging, replacement score or modified raw observation.",
+    "brand_scope": "Eight additional numeric Ky brand spreads >=2 found across all 48 shared file rows; separate from quality. All their images were opened."
+  },
+  "opened_images": [
+    {
+      "order": 1,
+      "file": "screenshots/kycalendar-01-after-existing-event-desktop-dark.png",
+      "sha256": "8c00319a2025737bd788bd964213ec35c0ba9d6e8e560b5590e547048f98027c",
+      "bytes": 105958,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 2,
+      "file": "screenshots/kycalendar-01-after-existing-event-mobile-dark.png",
+      "sha256": "aebd5e8a04dfdcac9b8f8c994e32f0ab20a5d7f188fe268546878dc5f035693b",
+      "bytes": 42071,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 3,
+      "file": "screenshots/kycalendar-01-after-month-mobile-dark.png",
+      "sha256": "2d0b1cce315988683869c560ade48c80dd7468cc21302d04acf69019a834ff8f",
+      "bytes": 41877,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 4,
+      "file": "screenshots/kycalendar-01-after-month-mobile-light.png",
+      "sha256": "20e4b90dcdf8cfef1a9f9a5d6ee00da76ba0b216657a9aa19b088a555e135547",
+      "bytes": 41841,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 5,
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+      "sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+      "bytes": 75954,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 6,
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+      "sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+      "bytes": 78204,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 7,
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+      "sha256": "395d6be3887205b39c5a7aa5de141dd02e1d2dff9ebd9415f6a7c17773a577cd",
+      "bytes": 32353,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 8,
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+      "sha256": "3bb3a8149bb6e45a2cbeab3dc75c038cc64bd17578c71b117f4387a39d3c8bea",
+      "bytes": 33751,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 9,
+      "file": "screenshots/kycalendar-01-after-week-mobile-dark.png",
+      "sha256": "b69fcb7146027592fda90e296055a9214f82abe253baff502cb89441b90230ed",
+      "bytes": 41771,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 10,
+      "file": "screenshots/kycalendar-01-after-week-mobile-light.png",
+      "sha256": "02778d5fb3edce23a770f3477005ec1b853c0f42de0cde1a7adbb1513495bb9c",
+      "bytes": 41720,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 11,
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "sha256": "15a7d3b954c0ef91f2a974507a517ab75f6105e63bcb4608f5d7ede198038eac",
+      "bytes": 39357,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 12,
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png",
+      "sha256": "bab1e10657881d996c85105bacbaad9092ed9aa2189008f5f5a2cbd1ac19f8fe",
+      "bytes": 38469,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "required parent affected image"
+    },
+    {
+      "order": 13,
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-desktop-dark.png",
+      "sha256": "a552f9eae8070d5290c3aeb0ffb8459c4250e0ef9accd978d057e5f32596478e",
+      "bytes": 67347,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 14,
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-desktop-light.png",
+      "sha256": "235b838a0999d26379068f3824aa90e78521e1668b2fe79dc4c337f0712c9e3c",
+      "bytes": 67332,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 15,
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-mobile-dark.png",
+      "sha256": "63f3b936d48b54712440b1252cb55aa43bedfb9027aca0929d9383a58210c38c",
+      "bytes": 44763,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 16,
+      "file": "screenshots/kycalendar-01-after-admin-group-calendars-mobile-light.png",
+      "sha256": "f04a9d4da1b042cc703ea357f5bfe58d81105fcc37ef01a260778e1743026136",
+      "bytes": 44625,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 17,
+      "file": "screenshots/kycalendar-01-after-day-mobile-dark.png",
+      "sha256": "2d4a7732c839eae27c884aa91ad51cac4f18d46263ab50e7c723d7e094decd6f",
+      "bytes": 39125,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 18,
+      "file": "screenshots/kycalendar-01-after-day-mobile-light.png",
+      "sha256": "c3c8b50a714c45c174377921401b938cba9ebd5ec60a478e8bec153b22a54a65",
+      "bytes": 39119,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 19,
+      "file": "screenshots/kycalendar-01-after-default-phone-list-mobile-dark.png",
+      "sha256": "306ff11c20e6b026c33a85f8fd78d3978ff3aca077ca9900f2f58b1494e4858c",
+      "bytes": 59059,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 20,
+      "file": "screenshots/kycalendar-01-after-default-phone-list-mobile-light.png",
+      "sha256": "3ab53c7872928c4c301041e0377d0d018c4dee8a09c08d7f51fd6a9949598950",
+      "bytes": 59107,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 21,
+      "file": "screenshots/kycalendar-01-after-phones-and-apps-mobile-light.png",
+      "sha256": "e391531e9c4da72164942fcd3fcaf06e27a023b387091ad2a8da77e2ed5011bd",
+      "bytes": 45118,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 22,
+      "file": "screenshots/kycalendar-01-after-phones-and-apps-mobile-dark.png",
+      "sha256": "3eec7a3aa979a863a57c8b342874dd9ccf7895541b504a2ad79bf23bcd489ad2",
+      "bytes": 45844,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 23,
+      "file": "screenshots/kycalendar-01-after-week-desktop-dark.png",
+      "sha256": "e3e94d6eb04263085372a141b3ae5254af624181ec36877fd318b2120a8dd404",
+      "bytes": 82872,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 24,
+      "file": "screenshots/kycalendar-01-after-week-desktop-light.png",
+      "sha256": "4aa46d15b63760068b32fdcd6feafeb7c8a21efc117dbd0d5a47446bf8d972d4",
+      "bytes": 82706,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 25,
+      "file": "screenshots/kycalendar-01-after-day-desktop-dark.png",
+      "sha256": "497bd1713f1fe93919d0243c0fc00f0592c2199f8de52fe72a8cb6358314de12",
+      "bytes": 63640,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 26,
+      "file": "screenshots/kycalendar-01-after-day-desktop-light.png",
+      "sha256": "34a03d0a2aee8f169cdeeac7fee1c2f2ff36cf6297ca1668ccf2362f430bb65b",
+      "bytes": 63694,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 27,
+      "file": "screenshots/kycalendar-01-after-admin-people-desktop-light.png",
+      "sha256": "59eda48ad457c47cf7ba1a6c2c090f190ba29cb36f8467fac01da98c3e7e0383",
+      "bytes": 73772,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 28,
+      "file": "screenshots/kycalendar-01-after-admin-people-mobile-light.png",
+      "sha256": "37fcde640e34bf42877b375f0836e2dccab39a47726e3a8a74f221cfdbe68a5e",
+      "bytes": 46670,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 29,
+      "file": "screenshots/kycalendar-01-after-admin-people-desktop-dark.png",
+      "sha256": "6d1766797b59b998fc899b62457693dd11ca70ea7762331ea111c031eb6ff397",
+      "bytes": 73457,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 30,
+      "file": "screenshots/kycalendar-01-after-admin-people-mobile-dark.png",
+      "sha256": "21b813e273a67192006fc7cf41ba8f1224ff0efe6146c57f37c983040924efac",
+      "bytes": 46718,
+      "width": 390,
+      "height": 844,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 31,
+      "file": "screenshots/kycalendar-01-after-list-desktop-light.png",
+      "sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+      "bytes": 95202,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    },
+    {
+      "order": 32,
+      "file": "screenshots/kycalendar-01-after-list-desktop-dark.png",
+      "sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+      "bytes": 95215,
+      "width": 1280,
+      "height": 900,
+      "method": "tools.view_image",
+      "detail": "original",
+      "individually_opened": true,
+      "reason": "substantive objection / brand-spread corroboration"
+    }
+  ],
+  "quality_dimension_disagreements": [
+    {
+      "id": "Q1",
+      "file": "screenshots/kycalendar-01-after-existing-event-desktop-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "dark Delete (danger #ff8176 family) and Save (accent #f5865f family) are both salmon; separated only by outline vs fill",
+      "sol_observation": "Neutral dialog with orange title focus and Save; Delete has a separate red outline.",
+      "absolute_spread": 2,
+      "disposition": "calibration_with_supported_hue_similarity",
+      "fact": "Delete uses a warm red outline/text and Save a warm orange fill; their hues are close in dark mode. Labels, outline versus fill, and opposite footer placement clearly distinguish them. Sol describes those semantic distinctions; Opus describes a real hue resemblance but 'only outline vs fill' omits wording and placement.",
+      "action": "Retain the shared danger/accent tokens and destructive separation. No local recolor or editor redesign is justified by this spread.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q2",
+      "file": "screenshots/kycalendar-01-after-existing-event-mobile-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "dark Delete salmon text/outline is close in hue to the salmon Save fill",
+      "sol_observation": "Neutral overlay and surface keep focus and Save in orange, Delete in red.",
+      "absolute_spread": 2,
+      "disposition": "calibration_with_supported_hue_similarity",
+      "fact": "Delete uses a warm red outline/text and Save a warm orange fill; their hues are close in dark mode. Labels, outline versus fill, and opposite footer placement clearly distinguish them. Sol describes those semantic distinctions; Opus describes a real hue resemblance but 'only outline vs fill' omits wording and placement.",
+      "action": "Retain the shared danger/accent tokens and destructive separation. No local recolor or editor redesign is justified by this spread.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q3",
+      "file": "screenshots/kycalendar-01-after-month-mobile-dark.png",
+      "dimension": "typography",
+      "opus": 7,
+      "sol": 5,
+      "opus_observation": "event labels in 51px cells are cut to 3-4 characters plus ellipsis ('Tea...', 'Des...', 'Lun...'); legible as truncation but carry little meaning",
+      "sol_observation": "Month cells reduce most event names to fragments such as Tea..., Des... and Pla...; dates remain readable.",
+      "absolute_spread": 2,
+      "disposition": "supported_substantive_readability_issue_and_anchor_calibration",
+      "fact": "Both themes show a readable date grid but most timed names reduce to Tea…, Des…, Lun…, Pla… in roughly 51px cells. The spanning Release prep… bar carries more text, so not every event is equally unreadable. Both reviewers observe the same defect; Opus 7 weights contained legible glyphs, Sol 5 weights useful event identity. The rubric's legibility anchor supports treating the identity loss as substantive.",
+      "action": "Prioritize usable Month event-title width or bounded wrapping in the parent's task-readability batch. Preserve List default, date semantics, full accessible content, calendar colors and contained overflow. A title box existing is not readable identity.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q4",
+      "file": "screenshots/kycalendar-01-after-month-mobile-light.png",
+      "dimension": "typography",
+      "opus": 7,
+      "sol": 5,
+      "opus_observation": "event labels in 51px cells are cut to 3-4 characters plus ellipsis ('Tea...', 'Des...', 'Lun...'); legible as truncation but carry little meaning",
+      "sol_observation": "Month cells reduce most event names to fragments such as Tea..., Des... and Pla...; dates remain readable.",
+      "absolute_spread": 2,
+      "disposition": "supported_substantive_readability_issue_and_anchor_calibration",
+      "fact": "Both themes show a readable date grid but most timed names reduce to Tea…, Des…, Lun…, Pla… in roughly 51px cells. The spanning Release prep… bar carries more text, so not every event is equally unreadable. Both reviewers observe the same defect; Opus 7 weights contained legible glyphs, Sol 5 weights useful event identity. The rubric's legibility anchor supports treating the identity loss as substantive.",
+      "action": "Prioritize usable Month event-title width or bounded wrapping in the parent's task-readability batch. Preserve List default, date semantics, full accessible content, calendar colors and contained overflow. A title box existing is not readable identity.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q5",
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "modal on panel surface over a grey-washed page; a native blue segment highlight on the End month ('10') is off-palette",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q6",
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "modal on panel surface over a grey-washed page; a native blue segment highlight on the End month ('10') is off-palette",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q7",
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "native blue segment highlight on End month is off-palette; backdrop grey wash",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q8",
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+      "dimension": "color",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "native blue segment highlight on End month is off-palette; backdrop grey wash",
+      "sol_observation": "Neutral surface, orange End focus and orange Save keep emphasis controlled.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q9",
+      "file": "screenshots/kycalendar-01-after-week-mobile-dark.png",
+      "dimension": "density_layout",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "only Sun-Tue visible; the view opens on two empty days with today (Tue) clipped at the right edge, so the populated part of the week is mostly off-screen",
+      "sol_observation": " Wider day columns show Sunday through Tuesday; the time gutter stays separate and other days lie outside the capture.",
+      "absolute_spread": 2,
+      "disposition": "supported_limited_week_overview_with_material_opus_fact_correction",
+      "fact": "Sun 25, Mon 26 and Tue 27 are visible after a separate time gutter. Sunday is empty; Monday visibly contains Team check-in. Tuesday's header, Library day and timed event blocks occupy a column of approximately the same visible width as Sunday/Monday, ending at the viewport's internal grid edge. Its long titles ellipsize within that column. The image does not support 'two empty days' or a materially clipped Tuesday column. Wednesday onward are off-screen and the explicit scroll hint is visible. Sol's layout observation is more accurate; 6 versus 8 also reflects different tolerance for a partial-week overview.",
+      "action": "Keep the real limited-overview concern, but do not rank a clipping fix from the erroneous premise. A current-day opening position is a possible product refinement requiring date-navigation/scroll behavior verification, not an established screenshot repair. Prioritize meaningful title content and header economy.",
+      "confidence": "high for visible content; scroll behavior unverified by this auditor",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q10",
+      "file": "screenshots/kycalendar-01-after-week-mobile-light.png",
+      "dimension": "density_layout",
+      "opus": 6,
+      "sol": 8,
+      "opus_observation": "only Sun-Tue visible; the view opens on two empty days with today (Tue) clipped at the right edge, so the populated part of the week is mostly off-screen",
+      "sol_observation": " Wider day columns show Sunday through Tuesday; the time gutter stays separate and other days lie outside the capture.",
+      "absolute_spread": 2,
+      "disposition": "supported_limited_week_overview_with_material_opus_fact_correction",
+      "fact": "Sun 25, Mon 26 and Tue 27 are visible after a separate time gutter. Sunday is empty; Monday visibly contains Team check-in. Tuesday's header, Library day and timed event blocks occupy a column of approximately the same visible width as Sunday/Monday, ending at the viewport's internal grid edge. Its long titles ellipsize within that column. The image does not support 'two empty days' or a materially clipped Tuesday column. Wednesday onward are off-screen and the explicit scroll hint is visible. Sol's layout observation is more accurate; 6 versus 8 also reflects different tolerance for a partial-week overview.",
+      "action": "Keep the real limited-overview concern, but do not rank a clipping fix from the erroneous premise. A current-day opening position is a possible product refinement requiring date-navigation/scroll behavior verification, not an established screenshot repair. Prioritize meaningful title content and header economy.",
+      "confidence": "high for visible content; scroll behavior unverified by this auditor",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q11",
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "selected card clear; nav row is scrolled so Calendar and Phones & apps are off-screen left with no visible cue at the left edge",
+      "sol_observation": "Match system has both an orange border and selected radio; every theme has a preview and scheme label.",
+      "absolute_spread": 2,
+      "disposition": "supported_navigation_cue_gap_and_different_observation_scope",
+      "fact": "The visible nav row shows Two-step verification and selected Appearance; Calendar and Phones & apps are outside the left edge with no obvious left continuation cue. Match system has an orange card border plus selected radio and all visible cards have labels/previews. Opus judges navigation discoverability while Sol judges the picker. Both facts coexist; the 9 observation does not address the off-screen navigation cue.",
+      "action": "Keep the successful picker. Address navigation continuation/focused-label visibility only in the bounded phone navigation work; no unreachable-route claim and no need to restyle theme cards.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q12",
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png",
+      "dimension": "coherence",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "in dark only, the off-selection 'Two-step verification' nav item shows a tinted pill background that the light capture does not",
+      "sol_observation": "The card previews, radios and shared navigation form one consistent appearance control system.",
+      "absolute_spread": 2,
+      "disposition": "supported_state_difference_cause_unknown_calibration",
+      "fact": "In dark mode Two-step verification has a raised neutral pill while Appearance retains its separate orange selection rail/fill. The light image has no similarly distinct raised pill. Opus C5 says it matches a hover token, but a surviving hover cause is explicitly unproven. Sol's consistent-card observation does not explain this extra navigation state.",
+      "action": "Record the visual difference. Preserve legitimate hover/focus feedback; do not flatten states or change shared tokens based on an unproven capture artifact. If relevant to future navigation work, confirm pointer/state conditions in the parent's allowed verification.",
+      "confidence": "high for appearance difference; low for cause",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "Q13",
+      "file": "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png",
+      "dimension": "visible_affordances",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "selected card clear; nav row is scrolled so Calendar and Phones & apps are off-screen left with no visible cue at the left edge",
+      "sol_observation": "Match system has both an orange border and selected radio; every theme has a preview and scheme label.",
+      "absolute_spread": 2,
+      "disposition": "supported_navigation_cue_gap_and_different_observation_scope",
+      "fact": "The visible nav row shows Two-step verification and selected Appearance; Calendar and Phones & apps are outside the left edge with no obvious left continuation cue. Match system has an orange card border plus selected radio and all visible cards have labels/previews. Opus judges navigation discoverability while Sol judges the picker. Both facts coexist; the 9 observation does not address the off-screen navigation cue.",
+      "action": "Keep the successful picker. Address navigation continuation/focused-label visibility only in the bounded phone navigation work; no unreachable-route claim and no need to restyle theme cards.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    }
+  ],
+  "brand_dimension_disagreements": [
+    {
+      "id": "B1",
+      "file": "screenshots/kycalendar-01-after-default-phone-list-mobile-dark.png",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "accent on New event, nav underline, Month underline and today date; restrained apart from the today date",
+      "sol_observation": "Orange marks the primary action, selected navigation/control state and visible focus, without decorative orange headings.",
+      "absolute_spread": 2,
+      "disposition": "semantic_selection_and_reused_observation_correction_not_cosmetic_work",
+      "fact": "Desktop and phone List show the selected List underline, primary New event, selected app navigation and calendar visibility states. No accent current-day date is visible in List. Opus C1/C2 admit Month observations were reused in other views and name a wrong view underline/today state. The original observation text is not reliable view-specific support where it contradicts pixels. Semantic visibility/current-date orange is authorized selection state; the remaining brand score difference is stricter reviewer calibration, separate from quality and progression.",
+      "action": "Annotate the factual reuse separately; retain all published bytes and scores. Do not recolor semantic orange or manufacture a cosmetic remediation item.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B2",
+      "file": "screenshots/kycalendar-01-after-default-phone-list-mobile-light.png",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "accent on New event, nav underline, Month underline and today date; restrained apart from the today date",
+      "sol_observation": "Orange marks the primary action, selected navigation/control state and visible focus, without decorative orange headings.",
+      "absolute_spread": 2,
+      "disposition": "semantic_selection_and_reused_observation_correction_not_cosmetic_work",
+      "fact": "Desktop and phone List show the selected List underline, primary New event, selected app navigation and calendar visibility states. No accent current-day date is visible in List. Opus C1/C2 admit Month observations were reused in other views and name a wrong view underline/today state. The original observation text is not reliable view-specific support where it contradicts pixels. Semantic visibility/current-date orange is authorized selection state; the remaining brand score difference is stricter reviewer calibration, separate from quality and progression.",
+      "action": "Annotate the factual reuse separately; retain all published bytes and scores. Do not recolor semantic orange or manufacture a cosmetic remediation item.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B3",
+      "file": "screenshots/kycalendar-01-after-list-desktop-dark.png",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "accent on New event, nav rail, view underline and focus is in contract; three accent-filled calendar checkboxes plus accent today date add extra orange marks",
+      "sol_observation": "Orange marks the primary action, selected navigation/control state and visible focus, without decorative orange headings.",
+      "absolute_spread": 2,
+      "disposition": "semantic_selection_and_reused_observation_correction_not_cosmetic_work",
+      "fact": "Desktop and phone List show the selected List underline, primary New event, selected app navigation and calendar visibility states. No accent current-day date is visible in List. Opus C1/C2 admit Month observations were reused in other views and name a wrong view underline/today state. The original observation text is not reliable view-specific support where it contradicts pixels. Semantic visibility/current-date orange is authorized selection state; the remaining brand score difference is stricter reviewer calibration, separate from quality and progression.",
+      "action": "Annotate the factual reuse separately; retain all published bytes and scores. Do not recolor semantic orange or manufacture a cosmetic remediation item.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B4",
+      "file": "screenshots/kycalendar-01-after-list-desktop-light.png",
+      "dimension": "accent_discipline",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "accent on New event, nav rail, view underline and focus is in contract; three accent-filled calendar checkboxes plus accent today date add extra orange marks",
+      "sol_observation": "Orange marks the primary action, selected navigation/control state and visible focus, without decorative orange headings.",
+      "absolute_spread": 2,
+      "disposition": "semantic_selection_and_reused_observation_correction_not_cosmetic_work",
+      "fact": "Desktop and phone List show the selected List underline, primary New event, selected app navigation and calendar visibility states. No accent current-day date is visible in List. Opus C1/C2 admit Month observations were reused in other views and name a wrong view underline/today state. The original observation text is not reliable view-specific support where it contradicts pixels. Semantic visibility/current-date orange is authorized selection state; the remaining brand score difference is stricter reviewer calibration, separate from quality and progression.",
+      "action": "Annotate the factual reuse separately; retain all published bytes and scores. Do not recolor semantic orange or manufacture a cosmetic remediation item.",
+      "confidence": "high",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B5",
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "panel/ink/field-border tokens; the native blue date-segment highlight is outside the palette",
+      "sol_observation": "The visible cream/charcoal surface and ink match the pinned palette; calendar hues and theme previews are user data.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B6",
+      "file": "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "panel/ink/field-border tokens; the native blue date-segment highlight is outside the palette",
+      "sol_observation": "The visible cream/charcoal surface and ink match the pinned palette; calendar hues and theme previews are user data.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B7",
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "token surfaces; native blue segment highlight off-palette",
+      "sol_observation": "The visible cream/charcoal surface and ink match the pinned palette; calendar hues and theme previews are user data.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    },
+    {
+      "id": "B8",
+      "file": "screenshots/kycalendar-01-after-new-event-mobile-light.png",
+      "dimension": "palette_tokens",
+      "opus": 7,
+      "sol": 9,
+      "opus_observation": "token surfaces; native blue segment highlight off-palette",
+      "sol_observation": "The visible cream/charcoal surface and ink match the pinned palette; calendar hues and theme previews are user data.",
+      "absolute_spread": 2,
+      "disposition": "supported_capture_fact_artifact_and_calibration_not_runtime_defect",
+      "fact": "All four originals visibly show a small blue selection on the End month segment 10 inside an orange focus outline; neutral dialog surfaces and one filled Save remain clear. Sol's color sentence omits that blue but its artifact record acknowledges native selection. Opus C4 and Sol's qualification attribute it to driver filling Start then End. Native focus indicators are expressly permitted by the pinned design contract.",
+      "action": "Keep the artifact in interpretation of the captured picture and retain the raw vectors. Do not change native date controls, initial focus, or runtime palette to improve a screenshot score. Driver provenance is reported evidence, not a new behavioral verification.",
+      "confidence": "high for visible selection; driver cause relies on the recorded capture reports",
+      "raw_scores_unchanged": true,
+      "replacement_score": null
+    }
+  ],
+  "substantive_objection_audit": [
+    {
+      "id": "O1",
+      "topic": "Phone Month event identification",
+      "reviewer_objections": [
+        "Opus remaining #2",
+        "Sol R2-S1"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-month-mobile-light.png",
+        "screenshots/kycalendar-01-after-month-mobile-dark.png"
+      ],
+      "disposition": "supported; highest task-readability priority",
+      "evidence": "Both themes show a readable date grid but most timed names reduce to Tea…, Des…, Lun…, Pla… in roughly 51px cells. The spanning Release prep… bar carries more text, so not every event is equally unreadable. Both reviewers observe the same defect; Opus 7 weights contained legible glyphs, Sol 5 weights useful event identity. The rubric's legibility anchor supports treating the identity loss as substantive.",
+      "priority": "P1",
+      "recommendation": "Prioritize usable Month event-title width or bounded wrapping in the parent's task-readability batch. Preserve List default, date semantics, full accessible content, calendar colors and contained overflow. A title box existing is not readable identity."
+    },
+    {
+      "id": "O2",
+      "topic": "Zero-groups controls",
+      "reviewer_objections": [
+        "Opus remaining #4",
+        "Sol R2-S2"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-admin-group-calendars-desktop-light.png",
+        "screenshots/kycalendar-01-after-admin-group-calendars-desktop-dark.png",
+        "screenshots/kycalendar-01-after-admin-group-calendars-mobile-light.png",
+        "screenshots/kycalendar-01-after-admin-group-calendars-mobile-dark.png"
+      ],
+      "disposition": "supported visible state mismatch; lower-severity concrete fix",
+      "evidence": "Group reads No groups available in a muted select, while Role and outlined Add group look available in all four images. Plain guidance and one card replace the old nested empty state. Phone Group ends around x321 and Role/Add group around x317 inside a card extending to x374; alignment refinement is real but secondary. No direct Groups link appears in the hint; Groups is already a visible nav destination in these captures.",
+      "priority": "P2",
+      "recommendation": "Make Add group visibly and programmatically unavailable when no selectable group exists; retain a useful explanation and existing Groups destination. Parent should verify zero-groups and all-granted branches separately. Screenshot evidence does not prove an invalid grant is submitted."
+    },
+    {
+      "id": "O3",
+      "topic": "Tall time-grid event titles",
+      "reviewer_objections": [
+        "Opus remaining #5",
+        "Sol prior vertical-clipping disposition"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-week-desktop-light.png",
+        "screenshots/kycalendar-01-after-week-desktop-dark.png",
+        "screenshots/kycalendar-01-after-day-desktop-light.png",
+        "screenshots/kycalendar-01-after-day-desktop-dark.png",
+        "screenshots/kycalendar-01-after-day-mobile-light.png",
+        "screenshots/kycalendar-01-after-day-mobile-dark.png"
+      ],
+      "disposition": "supported refinement; scope to long titles that actually truncate",
+      "evidence": "Desktop Week Planning the co… occupies a roughly 84px-high 1.5-hour event with blank space beneath its one title line. Morning appoint… truncates in a shorter block. Phone Day Planning the community workshop and pre… also leaves unused vertical room. Desktop Day displays the full workshop title on one line; it has no demonstrated workshop readability defect. Glyphs are contained rather than sliced mid-line.",
+      "priority": "P2",
+      "recommendation": "Allow a bounded number of title lines when the event block has vertical space; retain compact one-line treatment for short events and preserve visible times/selection. Parent must confirm short/overlapping events do not regain vertical clipping."
+    },
+    {
+      "id": "O4",
+      "topic": "Phone heading/navigation allocation",
+      "reviewer_objections": [
+        "Opus remaining #3",
+        "Sol R2-S3",
+        "Opus Appearance affordance objection"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-day-mobile-light.png",
+        "screenshots/kycalendar-01-after-day-mobile-dark.png",
+        "screenshots/kycalendar-01-after-default-phone-list-mobile-light.png",
+        "screenshots/kycalendar-01-after-default-phone-list-mobile-dark.png",
+        "screenshots/kycalendar-01-after-phones-and-apps-mobile-light.png",
+        "screenshots/kycalendar-01-after-phones-and-apps-mobile-dark.png",
+        "screenshots/kycalendar-02-confirmation-appearance-mobile-light.png",
+        "screenshots/kycalendar-02-confirmation-appearance-mobile-dark.png"
+      ],
+      "disposition": "supported layout opportunity; route reachability and exact recovery amount unproven",
+      "evidence": "Calendar title/timezone/New event area wraps America/New_York onto a second note line; Day/List/Month content starts near y314, and Week near y342 with its helpful hint. Phones & apps fades beside Calendars on the calendar pages. Phones and apps page shows its selected label fully; neighboring labels fade as a continuation treatment. Appearance lacks an obvious left continuation cue. Sign-out is visibly right aligned. List workshop title spans three lines, consistent with Sol's post-freeze correction.",
+      "priority": "P3",
+      "recommendation": "Reduce avoidable heading/control height while preserving readable timezone, helpful Week instruction, navigation order, one navigation region, accessible labels and draft persistence. Moving the note is a layout hypothesis; a 24px gain is not proven without a resulting capture. Check settled focused-label visibility if the parent changes navigation."
+    },
+    {
+      "id": "O5",
+      "topic": "Phone Week initial overview",
+      "reviewer_objections": [
+        "Opus remaining #1",
+        "Sol Week prior-objection disposition"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-week-mobile-light.png",
+        "screenshots/kycalendar-01-after-week-mobile-dark.png"
+      ],
+      "disposition": "partly supported; correct Opus's empty-day and clipped-Tuesday assertions",
+      "evidence": "Sun 25, Mon 26 and Tue 27 are visible after a separate time gutter. Sunday is empty; Monday visibly contains Team check-in. Tuesday's header, Library day and timed event blocks occupy a column of approximately the same visible width as Sunday/Monday, ending at the viewport's internal grid edge. Its long titles ellipsize within that column. The image does not support 'two empty days' or a materially clipped Tuesday column. Wednesday onward are off-screen and the explicit scroll hint is visible. Sol's layout observation is more accurate; 6 versus 8 also reflects different tolerance for a partial-week overview.",
+      "priority": "P3 / product-choice refinement",
+      "recommendation": "Keep the real limited-overview concern, but do not rank a clipping fix from the erroneous premise. A current-day opening position is a possible product refinement requiring date-navigation/scroll behavior verification, not an established screenshot repair. Prioritize meaningful title content and header economy."
+    },
+    {
+      "id": "O6",
+      "topic": "People action density",
+      "reviewer_objections": [
+        "Opus remaining #6"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-admin-people-desktop-light.png",
+        "screenshots/kycalendar-01-after-admin-people-desktop-dark.png",
+        "screenshots/kycalendar-01-after-admin-people-mobile-light.png",
+        "screenshots/kycalendar-01-after-admin-people-mobile-dark.png"
+      ],
+      "disposition": "supported wrapping; optional polish outside the core readability batch",
+      "evidence": "Everyday desktop row shows Edit, Reset password, Make admin, Disable on one line; the Administrator row has only two actions, so 'four per row' is overbroad. On phone the everyday row puts Disable on a separate line, all fully readable. The second account continues below the viewport. Emails are em dashes in this fixture; no missing-data feature claim follows.",
+      "priority": "defer",
+      "recommendation": "Do not change action availability or remove 40px targets to chase density scores. Optional quieter action styling can be considered separately; existing wrap is not a demonstrated clipping or authorization failure."
+    },
+    {
+      "id": "O7",
+      "topic": "New-event required marker",
+      "reviewer_objections": [
+        "Sol frozen visible_affordances observations"
+      ],
+      "files": [
+        "screenshots/kycalendar-01-after-new-event-desktop-dark.png",
+        "screenshots/kycalendar-01-after-new-event-desktop-light.png",
+        "screenshots/kycalendar-01-after-new-event-mobile-dark.png",
+        "screenshots/kycalendar-01-after-new-event-mobile-light.png"
+      ],
+      "disposition": "supported absence of visible required marker; optional form-copy refinement",
+      "evidence": "Title is visibly labeled Title without a required marker while Location and Description say optional. This does not establish whether required validation works.",
+      "priority": "defer",
+      "recommendation": "If parent later changes editor copy, make required status explicit without changing validation semantics. No runtime/editor rebuild is justified solely by the native date-selection color spread."
+    }
+  ],
+  "factual_annotations": [
+    {
+      "id": "F1",
+      "topic": "Reused Month brand prose",
+      "source": "opus-round2.json post_freeze_corrections C1/C2/C3",
+      "disposition": "Admitted reuse is supported by opened List/Day/Week pixels: actual view underlines differ and List has no accented current-day date. Treat those copied descriptions as off-base view-specific claims; retain the entire frozen vectors and originals. The reviewer says it viewed/scored each image independently; this audit cannot establish how much numerical calibration that reuse affected."
+    },
+    {
+      "id": "F2",
+      "topic": "Semantic orange",
+      "disposition": "Calendar visibility/current-date and selected view/navigation are semantic states. No recoloring or local palette fork. Brand differences never enter quality progression."
+    },
+    {
+      "id": "F3",
+      "topic": "Native End selection",
+      "disposition": "Blue segment is visible; capture-driver explanation is recorded, and native focus is permitted by the design contract. It is not evidence of wrong product initial autofocus."
+    },
+    {
+      "id": "F4",
+      "topic": "Dark Appearance raised nav pill",
+      "disposition": "Visible extra neutral state is supported. Hover attribution remains probable/unproven from the existing record; do not claim a runtime state bug."
+    },
+    {
+      "id": "F5",
+      "topic": "Week Monday and Tuesday",
+      "disposition": "Correct the empty-Monday assertion (Team check-in is visible) and distinguish Tuesday's truncated event text from a clipped day column. Retain narrower limited-week-overview concern."
+    },
+    {
+      "id": "F6",
+      "topic": "Calibration",
+      "disposition": "Both reviewers' raw reports distinguish prior drift on 22 byte-identical images from implementation progress. Sol explicitly records +1.0 desktop List recalibration. Those disclosures limit improvement claims; they neither authorize changing this round's frozen vectors nor substitute Sol's 8.5 for Opus's 7.8."
+    }
+  ],
+  "bounded_fix_priorities": [
+    {
+      "rank": 1,
+      "topic": "Readable phone Month identity",
+      "why": "Largest shared task defect, visible in both themes; glyph containment has not produced identifiable names.",
+      "guardrails": "Preserve List default, dates, complete accessible event text and semantic calendar colors; any internal scroll must be contained and clearly signaled."
+    },
+    {
+      "rank": 2,
+      "topic": "Meaningful titles in tall timed events",
+      "why": "Existing Week event blocks have unused vertical space while long names truncate.",
+      "guardrails": "Only use lines that fit the block; keep short events legible and preserve times/overlap semantics. Desktop Day's full workshop name needs no fix."
+    },
+    {
+      "rank": 3,
+      "topic": "Unavailable Add group state",
+      "why": "Concrete mismatch between disabled no-choice Group selector and ordinary Add group styling.",
+      "guardrails": "Parent verifies zero-groups and all-granted independently; no claim of invalid writes."
+    },
+    {
+      "rank": 4,
+      "topic": "Phone heading and navigation allocation",
+      "why": "Time zone wraps, content starts low, edge labels fade; Appearance lacks left continuation cue.",
+      "guardrails": "Preserve one navigation region, label order, timezone information, Week instruction, focus feedback and drafts. Verify settled focused-label visibility."
+    },
+    {
+      "rank": 5,
+      "topic": "Week opening position, if chosen",
+      "why": "Partial-week overview is real; alleged empty Monday/clipped Tuesday is not.",
+      "guardrails": "Product choice, not cosmetic repair. Confirm date navigation and scroll state before asserting improvement."
+    }
+  ],
+  "not_recommended": [
+    "No semantic-orange recolor, danger/accent token fork, theme-card restyling, native date-control replacement or score-driven capture retouching.",
+    "No extra rerating solely to erase calibration differences. Raw observations and scores remain review history.",
+    "Defer People action styling and optional editor required-marker copy unless parent explicitly includes them; neither explains the main task-readability gap."
+  ],
+  "verification": {
+    "freshly_performed": [
+      "Individually opened 32 original files via tools.view_image detail=original; each required affected original included.",
+      "Read both terminal raw JSON/Markdown reports, their corrections/findings, pinned authority/rubric/design/runtime tokens, inventory and capture checks.",
+      "Read-only SHA-256, byte-size and PNG-header dimensions matched all 106 inventoried images.",
+      "Reconstructed both complete files-array canonical freezes: 48 files each; hash and byte-length match published freeze.",
+      "Compared raw report hashes/lengths before and after audit; all four unchanged.",
+      "Recomputed numeric dimension-spread membership from all 48 shared quality and brand vectors: 13 quality plus 8 brand spreads; no averaging."
+    ],
+    "recorded_capture_evidence_only": "Capture worker reports 29 checks passed, event focus return 4/4, Week ArrowRight 2/2, login count stable 4/4 and no page overflow. This auditor did not rerun or promote them to full gates.",
+    "artifact_check_note": "First read-only inventory helper mistakenly iterated the inventory's all_images filename as rows and stopped with TypeError. Corrected it to load artifacts-v2.json; subsequent 106 identity checks succeeded. No source/evidence writes or product failure resulted.",
+    "not_performed": "No runtime review/edits, builds, application/full suites, browser, commit, subdelegation or exporter run, per assigned scope.",
+    "full_behavior_gates": {
+      "keyboard": "untested",
+      "focus": "untested",
+      "contrast": "untested",
+      "states": "untested",
+      "responsive": "untested"
+    }
+  },
+  "limitations": [
+    "Static captured appearance only; no full behavioral, contrast, keyboard, focus, responsive or screen-reader acceptance.",
+    "Screen pixels cannot establish whether a control is truly disabled or a click writes data. Source assertions quoted from reviewer/capture records are attributed, not independently rereviewed runtime code.",
+    "All-granted group branch and full loading/error matrix are absent. First viewport does not establish content or navigation below/outside it.",
+    "Current source may be changing in the parent's separate batch; this audit binds only to preserved round2 originals/source manifests and immutable reports."
+  ],
+  "dox": {
+    "pass_completed": true,
+    "docs_intentionally_unchanged": [
+      "AGENTS.md",
+      "docs/ui-calendar-eight/AGENTS.md"
+    ],
+    "reason": "Only scoped evidence annotations added; existing ownership, rubric, workflow and child index remain valid. Explicit assignment permits only this audit pair."
+  },
+  "handoff": {
+    "status": "unavailable",
+    "reason": "Known MySlop credential revoked (401); no retry, read/post attempt or board status claim. Parent can consume this audit pair in the shared worktree."
+  }
+}
