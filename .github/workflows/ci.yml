@@ -176,6 +176,9 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Capture-tool network boundaries
+        run: node --test docs/ui-calendar-eight/fixture-network.test.mjs
+
       - run: npm ci
         working-directory: web
 

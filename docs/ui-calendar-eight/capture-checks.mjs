@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { fetchFixture } from './fixture-network.mjs';
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const out = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const [dir, stage = '00-before', reuseConfirmation] = process.argv.slice(2);
@@ -70,7 +71,7 @@ if (reuseConfirmation) {
   result.supplemental_assets = previous.supplemental_assets;
   result.supplemental_confirmation_reused_from = previous.supplemental_confirmation_reused_from ?? previous.checked_at;
 } else for (const path of [...requested].sort()) {
-  const response = await fetch(manifest.fixture.origin + path, { signal: AbortSignal.timeout(5000) });
+  const response = await fetchFixture(manifest.fixture.origin, path);
   const bytes = Buffer.from(await response.arrayBuffer());
   const file = path === '/' ? 'web/dist/index.html' : 'web/dist' + path;
   const disk = await readFile(join(root, file));

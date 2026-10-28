@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { fixtureOrigin, fetchFixture } from './fixture-network.mjs';
 
 process.umask(0o077);
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -31,7 +32,9 @@ if (mode === 'init') {
   await json(join(dir, 'fixture.json'), config);
   await json(join(dir, 'credentials.json'), { adminInit: secret(), admin: secret(), personInit: secret(), person: secret() });
 } else config = JSON.parse(await readFile(join(dir, 'fixture.json'), 'utf8'));
-const env = { PATH: process.env.PATH, GOMAXPROCS: '2', TZ: config.timezone, KY_APP_URL: config.origin,
+const origin = fixtureOrigin(config.origin);
+assert.equal(config.port, Number(new URL(origin).port), 'fixture origin and listener port differ');
+const env = { PATH: process.env.PATH, GOMAXPROCS: '2', TZ: config.timezone, KY_APP_URL: origin,
   KY_HOST: '127.0.0.1', KY_PORT: String(config.port), KY_DB_DRIVER: 'sqlite', KY_DATA_DIR: join(dir, 'data'),
   KYCALENDAR_BACKUP_DIR: join(dir, 'backups'), KY_CAPTCHA_PROVIDER: 'none', KY_TRUSTED_PROXIES: '127.0.0.1' };
 const passwords = JSON.parse(await readFile(join(dir, 'credentials.json'), 'utf8'));
@@ -54,12 +57,12 @@ const processRecord = { pid: child.pid, startticks, executable: config.binary, s
 await json(join(dir, 'process.json'), processRecord);
 await writeFile(join(dir, 'stop.sh'), `#!/bin/sh\nset -eu\npython3 - '${dir}' <<'PY'\nimport sys,json,os,signal,hashlib\nfrom pathlib import Path\nd=Path(sys.argv[1]); p=json.loads((d/'process.json').read_text()); q=Path('/proc')/str(p['pid'])\nif not q.exists():\n print('already stopped'); sys.exit(0)\ns=(q/'stat').read_text().rsplit(')',1)[1].split()[19]\nassert s==p['startticks'], 'PID reused: refused'\nassert os.readlink(q/'exe')==p['executable'], 'executable changed: refused'\nassert hashlib.sha256(Path(p['executable']).read_bytes()).hexdigest()==p['sha256'], 'binary changed: refused'\nos.kill(p['pid'],signal.SIGTERM)\nprint('owned server stop requested')\nPY\n`, { mode: 0o700 });
 for (let i = 0; i < 100; i++) {
-  try { if ((await fetch(config.origin + '/healthz')).ok) break; } catch { /* bounded startup */ }
+  try { if ((await fetchFixture(origin, '/healthz')).ok) break; } catch { /* bounded startup */ }
   if (i === 99) throw new Error('server did not become ready; inspect private server.log');
   await new Promise((r) => setTimeout(r, 200));
 }
 async function session(username, password) {
-  const api = await request.newContext({ baseURL: config.origin, extraHTTPHeaders: { 'X-Forwarded-For': '198.51.100.240' } });
+  const api = await request.newContext({ baseURL: origin, maxRedirects: 0, extraHTTPHeaders: { 'X-Forwarded-For': '198.51.100.240' } });
   await api.get('/api/auth/me');
   let csrf = (await api.storageState()).cookies.find((c) => c.name === 'ky_csrf')?.value;
   const r = await api.post('/api/auth/login', { headers: { 'X-CSRF-Token': csrf }, data: { username, password } });
@@ -114,4 +117,4 @@ if (mode === 'init') {
   // Bootstrap values are no longer needed. Only current disposable credentials remain private.
   await json(join(dir, 'credentials.json'), { admin: passwords.admin, person: passwords.person });
 }
-console.log(JSON.stringify({ fixture: dir, origin: config.origin, pid: child.pid, startticks, sha256: processRecord.sha256, seeded: mode === 'init' }));
+console.log(JSON.stringify({ fixture: dir, origin, pid: child.pid, startticks, sha256: processRecord.sha256, seeded: mode === 'init' }));

@@ -28,11 +28,13 @@ Own fresh synthetic captures, independent ratings, provenance and visual progres
 - Preserve raw failures and originals. Permit one bounded correction/confirmation per batch; do not overwrite earlier attempts.
 - After machine hard locks, use targeted checks, capped sequential builds and one browser. Run required full suites in hosted CI and reuse persistent caches.
 - Keep credentials, tokens, private keys and databases outside git in owned 0700/0600 paths. Capture no filled credentials or one-time secrets.
+- `capture-fixture.mjs` and `capture-checks.mjs` validate a literal `127.0.0.1` origin and unprivileged port, reject path traversal/query/fragment, and refuse redirects. Historical helper bytes remain in `*.mjs.baseline.txt` for provenance only; `driver-revisions.json` maps captured hashes to those archives.
 - Screenshots establish appearance only; record complete behavior, accessibility and integration gates separately.
 
 ## Verification
 
 - Follow `../../web/browser/AGENTS.md` for real-server browser workflows and the parent repository's required hosted CI checks.
+- `node --test docs/ui-calendar-eight/fixture-network.test.mjs` checks origin/path rejection and redirect refusal; the frontend CI job runs it.
 - Recompute weighted totals and half-up means; verify review membership, complete-vector freezes, image hashes/dimensions and source/served-asset bindings before publishing scores.
 - Export rating history and per-file evidence to a spreadsheet, preserving raw reports and unscored evidence. `python3 docs/ui-calendar-eight/build-report.py --current-round N --pr URL` validates terminal freezes/arithmetic and XLSX CRC/XML/data round-trip; it reads only rounds through N so later partial reports stay unread.
 

@@ -1,0 +1,22 @@
+{
+  "schema": "kycalendar-driver-revisions/1",
+  "entries": [
+    {
+      "original_path": "capture-fixture.mjs",
+      "captured_sha256": "1a59cd5e646042543ab5f55a3a498735a224852c004714b48c7af9e0d34b8a60",
+      "preserved_bytes_at": "capture-fixture.mjs.baseline.txt",
+      "captured_helper_commit": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+      "current_sha256": "3e3b3c706060ecbd575f65567f09d68dabfd9d061bae2665f93d415f20ea3123",
+      "reason": "Validate literal loopback/unprivileged origins and local paths; refuse redirects after CodeQL32/33. Historical captures retain original byte bindings."
+    },
+    {
+      "original_path": "capture-checks.mjs",
+      "captured_sha256": "7d7810b058c65b181111f3ef475892e1596901287e69d48cdb4aadff3f2a02f2",
+      "preserved_bytes_at": "capture-checks.mjs.baseline.txt",
+      "captured_helper_commit": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+      "current_sha256": "edf5d07e24c27173ee453a77c53f550f82f43c6338c7177b04ff22251732d296",
+      "reason": "Validate literal loopback/unprivileged origins and local paths; refuse redirects after CodeQL32/33. Historical captures retain original byte bindings."
+    }
+  ],
+  "historical_archives": "Forensic text only, not recommended runnable tools. Raw screenshot and manifest bytes remain untouched."
+}
