@@ -1,0 +1,338 @@
+{
+  "stage": "05-after",
+  "purpose": "Owner rejected round3 mobile Month; restore single-line labels",
+  "started_at": "2026-10-28T12:34:52.920Z",
+  "source": "1ff7d00ea509cdde863423ab6ad22a0ec586caa7",
+  "source_files": [
+    {
+      "file": "web/dist/app-icon-192.png",
+      "sha256": "f817329e3353883a7880489a81df5d26fc6ed90fbbe3036b6861bb41208589d5"
+    },
+    {
+      "file": "web/dist/app-icon-512.png",
+      "sha256": "f3a643228ad97a00b8e39ea7da2ffc8be3707bb59461b88a8a5b6a57f411e1e3"
+    },
+    {
+      "file": "web/dist/app-icon.png",
+      "sha256": "dda4d838c4a782611a55496b28f497fd689c1339ea481733e9855ad9c3e940f8"
+    },
+    {
+      "file": "web/dist/assets/CalendarPage-BI98eTcH.css",
+      "sha256": "3a9a93e8dbcd5ec139f49ef0db603ce7ba8bd460e96f77f1f582b5664e20ab72"
+    },
+    {
+      "file": "web/dist/assets/CalendarPage-C4D805_B.js",
+      "sha256": "03b486d4d9b0772fe1f26ed4c09aad0d6bfd779e7aba1044c22b80d0cf9ed0d4"
+    },
+    {
+      "file": "web/dist/assets/index-B9hIldTh.css",
+      "sha256": "3b89f2c0400e47f48addd94d9df1e03e0b6c740eafaa33e8adf85fbce508bf58"
+    },
+    {
+      "file": "web/dist/assets/index-pFSIwQIB.js",
+      "sha256": "0328aab1bf35b4ac515b4392756ab1d6c066099ece25bc58eab80e92b944afa3"
+    },
+    {
+      "file": "web/dist/favicon.ico",
+      "sha256": "308c344baa3f9a546f8ab4886d6177738762b7c3790aa37612e1e157d5cd6c84"
+    },
+    {
+      "file": "web/dist/favicon.png",
+      "sha256": "ce3f0df53635ce63ccbfd7ad17262489cde9dc4bddefc19d51417c00ba1daaf5"
+    },
+    {
+      "file": "web/dist/fonts/IBM_Plex_Mono/IBMPlexMono-Medium.ttf",
+      "sha256": "8ae925744d53758b67a77ea35c2fc46d7b688c7d8c04da3b579902bed0ca0e17"
+    },
+    {
+      "file": "web/dist/fonts/IBM_Plex_Mono/IBMPlexMono-Regular.ttf",
+      "sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd"
+    },
+    {
+      "file": "web/dist/fonts/IBM_Plex_Mono/IBMPlexMono-SemiBold.ttf",
+      "sha256": "b1a936f96266fbe036b112f659155f7c32222af44a9a20f3bb011f51050669d5"
+    },
+    {
+      "file": "web/dist/fonts/IBM_Plex_Mono/OFL.txt",
+      "sha256": "5294ce778857e1eb02e830b6ab06435537d38f43055327e73d03a2d4d57d5123"
+    },
+    {
+      "file": "web/dist/fonts/Space_Grotesk/OFL.txt",
+      "sha256": "f2e05925e3d5e73aebbe4148639a899876c12e4708eb453682b278a0a6f2a3b2"
+    },
+    {
+      "file": "web/dist/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf",
+      "sha256": "697a7905c71f7c61d071648bc73449541796af865b51c86a672795f3b452b142"
+    },
+    {
+      "file": "web/dist/index.html",
+      "sha256": "83897ce5bad71d36063d9f4d578aac3c4a49a5f8babe60fb401ce15ffe521fbd"
+    },
+    {
+      "file": "web/dist/manifest.json",
+      "sha256": "7a108f113de975287e9866ef4c9a2442cdd1f8259c48cdf4d17b8cf5ea6b6eee"
+    },
+    {
+      "file": "web/dist/sw.js",
+      "sha256": "66f463e0de474bb732ba07c1e59d7571b6c418134d10cf1ee60751d538b6b4f2"
+    },
+    {
+      "file": "web/src/styles/calendar.css",
+      "sha256": "cd719a912e8b20badde1276bab2d45c01733b91c811d0335e3e018be4e8debd9"
+    }
+  ],
+  "process": {
+    "pid": 818951,
+    "startticks": "5811106",
+    "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final",
+    "sha256": "ee965cf23e59a63d8c7b9a48c8db2b082fdebfe472548b91062f5b24c67e0590",
+    "started_at": "2026-10-28T12:34:52.818Z",
+    "build_info": "/tmp/kycalendar-eight-Fqv5Ll/server-final: go1.27.3\n\tpath\tgithub.com/Busnes-app/kycalendar/cmd/server\n\tmod\tgithub.com/Busnes-app/kycalendar\tv0.4.4-0.20261028123300-1ff7d00ea509+dirty\t\n\tdep\tgithub.com/Busnes-app/ky-primitives\tv0.10.2-0.20261026050236-bae5c14dba4c\th1:0UinS4BAYgN4vhZXmksdf8CkHncONw8VhillN1cNewI=\n\tdep\tgithub.com/coreos/go-oidc/v3\tv3.21.0\th1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=\n\tdep\tgithub.com/dustin/go-humanize\tv1.1.0\th1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=\n\tdep\tgithub.com/elimity-com/scim\tv0.0.0-20260728105928-2641426a1539\th1:xZWHbTeRWqbowyZgmf6NYgCa6gw94g+ekG4f8TfIp3Q=\n\tdep\tgithub.com/emersion/go-ical\tv0.0.0-20240127095438-fc1c9d8fb2b6\th1:kHoSgklT8weIDl6R6xFpBJ5IioRdBU1v2X2aCZRVCcM=\n\tdep\tgithub.com/emersion/go-webdav\tv0.7.0\n\t=>\t./third_party/go-webdav\t(devel)\t\n\t\n\tdep\tgithub.com/go-jose/go-jose/v4\tv4.1.6\th1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=\n\tdep\tgithub.com/google/jsonschema-go\tv0.4.3\th1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+DQPd0=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/jackc/pgpassfile\tv1.0.0\th1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=\n\tdep\tgithub.com/jackc/pgservicefile\tv0.0.0-20240606120523-5a60cdf6a761\th1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=\n\tdep\tgithub.com/jackc/pgx/v5\tv5.11.0\th1:IzBBtyK9AHqf98cctWFifYSci2hgQR/cd56wB4p+ogg=\n\tdep\tgithub.com/jackc/puddle/v2\tv2.2.2\th1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=\n\tdep\tgithub.com/modelcontextprotocol/go-sdk\tv1.8.0\th1:KIvahhYqwtbeniWVPs3TcXEA7b8jEtwfBpOTAI+Urx4=\n\tdep\tgithub.com/q-uint/parser\tv0.3.1\th1:VCHob90UXy0L5oMgny5EjbDC2YeEGNc6qahWa8+tUhQ=\n\tdep\tgithub.com/q-uint/xsd-datetime\tv1.0.0\th1:D2LCjbiDGeh121e1EH0XdOMPjDs/mmSq9yurbIYNWYY=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgithub.com/scim2/filter-parser/v2\tv2.3.1\th1:o24v+z9drjtWoF6XLtXOFWpkmo1GGfBKZqrAjy6npQM=\n\tdep\tgithub.com/segmentio/asm\tv1.1.3\th1:WM03sfUOENvvKexOLp+pCqgb/WDjsi7EK8gIsICtzhc=\n\tdep\tgithub.com/segmentio/encoding\tv0.5.4\th1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfvNt0=\n\tdep\tgithub.com/teambition/rrule-go\tv1.8.2\th1:lIjpjvWTj9fFUZCmuoVDrKVOtdiyzbzc93qTmRVe/J8=\n\tdep\tgithub.com/yosida95/uritemplate/v3\tv3.0.2\th1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=\n\tdep\tgolang.org/x/crypto\tv0.58.0\th1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=\n\tdep\tgolang.org/x/oauth2\tv0.37.0\th1:JUlcxA8oAtauLfiH8FX2/FkAWHAdi0QtGCGc+hofE98=\n\tdep\tgolang.org/x/sync\tv0.24.0\th1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tdep\tgolang.org/x/text\tv0.43.0\th1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=\n\tdep\tgolang.org/x/time\tv0.15.0\th1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U=\n\tdep\tmodernc.org/libc\tv1.79.0\th1:9Dvvv++bAMSkSuBzuOFAatbTV5OIoq6Y6FohmD3e7q8=\n\tdep\tmodernc.org/mathutil\tv1.7.1\th1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=\n\tdep\tmodernc.org/memory\tv1.12.1\th1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=\n\tdep\tmodernc.org/sqlite\tv1.61.0\th1:sQi63oLQ9uquAUA4CzOisH35Q3pEszkPBuHM0tFL8CY=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=1ff7d00ea509cdde863423ab6ad22a0ec586caa7\n\tbuild\tvcs.time=2026-10-28T12:33:00Z\n\tbuild\tvcs.modified=true\n",
+    "build_command": "CGO_ENABLED=0 GOMAXPROCS=2 go build -p1 -trimpath -o .browser/server ./cmd/server; same bytes copied after owned stop",
+    "tracked_status_at_start": "",
+    "source_revision": "1ff7d00ea509cdde863423ab6ad22a0ec586caa7",
+    "fixture_reseeded": false
+  },
+  "seed_sha256": "fcf2890202f1e36823c6aef5d32b7ae2114698475d49f767aef3eef00bbcc075",
+  "files": [
+    {
+      "file": "screenshots/kycalendar-05-after-month-mobile-light.png",
+      "sha256": "47698ea46f7aec0bb134986af3dff5c813b133cfcc337b025170116d557adb7f",
+      "bytes": 41564,
+      "width": 390,
+      "height": 844,
+      "scheme": "light",
+      "captured_at": "2026-10-28T12:34:55.395Z",
+      "geometry": {
+        "overflow": 0,
+        "saved_theme": null,
+        "theme": "busnes-light",
+        "heading": "October 2026",
+        "real_time": "2026-10-28T12:34:55.359Z",
+        "titles": [
+          {
+            "text": "Team check-in",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Library day",
+            "white_space": "nowrap",
+            "height": 21.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Design review",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Lunch break",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Planning the community workshop and preparing the shared materials",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Release preparation",
+            "white_space": "nowrap",
+            "height": 21.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Supplier call",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Morning appointment",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Project handover",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Weekly wrap-up",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Weekend walk",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          }
+        ]
+      }
+    },
+    {
+      "file": "screenshots/kycalendar-05-after-month-mobile-dark.png",
+      "sha256": "cfdf41f77ef44cac9b950b0e45894a36245d90609cc76fb42540843cb9400fd9",
+      "bytes": 41558,
+      "width": 390,
+      "height": 844,
+      "scheme": "dark",
+      "captured_at": "2026-10-28T12:34:57.478Z",
+      "geometry": {
+        "overflow": 0,
+        "saved_theme": null,
+        "theme": "busnes-dark",
+        "heading": "October 2026",
+        "real_time": "2026-10-28T12:34:57.457Z",
+        "titles": [
+          {
+            "text": "Team check-in",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Library day",
+            "white_space": "nowrap",
+            "height": 21.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Design review",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Lunch break",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Planning the community workshop and preparing the shared materials",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Release preparation",
+            "white_space": "nowrap",
+            "height": 21.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Supplier call",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Morning appointment",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Project handover",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Weekly wrap-up",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          },
+          {
+            "text": "Weekend walk",
+            "white_space": "nowrap",
+            "height": 19.5,
+            "line_height": "19.5px"
+          }
+        ]
+      }
+    }
+  ],
+  "assets": [
+    {
+      "scheme": "light",
+      "file": "web/dist/assets/index-B9hIldTh.css",
+      "sha256": "3b89f2c0400e47f48addd94d9df1e03e0b6c740eafaa33e8adf85fbce508bf58",
+      "matches_disk": true
+    },
+    {
+      "scheme": "light",
+      "file": "web/dist/assets/index-pFSIwQIB.js",
+      "sha256": "0328aab1bf35b4ac515b4392756ab1d6c066099ece25bc58eab80e92b944afa3",
+      "matches_disk": true
+    },
+    {
+      "scheme": "light",
+      "file": "web/dist/assets/CalendarPage-BI98eTcH.css",
+      "sha256": "3a9a93e8dbcd5ec139f49ef0db603ce7ba8bd460e96f77f1f582b5664e20ab72",
+      "matches_disk": true
+    },
+    {
+      "scheme": "light",
+      "file": "web/dist/assets/CalendarPage-C4D805_B.js",
+      "sha256": "03b486d4d9b0772fe1f26ed4c09aad0d6bfd779e7aba1044c22b80d0cf9ed0d4",
+      "matches_disk": true
+    },
+    {
+      "scheme": "dark",
+      "file": "web/dist/assets/index-B9hIldTh.css",
+      "sha256": "3b89f2c0400e47f48addd94d9df1e03e0b6c740eafaa33e8adf85fbce508bf58",
+      "matches_disk": true
+    },
+    {
+      "scheme": "dark",
+      "file": "web/dist/assets/index-pFSIwQIB.js",
+      "sha256": "0328aab1bf35b4ac515b4392756ab1d6c066099ece25bc58eab80e92b944afa3",
+      "matches_disk": true
+    },
+    {
+      "scheme": "dark",
+      "file": "web/dist/assets/CalendarPage-BI98eTcH.css",
+      "sha256": "3a9a93e8dbcd5ec139f49ef0db603ce7ba8bd460e96f77f1f582b5664e20ab72",
+      "matches_disk": true
+    },
+    {
+      "scheme": "dark",
+      "file": "web/dist/assets/CalendarPage-C4D805_B.js",
+      "sha256": "03b486d4d9b0772fe1f26ed4c09aad0d6bfd779e7aba1044c22b80d0cf9ed0d4",
+      "matches_disk": true
+    }
+  ],
+  "failures": [],
+  "conditions": {
+    "viewport": [
+      390,
+      844
+    ],
+    "dpr": 1,
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "saved_theme": "none",
+    "display_date": "2026-10-27",
+    "clock": "real; no mocks",
+    "pointer": [
+      389,
+      843
+    ],
+    "service_workers": "allowed"
+  },
+  "browser": "153.0.8010.12",
+  "browser_closed": true,
+  "finished_at": "2026-10-28T12:34:57.497Z"
+}
