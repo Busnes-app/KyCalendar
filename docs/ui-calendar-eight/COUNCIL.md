@@ -27,3 +27,5 @@ Review limitations (raw scores preserved):
 - Round 3: Opus prior aggregate means visible before freeze.
 - Round 3: Opus repeated false Week premise annotated outside array.
 - Round 3: Raw scores and all vectors unchanged.
+
+[Round 1 factual audit](round1-disagreement-audit.md) · [Round 2 factual audit](round2-disagreement-audit.md) · [Round 3 factual audit](round3-disagreement-audit.md). Dispositions qualify findings without replacing frozen scores.

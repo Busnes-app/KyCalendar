@@ -102,12 +102,17 @@ for label, evidence in [
 for decision in decisions:
     book['Checks'].append([f"Owner decision, round {decision['review_round']}", json.dumps(decision, ensure_ascii=False)])
 limitations = []
+audit_links = []
 for turn in range(1, args.current_round + 1):
     check_path = root / f'round{turn}-parent-review-check.json'
     if check_path.exists():
         for note in load(check_path).get('limitations', []):
             limitations.append(f'Round {turn}: {note}')
             book['Checks'].append([f'Review limitation, round {turn}', note])
+    audit_path = root / f'round{turn}-disagreement-audit.json'
+    if audit_path.exists():
+        book['Checks'].append([f'Factual audit, round {turn}', json.dumps({'file': audit_path.name, 'sha256': sha(audit_path.read_bytes())}, ensure_ascii=False)])
+        audit_links.append(f'[Round {turn} factual audit](round{turn}-disagreement-audit.md)')
 
 # Stdlib XLSX writer shared in shape with the Drive/DNS exports: preserve fractions as text.
 ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -144,5 +149,7 @@ for decision in decisions:
     lines += [f"Owner decision (round {decision['review_round']}): {decision['summary']}", '']
 if limitations:
     lines += ['Review limitations (raw scores preserved):', '', *['- ' + note for note in limitations], '']
+if audit_links:
+    lines += [' · '.join(audit_links) + '. Dispositions qualify findings without replacing frozen scores.', '']
 (root / 'COUNCIL.md').write_text('\n'.join(lines))
 print(f'Validated {args.current_round} round(s); exported workbook, CSV and score history; XLSX CRC/XML/data round-trip passed.')
