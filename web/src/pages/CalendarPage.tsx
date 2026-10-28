@@ -70,10 +70,12 @@ export function saveHidden(s: Set<string>) {
   }
 }
 
+const eventId = (ev: EventInfo) => `${ev.calendar_id}|${ev.uid}|${ev.recurrence_id ?? ''}`;
+
 // toFcEvent hands FullCalendar an API instance; titles stay text (FullCalendar escapes them).
 export function toFcEvent(ev: EventInfo, color: string): EventInput {
   return {
-    id: `${ev.calendar_id}|${ev.uid}|${ev.recurrence_id ?? ''}`,
+    id: eventId(ev),
     title: ev.title || '(no title)',
     start: ev.start,
     end: ev.end,
@@ -120,6 +122,9 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const dragError = useRef<string | null>(null);
   const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
+  const calendarElement = useRef<HTMLDivElement>(null);
+  const newEvent = useRef<HTMLButtonElement>(null);
+  const focusAfterReload = useRef<string | null>(null);
   const [timeGrid, setTimeGrid] = useState(() => !narrow());
   const isNarrow = useNarrow();
   const [picker, setPicker] = useState(false);
@@ -145,9 +150,24 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const refetch = () => ref.current?.getApi().refetchEvents();
   // Refetch on every close: after a 412 the cached etag is stale and reopening would conflict again.
   const closeDialog = () => {
+    focusAfterReload.current = dialog?.event ? eventId(dialog.event) : null;
     setDialog(null);
     refetch();
   };
+
+  // Refetch replaces event nodes. Restore the same logical event after rendering, or New event
+  // after deletion, instead of focusing the dialog's detached original opener.
+  const restoreEventFocus = useCallback(() => {
+    const id = focusAfterReload.current;
+    if (id === null) return;
+    requestAnimationFrame(() => {
+      if (focusAfterReload.current !== id) return;
+      focusAfterReload.current = null;
+      const events = calendarElement.current?.querySelectorAll<HTMLElement>('[data-event-id]');
+      const target = Array.from(events ?? []).find((el) => el.dataset.eventId === id);
+      (target ?? newEvent.current)?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const writable = calendars.filter(canAddEvents);
 
@@ -166,14 +186,16 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           setError(null);
           setEventsFailed(false);
           success(evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id))));
+          restoreEventFocus();
         })
         .catch((e: Error) => {
           setError(e.message || 'Could not load events.');
           setEventsFailed(true);
           failure(e);
+          restoreEventFocus();
         });
     },
-    [calendars, hidden],
+    [calendars, hidden, restoreEventFocus],
   );
 
   function toggle(id: string) {
@@ -186,10 +208,14 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
 
   const openCreate = (start: Date, end: Date, allDay: boolean) => {
     if (writable.length === 0) return;
+    focusAfterReload.current = null;
     const target = writable.find((c) => !hidden.has(c.id)) ?? writable[0];
     setDialog({ key: ++opens.current, initial: emptyForm(start, end, allDay, target.id) });
   };
-  const openEvent = (ev: EventInfo) => setDialog({ key: ++opens.current, event: ev, initial: formFromEvent(ev, 'this') });
+  const openEvent = (ev: EventInfo) => {
+    focusAfterReload.current = null;
+    setDialog({ key: ++opens.current, event: ev, initial: formFromEvent(ev, 'this') });
+  };
 
   async function saveMove(arg: MoveArg, scope: 'this' | 'all') {
     const ev = arg.event.extendedProps.info as EventInfo;
@@ -282,13 +308,14 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
 
   return (
     <section className="page kc-layout">
-      <div className="kc-calendar">
+      <div className="kc-calendar" ref={calendarElement}>
         {error && <p role="alert">{error}</p>}
         <div className="kc-workspace-heading"><div><h1>Calendar</h1><p>Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p></div>
-        <button type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
+        <button ref={newEvent} type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
           <Plus size={16} aria-hidden="true" />
           New event
         </button></div>
+        <p className="kc-week-hint">Scroll across the week to see other days.</p>
         <FullCalendar
           ref={ref}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -301,8 +328,18 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           datesSet={(arg) => setTimeGrid(arg.view.type.startsWith('timeGrid'))}
           loading={setLoadingEvents}
           // Grid events are focusable anchors without href; as buttons their whole text (time and
-          // title, also where the phone month hides the title visually) is their accessible name.
-          eventDidMount={(arg) => { if (arg.el.tagName === 'A') arg.el.setAttribute('role', 'button'); }}
+          // title, including visually clipped content) is their accessible name.
+          eventDidMount={(arg) => {
+            if (arg.el.tagName === 'A') arg.el.setAttribute('role', 'button');
+            arg.el.dataset.eventId = arg.event.id;
+          }}
+          viewDidMount={(arg) => {
+            if (arg.view.type === 'timeGridWeek') {
+              arg.el.tabIndex = 0;
+              arg.el.setAttribute('role', 'region');
+              arg.el.setAttribute('aria-label', 'Week calendar');
+            }
+          }}
           noEventsContent={loadingEvents ? 'Loading events…' : eventsFailed ? 'Events could not be loaded.' : 'No events to display'}
           nowIndicator
           editable

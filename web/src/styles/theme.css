@@ -196,7 +196,7 @@ dialog { margin: auto; }
   .app-header:has(.app-sidebar-slot:not(:empty)) .app-nav { grid-column: 1 / 3; }
   .app-sidebar-slot { grid-column: 3; grid-row: 2; overflow: visible; margin: 0; padding: 0; }
   .app-nav button { width: auto; flex: 0 0 auto; padding-inline: var(--ky-space-3); white-space: nowrap; }
-  .app-header-actions { grid-column: 2 / -1; grid-row: 1; display: flex; align-items: center; gap: var(--ky-space-2); margin-top: 0; }
+  .app-header-actions { grid-column: 2 / -1; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; justify-self: end; gap: var(--ky-space-2); margin-top: 0; }
   .app-user { border-top: 0; padding: 0; }
   .app-user-copy, .app-logout-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }

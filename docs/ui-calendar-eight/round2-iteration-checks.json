@@ -1,0 +1,38 @@
+{
+  "round": 2,
+  "source_stage": "candidate runtime batch; after-capture pending",
+  "targeted_unit": {
+    "files": 6,
+    "tests_passed": 64,
+    "workers": "maxWorkers1,no-file-parallelism"
+  },
+  "frontend": "TypeScript and production Vite build passed; ky-ui0.4.3 vendor integrity passed.",
+  "browser_spec_syntax": "calendar/month/ui passed",
+  "design_detector": [
+    {
+      "antipattern": "side-tab",
+      "name": "Side-tab accent border",
+      "description": "Thick colored border on one side of a card \u2014 the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+      "severity": "warning",
+      "category": "slop",
+      "file": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight/web/src/styles/calendar.css",
+      "line": 87,
+      "snippet": ".kc-calendar .fc .fc-col-header-cell.fc-day-today \u2014 inset box-shadow 3px stripe (bottom)",
+      "disposition": "Unchanged selected-day bottom indicator, prescribed by shared selection contract; semantic day state, not a decorative card rail."
+    },
+    {
+      "antipattern": "overused-font",
+      "name": "Overused font",
+      "description": "Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.",
+      "severity": "warning",
+      "category": "slop",
+      "file": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight/web/src/styles/theme.css",
+      "line": 3,
+      "snippet": "font-family: \"Space Grotesk",
+      "disposition": "Space Grotesk is the owner-pinned Ky suite typeface; replacing it would violate the approved product identity."
+    }
+  ],
+  "behavior_regressions": "Added real-server cases; execution pending after build.",
+  "full_suites": "Hosted CI only; not run locally under owner hard-lock resource limit.",
+  "raw_score_preservation": "Original Opus/Sol R1 JSON/Markdown hashes rechecked after disagreement audit."
+}

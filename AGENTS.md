@@ -405,6 +405,7 @@ Spec `docs/superpowers/specs/2026-10-15-kycalendar-ics-subscriptions-design.md`.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
+- [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.
 
 `cmd/server` owns the scheduler: `backupLoop` builds the `RunConfig` and client once and
 returns with `scheduler disabled: ...` if that fails, because a run that never stamps its

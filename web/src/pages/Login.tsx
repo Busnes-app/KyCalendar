@@ -185,7 +185,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, no
                 />
               </div>
 
-              <CaptchaWidget key={captchaKey} onToken={(tok) => setCaptchaToken(tok)} />
+              <CaptchaWidget key={captchaKey} onToken={setCaptchaToken} />
 
               <button type="submit" className="btn-block" disabled={loading}>
                 <LogIn size={16} aria-hidden="true" />

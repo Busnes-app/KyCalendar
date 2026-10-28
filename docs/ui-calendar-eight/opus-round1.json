@@ -1,0 +1,5537 @@
+{
+ "schema": "ky-ui-council-scores/2",
+ "round": 1,
+ "reviewer": "claude-opus-5-5",
+ "product": "KyCalendar",
+ "branch": "ui/calendar-eight",
+ "captured_source": "0f0155027a87f3510740afe1b524a96846002fd3",
+ "stage": "00-before",
+ "rubric": {
+  "version": "ky-suite-v2",
+  "weights": {
+   "hierarchy": 0.2,
+   "typography": 0.15,
+   "density_layout": 0.2,
+   "color": 0.15,
+   "visible_affordances": 0.15,
+   "coherence": 0.15
+  },
+  "rounding": "total = sum(weight*score) computed exactly in integer hundredths, then Decimal ROUND_HALF_UP to 0.1 (equivalent to Decimal(str(x)) without float error)",
+  "rubric_sha256": "ad3516620420fbdc30f5273f82b7c72c76e1365d1b6296fcaa56be3cbebf2c41",
+  "design_contract_sha256": "392afb88c51fb3cfad6c94d6b841804b194d107a0431c31f35ff81d3a7a444d3",
+  "runtime_tokens_sha256": "636fcf04ce783edd7625b5265f63abb8b3abd9fae78ee653b1a2ea3142f235f4"
+ },
+ "inventory": {
+  "source": "inventory-v1.json",
+  "inventory_sha256": "dbd4250c021c882db41ed3f59b38ddfc14325dc3367820b3303609a04a38937f",
+  "all_originals": 50,
+  "scored_unique": 48,
+  "unscored_duplicates": 2,
+  "brand_only": 2,
+  "verification": "Before rating: all 7 review-input pins and 3 authority pins matched; all 52 images (50 originals + 2 brand refs) matched SHA-256, byte count and PNG IHDR dimensions; inventory/review-inputs/artifacts/manifest file sets and hashes agree; 0 mismatches.",
+  "membership_check": "files[] equals inventory.files in order, file names, SHA-256 and bytes (asserted).",
+  "metadata_mismatches": [
+   "existing-event (4 files): inventory state 'empty'; observed a filled genuine event form. Membership and inventory label kept; noted per row in observed_state_note. No product/surface/theme/viewport mismatch found."
+  ]
+ },
+ "opened": {
+  "scored_originals_opened_individually_full_resolution": [
+   "screenshots/kycalendar-00-before-admin-group-calendars-desktop-dark.png",
+   "screenshots/kycalendar-00-before-admin-group-calendars-desktop-light.png",
+   "screenshots/kycalendar-00-before-admin-group-calendars-mobile-dark.png",
+   "screenshots/kycalendar-00-before-admin-group-calendars-mobile-light.png",
+   "screenshots/kycalendar-00-before-admin-overview-desktop-dark.png",
+   "screenshots/kycalendar-00-before-admin-overview-desktop-light.png",
+   "screenshots/kycalendar-00-before-admin-overview-mobile-dark.png",
+   "screenshots/kycalendar-00-before-admin-overview-mobile-light.png",
+   "screenshots/kycalendar-00-before-admin-people-desktop-dark.png",
+   "screenshots/kycalendar-00-before-admin-people-desktop-light.png",
+   "screenshots/kycalendar-00-before-admin-people-mobile-dark.png",
+   "screenshots/kycalendar-00-before-admin-people-mobile-light.png",
+   "screenshots/kycalendar-00-before-appearance-desktop-dark.png",
+   "screenshots/kycalendar-00-before-appearance-desktop-light.png",
+   "screenshots/kycalendar-00-before-appearance-mobile-dark.png",
+   "screenshots/kycalendar-00-before-appearance-mobile-light.png",
+   "screenshots/kycalendar-00-before-day-desktop-dark.png",
+   "screenshots/kycalendar-00-before-day-desktop-light.png",
+   "screenshots/kycalendar-00-before-day-mobile-dark.png",
+   "screenshots/kycalendar-00-before-day-mobile-light.png",
+   "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+   "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+   "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+   "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+   "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+   "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+   "screenshots/kycalendar-00-before-list-desktop-dark.png",
+   "screenshots/kycalendar-00-before-list-desktop-light.png",
+   "screenshots/kycalendar-00-before-login-desktop-dark.png",
+   "screenshots/kycalendar-00-before-login-desktop-light.png",
+   "screenshots/kycalendar-00-before-login-mobile-dark.png",
+   "screenshots/kycalendar-00-before-login-mobile-light.png",
+   "screenshots/kycalendar-00-before-month-desktop-dark.png",
+   "screenshots/kycalendar-00-before-month-desktop-light.png",
+   "screenshots/kycalendar-00-before-month-mobile-dark.png",
+   "screenshots/kycalendar-00-before-month-mobile-light.png",
+   "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+   "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+   "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+   "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+   "screenshots/kycalendar-00-before-phones-and-apps-desktop-dark.png",
+   "screenshots/kycalendar-00-before-phones-and-apps-desktop-light.png",
+   "screenshots/kycalendar-00-before-phones-and-apps-mobile-dark.png",
+   "screenshots/kycalendar-00-before-phones-and-apps-mobile-light.png",
+   "screenshots/kycalendar-00-before-week-desktop-dark.png",
+   "screenshots/kycalendar-00-before-week-desktop-light.png",
+   "screenshots/kycalendar-00-before-week-mobile-dark.png",
+   "screenshots/kycalendar-00-before-week-mobile-light.png"
+  ],
+  "brand_references_opened": [
+   "brand-reference-kyidentity-appearance-desktop-light.png",
+   "brand-reference-kyidentity-appearance-desktop-dark.png"
+  ],
+  "not_opened": [
+   "screenshots/kycalendar-00-before-list-mobile-dark.png",
+   "screenshots/kycalendar-00-before-list-mobile-light.png"
+  ],
+  "not_opened_reason": "Excluded near-duplicates (10 and 7 changed pixels, max channel delta 1); scored once via default-phone-list representative. No thumbnails or montages used."
+ },
+ "freeze": {
+  "method": "json.dumps(files,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode('utf-8'), no trailing newline",
+  "sha256": "3576acfb8e039337529c19c4a73d89bf3a74c6248424e85ea770ee4f1016e0c5",
+  "bytes": 102803,
+  "frozen_at": "2026-10-28T03:29:18+00:00",
+  "frozen_before": [
+   "peer reviews (sol-round1.* never read)",
+   "prior/historical reviews and quality images",
+   "parent audits/findings",
+   "capture-checks.*",
+   "review-state.json",
+   "round1-parent-capture-check.json",
+   "product source"
+  ],
+  "pre_freeze_recalibration": [
+   "After viewing later phone captures, mobile default-phone-list and mobile day visible_affordances were set to 6 and their density_layout to 7 so the shared phone-header defects are scored consistently across calendar phone views.",
+   "Week desktop density_layout lowered 8->7 for the clipped multi-line event block once compared with Day.",
+   "No score was adjusted with reference to the 8.0 threshold; the overall mean was computed only after these vectors were fixed."
+  ]
+ },
+ "files": [
+  {
+   "file": "screenshots/kycalendar-00-before-admin-group-calendars-desktop-dark.png",
+   "sha256": "d6597e5ea6de9c1df2d30754015306edca596f1a80adfad9485fcd28746e0b97",
+   "bytes": 70413,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-group-calendars",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 6
+   },
+   "observations": {
+    "hierarchy": "Title and long intro; orange 'Create' sits inline after the name/holds fields while 'Delete calendar' is prominent in the card header.",
+    "typography": "Card title 'Shared planning' with muted 'No access yet'; labels bold 13px.",
+    "density_layout": "Create form, then a card containing a dashed empty box, a divider and an add-group form; lower half of the page empty.",
+    "color": "Restrained; brown calendar dot is data; danger outline for delete.",
+    "visible_affordances": "Group select defaults to 'Every group has access' directly under 'No group has access.', which reads as contradictory state.",
+    "coherence": "Dashed empty-state box nested inside the bordered card plus an inner form row: box-in-box composition."
+   },
+   "total_unrounded": "7.15",
+   "total": "7.2",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-group-calendars-desktop-light.png",
+   "sha256": "5ea90e7d2de9626fafcaded5cc188bc65dbc910aa228d9b46a5dce8f0f654091",
+   "bytes": 70213,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-group-calendars",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 6
+   },
+   "observations": {
+    "hierarchy": "Title and long intro; orange 'Create' sits inline after the name/holds fields while 'Delete calendar' is prominent in the card header.",
+    "typography": "Card title 'Shared planning' with muted 'No access yet'; labels bold 13px.",
+    "density_layout": "Create form, then a card containing a dashed empty box, a divider and an add-group form; lower half of the page empty.",
+    "color": "Restrained; brown calendar dot is data; danger outline for delete.",
+    "visible_affordances": "Group select defaults to 'Every group has access' directly under 'No group has access.', which reads as contradictory state.",
+    "coherence": "Dashed empty-state box nested inside the bordered card plus an inner form row: box-in-box composition."
+   },
+   "total_unrounded": "7.15",
+   "total": "7.2",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-group-calendars-mobile-dark.png",
+   "sha256": "e952a3e7b3e4c10af0e3499514895c56650cab616e2a42aa86e146287c59e409",
+   "bytes": 47969,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-group-calendars",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 6,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 6
+   },
+   "observations": {
+    "hierarchy": "Long five-line intro pushes the Create row to y~400; Delete calendar again prominent.",
+    "typography": "Type steps match desktop.",
+    "density_layout": "Group select stops short of full width while other fields are full width; card content continues past the fold.",
+    "color": "Restrained; same data/danger colours.",
+    "visible_affordances": "Same 'Every group has access' vs 'No group has access.' ambiguity; nav clips 'Sign-in'.",
+    "coherence": "Same nested dashed box inside card."
+   },
+   "total_unrounded": "6.95",
+   "total": "7.0",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "37/5",
+    "mean": "7.4"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-group-calendars-mobile-light.png",
+   "sha256": "912510c2260e2f6234d7125778e462aec6d973644730c18226d6d0cb5c6a7747",
+   "bytes": 47578,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-group-calendars",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 6,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 6
+   },
+   "observations": {
+    "hierarchy": "Long five-line intro pushes the Create row to y~400; Delete calendar again prominent.",
+    "typography": "Type steps match desktop.",
+    "density_layout": "Group select stops short of full width while other fields are full width; card content continues past the fold.",
+    "color": "Restrained; same data/danger colours.",
+    "visible_affordances": "Same 'Every group has access' vs 'No group has access.' ambiguity; nav clips 'Sign-in'.",
+    "coherence": "Same nested dashed box inside card."
+   },
+   "total_unrounded": "6.95",
+   "total": "7.0",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "37/5",
+    "mean": "7.4"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-overview-desktop-dark.png",
+   "sha256": "b8d5c8b7f2f32800727719d87366cee2165a79814298ff19a9f799751d41179a",
+   "bytes": 87904,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-overview",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 9,
+    "visible_affordances": 8,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "'Welcome, Administrator' title with a 3x2 grid of cards, each with an equal-weight outline button; no single lead action.",
+    "typography": "Card titles with icons, muted descriptions, small status pills ('Passwords only', 'Off').",
+    "density_layout": "Even card grid, but it ends at y~580 and leaves the lower third empty; cards repeat the sidebar destinations.",
+    "color": "Almost entirely neutral; orange only on the selected Overview nav row.",
+    "visible_affordances": "Outline 'Manage ...' buttons with arrows and status pills read clearly.",
+    "coherence": "Consistent card/button vocabulary; admin nav clearly separate from everyday Calendar nav."
+   },
+   "total_unrounded": "7.75",
+   "total": "7.8",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 9,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "42/5",
+    "mean": "8.4"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-overview-desktop-light.png",
+   "sha256": "14a2abe19d540c35468de3b2ce44212487cd17d506135e0588d5bb2a61faf08c",
+   "bytes": 87772,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-overview",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 9,
+    "visible_affordances": 8,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "'Welcome, Administrator' title with a 3x2 grid of cards, each with an equal-weight outline button; no single lead action.",
+    "typography": "Card titles with icons, muted descriptions, small status pills ('Passwords only', 'Off').",
+    "density_layout": "Even card grid, but it ends at y~580 and leaves the lower third empty; cards repeat the sidebar destinations.",
+    "color": "Almost entirely neutral; orange only on the selected Overview nav row.",
+    "visible_affordances": "Outline 'Manage ...' buttons with arrows and status pills read clearly.",
+    "coherence": "Consistent card/button vocabulary; admin nav clearly separate from everyday Calendar nav."
+   },
+   "total_unrounded": "7.75",
+   "total": "7.8",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 9,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "42/5",
+    "mean": "8.4"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-overview-mobile-dark.png",
+   "sha256": "cb2305a70978d42e1b37ebedcfdb12f457bc46610bc4ec15f3e22379fce35436",
+   "bytes": 44536,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-overview",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 9,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Title and stacked cards; no lead action, as on desktop.",
+    "typography": "Same type steps; descriptions wrap cleanly.",
+    "density_layout": "Generous card padding means only ~2.5 of 6 cards are visible; long scroll.",
+    "color": "Neutral with orange only on the selected Overview tab.",
+    "visible_affordances": "Nav strip shows a clipped fourth icon at the right edge; no account name/role visible on phone.",
+    "coherence": "Same cards and buttons as desktop."
+   },
+   "total_unrounded": "7.6",
+   "total": "7.6",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 9,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "41/5",
+    "mean": "8.2"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-overview-mobile-light.png",
+   "sha256": "44178d205dd165350f073ff1d2ed045f21b0edf97d17cfa4057bbd09569ec8d7",
+   "bytes": 43681,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-overview",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 9,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Title and stacked cards; no lead action, as on desktop.",
+    "typography": "Same type steps; descriptions wrap cleanly.",
+    "density_layout": "Generous card padding means only ~2.5 of 6 cards are visible; long scroll.",
+    "color": "Neutral with orange only on the selected Overview tab.",
+    "visible_affordances": "Nav strip shows a clipped fourth icon at the right edge; no account name/role visible on phone.",
+    "coherence": "Same cards and buttons as desktop."
+   },
+   "total_unrounded": "7.6",
+   "total": "7.6",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 9,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "41/5",
+    "mean": "8.2"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-people-desktop-dark.png",
+   "sha256": "6b52a139eda11f33c5a3f4f7cc4bb9dbfd5ee4a68f25dc9d4c7aa34393232315",
+   "bytes": 73329,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-people",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "'People' title with filled orange 'Add person' top-right; search field and table below.",
+    "typography": "Column headers 13px muted, names bold with muted 'casey · Everyday' meta.",
+    "density_layout": "Each row carries up to four 40px outline buttons; with unequal action counts, Edit sits at different x positions per row, which will scale noisily.",
+    "color": "Green 'Active' status pills with text; Disable in danger outline; otherwise neutral.",
+    "visible_affordances": "Buttons, search, status pills and the danger action read correctly.",
+    "coherence": "Consistent controls; admin-only actions on an admin-only surface."
+   },
+   "total_unrounded": "7.8",
+   "total": "7.8",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "8/1",
+    "mean": "8.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-people-desktop-light.png",
+   "sha256": "0f4351ad491aab51e5d4558e78517306aac0e4039a81af2c4fb6c8cd7f182f0d",
+   "bytes": 72961,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-people",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "'People' title with filled orange 'Add person' top-right; search field and table below.",
+    "typography": "Column headers 13px muted, names bold with muted 'casey · Everyday' meta.",
+    "density_layout": "Each row carries up to four 40px outline buttons; with unequal action counts, Edit sits at different x positions per row, which will scale noisily.",
+    "color": "Green 'Active' status pills with text; Disable in danger outline; otherwise neutral.",
+    "visible_affordances": "Buttons, search, status pills and the danger action read correctly.",
+    "coherence": "Consistent controls; admin-only actions on an admin-only surface."
+   },
+   "total_unrounded": "7.8",
+   "total": "7.8",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "8/1",
+    "mean": "8.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-people-mobile-dark.png",
+   "sha256": "3358131a44f927cda048ed6d8a1ea9509541ff783535dbf80ba1960d744e1c5c",
+   "bytes": 46733,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-people",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 6,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Orange 'Add person' follows a six-line intro paragraph, so the list starts below y~460.",
+    "typography": "Label/value grid per person is legible.",
+    "density_layout": "Row actions wrap with 'Disable' alone on a second line; only ~1.3 people fit above the fold.",
+    "color": "Semantic green status and danger outline only.",
+    "visible_affordances": "All controls clear; danger action visibly distinct.",
+    "coherence": "Per-person cards with label/value grids differ from the desktop table but stay within one vocabulary; wrapped button row looks accidental."
+   },
+   "total_unrounded": "7.25",
+   "total": "7.3",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "37/5",
+    "mean": "7.4"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-admin-people-mobile-light.png",
+   "sha256": "d860dc0259c56d6f960a0e075ad9e19acc47431bdfad25fe36e32a548cbdefb5",
+   "bytes": 46191,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "admin-people",
+   "filename_matches_content": true,
+   "cohort": "admin-console",
+   "state": "sparse",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "administrator",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 8,
+    "density_layout": 6,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Orange 'Add person' follows a six-line intro paragraph, so the list starts below y~460.",
+    "typography": "Label/value grid per person is legible.",
+    "density_layout": "Row actions wrap with 'Disable' alone on a second line; only ~1.3 people fit above the fold.",
+    "color": "Semantic green status and danger outline only.",
+    "visible_affordances": "All controls clear; danger action visibly distinct.",
+    "coherence": "Per-person cards with label/value grids differ from the desktop table but stay within one vocabulary; wrapped button row looks accidental."
+   },
+   "total_unrounded": "7.25",
+   "total": "7.3",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token neutral palette.",
+     "type_geometry": "Contract type sizes, 40px controls.",
+     "shell": "Contract admin sidebar on desktop; phone header with clipped nav and no role.",
+     "accent_discipline": "Orange limited to primary/selection.",
+     "suite_cohesion": "Comparable to KyIdentity admin chrome."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "37/5",
+    "mean": "7.4"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-appearance-desktop-dark.png",
+   "sha256": "eaf70d9c310f9ad8679d51547e78a93e76adfa881748ef70a7a26457672e4f7c",
+   "bytes": 69013,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "appearance",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 9,
+    "visible_affordances": 8,
+    "coherence": 9
+   },
+   "observations": {
+    "hierarchy": "'Appearance' title, explanatory sentence, 'Theme' label and a 5-column card grid with Match system selected; no primary needed (applies immediately).",
+    "typography": "Title, body, 13px label and card name/meta pairs mirror the KyIdentity reference.",
+    "density_layout": "Even 5x5 grid with consistent gutters; description sits tight under the title (~8px) compared with the reference's larger gap.",
+    "color": "Theme previews are content; chrome is neutral with orange only on the selected card border/radio and nav rail.",
+    "visible_affordances": "Selected card has orange border and filled radio; unselected radios are small (~14px) but clear.",
+    "coherence": "Matches the shared Appearance picker vocabulary; calendar list correctly absent from the sidebar here."
+   },
+   "total_unrounded": "8.3",
+   "total": "8.3",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 9,
+     "suite_cohesion": 9
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "43/5",
+    "mean": "8.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-appearance-desktop-light.png",
+   "sha256": "856d1d3a96175b6a3edb2aefff73306edabe516da2cdba2654598686ee3a4fc1",
+   "bytes": 68309,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "appearance",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 9,
+    "visible_affordances": 8,
+    "coherence": 9
+   },
+   "observations": {
+    "hierarchy": "'Appearance' title, explanatory sentence, 'Theme' label and a 5-column card grid with Match system selected; no primary needed (applies immediately).",
+    "typography": "Title, body, 13px label and card name/meta pairs mirror the KyIdentity reference.",
+    "density_layout": "Even 5x5 grid with consistent gutters; description sits tight under the title (~8px) compared with the reference's larger gap.",
+    "color": "Theme previews are content; chrome is neutral with orange only on the selected card border/radio and nav rail.",
+    "visible_affordances": "Selected card has orange border and filled radio; unselected radios are small (~14px) but clear.",
+    "coherence": "Matches the shared Appearance picker vocabulary; calendar list correctly absent from the sidebar here."
+   },
+   "total_unrounded": "8.3",
+   "total": "8.3",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 9,
+     "suite_cohesion": 9
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "43/5",
+    "mean": "8.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-appearance-mobile-dark.png",
+   "sha256": "b20fe2e52c870c426df7ffefae237b3a460ab3d47d79e569209040228686b7b5",
+   "bytes": 39405,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "appearance",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Title, explanation and 2-column theme cards with Match system selected.",
+    "typography": "Same type steps as desktop; names and meta wrap consistently.",
+    "density_layout": "Two-column grid with even gutters; the list continues below the fold as expected.",
+    "color": "Neutral chrome, but the 'Two-step verification' tab carries a raised panel fill next to the selected Appearance tab.",
+    "visible_affordances": "Nav strip is scrolled so only 'Two-step verification' and 'Appearance' show; sign-out icon now at the right edge, unlike calendar pages. Dark: the filled Two-step tab looks like a second selected/hover state.",
+    "coherence": "Cards match desktop and the reference."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 9,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "41/5",
+    "mean": "8.2"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-appearance-mobile-light.png",
+   "sha256": "e09ec8eb31549e609c7d7d7cf38a71440301cb6df4bc3a110b0fbcb1cc10392d",
+   "bytes": 38515,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "appearance",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 9,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Title, explanation and 2-column theme cards with Match system selected.",
+    "typography": "Same type steps as desktop; names and meta wrap consistently.",
+    "density_layout": "Two-column grid with even gutters; the list continues below the fold as expected.",
+    "color": "Neutral chrome, orange on selected card and Appearance tab.",
+    "visible_affordances": "Nav strip is scrolled so only 'Two-step verification' and 'Appearance' show; sign-out icon now at the right edge, unlike calendar pages.",
+    "coherence": "Cards match desktop and the reference."
+   },
+   "total_unrounded": "8",
+   "total": "8.0",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 9,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 9,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "41/5",
+    "mean": "8.2"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-day-desktop-dark.png",
+   "sha256": "497bd1713f1fe93919d0243c0fc00f0592c2199f8de52fe72a8cb6358314de12",
+   "bytes": 63640,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "day",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Title, single orange New event, and 'October 27, 2026' heading with Day segment selected; nothing competes.",
+    "typography": "Event labels (12px time, bold 13px title) are legible; the long workshop title fits on one line.",
+    "density_layout": "Full-width day column with all-day bar and three events spaced on even hour rows; grid fills the viewport height.",
+    "color": "Whole day column carries the today tint; orange limited to primary, nav rail, Day underline, day header and checkboxes.",
+    "visible_affordances": "Selected segment and all-day bar clear; Today grey state still ambiguous.",
+    "coherence": "Same component set as Month/Week; no stray styles."
+   },
+   "total_unrounded": "7.85",
+   "total": "7.9",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-day-desktop-light.png",
+   "sha256": "34a03d0a2aee8f169cdeeac7fee1c2f2ff36cf6297ca1668ccf2362f430bb65b",
+   "bytes": 63694,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "day",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Title, single orange New event, and 'October 27, 2026' heading with Day segment selected; nothing competes.",
+    "typography": "Event labels (12px time, bold 13px title) are legible; the long workshop title fits on one line.",
+    "density_layout": "Full-width day column with all-day bar and three events spaced on even hour rows; grid fills the viewport height.",
+    "color": "Whole day column carries the today tint; orange limited to primary, nav rail, Day underline, day header and checkboxes.",
+    "visible_affordances": "Selected segment and all-day bar clear; Today grey state still ambiguous.",
+    "coherence": "Same component set as Month/Week; no stray styles."
+   },
+   "total_unrounded": "7.85",
+   "total": "7.9",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-day-mobile-dark.png",
+   "sha256": "e503202569c3e367b77bf5c50aef4985ffe88bd7a001806438cd813233025e0b",
+   "bytes": 39778,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "day",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 7,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Title, New event and 'October 27, 2026' with Day selected give a clear lead.",
+    "typography": "Event labels legible and the long title wraps over two lines; timezone caption wraps awkwardly under the title.",
+    "density_layout": "~37% of the viewport is chrome before the grid; the day grid itself is evenly spaced.",
+    "color": "Restrained; today tint and orange header line as on desktop.",
+    "visible_affordances": "Same phone-header ambiguity: clipped 'Phones &' tab and floating unlabeled sign-out icon; Today looks disabled.",
+    "coherence": "Consistent with desktop Day apart from the phone header mix."
+   },
+   "total_unrounded": "7.2",
+   "total": "7.2",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "7/1",
+    "mean": "7.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-day-mobile-light.png",
+   "sha256": "af749f175745eb86f834304aca861aacc6d12c05c6beb247be9ca92b8e6a1c71",
+   "bytes": 39783,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "day",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 7,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Title, New event and 'October 27, 2026' with Day selected give a clear lead.",
+    "typography": "Event labels legible and the long title wraps over two lines; timezone caption wraps awkwardly under the title.",
+    "density_layout": "~37% of the viewport is chrome before the grid; the day grid itself is evenly spaced.",
+    "color": "Restrained; today tint and orange header line as on desktop.",
+    "visible_affordances": "Same phone-header ambiguity: clipped 'Phones &' tab and floating unlabeled sign-out icon; Today looks disabled.",
+    "coherence": "Consistent with desktop Day apart from the phone header mix."
+   },
+   "total_unrounded": "7.2",
+   "total": "7.2",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "7/1",
+    "mean": "7.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+   "sha256": "5611cea03c6fbda65b5e7fe0491c1b911d4cf7bf348d4b8e9f40ea1bcd8526ad",
+   "bytes": 59058,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "default-phone-list",
+   "filename_matches_content": true,
+   "cohort": "calendar-list",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 7,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Calendar' title with orange 'New event' to its right; List segment selected; day-grouped list begins at y~315.",
+    "typography": "Title/body/meta steps are clear, but the timezone caption wraps to 'Times shown in / America/New_York' under the title.",
+    "density_layout": "Header uses ~315px (logo row, horizontal nav, title, toolbar, segment) before content; list rows themselves are even and the long workshop title wraps cleanly.",
+    "color": "Restrained cream/charcoal; orange on primary, selected Calendar tab underline and List underline.",
+    "visible_affordances": "Horizontal nav clips 'Phones &' under a fade beside the 'Calendars' disclosure; an unlabeled sign-out icon floats mid-header at x~272, not at the right edge.",
+    "coherence": "Phone header mixes a scroll-tab strip, a disclosure button and a stray icon button; content components match desktop."
+   },
+   "total_unrounded": "7.2",
+   "total": "7.2",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "7/1",
+    "mean": "7.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven. Inherits duplicate kycalendar-00-before-list-mobile-dark.png (10/7 px diff, max delta 1); that duplicate was not opened.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+   "sha256": "797f4ab1af744b97fb50744fc038dc011fc4e7d305ff8de12131b5f3f7327496",
+   "bytes": 59107,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "default-phone-list",
+   "filename_matches_content": true,
+   "cohort": "calendar-list",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 7,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Calendar' title with orange 'New event' to its right; List segment selected; day-grouped list begins at y~315.",
+    "typography": "Title/body/meta steps are clear, but the timezone caption wraps to 'Times shown in / America/New_York' under the title.",
+    "density_layout": "Header uses ~315px (logo row, horizontal nav, title, toolbar, segment) before content; list rows themselves are even and the long workshop title wraps cleanly.",
+    "color": "Restrained cream/charcoal; orange on primary, selected Calendar tab underline and List underline.",
+    "visible_affordances": "Horizontal nav clips 'Phones &' under a fade beside the 'Calendars' disclosure; an unlabeled sign-out icon floats mid-header at x~272, not at the right edge.",
+    "coherence": "Phone header mixes a scroll-tab strip, a disclosure button and a stray icon button; content components match desktop."
+   },
+   "total_unrounded": "7.2",
+   "total": "7.2",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "7/1",
+    "mean": "7.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven. Inherits duplicate kycalendar-00-before-list-mobile-light.png (10/7 px diff, max delta 1); that duplicate was not opened.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+   "sha256": "d0f3835470fa02f3d077eaa5785afd2b88c9fe95c89a483c941354814b37c9ae",
+   "bytes": 105972,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "existing-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": "Edit dialog shows a filled genuine event; inventory label 'empty' kept for membership, observed as populated form.",
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Edit event' modal; Save (filled) and Cancel right, Delete separated on the left; focus in Title.",
+    "typography": "Same clear label/field type steps as New event; filled values legible.",
+    "density_layout": "Fields evenly spaced; footer separated by a quiet rule; fits viewport.",
+    "color": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+    "visible_affordances": "Delete outline, Cancel outline, Save fill and Title focus ring are distinct at a glance.",
+    "coherence": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+   "sha256": "627c5b7d968238509d7673a9320a67011e077833219d97389576db849ec22395",
+   "bytes": 109464,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "existing-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": "Edit dialog shows a filled genuine event; inventory label 'empty' kept for membership, observed as populated form.",
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Edit event' modal; Save (filled) and Cancel right, Delete separated on the left; focus in Title.",
+    "typography": "Same clear label/field type steps as New event; filled values legible.",
+    "density_layout": "Fields evenly spaced; footer separated by a quiet rule; fits viewport.",
+    "color": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+    "visible_affordances": "Delete outline, Cancel outline, Save fill and Title focus ring are distinct at a glance.",
+    "coherence": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+   "sha256": "370aabaa2ea1a9486a6384a63b2398aecc343fe19c28f4b1daed28ac06b89774",
+   "bytes": 42075,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "existing-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": "Edit dialog shows a filled genuine event; inventory label 'empty' kept for membership, observed as populated form.",
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Edit event' modal; Save (filled) and Cancel right, Delete separated on the left; focus in Title.",
+    "typography": "Same clear label/field type steps as New event; filled values legible.",
+    "density_layout": "Fields evenly spaced; footer separated by a quiet rule; fits viewport.",
+    "color": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+    "visible_affordances": "Delete outline, Cancel outline, Save fill and Title focus ring are distinct at a glance.",
+    "coherence": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+   "sha256": "86e237d61482fc9bf44343262fa26866d76e2d9e6b52fa437c8299475a4934eb",
+   "bytes": 43156,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "existing-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": "Edit dialog shows a filled genuine event; inventory label 'empty' kept for membership, observed as populated form.",
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Edit event' modal; Save (filled) and Cancel right, Delete separated on the left; focus in Title.",
+    "typography": "Same clear label/field type steps as New event; filled values legible.",
+    "density_layout": "Fields evenly spaced; footer separated by a quiet rule; fits viewport.",
+    "color": "Delete uses the danger hue, which sits close to the orange accent; in dark theme the salmon Delete text and orange Save are near-identical hues.",
+    "visible_affordances": "Delete outline, Cancel outline, Save fill and Title focus ring are distinct at a glance.",
+    "coherence": "Native datetime/select controls; field set shows Repeat but not Calendar, differing from New event."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-list-desktop-dark.png",
+   "sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+   "bytes": 95215,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "list",
+   "filename_matches_content": true,
+   "cohort": "calendar-list",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Header unchanged; List segment selected; day groups 'Monday ... October 26, 2026' give clear scan anchors.",
+    "typography": "Bold day/date group rows, muted time column, regular-weight titles: three clear levels at restrained sizes.",
+    "density_layout": "36px rows divided by quiet lines, consistent time/dot/title columns; list ends at y~806 inside a bordered table rather than full-bleed rows.",
+    "color": "Neutral tinted group rows; colour only on calendar dots and accent marks.",
+    "visible_affordances": "Rows have no visible hover/open affordance in the still; Today button reads disabled.",
+    "coherence": "Table, group headers and toolbar share the same line weight and radius."
+   },
+   "total_unrounded": "7.85",
+   "total": "7.9",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-list-desktop-light.png",
+   "sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+   "bytes": 95202,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "list",
+   "filename_matches_content": true,
+   "cohort": "calendar-list",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Header unchanged; List segment selected; day groups 'Monday ... October 26, 2026' give clear scan anchors.",
+    "typography": "Bold day/date group rows, muted time column, regular-weight titles: three clear levels at restrained sizes.",
+    "density_layout": "36px rows divided by quiet lines, consistent time/dot/title columns; list ends at y~806 inside a bordered table rather than full-bleed rows.",
+    "color": "Neutral tinted group rows; colour only on calendar dots and accent marks.",
+    "visible_affordances": "Rows have no visible hover/open affordance in the still; Today button reads disabled.",
+    "coherence": "Table, group headers and toolbar share the same line weight and radius."
+   },
+   "total_unrounded": "7.85",
+   "total": "7.9",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-login-desktop-dark.png",
+   "sha256": "479a79849358177a96c582ce1b366d54d2733927efcff4a7588752f26d17d16d",
+   "bytes": 23768,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "login",
+   "filename_matches_content": true,
+   "cohort": "auth",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "signed-out",
+   "duplicate_of": null,
+   "artifacts": [
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 9,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Centred stamp, 'KyCalendar', tagline, and a card with Username, Password and one full-width orange 'Sign in'.",
+    "typography": "Wordmark, tagline and 13px labels form clear steps.",
+    "density_layout": "Centred column with even spacing; card padding consistent.",
+    "color": "Neutral surfaces; orange on Sign in and focus ring; green 'Browser check passed' with icon.",
+    "visible_affordances": "Username focused with visible ring; fields and button unambiguous.",
+    "coherence": "A native compact 'Match system' theme select floats alone in the top-right corner, outside the card vocabulary. Dark: the stamp's dark tile merges with the background so only the white glyph reads."
+   },
+   "total_unrounded": "8.05",
+   "total": "8.1",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": null,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette; dark stamp tile blends into the dark background.",
+     "type_geometry": "Contract sizes and 40px controls.",
+     "shell": "N/A: signed-out page has no shell.",
+     "accent_discipline": "Orange on Sign in and focus only.",
+     "suite_cohesion": "Floating native theme select is a compact theme dropdown the suite is removing elsewhere."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "31/4",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-login-desktop-light.png",
+   "sha256": "110de186dd99e738c4512dafcd495021719b8bdb5f599bf78cba2f1e003148ad",
+   "bytes": 24043,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "login",
+   "filename_matches_content": true,
+   "cohort": "auth",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "signed-out",
+   "duplicate_of": null,
+   "artifacts": [
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 9,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Centred stamp, 'KyCalendar', tagline, and a card with Username, Password and one full-width orange 'Sign in'.",
+    "typography": "Wordmark, tagline and 13px labels form clear steps.",
+    "density_layout": "Centred column with even spacing; card padding consistent.",
+    "color": "Neutral surfaces; orange on Sign in and focus ring; green 'Browser check passed' with icon.",
+    "visible_affordances": "Username focused with visible ring; fields and button unambiguous.",
+    "coherence": "A native compact 'Match system' theme select floats alone in the top-right corner, outside the card vocabulary."
+   },
+   "total_unrounded": "8.05",
+   "total": "8.1",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": null,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette; dark stamp tile blends into the dark background.",
+     "type_geometry": "Contract sizes and 40px controls.",
+     "shell": "N/A: signed-out page has no shell.",
+     "accent_discipline": "Orange on Sign in and focus only.",
+     "suite_cohesion": "Floating native theme select is a compact theme dropdown the suite is removing elsewhere."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "31/4",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-login-mobile-dark.png",
+   "sha256": "e9c28f02c223cb807304183ce4dd93661f7c615c21b472566795e0f852d3c667",
+   "bytes": 20334,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "login",
+   "filename_matches_content": true,
+   "cohort": "auth",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "signed-out",
+   "duplicate_of": null,
+   "artifacts": [
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 9,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Same single-column sign-in with one orange Sign in.",
+    "typography": "Same clear steps.",
+    "density_layout": "Card fills width with 16px margins; balanced vertical placement.",
+    "color": "Neutral with orange on primary/focus and green status text.",
+    "visible_affordances": "Focused Username, clear fields and button.",
+    "coherence": "Native theme select pinned top-right as on desktop. Dark: the stamp's dark tile merges with the background so only the white glyph reads."
+   },
+   "total_unrounded": "8.05",
+   "total": "8.1",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": null,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette; dark stamp tile blends into the dark background.",
+     "type_geometry": "Contract sizes and 40px controls.",
+     "shell": "N/A: signed-out page has no shell.",
+     "accent_discipline": "Orange on Sign in and focus only.",
+     "suite_cohesion": "Floating native theme select is a compact theme dropdown the suite is removing elsewhere."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "31/4",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-login-mobile-light.png",
+   "sha256": "4682130636d2250f01a007dad70f6b88352904eaea74efb80f40a743371a4190",
+   "bytes": 20512,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "login",
+   "filename_matches_content": true,
+   "cohort": "auth",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "signed-out",
+   "duplicate_of": null,
+   "artifacts": [
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 9,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Same single-column sign-in with one orange Sign in.",
+    "typography": "Same clear steps.",
+    "density_layout": "Card fills width with 16px margins; balanced vertical placement.",
+    "color": "Neutral with orange on primary/focus and green status text.",
+    "visible_affordances": "Focused Username, clear fields and button.",
+    "coherence": "Native theme select pinned top-right as on desktop."
+   },
+   "total_unrounded": "8.05",
+   "total": "8.1",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": null,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette; dark stamp tile blends into the dark background.",
+     "type_geometry": "Contract sizes and 40px controls.",
+     "shell": "N/A: signed-out page has no shell.",
+     "accent_discipline": "Orange on Sign in and focus only.",
+     "suite_cohesion": "Floating native theme select is a compact theme dropdown the suite is removing elsewhere."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "31/4",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-month-desktop-dark.png",
+   "sha256": "7b073f252a70d9e52d00139937e78f5f9ef1379a115e434a27f4dd8267895576",
+   "bytes": 76030,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "month",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "'Calendar' title top-left with timezone caption and a single filled orange 'New event' top-right; toolbar of prev/next, Today, centred 'October 2026', Month/Week/Day/List segment.",
+    "typography": "Clear step from 24px-class title to centred period heading to 13px weekday/day numbers; event chips use bold title after muted time ('10a Design review').",
+    "density_layout": "Six-week grid ends at y~700, leaving a ~200px empty band below; populated week compresses four chips into the 27th and truncates 'Planning the c...', 'Morning ap...', 'Weekly wr...'.",
+    "color": "Neutral grid lines and surfaces; orange appears on New event, selected nav rail, Month underline, three calendar checkboxes and the '27' numeral, so accent is spread beyond primary/selection.",
+    "visible_affordances": "Selected segment (fill + orange underline) and checked calendars read clearly; 'Today' is grey-on-grey and reads as disabled with no explicit reason.",
+    "coherence": "One vocabulary: 40px outline controls, segment, chips and calendar list all share radius and line weight; calendar selection sits inside the one sidebar."
+   },
+   "total_unrounded": "7.65",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-month-desktop-light.png",
+   "sha256": "58c1aa6eee33002993a2acc488bc8ee68990298cdfe9ec8bda79be6856f1909c",
+   "bytes": 76278,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "month",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "'Calendar' title top-left with timezone caption and a single filled orange 'New event' top-right; toolbar of prev/next, Today, centred 'October 2026', Month/Week/Day/List segment.",
+    "typography": "Clear step from 24px-class title to centred period heading to 13px weekday/day numbers; event chips use bold title after muted time ('10a Design review').",
+    "density_layout": "Six-week grid ends at y~700, leaving a ~200px empty band below; populated week compresses four chips into the 27th and truncates 'Planning the c...', 'Morning ap...', 'Weekly wr...'.",
+    "color": "Neutral grid lines and surfaces; orange appears on New event, selected nav rail, Month underline, three calendar checkboxes and the '27' numeral, so accent is spread beyond primary/selection.",
+    "visible_affordances": "Selected segment (fill + orange underline) and checked calendars read clearly; 'Today' is grey-on-grey and reads as disabled with no explicit reason.",
+    "coherence": "One vocabulary: 40px outline controls, segment, chips and calendar list all share radius and line weight; calendar selection sits inside the one sidebar."
+   },
+   "total_unrounded": "7.65",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-month-mobile-dark.png",
+   "sha256": "f77733da1a54007927bef08392f1567e5b174cf7e70d0cca28e8516ebc85fcbf",
+   "bytes": 39548,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "month",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 6,
+    "density_layout": 5,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Title and New event are clear; month grid gives no readable event content to lead with.",
+    "typography": "Event chips shrink to dots plus times ('9a', '10a', '3:30p') with no titles; all-day bars carry no text.",
+    "density_layout": "Four empty weeks take most of the screen while all events crowd the 25-31 row; '3:30p' runs to the Saturday cell edge; the final week row is cut at the fold.",
+    "color": "Calendar hues are data; today column tint and orange 27 consistent with desktop.",
+    "visible_affordances": "Textless bars and time-only chips are ambiguous at a glance; shared phone-header clipping (see list) applies.",
+    "coherence": "Same tokens and grid lines as desktop; phone header issues as in list."
+   },
+   "total_unrounded": "6.45",
+   "total": "6.5",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "7/1",
+    "mean": "7.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-month-mobile-light.png",
+   "sha256": "58cd3ed22aaed9f02bf7106391843ac0e76254794e87430c8e1d46a07a2c2130",
+   "bytes": 39558,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "month",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 6,
+    "density_layout": 5,
+    "color": 8,
+    "visible_affordances": 6,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Title and New event are clear; month grid gives no readable event content to lead with.",
+    "typography": "Event chips shrink to dots plus times ('9a', '10a', '3:30p') with no titles; all-day bars carry no text.",
+    "density_layout": "Four empty weeks take most of the screen while all events crowd the 25-31 row; '3:30p' runs to the Saturday cell edge; the final week row is cut at the fold.",
+    "color": "Calendar hues are data; today column tint and orange 27 consistent with desktop.",
+    "visible_affordances": "Textless bars and time-only chips are ambiguous at a glance; shared phone-header clipping (see list) applies.",
+    "coherence": "Same tokens and grid lines as desktop; phone header issues as in list."
+   },
+   "total_unrounded": "6.45",
+   "total": "6.5",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 7,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "7/1",
+    "mean": "7.0"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+   "sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+   "bytes": 75954,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "new-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "browser text-selection highlight in End field",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 7,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Modal titled 'New event' over a dimmed calendar with Cancel/Save bottom-right and filled orange Save as the single primary.",
+    "typography": "Bold 13px labels above fields, '(optional)' in muted text, 20px-class dialog title; clean steps.",
+    "density_layout": "Labels-above fields on an 8px-ish rhythm; Start/End side by side on desktop, stacked on phone; dialog fits the viewport.",
+    "color": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+    "visible_affordances": "Focus sits on End rather than the empty Title; native datetime/select controls carry browser icons; no required marker on Title.",
+    "coherence": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit."
+   },
+   "total_unrounded": "7.55",
+   "total": "7.6",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 7,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven. Unsaved blank event; underlying month.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+   "sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+   "bytes": 78204,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "new-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "browser text-selection highlight in End field",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 7,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Modal titled 'New event' over a dimmed calendar with Cancel/Save bottom-right and filled orange Save as the single primary.",
+    "typography": "Bold 13px labels above fields, '(optional)' in muted text, 20px-class dialog title; clean steps.",
+    "density_layout": "Labels-above fields on an 8px-ish rhythm; Start/End side by side on desktop, stacked on phone; dialog fits the viewport.",
+    "color": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+    "visible_affordances": "Focus sits on End rather than the empty Title; native datetime/select controls carry browser icons; no required marker on Title.",
+    "coherence": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit."
+   },
+   "total_unrounded": "7.55",
+   "total": "7.6",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 7,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven. Unsaved blank event; underlying month.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+   "sha256": "7636b2bd81fc0d915735107c8790fdeb7972ac4c5e354c9c44390a00ed147231",
+   "bytes": 32329,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "new-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "browser text-selection highlight in End field",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 7,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Modal titled 'New event' over a dimmed calendar with Cancel/Save bottom-right and filled orange Save as the single primary.",
+    "typography": "Bold 13px labels above fields, '(optional)' in muted text, 20px-class dialog title; clean steps.",
+    "density_layout": "Labels-above fields on an 8px-ish rhythm; Start/End side by side on desktop, stacked on phone; dialog fits the viewport.",
+    "color": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+    "visible_affordances": "Focus sits on End rather than the empty Title; native datetime/select controls carry browser icons; no required marker on Title.",
+    "coherence": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit."
+   },
+   "total_unrounded": "7.55",
+   "total": "7.6",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 7,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven. Unsaved blank event; underlying month.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+   "sha256": "4bd1ed8fb26914ce8078a600c4622be837dce8ea3466ff275bc3a2d5d8339127",
+   "bytes": 33709,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "new-event",
+   "filename_matches_content": true,
+   "cohort": "event-editor",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "modal scrim over calendar",
+    "browser text-selection highlight in End field",
+    "visible focus ring"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 7,
+    "visible_affordances": 7,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Modal titled 'New event' over a dimmed calendar with Cancel/Save bottom-right and filled orange Save as the single primary.",
+    "typography": "Bold 13px labels above fields, '(optional)' in muted text, 20px-class dialog title; clean steps.",
+    "density_layout": "Labels-above fields on an 8px-ish rhythm; Start/End side by side on desktop, stacked on phone; dialog fits the viewport.",
+    "color": "End field shows the browser's blue text-selection highlight on '10' inside an orange focus ring, an off-palette blue beside the accent.",
+    "visible_affordances": "Focus sits on End rather than the empty Title; native datetime/select controls carry browser icons; no required marker on Title.",
+    "coherence": "Custom 40px fields mixed with native datetime pickers, native select chevron and native checkbox; field set shows Calendar but no Repeat, unlike Edit."
+   },
+   "total_unrounded": "7.55",
+   "total": "7.6",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 7,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Palette on-token; new-event shows browser-blue selection inside the focus ring.",
+     "type_geometry": "40px fields, 8px radius, bold 13px labels.",
+     "shell": "Sidebar/phone header visible behind scrim; dialog itself has no shell.",
+     "accent_discipline": "Orange on Save and focus; edit dialog's danger hue sits close to accent.",
+     "suite_cohesion": "Dialog styling consistent with suite forms."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven. Unsaved blank event; underlying month.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-phones-and-apps-desktop-dark.png",
+   "sha256": "3e19671f81a1c77ad39a4d79602ca2774fbd752908756c0372bb182924e39e7e",
+   "bytes": 83946,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "phones-and-apps",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Phones and apps' title with explanation; 'Add a device or agent' form with filled orange Create is the clear action.",
+    "typography": "Section headings 17px-class, labels bold 13px, helper text muted; URLs in mono chips.",
+    "density_layout": "Three stacked sections (form card, dashed empty state, setup table) with even spacing; content continues below the fold.",
+    "color": "Restrained; orange only on selected radio, Create and nav rail.",
+    "visible_affordances": "Radios with helper lines, input with placeholder and Create button read clearly; empty state names the next step.",
+    "coherence": "Solid card, dashed empty-state box and bordered setup table are three box treatments on one page, versus the flat Appearance page."
+   },
+   "total_unrounded": "7.85",
+   "total": "7.9",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-phones-and-apps-desktop-light.png",
+   "sha256": "0186944ea81f9acc95d34b64c0112f0fa21d14c2947f67e8877c590355b6b0e6",
+   "bytes": 82846,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "phones-and-apps",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 8,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "'Phones and apps' title with explanation; 'Add a device or agent' form with filled orange Create is the clear action.",
+    "typography": "Section headings 17px-class, labels bold 13px, helper text muted; URLs in mono chips.",
+    "density_layout": "Three stacked sections (form card, dashed empty state, setup table) with even spacing; content continues below the fold.",
+    "color": "Restrained; orange only on selected radio, Create and nav rail.",
+    "visible_affordances": "Radios with helper lines, input with placeholder and Create button read clearly; empty state names the next step.",
+    "coherence": "Solid card, dashed empty-state box and bordered setup table are three box treatments on one page, versus the flat Appearance page."
+   },
+   "total_unrounded": "7.85",
+   "total": "7.9",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-phones-and-apps-mobile-dark.png",
+   "sha256": "3eec7a3aa979a863a57c8b342874dd9ccf7895541b504a2ad79bf23bcd489ad2",
+   "bytes": 45844,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "phones-and-apps",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Title, explanation and the form card with orange Create lead clearly.",
+    "typography": "Same type steps as desktop; helper text fits.",
+    "density_layout": "Sections stack evenly with full-width fields; setup continues below.",
+    "color": "Restrained palette; orange limited to radio, Create and selected tab.",
+    "visible_affordances": "Nav strip clips both 'Calendar' (left) and 'Two-ste' (right) edges.",
+    "coherence": "Same three box treatments as desktop."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-phones-and-apps-mobile-light.png",
+   "sha256": "e391531e9c4da72164942fcd3fcaf06e27a023b387091ad2a8da77e2ed5011bd",
+   "bytes": 45118,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "phones-and-apps",
+   "filename_matches_content": true,
+   "cohort": "settings",
+   "state": "empty",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 8,
+    "density_layout": 8,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Title, explanation and the form card with orange Create lead clearly.",
+    "typography": "Same type steps as desktop; helper text fits.",
+    "density_layout": "Sections stack evenly with full-width fields; setup continues below.",
+    "color": "Restrained palette; orange limited to radio, Create and selected tab.",
+    "visible_affordances": "Nav strip clips both 'Calendar' (left) and 'Two-ste' (right) edges.",
+    "coherence": "Same three box treatments as desktop."
+   },
+   "total_unrounded": "7.7",
+   "total": "7.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 7,
+     "accent_discipline": 8,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "On-token palette.",
+     "type_geometry": "Contract type sizes and 40px controls.",
+     "shell": "Contract shell as calendar pages; phone header as noted.",
+     "accent_discipline": "Orange only on selection and primary.",
+     "suite_cohesion": "Comparable to KyIdentity reference."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "38/5",
+    "mean": "7.6"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-week-desktop-dark.png",
+   "sha256": "9922335a70bd79a455a7ada1392a9e699ae1e9ae8deba2606a841cef3220b16a",
+   "bytes": 85161,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "week",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 7,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Same title/primary/toolbar header; 'Oct 25 - 31, 2026' centred; Week segment selected.",
+    "typography": "Event blocks carry 12px time + bold title; 'Planning the community workshop and preparing the' wraps and the last line is cut mid-glyph at the block bottom; 'Morning appointment' shows only 'Morning'.",
+    "density_layout": "Time grid 7am-5pm fills the viewport to y~872 with even hour/half-hour rules; the clipped multi-line block and a 20-minute 'Team check-in' sliver without time are the visible rhythm breaks.",
+    "color": "Calendar hues (blue/green/plum) are user data; today column gets a subtle tint plus orange day header and underline.",
+    "visible_affordances": "All-day row, today column and selected Week segment are unambiguous; Today button again looks disabled.",
+    "coherence": "Grid, all-day row and chips share the same line and radius vocabulary as Month."
+   },
+   "total_unrounded": "7.5",
+   "total": "7.5",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-week-desktop-light.png",
+   "sha256": "303281e6114fddf3d17f6140a4b3d7521edb04f9e9e591a851e1eeb876c05ad4",
+   "bytes": 84995,
+   "width": 1280,
+   "height": 900,
+   "observed_product": "KyCalendar",
+   "observed_surface": "week",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "desktop",
+   "viewport_px": [
+    1280,
+    900
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 8,
+    "typography": 7,
+    "density_layout": 7,
+    "color": 8,
+    "visible_affordances": 7,
+    "coherence": 8
+   },
+   "observations": {
+    "hierarchy": "Same title/primary/toolbar header; 'Oct 25 - 31, 2026' centred; Week segment selected.",
+    "typography": "Event blocks carry 12px time + bold title; 'Planning the community workshop and preparing the' wraps and the last line is cut mid-glyph at the block bottom; 'Morning appointment' shows only 'Morning'.",
+    "density_layout": "Time grid 7am-5pm fills the viewport to y~872 with even hour/half-hour rules; the clipped multi-line block and a 20-minute 'Team check-in' sliver without time are the visible rhythm breaks.",
+    "color": "Calendar hues (blue/green/plum) are user data; today column gets a subtle tint plus orange day header and underline.",
+    "visible_affordances": "All-day row, today column and selected Week segment are unambiguous; Today button again looks disabled.",
+    "coherence": "Grid, all-day row and chips share the same line and radius vocabulary as Month."
+   },
+   "total_unrounded": "7.5",
+   "total": "7.5",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 8,
+     "shell": 8,
+     "accent_discipline": 7,
+     "suite_cohesion": 8
+    },
+    "reasons": {
+     "palette_tokens": "Cream/charcoal surfaces and #bf3f18/#f5865f-class accent match the token palette; event hues are user data.",
+     "type_geometry": "40px outline controls with 8px radius; 24px title; 8px-multiple spacing visible.",
+     "shell": "Contract sidebar with stamp+wordmark, rail-selected nav, calendar list inside the same region, account pinned bottom.",
+     "accent_discipline": "Orange beyond primary/selection/focus: three calendar checkboxes and the today numeral/header line.",
+     "suite_cohesion": "Sidebar, header and controls would sit in the KyIdentity reference set."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "39/5",
+    "mean": "7.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-week-mobile-dark.png",
+   "sha256": "bb0dcdccbcf5b1241847abd2f31c2099db49edaf463c435a5b970fb934c7de36",
+   "bytes": 46960,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "week",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "dark",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 4,
+    "density_layout": 4,
+    "color": 7,
+    "visible_affordances": 5,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Header/primary clear; seven ~43px day columns underneath.",
+    "typography": "Event titles are cut mid-word without ellipsis: 'Desi revie', 'Plani the comi work', 'Morr', 'Weel walk', 'Libr...', 'Team'.",
+    "density_layout": "Seven columns at 390px leave events unreadable; grid continues below the fold; all-day row truncates both bars.",
+    "color": "Hues are data, but tiny saturated blocks with white text dominate the narrow columns.",
+    "visible_affordances": "Events read as coloured tiles rather than identifiable items; phone-header clipping repeats.",
+    "coherence": "Components match desktop; the composition simply does not adapt to the width."
+   },
+   "total_unrounded": "5.65",
+   "total": "5.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 6,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "34/5",
+    "mean": "6.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-week-mobile-light.png",
+   "sha256": "f7c2dbfdb5e8d02276123d453fe55ae218766fa9ece84a5b69ef6a33fd6ac941",
+   "bytes": 46859,
+   "width": 390,
+   "height": 844,
+   "observed_product": "KyCalendar",
+   "observed_surface": "week",
+   "filename_matches_content": true,
+   "cohort": "calendar-grid",
+   "state": "populated",
+   "observed_state_note": null,
+   "theme": "light",
+   "viewport": "mobile",
+   "viewport_px": [
+    390,
+    844
+   ],
+   "dpr": 1,
+   "role": "everyday",
+   "duplicate_of": null,
+   "artifacts": [
+    "none"
+   ],
+   "scores": {
+    "hierarchy": 7,
+    "typography": 4,
+    "density_layout": 4,
+    "color": 7,
+    "visible_affordances": 5,
+    "coherence": 7
+   },
+   "observations": {
+    "hierarchy": "Header/primary clear; seven ~43px day columns underneath.",
+    "typography": "Event titles are cut mid-word without ellipsis: 'Desi revie', 'Plani the comi work', 'Morr', 'Weel walk', 'Libr...', 'Team'.",
+    "density_layout": "Seven columns at 390px leave events unreadable; grid continues below the fold; all-day row truncates both bars.",
+    "color": "Hues are data, but tiny saturated blocks with white text dominate the narrow columns.",
+    "visible_affordances": "Events read as coloured tiles rather than identifiable items; phone-header clipping repeats.",
+    "coherence": "Components match desktop; the composition simply does not adapt to the width."
+   },
+   "total_unrounded": "5.65",
+   "total": "5.7",
+   "ky_fit": {
+    "scores": {
+     "palette_tokens": 8,
+     "type_geometry": 6,
+     "shell": 6,
+     "accent_discipline": 7,
+     "suite_cohesion": 7
+    },
+    "reasons": {
+     "palette_tokens": "Same token palette as desktop.",
+     "type_geometry": "Controls 40px, but timezone caption wrapping and phone header crowding break rhythm.",
+     "shell": "Phone header: horizontal nav clipped by a fade, Calendars disclosure, unlabeled sign-out icon mid-row, no name/role.",
+     "accent_discipline": "Orange checkboxes hidden here, but today marks plus selected tab and segment underlines.",
+     "suite_cohesion": "Phone shell diverges from other Ky phone headers (sign-out icon position varies by page)."
+    },
+    "available": [
+     "palette_tokens",
+     "type_geometry",
+     "shell",
+     "accent_discipline",
+     "suite_cohesion"
+    ],
+    "mean_fraction": "34/5",
+    "mean": "6.8"
+   },
+   "confidence": "high",
+   "caveat": "Pixels only: font identity, computed contrast, focus order and behaviour unproven.",
+   "opened_full_resolution": true
+  }
+ ],
+ "quality_overall": {
+  "definition": "Mean of 48 unique per-file rubric-rounded totals",
+  "n": 48,
+  "mean_of_rounded_fraction": "3617/480",
+  "mean_of_rounded_decimal": "7.53541(6) repeating",
+  "mean_of_rounded_1dp": "7.5",
+  "mean_of_unrounded_fraction": "1201/160",
+  "mean_of_unrounded_decimal": "7.50625",
+  "mean_of_unrounded_1dp": "7.5"
+ },
+ "gate_input": {
+  "value": "7.5",
+  "threshold": "8.0",
+  "accepted": false,
+  "rule": "Current-round Opus overall quality mean, half-up one decimal >= 8.0. No Sol/brand/history pooling; no cohort veto. Owner rejection reopens."
+ },
+ "brand_overall": {
+  "overall": {
+   "n": 48,
+   "fraction": "123/16",
+   "decimal": "7.6875",
+   "half_up_1dp": "7.7"
+  },
+  "per_cohort": {
+   "admin-console": {
+    "n": 12,
+    "fraction": "47/6",
+    "decimal": "7.8(3) repeating",
+    "half_up_1dp": "7.8"
+   },
+   "auth": {
+    "n": 4,
+    "fraction": "31/4",
+    "decimal": "7.75",
+    "half_up_1dp": "7.8"
+   },
+   "calendar-grid": {
+    "n": 12,
+    "fraction": "221/30",
+    "decimal": "7.3(6) repeating",
+    "half_up_1dp": "7.4"
+   },
+   "calendar-list": {
+    "n": 4,
+    "fraction": "37/5",
+    "decimal": "7.4",
+    "half_up_1dp": "7.4"
+   },
+   "event-editor": {
+    "n": 8,
+    "fraction": "77/10",
+    "decimal": "7.7",
+    "half_up_1dp": "7.7"
+   },
+   "settings": {
+    "n": 8,
+    "fraction": "161/20",
+    "decimal": "8.05",
+    "half_up_1dp": "8.1"
+   }
+  },
+  "method": "Per file: equal-weight (0.20) mean of available ky_fit dimensions; shell N/A on signed-out Login (4 files) excluded, not zeroed. suite_cohesion scored against the two KyIdentity brand references (second Ky product). Overall: mean of 48 per-file exact means. Never added to quality totals or pooled with the gate.",
+  "dimension_means": {
+   "palette_tokens": {
+    "n": 48,
+    "fraction": "97/12",
+    "half_up_1dp": "8.1"
+   },
+   "type_geometry": {
+    "n": 48,
+    "fraction": "23/3",
+    "half_up_1dp": "7.7"
+   },
+   "shell": {
+    "n": 44,
+    "fraction": "161/22",
+    "half_up_1dp": "7.3"
+   },
+   "accent_discipline": {
+    "n": 48,
+    "fraction": "31/4",
+    "half_up_1dp": "7.8"
+   },
+   "suite_cohesion": {
+    "n": 48,
+    "fraction": "91/12",
+    "half_up_1dp": "7.6"
+   }
+  }
+ },
+ "cohort_counts": {
+  "admin-console": 12,
+  "auth": 4,
+  "calendar-grid": 12,
+  "calendar-list": 4,
+  "event-editor": 8,
+  "settings": 8
+ },
+ "breakdowns": {
+  "per_surface_viewport": {
+   "admin-group-calendars/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "36/5",
+    "mean_of_rounded_decimal": "7.2",
+    "mean_of_rounded_1dp": "7.2",
+    "mean_of_unrounded_fraction": "143/20",
+    "mean_of_unrounded_decimal": "7.15",
+    "mean_of_unrounded_1dp": "7.2"
+   },
+   "admin-group-calendars/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "7/1",
+    "mean_of_rounded_decimal": "7",
+    "mean_of_rounded_1dp": "7.0",
+    "mean_of_unrounded_fraction": "139/20",
+    "mean_of_unrounded_decimal": "6.95",
+    "mean_of_unrounded_1dp": "7.0"
+   },
+   "admin-overview/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "39/5",
+    "mean_of_rounded_decimal": "7.8",
+    "mean_of_rounded_1dp": "7.8",
+    "mean_of_unrounded_fraction": "31/4",
+    "mean_of_unrounded_decimal": "7.75",
+    "mean_of_unrounded_1dp": "7.8"
+   },
+   "admin-overview/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "38/5",
+    "mean_of_rounded_decimal": "7.6",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "38/5",
+    "mean_of_unrounded_decimal": "7.6",
+    "mean_of_unrounded_1dp": "7.6"
+   },
+   "admin-people/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "39/5",
+    "mean_of_rounded_decimal": "7.8",
+    "mean_of_rounded_1dp": "7.8",
+    "mean_of_unrounded_fraction": "39/5",
+    "mean_of_unrounded_decimal": "7.8",
+    "mean_of_unrounded_1dp": "7.8"
+   },
+   "admin-people/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "73/10",
+    "mean_of_rounded_decimal": "7.3",
+    "mean_of_rounded_1dp": "7.3",
+    "mean_of_unrounded_fraction": "29/4",
+    "mean_of_unrounded_decimal": "7.25",
+    "mean_of_unrounded_1dp": "7.3"
+   },
+   "appearance/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "83/10",
+    "mean_of_rounded_decimal": "8.3",
+    "mean_of_rounded_1dp": "8.3",
+    "mean_of_unrounded_fraction": "83/10",
+    "mean_of_unrounded_decimal": "8.3",
+    "mean_of_unrounded_1dp": "8.3"
+   },
+   "appearance/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "157/20",
+    "mean_of_rounded_decimal": "7.85",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "157/20",
+    "mean_of_unrounded_decimal": "7.85",
+    "mean_of_unrounded_1dp": "7.9"
+   },
+   "day/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "79/10",
+    "mean_of_rounded_decimal": "7.9",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "157/20",
+    "mean_of_unrounded_decimal": "7.85",
+    "mean_of_unrounded_1dp": "7.9"
+   },
+   "day/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "36/5",
+    "mean_of_rounded_decimal": "7.2",
+    "mean_of_rounded_1dp": "7.2",
+    "mean_of_unrounded_fraction": "36/5",
+    "mean_of_unrounded_decimal": "7.2",
+    "mean_of_unrounded_1dp": "7.2"
+   },
+   "default-phone-list/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "36/5",
+    "mean_of_rounded_decimal": "7.2",
+    "mean_of_rounded_1dp": "7.2",
+    "mean_of_unrounded_fraction": "36/5",
+    "mean_of_unrounded_decimal": "7.2",
+    "mean_of_unrounded_1dp": "7.2"
+   },
+   "existing-event/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "77/10",
+    "mean_of_rounded_decimal": "7.7",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "77/10",
+    "mean_of_unrounded_decimal": "7.7",
+    "mean_of_unrounded_1dp": "7.7"
+   },
+   "existing-event/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "77/10",
+    "mean_of_rounded_decimal": "7.7",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "77/10",
+    "mean_of_unrounded_decimal": "7.7",
+    "mean_of_unrounded_1dp": "7.7"
+   },
+   "list/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "79/10",
+    "mean_of_rounded_decimal": "7.9",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "157/20",
+    "mean_of_unrounded_decimal": "7.85",
+    "mean_of_unrounded_1dp": "7.9"
+   },
+   "login/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "81/10",
+    "mean_of_rounded_decimal": "8.1",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "161/20",
+    "mean_of_unrounded_decimal": "8.05",
+    "mean_of_unrounded_1dp": "8.1"
+   },
+   "login/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "81/10",
+    "mean_of_rounded_decimal": "8.1",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "161/20",
+    "mean_of_unrounded_decimal": "8.05",
+    "mean_of_unrounded_1dp": "8.1"
+   },
+   "month/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "77/10",
+    "mean_of_rounded_decimal": "7.7",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "153/20",
+    "mean_of_unrounded_decimal": "7.65",
+    "mean_of_unrounded_1dp": "7.7"
+   },
+   "month/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "13/2",
+    "mean_of_rounded_decimal": "6.5",
+    "mean_of_rounded_1dp": "6.5",
+    "mean_of_unrounded_fraction": "129/20",
+    "mean_of_unrounded_decimal": "6.45",
+    "mean_of_unrounded_1dp": "6.5"
+   },
+   "new-event/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "38/5",
+    "mean_of_rounded_decimal": "7.6",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "151/20",
+    "mean_of_unrounded_decimal": "7.55",
+    "mean_of_unrounded_1dp": "7.6"
+   },
+   "new-event/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "38/5",
+    "mean_of_rounded_decimal": "7.6",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "151/20",
+    "mean_of_unrounded_decimal": "7.55",
+    "mean_of_unrounded_1dp": "7.6"
+   },
+   "phones-and-apps/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "79/10",
+    "mean_of_rounded_decimal": "7.9",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "157/20",
+    "mean_of_unrounded_decimal": "7.85",
+    "mean_of_unrounded_1dp": "7.9"
+   },
+   "phones-and-apps/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "77/10",
+    "mean_of_rounded_decimal": "7.7",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "77/10",
+    "mean_of_unrounded_decimal": "7.7",
+    "mean_of_unrounded_1dp": "7.7"
+   },
+   "week/desktop": {
+    "n": 2,
+    "mean_of_rounded_fraction": "15/2",
+    "mean_of_rounded_decimal": "7.5",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "15/2",
+    "mean_of_unrounded_decimal": "7.5",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "week/mobile": {
+    "n": 2,
+    "mean_of_rounded_fraction": "57/10",
+    "mean_of_rounded_decimal": "5.7",
+    "mean_of_rounded_1dp": "5.7",
+    "mean_of_unrounded_fraction": "113/20",
+    "mean_of_unrounded_decimal": "5.65",
+    "mean_of_unrounded_1dp": "5.7"
+   }
+  },
+  "per_surface": {
+   "admin-group-calendars": {
+    "n": 4,
+    "mean_of_rounded_fraction": "71/10",
+    "mean_of_rounded_decimal": "7.1",
+    "mean_of_rounded_1dp": "7.1",
+    "mean_of_unrounded_fraction": "141/20",
+    "mean_of_unrounded_decimal": "7.05",
+    "mean_of_unrounded_1dp": "7.1"
+   },
+   "admin-overview": {
+    "n": 4,
+    "mean_of_rounded_fraction": "77/10",
+    "mean_of_rounded_decimal": "7.7",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "307/40",
+    "mean_of_unrounded_decimal": "7.675",
+    "mean_of_unrounded_1dp": "7.7"
+   },
+   "admin-people": {
+    "n": 4,
+    "mean_of_rounded_fraction": "151/20",
+    "mean_of_rounded_decimal": "7.55",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "301/40",
+    "mean_of_unrounded_decimal": "7.525",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "appearance": {
+    "n": 4,
+    "mean_of_rounded_fraction": "323/40",
+    "mean_of_rounded_decimal": "8.075",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "323/40",
+    "mean_of_unrounded_decimal": "8.075",
+    "mean_of_unrounded_1dp": "8.1"
+   },
+   "day": {
+    "n": 4,
+    "mean_of_rounded_fraction": "151/20",
+    "mean_of_rounded_decimal": "7.55",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "301/40",
+    "mean_of_unrounded_decimal": "7.525",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "default-phone-list": {
+    "n": 2,
+    "mean_of_rounded_fraction": "36/5",
+    "mean_of_rounded_decimal": "7.2",
+    "mean_of_rounded_1dp": "7.2",
+    "mean_of_unrounded_fraction": "36/5",
+    "mean_of_unrounded_decimal": "7.2",
+    "mean_of_unrounded_1dp": "7.2"
+   },
+   "existing-event": {
+    "n": 4,
+    "mean_of_rounded_fraction": "77/10",
+    "mean_of_rounded_decimal": "7.7",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "77/10",
+    "mean_of_unrounded_decimal": "7.7",
+    "mean_of_unrounded_1dp": "7.7"
+   },
+   "list": {
+    "n": 2,
+    "mean_of_rounded_fraction": "79/10",
+    "mean_of_rounded_decimal": "7.9",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "157/20",
+    "mean_of_unrounded_decimal": "7.85",
+    "mean_of_unrounded_1dp": "7.9"
+   },
+   "login": {
+    "n": 4,
+    "mean_of_rounded_fraction": "81/10",
+    "mean_of_rounded_decimal": "8.1",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "161/20",
+    "mean_of_unrounded_decimal": "8.05",
+    "mean_of_unrounded_1dp": "8.1"
+   },
+   "month": {
+    "n": 4,
+    "mean_of_rounded_fraction": "71/10",
+    "mean_of_rounded_decimal": "7.1",
+    "mean_of_rounded_1dp": "7.1",
+    "mean_of_unrounded_fraction": "141/20",
+    "mean_of_unrounded_decimal": "7.05",
+    "mean_of_unrounded_1dp": "7.1"
+   },
+   "new-event": {
+    "n": 4,
+    "mean_of_rounded_fraction": "38/5",
+    "mean_of_rounded_decimal": "7.6",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "151/20",
+    "mean_of_unrounded_decimal": "7.55",
+    "mean_of_unrounded_1dp": "7.6"
+   },
+   "phones-and-apps": {
+    "n": 4,
+    "mean_of_rounded_fraction": "39/5",
+    "mean_of_rounded_decimal": "7.8",
+    "mean_of_rounded_1dp": "7.8",
+    "mean_of_unrounded_fraction": "311/40",
+    "mean_of_unrounded_decimal": "7.775",
+    "mean_of_unrounded_1dp": "7.8"
+   },
+   "week": {
+    "n": 4,
+    "mean_of_rounded_fraction": "33/5",
+    "mean_of_rounded_decimal": "6.6",
+    "mean_of_rounded_1dp": "6.6",
+    "mean_of_unrounded_fraction": "263/40",
+    "mean_of_unrounded_decimal": "6.575",
+    "mean_of_unrounded_1dp": "6.6"
+   }
+  },
+  "per_cohort": {
+   "admin-console": {
+    "n": 12,
+    "mean_of_rounded_fraction": "149/20",
+    "mean_of_rounded_decimal": "7.45",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "89/12",
+    "mean_of_unrounded_decimal": "7.41(6) repeating",
+    "mean_of_unrounded_1dp": "7.4"
+   },
+   "auth": {
+    "n": 4,
+    "mean_of_rounded_fraction": "81/10",
+    "mean_of_rounded_decimal": "8.1",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "161/20",
+    "mean_of_unrounded_decimal": "8.05",
+    "mean_of_unrounded_1dp": "8.1"
+   },
+   "calendar-grid": {
+    "n": 12,
+    "mean_of_rounded_fraction": "85/12",
+    "mean_of_rounded_decimal": "7.08(3) repeating",
+    "mean_of_rounded_1dp": "7.1",
+    "mean_of_unrounded_fraction": "141/20",
+    "mean_of_unrounded_decimal": "7.05",
+    "mean_of_unrounded_1dp": "7.1"
+   },
+   "calendar-list": {
+    "n": 4,
+    "mean_of_rounded_fraction": "151/20",
+    "mean_of_rounded_decimal": "7.55",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "301/40",
+    "mean_of_unrounded_decimal": "7.525",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "event-editor": {
+    "n": 8,
+    "mean_of_rounded_fraction": "153/20",
+    "mean_of_rounded_decimal": "7.65",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "61/8",
+    "mean_of_unrounded_decimal": "7.625",
+    "mean_of_unrounded_1dp": "7.6"
+   },
+   "settings": {
+    "n": 8,
+    "mean_of_rounded_fraction": "127/16",
+    "mean_of_rounded_decimal": "7.9375",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "317/40",
+    "mean_of_unrounded_decimal": "7.925",
+    "mean_of_unrounded_1dp": "7.9"
+   }
+  },
+  "per_theme": {
+   "dark": {
+    "n": 24,
+    "mean_of_rounded_fraction": "1807/240",
+    "mean_of_rounded_decimal": "7.5291(6) repeating",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "15/2",
+    "mean_of_unrounded_decimal": "7.5",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "light": {
+    "n": 24,
+    "mean_of_rounded_fraction": "181/24",
+    "mean_of_rounded_decimal": "7.541(6) repeating",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "601/80",
+    "mean_of_unrounded_decimal": "7.5125",
+    "mean_of_unrounded_1dp": "7.5"
+   }
+  },
+  "per_device": {
+   "desktop": {
+    "n": 24,
+    "mean_of_rounded_fraction": "467/60",
+    "mean_of_rounded_decimal": "7.78(3) repeating",
+    "mean_of_rounded_1dp": "7.8",
+    "mean_of_unrounded_fraction": "31/4",
+    "mean_of_unrounded_decimal": "7.75",
+    "mean_of_unrounded_1dp": "7.8"
+   },
+   "mobile": {
+    "n": 24,
+    "mean_of_rounded_fraction": "583/80",
+    "mean_of_rounded_decimal": "7.2875",
+    "mean_of_rounded_1dp": "7.3",
+    "mean_of_unrounded_fraction": "581/80",
+    "mean_of_unrounded_decimal": "7.2625",
+    "mean_of_unrounded_1dp": "7.3"
+   }
+  },
+  "per_role": {
+   "administrator": {
+    "n": 12,
+    "mean_of_rounded_fraction": "149/20",
+    "mean_of_rounded_decimal": "7.45",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "89/12",
+    "mean_of_unrounded_decimal": "7.41(6) repeating",
+    "mean_of_unrounded_1dp": "7.4"
+   },
+   "everyday": {
+    "n": 32,
+    "mean_of_rounded_fraction": "2399/320",
+    "mean_of_rounded_decimal": "7.496875",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "2391/320",
+    "mean_of_unrounded_decimal": "7.471875",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "signed-out": {
+    "n": 4,
+    "mean_of_rounded_fraction": "81/10",
+    "mean_of_rounded_decimal": "8.1",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "161/20",
+    "mean_of_unrounded_decimal": "8.05",
+    "mean_of_unrounded_1dp": "8.1"
+   }
+  }
+ },
+ "cohort_rankings": {
+  "note": "Ky-only coverage summary, not a ranking: no competitor captures in this round; Ky gap N/A.",
+  "per_cohort": {
+   "admin-console": {
+    "n": 12,
+    "mean_of_rounded_fraction": "149/20",
+    "mean_of_rounded_decimal": "7.45",
+    "mean_of_rounded_1dp": "7.5",
+    "mean_of_unrounded_fraction": "89/12",
+    "mean_of_unrounded_decimal": "7.41(6) repeating",
+    "mean_of_unrounded_1dp": "7.4"
+   },
+   "auth": {
+    "n": 4,
+    "mean_of_rounded_fraction": "81/10",
+    "mean_of_rounded_decimal": "8.1",
+    "mean_of_rounded_1dp": "8.1",
+    "mean_of_unrounded_fraction": "161/20",
+    "mean_of_unrounded_decimal": "8.05",
+    "mean_of_unrounded_1dp": "8.1"
+   },
+   "calendar-grid": {
+    "n": 12,
+    "mean_of_rounded_fraction": "85/12",
+    "mean_of_rounded_decimal": "7.08(3) repeating",
+    "mean_of_rounded_1dp": "7.1",
+    "mean_of_unrounded_fraction": "141/20",
+    "mean_of_unrounded_decimal": "7.05",
+    "mean_of_unrounded_1dp": "7.1"
+   },
+   "calendar-list": {
+    "n": 4,
+    "mean_of_rounded_fraction": "151/20",
+    "mean_of_rounded_decimal": "7.55",
+    "mean_of_rounded_1dp": "7.6",
+    "mean_of_unrounded_fraction": "301/40",
+    "mean_of_unrounded_decimal": "7.525",
+    "mean_of_unrounded_1dp": "7.5"
+   },
+   "event-editor": {
+    "n": 8,
+    "mean_of_rounded_fraction": "153/20",
+    "mean_of_rounded_decimal": "7.65",
+    "mean_of_rounded_1dp": "7.7",
+    "mean_of_unrounded_fraction": "61/8",
+    "mean_of_unrounded_decimal": "7.625",
+    "mean_of_unrounded_1dp": "7.6"
+   },
+   "settings": {
+    "n": 8,
+    "mean_of_rounded_fraction": "127/16",
+    "mean_of_rounded_decimal": "7.9375",
+    "mean_of_rounded_1dp": "7.9",
+    "mean_of_unrounded_fraction": "317/40",
+    "mean_of_unrounded_decimal": "7.925",
+    "mean_of_unrounded_1dp": "7.9"
+   }
+  }
+ },
+ "drift": {
+  "status": "N/A",
+  "reason": "Round 1: no own current-pass prior; historical fleet scores intentionally not loaded."
+ },
+ "gates": {
+  "note": "Screenshots cannot pass a gate. No browser work by this reviewer; statuses cite the capture worker's recorded measurements (capture-checks.json, read after freeze).",
+  "keyboard": {
+   "status": "fail",
+   "evidence": "capture-checks.json behavior_gates.keyboard: Enter opens real event from List and Escape closes, but focus_returned_to_trigger=false in 4/4 (desktop/mobile x light/dark), source 0f01550."
+  },
+  "focus": {
+   "status": "untested"
+  },
+  "contrast": {
+   "status": "untested",
+   "note": "No computed contrast; pixel legibility is not a pass."
+  },
+  "states": {
+   "status": "untested",
+   "note": "Loading/error states not captured."
+  },
+  "responsive": {
+   "status": "untested",
+   "measured": "Zero horizontal page overflow on all 50 originals (recorded), not a gate pass."
+  }
+ },
+ "unscored": [
+  {
+   "file": "screenshots/kycalendar-00-before-list-mobile-dark.png",
+   "duplicate_of": "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+   "reason": "duplicate; score first file by name once"
+  },
+  {
+   "file": "screenshots/kycalendar-00-before-list-mobile-light.png",
+   "duplicate_of": "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+   "reason": "duplicate; score first file by name once"
+  },
+  {
+   "file": "brand-reference-kyidentity-appearance-desktop-light.png",
+   "reason": "brand reference only; never quality-scored"
+  },
+  {
+   "file": "brand-reference-kyidentity-appearance-desktop-dark.png",
+   "reason": "brand reference only; never quality-scored"
+  }
+ ],
+ "post_freeze_corrections": [
+  {
+   "id": "C1",
+   "files": "month/week/day/list desktop (8) and default-phone-list/month/week/day mobile (8)",
+   "dimension": "visible_affordances (observation only)",
+   "cause": "correction",
+   "fact": "manifest visible_actions_forms records the Today button as disabled:true while today is in view. The frozen observations call it 'ambiguous'/'reads as disabled with no explicit reason'; it is correctly disabled. A residual point stands only that the disabled styling gives no reason.",
+   "source": "../../docs/ui-calendar-eight/manifest-00-before.json",
+   "vectors_changed": false
+  },
+  {
+   "id": "C2",
+   "files": "new-event x4",
+   "dimension": "color, visible_affordances (observations)",
+   "cause": "artifact",
+   "fact": "End-field focus and browser-blue text selection were produced by the capture driver filling Start then End (capture.mjs:182-183). The product focuses Title on open (web/src/components/EventDialog.tsx:57, ref at :163). The artifact was listed and scored as captured, per the rubric.",
+   "vectors_changed": false
+  },
+  {
+   "id": "C3",
+   "files": "new-event / existing-event",
+   "dimension": "coherence (observation)",
+   "cause": "confirmation",
+   "fact": "Field-set difference is intentional code: Calendar select only for new events (EventDialog.tsx:179); Repeat only when scope==='all', and new events start at 'this' (EventDialog.tsx:38, :186). Adding Repeat to new events would be a feature change, out of scope.",
+   "vectors_changed": false
+  },
+  {
+   "id": "C4",
+   "files": "month mobile x2",
+   "dimension": "typography/affordances (observation)",
+   "cause": "confirmation",
+   "fact": "Phone month hides event titles deliberately (web/src/styles/calendar.css:154); phone default view is List (web/src/pages/CalendarPage.tsx:295), so Month/Week on phone are explicit secondary choices.",
+   "vectors_changed": false
+  },
+  {
+   "id": "C5",
+   "files": "admin-group-calendars x4",
+   "dimension": "visible_affordances (observation)",
+   "cause": "confirmation",
+   "fact": "'Every group has access' is the placeholder whenever no group is still available (GroupCalendars.tsx:155,207). That includes the captured case with no grants and, it appears, no groups, which contradicts 'No group has access.' (:173). The fixture's group count is not recorded in the manifest, so 'zero groups' is inferred, not proven.",
+   "vectors_changed": false
+  }
+ ],
+ "findings": [
+  {
+   "rank": 1,
+   "title": "Phone Week view clips event titles mid-word",
+   "files": [
+    "screenshots/kycalendar-00-before-week-mobile-light.png",
+    "screenshots/kycalendar-00-before-week-mobile-dark.png"
+   ],
+   "totals": "5.7 / 5.7",
+   "evidence": "'Desi revie', 'Plani the comi work', 'Morr', 'Weel walk': titles are cut horizontally in the ~43px columns with no ellipsis.",
+   "source": [
+    "web/src/styles/calendar.css:102-104"
+   ],
+   "fix": "At <=720px in timeGrid views: hide the time line, show titles single-line with text-overflow: ellipsis (or line-clamp), and use a smaller min event padding."
+  },
+  {
+   "rank": 2,
+   "title": "Phone shell: sign-out icon floats mid-header on calendar pages; nav tabs clip under fades",
+   "files": [
+    "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+    "screenshots/kycalendar-00-before-day-mobile-light.png",
+    "screenshots/kycalendar-00-before-phones-and-apps-mobile-light.png"
+   ],
+   "totals": "7.2 / 7.2 / 7.7",
+   "evidence": "Sign-out icon at x~272 on calendar pages but at the right edge elsewhere; \"Phones &\" fades under the Calendars disclosure; Calendar/Two-ste clip at both ends on Phones and apps.",
+   "source": [
+    "web/src/styles/theme.css:190",
+    "web/src/styles/theme.css:199"
+   ],
+   "fix": "Add justify-content:end (or margin-inline-start:auto on .app-user) to phone .app-header-actions so the account control is always at the right; scroll the selected tab into view (scroll-padding exists) so the selected tab never sits under a fade."
+  },
+  {
+   "rank": 3,
+   "title": "Phone Month shows time-only chips and textless all-day bars",
+   "files": [
+    "screenshots/kycalendar-00-before-month-mobile-light.png",
+    "screenshots/kycalendar-00-before-month-mobile-dark.png"
+   ],
+   "totals": "6.5 / 6.5",
+   "evidence": "Events read as '9a', '10a', '3:30p' dots; the all-day bars carry no text; '3:30p' runs to the cell edge; four empty weeks dominate.",
+   "source": [
+    "web/src/styles/calendar.css:154-156"
+   ],
+   "fix": "On phone month, show ellipsized titles instead of times (keep the dot), so the deliberate compression still identifies events; keep the all-day title text in the bar."
+  },
+  {
+   "rank": 4,
+   "title": "Group calendars: nested box-in-card and contradictory group placeholder",
+   "files": [
+    "screenshots/kycalendar-00-before-admin-group-calendars-desktop-light.png",
+    "screenshots/kycalendar-00-before-admin-group-calendars-mobile-light.png"
+   ],
+   "totals": "7.2 / 7.0",
+   "evidence": "Dashed empty-state box inside a bordered card, plus divider and inner form; the select reads 'Every group has access' directly under 'No group has access.'",
+   "source": [
+    "web/src/pages/GroupCalendars.tsx:173",
+    "web/src/pages/GroupCalendars.tsx:207"
+   ],
+   "fix": "Render the compact empty state flat inside the card (no dashed border) and keep Delete calendar quiet. The placeholder copy correction (e.g. 'No groups to add') is a factual copy change and needs owner approval under the contract's Preserve rule."
+  },
+  {
+   "rank": 5,
+   "title": "Desktop Week clips multi-line event text mid-glyph; accent spread in calendar sidebar",
+   "files": [
+    "screenshots/kycalendar-00-before-week-desktop-light.png",
+    "screenshots/kycalendar-00-before-month-desktop-light.png"
+   ],
+   "totals": "7.5 / 7.7",
+   "evidence": "'...preparing the' cut at the block bottom; orange appears on three calendar visibility checkboxes plus today numeral/header.",
+   "source": [
+    "web/src/styles/calendar.css:102",
+    "web/src/styles/theme.css:290",
+    "web/src/styles/calendar.css:87-94"
+   ],
+   "fix": "line-clamp timeGrid titles to the block height; optionally scope calendar visibility checkboxes to ink, not accent (contract permits accent for selection, so this is optional)."
+  }
+ ],
+ "recorded_behavior_failure": "Measured by the capture worker, not by this reviewer: event dialog focus did not return to the List trigger in 4/4 conditions (capture-checks.json behavior_gates.keyboard). EventDialog.tsx:55-60 restores the element that was active at open; the cause of the failure is unproven.",
+ "recommended_batch": {
+  "scope": "CSS-only refinement of existing UI, no new features, everyday/admin separation and the single left navigation region untouched",
+  "items": [
+   "Phone header: pin account control right (theme.css:199) and keep the selected tab out of the fade",
+   "Phone timeGrid (Week/Day): single-line ellipsized titles, hide time line when narrow (calendar.css:102-104)",
+   "Phone Month: ellipsized titles instead of time-only chips; keep all-day bar text (calendar.css:154-156)",
+   "Desktop timeGrid: line-clamp event titles to block height (calendar.css:102)",
+   "Group calendars: flatten the nested empty state inside the card (GroupCalendars.tsx:173 styling)"
+  ],
+  "separate_items": [
+   "Focus-return-to-trigger behavior fix with a keyboard test (behavior gate, not visual)",
+   "Placeholder copy 'Every group has access' -> owner approval required before change"
+  ],
+  "recapture": "Re-capture the 12 affected originals (week/month/day/list phone x2 themes, phone settings/admin x2 for header, week desktop x2, group calendars x4) under identical conditions."
+ },
+ "independent_satisfaction": {
+  "satisfied": false,
+  "reason": "Desktop everyday and settings surfaces are solid (7.5-8.3), but phone Week (5.7) and Month (6.5) are not readable and the phone header misplaces the account control. That is not refined suite quality yet. Separate from the gate."
+ },
+ "progression": {
+  "opus_overall_quality": "7.5",
+  "exact": "3617/480",
+  "accepted": false,
+  "nine_target": "longer-term goal; not assumed",
+  "not_claimed": "Not a competitive ranking and not whole-behavior/production acceptance. Gemini unused (known exhausted quota; no request)."
+ },
+ "limitations": [
+  "Font identity and computed contrast unproven from pixels (manifest font probes report Space Grotesk loaded; that is capture-worker evidence, not this reviewer's measurement).",
+  "Keyboard, focus, contrast, states and responsive gates not tested by this reviewer.",
+  "Loading/error states absent from the capture set; not penalised as zero.",
+  "Only the first viewport of long pages (Phones and apps, admin mobile) is visible.",
+  "sol-round1.*, review-state.json, historical quality images and prior scores were never read."
+ ],
+ "raw_export": {
+  "columns": [
+   "file",
+   "surface",
+   "cohort",
+   "viewport",
+   "theme",
+   "role",
+   "state",
+   "hierarchy",
+   "typography",
+   "density_layout",
+   "color",
+   "visible_affordances",
+   "coherence",
+   "total_unrounded",
+   "total",
+   "palette_tokens",
+   "type_geometry",
+   "shell",
+   "accent_discipline",
+   "suite_cohesion",
+   "ky_fit_fraction",
+   "ky_fit_1dp"
+  ],
+  "rows": [
+   [
+    "screenshots/kycalendar-00-before-admin-group-calendars-desktop-dark.png",
+    "admin-group-calendars",
+    "admin-console",
+    "desktop",
+    "dark",
+    "administrator",
+    "sparse",
+    7,
+    8,
+    7,
+    8,
+    7,
+    6,
+    "7.15",
+    "7.2",
+    8,
+    7,
+    8,
+    8,
+    7,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-group-calendars-desktop-light.png",
+    "admin-group-calendars",
+    "admin-console",
+    "desktop",
+    "light",
+    "administrator",
+    "sparse",
+    7,
+    8,
+    7,
+    8,
+    7,
+    6,
+    "7.15",
+    "7.2",
+    8,
+    7,
+    8,
+    8,
+    7,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-group-calendars-mobile-dark.png",
+    "admin-group-calendars",
+    "admin-console",
+    "mobile",
+    "dark",
+    "administrator",
+    "sparse",
+    7,
+    8,
+    6,
+    8,
+    7,
+    6,
+    "6.95",
+    "7.0",
+    8,
+    7,
+    7,
+    8,
+    7,
+    "37/5",
+    "7.4"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-group-calendars-mobile-light.png",
+    "admin-group-calendars",
+    "admin-console",
+    "mobile",
+    "light",
+    "administrator",
+    "sparse",
+    7,
+    8,
+    6,
+    8,
+    7,
+    6,
+    "6.95",
+    "7.0",
+    8,
+    7,
+    7,
+    8,
+    7,
+    "37/5",
+    "7.4"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-overview-desktop-dark.png",
+    "admin-overview",
+    "admin-console",
+    "desktop",
+    "dark",
+    "administrator",
+    "empty",
+    7,
+    8,
+    7,
+    9,
+    8,
+    8,
+    "7.75",
+    "7.8",
+    9,
+    8,
+    8,
+    9,
+    8,
+    "42/5",
+    "8.4"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-overview-desktop-light.png",
+    "admin-overview",
+    "admin-console",
+    "desktop",
+    "light",
+    "administrator",
+    "empty",
+    7,
+    8,
+    7,
+    9,
+    8,
+    8,
+    "7.75",
+    "7.8",
+    9,
+    8,
+    8,
+    9,
+    8,
+    "42/5",
+    "8.4"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-overview-mobile-dark.png",
+    "admin-overview",
+    "admin-console",
+    "mobile",
+    "dark",
+    "administrator",
+    "empty",
+    7,
+    8,
+    7,
+    9,
+    7,
+    8,
+    "7.6",
+    "7.6",
+    9,
+    8,
+    7,
+    9,
+    8,
+    "41/5",
+    "8.2"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-overview-mobile-light.png",
+    "admin-overview",
+    "admin-console",
+    "mobile",
+    "light",
+    "administrator",
+    "empty",
+    7,
+    8,
+    7,
+    9,
+    7,
+    8,
+    "7.6",
+    "7.6",
+    9,
+    8,
+    7,
+    9,
+    8,
+    "41/5",
+    "8.2"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-people-desktop-dark.png",
+    "admin-people",
+    "admin-console",
+    "desktop",
+    "dark",
+    "administrator",
+    "sparse",
+    8,
+    8,
+    7,
+    8,
+    8,
+    8,
+    "7.8",
+    "7.8",
+    8,
+    8,
+    8,
+    8,
+    8,
+    "8/1",
+    "8.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-people-desktop-light.png",
+    "admin-people",
+    "admin-console",
+    "desktop",
+    "light",
+    "administrator",
+    "sparse",
+    8,
+    8,
+    7,
+    8,
+    8,
+    8,
+    "7.8",
+    "7.8",
+    8,
+    8,
+    8,
+    8,
+    8,
+    "8/1",
+    "8.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-people-mobile-dark.png",
+    "admin-people",
+    "admin-console",
+    "mobile",
+    "dark",
+    "administrator",
+    "sparse",
+    7,
+    8,
+    6,
+    8,
+    8,
+    7,
+    "7.25",
+    "7.3",
+    8,
+    7,
+    7,
+    8,
+    7,
+    "37/5",
+    "7.4"
+   ],
+   [
+    "screenshots/kycalendar-00-before-admin-people-mobile-light.png",
+    "admin-people",
+    "admin-console",
+    "mobile",
+    "light",
+    "administrator",
+    "sparse",
+    7,
+    8,
+    6,
+    8,
+    8,
+    7,
+    "7.25",
+    "7.3",
+    8,
+    7,
+    7,
+    8,
+    7,
+    "37/5",
+    "7.4"
+   ],
+   [
+    "screenshots/kycalendar-00-before-appearance-desktop-dark.png",
+    "appearance",
+    "settings",
+    "desktop",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    9,
+    8,
+    9,
+    "8.3",
+    "8.3",
+    9,
+    8,
+    8,
+    9,
+    9,
+    "43/5",
+    "8.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-appearance-desktop-light.png",
+    "appearance",
+    "settings",
+    "desktop",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    9,
+    8,
+    9,
+    "8.3",
+    "8.3",
+    9,
+    8,
+    8,
+    9,
+    9,
+    "43/5",
+    "8.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-appearance-mobile-dark.png",
+    "appearance",
+    "settings",
+    "mobile",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    8,
+    6,
+    8,
+    "7.7",
+    "7.7",
+    9,
+    8,
+    7,
+    9,
+    8,
+    "41/5",
+    "8.2"
+   ],
+   [
+    "screenshots/kycalendar-00-before-appearance-mobile-light.png",
+    "appearance",
+    "settings",
+    "mobile",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    9,
+    7,
+    8,
+    "8",
+    "8.0",
+    9,
+    8,
+    7,
+    9,
+    8,
+    "41/5",
+    "8.2"
+   ],
+   [
+    "screenshots/kycalendar-00-before-day-desktop-dark.png",
+    "day",
+    "calendar-grid",
+    "desktop",
+    "dark",
+    "everyday",
+    "populated",
+    8,
+    8,
+    8,
+    8,
+    7,
+    8,
+    "7.85",
+    "7.9",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-day-desktop-light.png",
+    "day",
+    "calendar-grid",
+    "desktop",
+    "light",
+    "everyday",
+    "populated",
+    8,
+    8,
+    8,
+    8,
+    7,
+    8,
+    "7.85",
+    "7.9",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-day-mobile-dark.png",
+    "day",
+    "calendar-grid",
+    "mobile",
+    "dark",
+    "everyday",
+    "populated",
+    8,
+    7,
+    7,
+    8,
+    6,
+    7,
+    "7.2",
+    "7.2",
+    8,
+    7,
+    6,
+    7,
+    7,
+    "7/1",
+    "7.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-day-mobile-light.png",
+    "day",
+    "calendar-grid",
+    "mobile",
+    "light",
+    "everyday",
+    "populated",
+    8,
+    7,
+    7,
+    8,
+    6,
+    7,
+    "7.2",
+    "7.2",
+    8,
+    7,
+    6,
+    7,
+    7,
+    "7/1",
+    "7.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-default-phone-list-mobile-dark.png",
+    "default-phone-list",
+    "calendar-list",
+    "mobile",
+    "dark",
+    "everyday",
+    "populated",
+    8,
+    7,
+    7,
+    8,
+    6,
+    7,
+    "7.2",
+    "7.2",
+    8,
+    7,
+    6,
+    7,
+    7,
+    "7/1",
+    "7.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-default-phone-list-mobile-light.png",
+    "default-phone-list",
+    "calendar-list",
+    "mobile",
+    "light",
+    "everyday",
+    "populated",
+    8,
+    7,
+    7,
+    8,
+    6,
+    7,
+    "7.2",
+    "7.2",
+    8,
+    7,
+    6,
+    7,
+    7,
+    "7/1",
+    "7.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-existing-event-desktop-dark.png",
+    "existing-event",
+    "event-editor",
+    "desktop",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    8,
+    7,
+    "7.7",
+    "7.7",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-existing-event-desktop-light.png",
+    "existing-event",
+    "event-editor",
+    "desktop",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    8,
+    7,
+    "7.7",
+    "7.7",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-existing-event-mobile-dark.png",
+    "existing-event",
+    "event-editor",
+    "mobile",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    8,
+    7,
+    "7.7",
+    "7.7",
+    8,
+    8,
+    7,
+    7,
+    8,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-existing-event-mobile-light.png",
+    "existing-event",
+    "event-editor",
+    "mobile",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    8,
+    7,
+    "7.7",
+    "7.7",
+    8,
+    8,
+    7,
+    7,
+    8,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-list-desktop-dark.png",
+    "list",
+    "calendar-list",
+    "desktop",
+    "dark",
+    "everyday",
+    "populated",
+    8,
+    8,
+    8,
+    8,
+    7,
+    8,
+    "7.85",
+    "7.9",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-list-desktop-light.png",
+    "list",
+    "calendar-list",
+    "desktop",
+    "light",
+    "everyday",
+    "populated",
+    8,
+    8,
+    8,
+    8,
+    7,
+    8,
+    "7.85",
+    "7.9",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-login-desktop-dark.png",
+    "login",
+    "auth",
+    "desktop",
+    "dark",
+    "signed-out",
+    "empty",
+    9,
+    8,
+    8,
+    8,
+    8,
+    7,
+    "8.05",
+    "8.1",
+    8,
+    8,
+    "",
+    8,
+    7,
+    "31/4",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-login-desktop-light.png",
+    "login",
+    "auth",
+    "desktop",
+    "light",
+    "signed-out",
+    "empty",
+    9,
+    8,
+    8,
+    8,
+    8,
+    7,
+    "8.05",
+    "8.1",
+    8,
+    8,
+    "",
+    8,
+    7,
+    "31/4",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-login-mobile-dark.png",
+    "login",
+    "auth",
+    "mobile",
+    "dark",
+    "signed-out",
+    "empty",
+    9,
+    8,
+    8,
+    8,
+    8,
+    7,
+    "8.05",
+    "8.1",
+    8,
+    8,
+    "",
+    8,
+    7,
+    "31/4",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-login-mobile-light.png",
+    "login",
+    "auth",
+    "mobile",
+    "light",
+    "signed-out",
+    "empty",
+    9,
+    8,
+    8,
+    8,
+    8,
+    7,
+    "8.05",
+    "8.1",
+    8,
+    8,
+    "",
+    8,
+    7,
+    "31/4",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-month-desktop-dark.png",
+    "month",
+    "calendar-grid",
+    "desktop",
+    "dark",
+    "everyday",
+    "populated",
+    8,
+    8,
+    7,
+    8,
+    7,
+    8,
+    "7.65",
+    "7.7",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-month-desktop-light.png",
+    "month",
+    "calendar-grid",
+    "desktop",
+    "light",
+    "everyday",
+    "populated",
+    8,
+    8,
+    7,
+    8,
+    7,
+    8,
+    "7.65",
+    "7.7",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-month-mobile-dark.png",
+    "month",
+    "calendar-grid",
+    "mobile",
+    "dark",
+    "everyday",
+    "populated",
+    7,
+    6,
+    5,
+    8,
+    6,
+    7,
+    "6.45",
+    "6.5",
+    8,
+    7,
+    6,
+    7,
+    7,
+    "7/1",
+    "7.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-month-mobile-light.png",
+    "month",
+    "calendar-grid",
+    "mobile",
+    "light",
+    "everyday",
+    "populated",
+    7,
+    6,
+    5,
+    8,
+    6,
+    7,
+    "6.45",
+    "6.5",
+    8,
+    7,
+    6,
+    7,
+    7,
+    "7/1",
+    "7.0"
+   ],
+   [
+    "screenshots/kycalendar-00-before-new-event-desktop-dark.png",
+    "new-event",
+    "event-editor",
+    "desktop",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    7,
+    7,
+    "7.55",
+    "7.6",
+    7,
+    8,
+    8,
+    8,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-new-event-desktop-light.png",
+    "new-event",
+    "event-editor",
+    "desktop",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    7,
+    7,
+    "7.55",
+    "7.6",
+    7,
+    8,
+    8,
+    8,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-new-event-mobile-dark.png",
+    "new-event",
+    "event-editor",
+    "mobile",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    7,
+    7,
+    "7.55",
+    "7.6",
+    7,
+    8,
+    7,
+    8,
+    8,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-new-event-mobile-light.png",
+    "new-event",
+    "event-editor",
+    "mobile",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    7,
+    7,
+    7,
+    "7.55",
+    "7.6",
+    7,
+    8,
+    7,
+    8,
+    8,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-phones-and-apps-desktop-dark.png",
+    "phones-and-apps",
+    "settings",
+    "desktop",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    8,
+    8,
+    7,
+    "7.85",
+    "7.9",
+    8,
+    8,
+    8,
+    8,
+    7,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-phones-and-apps-desktop-light.png",
+    "phones-and-apps",
+    "settings",
+    "desktop",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    8,
+    8,
+    7,
+    "7.85",
+    "7.9",
+    8,
+    8,
+    8,
+    8,
+    7,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-phones-and-apps-mobile-dark.png",
+    "phones-and-apps",
+    "settings",
+    "mobile",
+    "dark",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    8,
+    7,
+    7,
+    "7.7",
+    "7.7",
+    8,
+    8,
+    7,
+    8,
+    7,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-phones-and-apps-mobile-light.png",
+    "phones-and-apps",
+    "settings",
+    "mobile",
+    "light",
+    "everyday",
+    "empty",
+    8,
+    8,
+    8,
+    8,
+    7,
+    7,
+    "7.7",
+    "7.7",
+    8,
+    8,
+    7,
+    8,
+    7,
+    "38/5",
+    "7.6"
+   ],
+   [
+    "screenshots/kycalendar-00-before-week-desktop-dark.png",
+    "week",
+    "calendar-grid",
+    "desktop",
+    "dark",
+    "everyday",
+    "populated",
+    8,
+    7,
+    7,
+    8,
+    7,
+    8,
+    "7.5",
+    "7.5",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-week-desktop-light.png",
+    "week",
+    "calendar-grid",
+    "desktop",
+    "light",
+    "everyday",
+    "populated",
+    8,
+    7,
+    7,
+    8,
+    7,
+    8,
+    "7.5",
+    "7.5",
+    8,
+    8,
+    8,
+    7,
+    8,
+    "39/5",
+    "7.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-week-mobile-dark.png",
+    "week",
+    "calendar-grid",
+    "mobile",
+    "dark",
+    "everyday",
+    "populated",
+    7,
+    4,
+    4,
+    7,
+    5,
+    7,
+    "5.65",
+    "5.7",
+    8,
+    6,
+    6,
+    7,
+    7,
+    "34/5",
+    "6.8"
+   ],
+   [
+    "screenshots/kycalendar-00-before-week-mobile-light.png",
+    "week",
+    "calendar-grid",
+    "mobile",
+    "light",
+    "everyday",
+    "populated",
+    7,
+    4,
+    4,
+    7,
+    5,
+    7,
+    "5.65",
+    "5.7",
+    8,
+    6,
+    6,
+    7,
+    7,
+    "34/5",
+    "6.8"
+   ]
+  ]
+ }
+}

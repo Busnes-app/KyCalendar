@@ -24,6 +24,27 @@ const team = { id: "cal_1", name: "Team", color: "", description: "", created_at
 const groups = { groups: [{ id: "grp_1", display_name: "Sales" }], total: 1 };
 
 describe("GroupCalendars", () => {
+  it("distinguishes no available groups from all groups already having access", async () => {
+    mockFetch({
+      "GET /api/admin/calendars": () => [team],
+      "GET /api/admin/groups": () => ({ groups: [], total: 0 }),
+    });
+    const view = render(<GroupCalendars />);
+    await screen.findByRole("option", { name: "No groups available" });
+    expect(screen.getByLabelText("Group")).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("option", { name: "Every group has access" })).toBeNull();
+    view.unmount();
+    vi.restoreAllMocks();
+
+    mockFetch({
+      "GET /api/admin/calendars": () => [{ ...team, grants: [{ group_id: "grp_1", group_name: "Sales", role: "reader" }] }],
+      "GET /api/admin/groups": () => groups,
+    });
+    render(<GroupCalendars />);
+    await screen.findByRole("option", { name: "Every group has access" });
+    expect(screen.getByLabelText("Group")).toHaveProperty("disabled", true);
+  });
+
   it("grants a group a role", async () => {
     let putBody: unknown;
     const put = vi.fn((init?: RequestInit) => {

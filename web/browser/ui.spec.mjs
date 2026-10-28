@@ -6,6 +6,8 @@ async function fits(page) {
 
 test('production CSP, worker, themes, keyboard and responsive shell', async ({ page, context }, testInfo) => {
   const violations = [];
+  let challenges = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/auth/pow-challenge') challenges++; });
   page.on('console', message => {
     if (/Content Security Policy|violates.*directive/i.test(message.text())) violations.push(message.text());
   });
@@ -21,10 +23,16 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   });
   // Online navigation must refresh the shell rather than pinning a previous deploy.
   await page.reload();
+  // A solved challenge stays stable while typing; a failed attempt still obtains a fresh one.
+  await expect(page.getByText('Browser check passed')).toBeVisible();
+  const initialChallenges = challenges;
   await page.getByLabel('Username', { exact: true }).fill('admin');
   await page.locator('input[type=password]').fill('IncorrectPassword123!');
+  await page.waitForTimeout(250);
+  expect(challenges).toBe(initialChallenges);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('form').locator('..')).toContainText(/invalid|incorrect|failed/i);
+  await expect.poll(() => challenges).toBe(initialChallenges + 1);
   await fits(page);
   await page.locator('input[type=password]').fill('BrowserUpdated456!');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();

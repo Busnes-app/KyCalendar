@@ -1,0 +1,116 @@
+{
+  "product": "KyCalendar",
+  "priority": "highest remaining product per owner",
+  "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
+  "branch": "ui/calendar-eight",
+  "base_source": "0f01550",
+  "phase": "R1 verified and audited; first runtime batch built; after capture pending",
+  "round": 1,
+  "task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-capture-r1-20261027",
+  "scores": {
+    "opus": {
+      "n": 48,
+      "exact": "3617/480",
+      "decimal": "7.535416666666666666666666667",
+      "half_up": "7.5",
+      "brand_exact": "123/16",
+      "freeze_sha256": "3576acfb8e039337529c19c4a73d89bf3a74c6248424e85ea770ee4f1016e0c5",
+      "freeze_bytes": 102803,
+      "raw_json_sha256": "7d5ad791a69b9cc35cd80fed25da5370456e518c52ead7d6d87867bc1e59a84e",
+      "raw_md_sha256": "a17b69d642dc1f53d7afdfa7436638900f58a85c10630e5a9acfecbd6f688586",
+      "independent_satisfaction": false,
+      "cohorts": {
+        "admin-console": {
+          "n": 12,
+          "exact": "149/20"
+        },
+        "settings": {
+          "n": 8,
+          "exact": "127/16"
+        },
+        "calendar-grid": {
+          "n": 12,
+          "exact": "85/12"
+        },
+        "calendar-list": {
+          "n": 4,
+          "exact": "151/20"
+        },
+        "event-editor": {
+          "n": 8,
+          "exact": "153/20"
+        },
+        "auth": {
+          "n": 4,
+          "exact": "81/10"
+        }
+      }
+    },
+    "sol": {
+      "n": 48,
+      "exact": "1889/240",
+      "decimal": "7.870833333333333333333333333",
+      "half_up": "7.9",
+      "brand_exact": "25/3",
+      "freeze_sha256": "a7e63724cf2bed6b5a9991c2c47512dcbaf02fb80e6febf61cfb6b3fab7a715b",
+      "freeze_bytes": 191970,
+      "raw_json_sha256": "730488d9d45ec4dcce63e5ede8af37924894d3bf8ff56690386763fcf51d45e0",
+      "raw_md_sha256": "9d034eaff007ec0c58fa8ea5f43a3365766a5858a5db58ce6b4f820d6cc40457",
+      "independent_satisfaction": false,
+      "cohorts": {
+        "admin-console": {
+          "n": 12,
+          "exact": "77/10"
+        },
+        "settings": {
+          "n": 8,
+          "exact": "33/4"
+        },
+        "calendar-grid": {
+          "n": 12,
+          "exact": "143/20"
+        },
+        "calendar-list": {
+          "n": 4,
+          "exact": "79/10"
+        },
+        "event-editor": {
+          "n": 8,
+          "exact": "17/2"
+        },
+        "auth": {
+          "n": 4,
+          "exact": "17/2"
+        }
+      }
+    },
+    "gemini": "unused; known exhausted quota"
+  },
+  "next": "Inspect built targeted render/behavior once, resolve material failures in bounded batch, commit source and capture matched after; hosted CI required for full suites.",
+  "resource_limit": "targeted checks, capped sequential builds, one browser; full suites hostedCI",
+  "myslop": "KnownHTTP401; no successful shared-board post; do not retry unchanged credential",
+  "baseline": {
+    "originals": 50,
+    "unique_quality_candidates": 48,
+    "near_duplicate_exclusions": 2,
+    "source": "0f0155027a87f3510740afe1b524a96846002fd3",
+    "parent_check": "round1-parent-capture-check.json",
+    "private_fixture": "/tmp/kycalendar-eight-Fqv5Ll",
+    "origin": "http://127.0.0.1:36827",
+    "browser_closed": true,
+    "behavior_failure": "event-dialog focus return failed4/4 probes; needs independent behavioral audit"
+  },
+  "tasks": {
+    "opus": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-opus-r1-20261027",
+    "sol": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-sol-r1-20261027"
+  },
+  "raw_summary_correction": "Terminal agent summary misstated settings cohort. Frozen raw rows and published Markdown recompute127/16=7.9375 ->7.9; use that exact value. Overall3617/480->7.5 is correct. Raw bytes preserved.",
+  "round1_audit_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-r1-disagreement-audit-20261027",
+  "checks": {
+    "affected_calendar_unit": "59passed,4files,singleworker",
+    "login_unit": "5passed,2files,singleworker",
+    "build": "TypeScript/production build passed; exact current assets committed with source",
+    "browser_syntax": "passed",
+    "full_suites": "hostedCIonly,not locally run"
+  }
+}

@@ -170,7 +170,7 @@ function CalendarCard({ cal, color, groups, onSet, onRemove, onDelete }: CardPro
       </div>
       <div className="card-body">
         {cal.grants.length === 0 ? (
-          <EmptyState compact title="No group has access.">Members cannot see this calendar until you add a group.</EmptyState>
+          <p className="field-hint">Members cannot see this calendar until you add a group.</p>
         ) : (
           <ul className="record-list" aria-label={`Access to ${cal.name}`}>
             {cal.grants.map((g) => (
@@ -203,8 +203,8 @@ function CalendarCard({ cal, color, groups, onSet, onRemove, onDelete }: CardPro
         {/* htmlFor, not nesting: a nested select's options would join the label's name. */}
         <div className="field">
           <label htmlFor={`group-${cal.id}`}>Group</label>
-          <select id={`group-${cal.id}`} value={group} onChange={(e) => setGroup(e.target.value)} required>
-            <option value="">{available.length === 0 ? "Every group has access" : "Choose a group"}</option>
+          <select id={`group-${cal.id}`} value={group} onChange={(e) => setGroup(e.target.value)} required disabled={available.length === 0}>
+            <option value="">{groups.length === 0 ? "No groups available" : available.length === 0 ? "Every group has access" : "Choose a group"}</option>
             {available.map((g) => (
               <option key={g.id} value={g.id}>{g.display_name}</option>
             ))}

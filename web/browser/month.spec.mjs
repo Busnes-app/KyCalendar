@@ -40,10 +40,11 @@ test('month: legible other-month days, labelled events, honest offline state', a
   testInfo.annotations.push({ type: 'other-month day contrast', description: ratio.toFixed(2) });
   expect(ratio).toBeGreaterThanOrEqual(4.5);
 
-  // Month events are buttons named by their time and full title, even where the phone month shows
-  // only the dot and time; activating one opens the same event form.
+  // Month events keep a visible title and their full time/title accessible name on phones too.
   const event = page.locator('.fc-daygrid-event').filter({ hasText: title });
   await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(1);
+  expect(await event.locator('.fc-event-title').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(8);
+  await expect(event.locator('.fc-event-title')).toHaveCSS('clip-path', 'none');
   await event.click();
   await expect(page.getByLabel('Title')).toHaveValue(title);
   page.once('dialog', (d) => d.accept());
