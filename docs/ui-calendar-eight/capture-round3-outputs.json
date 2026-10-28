@@ -1,0 +1,459 @@
+{
+  "schema": "kycalendar-capture-outputs/3",
+  "status": "terminal; captures complete; product checks failed; source27690a3 diagnostic and unaccepted",
+  "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
+  "source_head": "27690a367bf1808224aba7ef4b39ab0c8937bcf7",
+  "source_runtime_sha256": "2dec5ab7f0e03dbc14f02e56ef2479a5eb45606607bd46de00349bb0a9ee0002",
+  "private_fixture": "/tmp/kycalendar-eight-Fqv5Ll",
+  "private_process": {
+    "pid": 629822,
+    "startticks": "2918321",
+    "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final",
+    "sha256": "9d15c2a64705c2de4029b2a11e34f5cee65e57e56f72289d895581928de85477"
+  },
+  "browser_closed": true,
+  "fixture_retained": true,
+  "originals": {
+    "previous": 106,
+    "new": 50,
+    "all": 156,
+    "unique_current_candidates": 48,
+    "same_size_current_pairs": 601,
+    "all50_individually_full_resolution_inspected": true
+  },
+  "protected_files": 181,
+  "all_protected_identical_terminal": true,
+  "source_and_served_asset_bindings_rechecked_terminal": true,
+  "primary_outputs": {
+    "manifest": "manifest-03-after.json",
+    "inventory": "inventory-v3.json",
+    "artifacts": "artifacts-v3.json",
+    "checks": "capture-round3-checks.json",
+    "human_report": "capture-round3-checks.md",
+    "source": "sourceprovenance-round3.json",
+    "preservation": "round3-preservation-proof.json",
+    "individual_inspection": "round3-per-file-inspection.json"
+  },
+  "failures": [
+    "Phone Week transformed gutter text absent/clipped; Tuesday fragments paint in gutter; elementFromPoint probes fail despite in-viewport rectangles. Actual product regression.",
+    "Phone Day-to-Week after remount missing role, aria-label and tabindex. Possible FullCalendar DOM reuse means viewDidMount does not rerun; parent datesSet hypothesis recorded.",
+    "Settled phone navigation focus leaves some controls clipped.",
+    "Phone grant fields remain288/160px rather than324px content width."
+  ],
+  "capture_attempt_history": "21 original files followed by ONE bounded completion writing29 missing only. Earlier21 hashes preserved. Raw locator timeout, first driver/manifest/log and corrected-audit history retained. No further browser/capture/product edits.",
+  "metadata_caveat": "Actual binary Go metadata vcs.modified=true retained; exact owner-provided hash/revision and every tracked runtime source/dist hash independently verified.",
+  "clock_caveat": "RealOct28; today/time indicator/last-sign-in changes are clockstate; displaydate2026-10-27. No false Tuesday-clipping repair claim.",
+  "acceptance": false,
+  "scores": null,
+  "behavior_accessibility_complete_gates": "untested; product failures explicit",
+  "dox": "Applicable contracts read/rechecked; AGENTS unchanged because evidence-only work stays within existing contracts and owned-file scope.",
+  "myslop": "Unavailable: known revoked401 per user; no retry/external request.",
+  "parent_next": "Runtime freeze can be released now. Parent owns selected runtime fixes and any subsequent confirmation.",
+  "files": [
+    {
+      "file": "artifacts-03-after.json",
+      "sha256": "b52a04997f1b955b867f7d275f9ad3c4683e636ab2f29577b21fe3cd594dec28",
+      "bytes": 245698
+    },
+    {
+      "file": "artifacts-v3.json",
+      "sha256": "aa2e0d460a7781f73d5ae478698d2de1e87207e3e405c5cde1eaea63d3ca72a8",
+      "bytes": 328930
+    },
+    {
+      "file": "capture-round3-attempt1.mjs",
+      "sha256": "4e712cffbdabdf536b835dfaf2a8d2a7780653e1778950859f67825b7670eab8",
+      "bytes": 30069
+    },
+    {
+      "file": "capture-round3-audit.log",
+      "sha256": "2c803dbaebe59b02354ba1704c1b114c1be48d0e89bc46bff2e6d69096f271e5",
+      "bytes": 635
+    },
+    {
+      "file": "capture-round3-checks.json",
+      "sha256": "8d283fccfec1f9f0fe16e5e5d0519fb694afa4fdb29c4c74670c925094748908",
+      "bytes": 32525
+    },
+    {
+      "file": "capture-round3-checks.md",
+      "sha256": "6a0f254995ffb531fb9abaced6f932f4d1a51f0c87d7fc2b4df0d97a8a2480d3",
+      "bytes": 4405
+    },
+    {
+      "file": "capture-round3-checks.py",
+      "sha256": "b0fe0d5599890c8a3336855665a50b135ace6aee343d8fa18fb725aae2166e9d",
+      "bytes": 22756
+    },
+    {
+      "file": "capture-round3-completion.log",
+      "sha256": "f7ed03be61462a42241fb340aea0b2638a4e6ba81f53b4f6467cb8437a6679c2",
+      "bytes": 1739
+    },
+    {
+      "file": "capture-round3-final-audit.log",
+      "sha256": "74dea64c96ff2d7dde42cd2507bd4daae18c255ddc81d310106d2510fce84b88",
+      "bytes": 528
+    },
+    {
+      "file": "capture-round3-inventory.log",
+      "sha256": "12e8917cca77175d6fb1ac701a798a722c502ca0de415509225a0c5e070f3463",
+      "bytes": 95
+    },
+    {
+      "file": "capture-round3.log",
+      "sha256": "bfd73a87b098e16e439b978b68d560705ca8452c2ef9da45d49d06d800ecfb34",
+      "bytes": 1400
+    },
+    {
+      "file": "capture-round3.mjs",
+      "sha256": "1f7bd148b2bdf8f4ade377213fe1bea2fcc5175ec4785ece104c61713774bc0c",
+      "bytes": 31979
+    },
+    {
+      "file": "inventory-03-after.json",
+      "sha256": "855a4b12b263da826866de241d1ec3ac76a3a69bb5a177ce7dd5fbbb474430d3",
+      "bytes": 33019
+    },
+    {
+      "file": "inventory-v3.json",
+      "sha256": "10604a0a85ba07013aa50d05c8dd4bbfd04b64264cc7dfd2c579548dfc851c04",
+      "bytes": 62758
+    },
+    {
+      "file": "manifest-03-after-attempt1.json",
+      "sha256": "944353307d193d90d6e067df5592f3681c5bf13047efe281217fb6693346715c",
+      "bytes": 899886
+    },
+    {
+      "file": "manifest-03-after.json",
+      "sha256": "6fb7eea8628e15f9531ed4f41a8d2348abdf77a22b3f6505fc8bebfe82c5daa6",
+      "bytes": 2948670
+    },
+    {
+      "file": "round3-audit-attempt1/artifacts-v3.json",
+      "sha256": "35afc479a749c54934f14954683829c1ee8dc2baacaf3ecb9f73e6e97e26c8ed",
+      "bytes": 328822
+    },
+    {
+      "file": "round3-audit-attempt1/capture-round3-checks.json",
+      "sha256": "d8dba9d4fa3f8a42cc63b38b3cb7894d33ab3bab177a5bf0ebb04e2b99e08e3a",
+      "bytes": 31676
+    },
+    {
+      "file": "round3-audit-attempt1/capture-round3-checks.md",
+      "sha256": "b98c974a7a01b99d3d51d109505df80d5bf1490a2c0dc87bb8877e639609d873",
+      "bytes": 4047
+    },
+    {
+      "file": "round3-audit-attempt1/capture-round3-checks.py",
+      "sha256": "af724268cbd3bffdc872c33d182c8add79db574bf157e728c451a1ad06637dc2",
+      "bytes": 21412
+    },
+    {
+      "file": "round3-audit-attempt1/inventory-v3.json",
+      "sha256": "2ae254412d428f90d8efbaad59a8a68b7d0d66b9432686fe109388a00e0b2564",
+      "bytes": 62611
+    },
+    {
+      "file": "round3-audit-attempt1/round3-matched-pair-audit.json",
+      "sha256": "32ad0f8f44b47e2f381aff1b7d5c7fea108e80fe00ec3372ef47c550e5deac4f",
+      "bytes": 51059
+    },
+    {
+      "file": "round3-audit-attempt1/round3-preservation-proof.json",
+      "sha256": "48f7af740bc15adb98e88906b4e94d233079eaa14e0560a4dad117c7bc3688b0",
+      "bytes": 53595
+    },
+    {
+      "file": "round3-audit-attempt1/round3-title-geometry.json",
+      "sha256": "b9998ce740ddd6109882bab09a1796e998e5eec412e7607e3d93a6e1b728be52",
+      "bytes": 135666
+    },
+    {
+      "file": "round3-audit-attempt1/sourceprovenance-round3.json",
+      "sha256": "aa0d87b0714aeafce9a21b96ec614ceac969b6046c3aa24c91f4091dcf3a9201",
+      "bytes": 148099
+    },
+    {
+      "file": "round3-matched-pair-audit.json",
+      "sha256": "32ad0f8f44b47e2f381aff1b7d5c7fea108e80fe00ec3372ef47c550e5deac4f",
+      "bytes": 51059
+    },
+    {
+      "file": "round3-per-file-inspection.json",
+      "sha256": "aac121679bb89debc09108d5c59bf7686b28bb4cf090e61e376b2b05ba23d40d",
+      "bytes": 37682
+    },
+    {
+      "file": "round3-preservation-before.json",
+      "sha256": "3c8bc77e765ff2bdf4b78b46960254d3dc4ac7d87c8099cdbcd5b3930e5d8559",
+      "bytes": 32866
+    },
+    {
+      "file": "round3-preservation-proof.json",
+      "sha256": "48f7af740bc15adb98e88906b4e94d233079eaa14e0560a4dad117c7bc3688b0",
+      "bytes": 53595
+    },
+    {
+      "file": "round3-title-geometry.json",
+      "sha256": "b9998ce740ddd6109882bab09a1796e998e5eec412e7607e3d93a6e1b728be52",
+      "bytes": 135666
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-dark.png",
+      "sha256": "d5b0f4c0b5334c5aa7d84e87bfe6bbc07ddeb8217d22a9b452d2d6ccaca48b85",
+      "bytes": 67563
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-light.png",
+      "sha256": "3b06f2b1ffb2dc431c1dc413be8f0fc90a18c1e74f05d43d2f83f09c3d04b766",
+      "bytes": 67616
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-dark.png",
+      "sha256": "062bfb07786fe56d09d8d6b5afcc0ae9fe6f48db62c4468def8e3937c09efcd9",
+      "bytes": 44832
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-light.png",
+      "sha256": "f684fc6ba2b4f2620fd8e69b0594fa81c67ced5da620ad92593d4b787c5cf4a3",
+      "bytes": 44810
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-dark.png",
+      "sha256": "b8d5c8b7f2f32800727719d87366cee2165a79814298ff19a9f799751d41179a",
+      "bytes": 87904
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-light.png",
+      "sha256": "14a2abe19d540c35468de3b2ce44212487cd17d506135e0588d5bb2a61faf08c",
+      "bytes": 87772
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-dark.png",
+      "sha256": "cb2305a70978d42e1b37ebedcfdb12f457bc46610bc4ec15f3e22379fce35436",
+      "bytes": 44536
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-light.png",
+      "sha256": "44178d205dd165350f073ff1d2ed045f21b0edf97d17cfa4057bbd09569ec8d7",
+      "bytes": 43681
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-dark.png",
+      "sha256": "723e76c5b12b18f72c3d94b3649ebe572aa7217d90611e6a1d8002c5800046d1",
+      "bytes": 74523
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-light.png",
+      "sha256": "53944ab2dbee6aaa019480c8cfc4bbcdc040830be4892d7ff18d51d4d942fd89",
+      "bytes": 74358
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-dark.png",
+      "sha256": "8afa9a62021d02aa06e522eb0a37a024c49c933d0d0eec466eee41abdc3a9554",
+      "bytes": 47491
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-light.png",
+      "sha256": "f4259e573e919f2e8af4f14b83ffdb755931f29d64c2e191df53435e6484628d",
+      "bytes": 46964
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-dark.png",
+      "sha256": "eaf70d9c310f9ad8679d51547e78a93e76adfa881748ef70a7a26457672e4f7c",
+      "bytes": 69013
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-light.png",
+      "sha256": "856d1d3a96175b6a3edb2aefff73306edabe516da2cdba2654598686ee3a4fc1",
+      "bytes": 68309
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-dark.png",
+      "sha256": "32bf368113a1d4e31f874228e249a589b3df85e8ec9e9cda24892026e3a07376",
+      "bytes": 39341
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-light.png",
+      "sha256": "e09ec8eb31549e609c7d7d7cf38a71440301cb6df4bc3a110b0fbcb1cc10392d",
+      "bytes": 38515
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-dark.png",
+      "sha256": "f35041783cb2ae729054bb6bc8e4df404bdbabd23398bffc4989e938738d7398",
+      "bytes": 62856
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-light.png",
+      "sha256": "1785208348f18a16b4b4a023d609d367bc6e1e013a9d394760af1eacbe275cde",
+      "bytes": 62673
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-dark.png",
+      "sha256": "df2c06702a304a41e1590999a164f825b28198ac2cdd462d81cfe8253eb6b856",
+      "bytes": 39030
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-light.png",
+      "sha256": "b836b0b8276e317efa64efc9a964e1ee59fae1d9180cef04e3f92a3f7d748325",
+      "bytes": 38866
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-dark.png",
+      "sha256": "284aa79a9e90f85396268fb075636a8eb5b31d89716cd47e84b36b1ec1edca37",
+      "bytes": 61243
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-light.png",
+      "sha256": "77252dcd49460f381ee79ffd9270234bfd5c8c70206183f1964ca076d45f57fc",
+      "bytes": 61331
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-dark.png",
+      "sha256": "8c00319a2025737bd788bd964213ec35c0ba9d6e8e560b5590e547048f98027c",
+      "bytes": 105958
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-light.png",
+      "sha256": "7efad1d52831254969c00168e962977f45d1d402b662caeb6f154934cc69ea3f",
+      "bytes": 109453
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-dark.png",
+      "sha256": "7dc72ff4e38611498c72c6e6cf9005b36fbbf8dfc3adbda354e80ba6bba7db4f",
+      "bytes": 41494
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-light.png",
+      "sha256": "12756855e0a77c1ac7cad47f84a05a220cc74539598d1b96d1d53c7f87b933e2",
+      "bytes": 42485
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-dark.png",
+      "sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+      "bytes": 95215
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-light.png",
+      "sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+      "bytes": 95202
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-dark.png",
+      "sha256": "284aa79a9e90f85396268fb075636a8eb5b31d89716cd47e84b36b1ec1edca37",
+      "bytes": 61243
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-light.png",
+      "sha256": "77252dcd49460f381ee79ffd9270234bfd5c8c70206183f1964ca076d45f57fc",
+      "bytes": 61331
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-dark.png",
+      "sha256": "479a79849358177a96c582ce1b366d54d2733927efcff4a7588752f26d17d16d",
+      "bytes": 23768
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-light.png",
+      "sha256": "110de186dd99e738c4512dafcd495021719b8bdb5f599bf78cba2f1e003148ad",
+      "bytes": 24043
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-dark.png",
+      "sha256": "e9c28f02c223cb807304183ce4dd93661f7c615c21b472566795e0f852d3c667",
+      "bytes": 20334
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-light.png",
+      "sha256": "4682130636d2250f01a007dad70f6b88352904eaea74efb80f40a743371a4190",
+      "bytes": 20512
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-dark.png",
+      "sha256": "722a6ffe747790c559d73a81f6e9bc5a8940af71348f89144e4401e0e2250245",
+      "bytes": 75200
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-light.png",
+      "sha256": "e4e16d8fd399e2b767f9b2a3869ec81c88925b9b58f5b72c8bee732b84b6c9a4",
+      "bytes": 75560
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-dark.png",
+      "sha256": "68ad52fc8a2606d9703d69a0fb6b59fcb494fe6c0af03180a39a9bfb4915ce0c",
+      "bytes": 45585
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-light.png",
+      "sha256": "fc79c96ec6b0274cd0c2e7eb253cfed456f1ebe15b877250cecb529bf772931d",
+      "bytes": 45585
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-dark.png",
+      "sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+      "bytes": 75954
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-light.png",
+      "sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+      "bytes": 78204
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-dark.png",
+      "sha256": "3684879cba6b8d66bd1fa6edc66620fe54caedecbc76eb5a7994dcd23f25aafc",
+      "bytes": 32675
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-light.png",
+      "sha256": "576811a0b198a305d7a256667a40661faef62131cdd2e7193ae4b10ff1b4ebf0",
+      "bytes": 34083
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-dark.png",
+      "sha256": "3e19671f81a1c77ad39a4d79602ca2774fbd752908756c0372bb182924e39e7e",
+      "bytes": 83946
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-light.png",
+      "sha256": "0186944ea81f9acc95d34b64c0112f0fa21d14c2947f67e8877c590355b6b0e6",
+      "bytes": 82846
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-dark.png",
+      "sha256": "3eec7a3aa979a863a57c8b342874dd9ccf7895541b504a2ad79bf23bcd489ad2",
+      "bytes": 45844
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-light.png",
+      "sha256": "e391531e9c4da72164942fcd3fcaf06e27a023b387091ad2a8da77e2ed5011bd",
+      "bytes": 45118
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-dark.png",
+      "sha256": "2ffb0252c25885e95122c678a2823703ef8d107b467b8d6da16d3e6dcd4ed4e3",
+      "bytes": 83526
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-light.png",
+      "sha256": "852bdb35ba6861b16c215c705753315e1938acdf81cd7349b88f36febd95c1da",
+      "bytes": 83150
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-dark.png",
+      "sha256": "6aade20cd58b7c49b4a2123eb50f2d95e3e48b4b75d467200118a4424dcb4c25",
+      "bytes": 40545
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-light.png",
+      "sha256": "d0d3f3096301a15f41ffd5e032feaa34dd429bb982cea9fc625657d8aba2cba1",
+      "bytes": 40377
+    },
+    {
+      "file": "sourceprovenance-round3.json",
+      "sha256": "d215b9a8aed7bc3d29243e4b34081cd95829e9d3f5849b098fe97ab84ebd9729",
+      "bytes": 148358
+    }
+  ]
+}

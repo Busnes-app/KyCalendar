@@ -1,0 +1,759 @@
+{
+  "schema": "kycalendar-individual-inspection/3",
+  "images": 50,
+  "all_originals_individually_inspected": true,
+  "scores": null,
+  "capture_batch_status": "diagnostic; owner rejected27690a3 implementation; no acceptance or progression claim",
+  "files": [
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-light.png",
+      "sha256": "e4e16d8fd399e2b767f9b2a3869ec81c88925b9b58f5b72c8bee732b84b6c9a4",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "October2026 Month with seeded Oct26\u201331 titles, muted adjacent months, todayOct28; desktop titles stay single-line/ellipsized."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-light.png",
+      "sha256": "852bdb35ba6861b16c215c705753315e1938acdf81cd7349b88f36febd95c1da",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Oct25\u201331 Week, 07:00 opening, complete day headings and left time gutter; tall Planning title uses two lines then ellipsis. Current-day/current-time marks reflect realOct28."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-light.png",
+      "sha256": "1785208348f18a16b4b4a023d609d367bc6e1e013a9d394760af1eacbe275cde",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "October27 Day, Library day all-day band, 07:00 opening, Design review/Lunch/Planning in timed blocks; long Planning title fits one line in wide column."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-light.png",
+      "sha256": "a9a8d9c55785ba9b31139afcddde2d2eafacf9d523b57ba1af7653094f907e0c",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "list",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Oct25\u201331 populated list with full seeded event names, time ranges and all-day labels; one app-sidebar region."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-light.png",
+      "sha256": "87865cc37f7f2f4242f88ce49553aecfb3080fdcc6850471e8f885c2e56695ba",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Centered New event dialog with empty title/location/description, fixed Oct27 09:00\u201310:00 draft, Work calendar and Cancel/Save. End date month segment selection/focus is original native driver artifact. No submit."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-light.png",
+      "sha256": "7efad1d52831254969c00168e962977f45d1d402b662caeb6f154934cc69ea3f",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Edit event dialog displays genuine Design review, Oct27 10:00\u201311:00, Meeting room, seeded description, Does not repeat, Delete/Cancel/Save. Title has legitimate keyboard focus from Enter."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-light.png",
+      "sha256": "856d1d3a96175b6a3edb2aefff73306edabe516da2cdba2654598686ee3a4fc1",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Appearance theme-preview card grid, Match system selected, all named themes visible; active Appearance row has original pointer-derived state and no added navigation-focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-light.png",
+      "sha256": "0186944ea81f9acc95d34b64c0112f0fa21d14c2947f67e8877c590355b6b0e6",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Phones and apps empty device/agent form and no-password state, CalDAV selected; setup instructions below. No created credential or one-time secret."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-light.png",
+      "sha256": "14a2abe19d540c35468de3b2ce44212487cd17d506135e0588d5bb2a61faf08c",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "administrator",
+      "notes": "Administrator overview with six management cards; admin-only left navigation/account, no personal calendar/event surface."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-light.png",
+      "sha256": "53944ab2dbee6aaa019480c8cfc4bbcdc040830be4892d7ff18d51d4d942fd89",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "administrator",
+      "notes": "People table with exactly casey everyday and Administrator active rows; real sign-in timestamps reflect clock/session updates; empty search and role-appropriate management actions."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-light.png",
+      "sha256": "3b06f2b1ffb2dc431c1dc413be8f0fc90a18c1e74f05d43d2f83f09c3d04b766",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "administrator",
+      "notes": "Shared planning has no access yet; Group says No groups available and is disabled; Add group disabled. Reader Role remains enabled; calendar creation untouched."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-light.png",
+      "sha256": "110de186dd99e738c4512dafcd495021719b8bdb5f599bf78cba2f1e003148ad",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "signed-out",
+      "notes": "Genuine empty KyCalendar sign-in with Match system, Username initial focus, Password blank, browser check passed and Sign in; no filled credential capture."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-light.png",
+      "sha256": "77252dcd49460f381ee79ffd9270234bfd5c8c70206183f1964ca076d45f57fc",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "default-phone-list",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Genuine untouched phone landing List, Oct25\u201331, long title wraps; matches explicit phone List bytes, retained as first-filename representative once."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-light.png",
+      "sha256": "fc79c96ec6b0274cd0c2e7eb253cfed456f1ebe15b877250cecb529bf772931d",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "October2026 narrow Month shows two visible title rows: Team/che\u2026, Librar/y day, Desig/n\u2026, Lunc/h\u2026, Plann/ing\u2026; Release/preparation wraps in its all-day band. Initial viewport clips following month row vertically; no horizontal page overflow."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-light.png",
+      "sha256": "d0d3f3096301a15f41ffd5e032feaa34dd429bb982cea9fc625657d8aba2cba1",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "REGRESSION: initial scrollLeft307 aligns Wednesday28 fully within viewport; time gutter labels do not paint, while clipped Tuesday event fragments paint at left. Thursday/Friday headings visible. Counter-transformed time-cell boxes alone falsely suggest visibility; retained paint probes fail."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-light.png",
+      "sha256": "b836b0b8276e317efa64efc9a964e1ee59fae1d9180cef04e3f92a3f7d748325",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "October27 Day with visible 7am\u20132pm axis and timed events; tall Planning title is fully readable in two lines. Compact Calendar/New event row and full-width timezone sentence remain within viewport."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-light.png",
+      "sha256": "77252dcd49460f381ee79ffd9270234bfd5c8c70206183f1964ca076d45f57fc",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "list",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Native-width populated List; long Planning title wraps over three lines, date/day dividers and complete visible rows retained; lower week continues below viewport."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-light.png",
+      "sha256": "576811a0b198a305d7a256667a40661faef62131cdd2e7193ae4b10ff1b4ebf0",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Phone New event dialog stacks date fields and fits viewport, empty unsaved fields, Oct27 09:00\u201310:00 draft. End native month segment remains selected; no focus clearing. Cancel/Save visible."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-light.png",
+      "sha256": "12756855e0a77c1ac7cad47f84a05a220cc74539598d1b96d1d53c7f87b933e2",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Phone Edit event dialog shows genuine Design review, fixed times/location/description, recurrence and Delete/Cancel/Save; natural title focus retained. Escape/replacement-anchor probes recorded after shot."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-light.png",
+      "sha256": "e09ec8eb31549e609c7d7d7cf38a71440301cb6df4bc3a110b0fbcb1cc10392d",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Appearance two-column theme-preview cards, Match system selected; description wraps, lower themes extend below initial viewport. Appearance nav selected without R2 probe-added focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-light.png",
+      "sha256": "e391531e9c4da72164942fcd3fcaf06e27a023b387091ad2a8da77e2ed5011bd",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "everyday",
+      "notes": "Phone device/agent form, empty device name and no-password state; Setup begins at bottom. Phones & apps selected in horizontally scrolling navigation."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-light.png",
+      "sha256": "44178d205dd165350f073ff1d2ed045f21b0edf97d17cfa4057bbd09569ec8d7",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "administrator",
+      "notes": "Administrator overview single-column People/Groups cards and partial Group calendars card below initial viewport; top admin nav only."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-light.png",
+      "sha256": "f4259e573e919f2e8af4f14b83ffdb755931f29d64c2e191df53435e6484628d",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "administrator",
+      "notes": "People records stack within viewport; casey actions wrap, Administrator record continues below initial viewport; Last-sign-in changes are clock/session state."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-light.png",
+      "sha256": "f684fc6ba2b4f2620fd8e69b0594fa81c67ced5da620ad92593d4b787c5cf4a3",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "administrator",
+      "notes": "Shared planning has no access yet; Add group disabled and unavailable Group disabled. REGRESSION versus stated full-width goal: Group288px and Role160px, below324px card content; fields retain different widths. No form submitted."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-light.png",
+      "sha256": "4682130636d2250f01a007dad70f6b88352904eaea74efb80f40a743371a4190",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "light",
+      "role": "signed-out",
+      "notes": "Genuine empty phone sign-in, logo/title/tagline, Match system and empty Username/Password form fit viewport. Browser check passed; initial Username focus is legitimate."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-desktop-dark.png",
+      "sha256": "722a6ffe747790c559d73a81f6e9bc5a8940af71348f89144e4401e0e2250245",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "October2026 Month with seeded Oct26\u201331 titles, muted adjacent months, todayOct28; desktop titles stay single-line/ellipsized."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-desktop-dark.png",
+      "sha256": "2ffb0252c25885e95122c678a2823703ef8d107b467b8d6da16d3e6dcd4ed4e3",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Oct25\u201331 Week, 07:00 opening, complete day headings and left time gutter; tall Planning title uses two lines then ellipsis. Current-day/current-time marks reflect realOct28."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-desktop-dark.png",
+      "sha256": "f35041783cb2ae729054bb6bc8e4df404bdbabd23398bffc4989e938738d7398",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "October27 Day, Library day all-day band, 07:00 opening, Design review/Lunch/Planning in timed blocks; long Planning title fits one line in wide column."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-desktop-dark.png",
+      "sha256": "b92e394cc8c982c7be2146d757801576e98881c42931ec83546ff295e995ed8c",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "list",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Oct25\u201331 populated list with full seeded event names, time ranges and all-day labels; one app-sidebar region."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-desktop-dark.png",
+      "sha256": "c97e5cf8df9d38a0883218255da21d521c3e04b5fb608bbf4d83ed7c019363a6",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Centered New event dialog with empty title/location/description, fixed Oct27 09:00\u201310:00 draft, Work calendar and Cancel/Save. End date month segment selection/focus is original native driver artifact. No submit."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-desktop-dark.png",
+      "sha256": "8c00319a2025737bd788bd964213ec35c0ba9d6e8e560b5590e547048f98027c",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Edit event dialog displays genuine Design review, Oct27 10:00\u201311:00, Meeting room, seeded description, Does not repeat, Delete/Cancel/Save. Title has legitimate keyboard focus from Enter."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-desktop-dark.png",
+      "sha256": "eaf70d9c310f9ad8679d51547e78a93e76adfa881748ef70a7a26457672e4f7c",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Appearance theme-preview card grid, Match system selected, all named themes visible; active Appearance row has original pointer-derived state and no added navigation-focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-desktop-dark.png",
+      "sha256": "3e19671f81a1c77ad39a4d79602ca2774fbd752908756c0372bb182924e39e7e",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Phones and apps empty device/agent form and no-password state, CalDAV selected; setup instructions below. No created credential or one-time secret."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-desktop-dark.png",
+      "sha256": "b8d5c8b7f2f32800727719d87366cee2165a79814298ff19a9f799751d41179a",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "administrator",
+      "notes": "Administrator overview with six management cards; admin-only left navigation/account, no personal calendar/event surface."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-desktop-dark.png",
+      "sha256": "723e76c5b12b18f72c3d94b3649ebe572aa7217d90611e6a1d8002c5800046d1",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "administrator",
+      "notes": "People table with exactly casey everyday and Administrator active rows; real sign-in timestamps reflect clock/session updates; empty search and role-appropriate management actions."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-desktop-dark.png",
+      "sha256": "d5b0f4c0b5334c5aa7d84e87bfe6bbc07ddeb8217d22a9b452d2d6ccaca48b85",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "administrator",
+      "notes": "Shared planning has no access yet; Group says No groups available and is disabled; Add group disabled. Reader Role remains enabled; calendar creation untouched."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-desktop-dark.png",
+      "sha256": "479a79849358177a96c582ce1b366d54d2733927efcff4a7588752f26d17d16d",
+      "dimensions": [
+        1280,
+        900
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "signed-out",
+      "notes": "Genuine empty KyCalendar sign-in with Match system, Username initial focus, Password blank, browser check passed and Sign in; no filled credential capture."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-default-phone-list-mobile-dark.png",
+      "sha256": "284aa79a9e90f85396268fb075636a8eb5b31d89716cd47e84b36b1ec1edca37",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "default-phone-list",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Genuine untouched phone landing List, Oct25\u201331, long title wraps; matches explicit phone List bytes, retained as first-filename representative once."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-month-mobile-dark.png",
+      "sha256": "68ad52fc8a2606d9703d69a0fb6b59fcb494fe6c0af03180a39a9bfb4915ce0c",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "month",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "October2026 narrow Month shows two visible title rows: Team/che\u2026, Librar/y day, Desig/n\u2026, Lunc/h\u2026, Plann/ing\u2026; Release/preparation wraps in its all-day band. Initial viewport clips following month row vertically; no horizontal page overflow."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-week-mobile-dark.png",
+      "sha256": "6aade20cd58b7c49b4a2123eb50f2d95e3e48b4b75d467200118a4424dcb4c25",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "week",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "REGRESSION: initial scrollLeft307 aligns Wednesday28 fully within viewport; time gutter labels do not paint, while clipped Tuesday event fragments paint at left. Thursday/Friday headings visible. Counter-transformed time-cell boxes alone falsely suggest visibility; retained paint probes fail."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-day-mobile-dark.png",
+      "sha256": "df2c06702a304a41e1590999a164f825b28198ac2cdd462d81cfe8253eb6b856",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "day",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "October27 Day with visible 7am\u20132pm axis and timed events; tall Planning title is fully readable in two lines. Compact Calendar/New event row and full-width timezone sentence remain within viewport."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-list-mobile-dark.png",
+      "sha256": "284aa79a9e90f85396268fb075636a8eb5b31d89716cd47e84b36b1ec1edca37",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "list",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Native-width populated List; long Planning title wraps over three lines, date/day dividers and complete visible rows retained; lower week continues below viewport."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-new-event-mobile-dark.png",
+      "sha256": "3684879cba6b8d66bd1fa6edc66620fe54caedecbc76eb5a7994dcd23f25aafc",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "new-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Phone New event dialog stacks date fields and fits viewport, empty unsaved fields, Oct27 09:00\u201310:00 draft. End native month segment remains selected; no focus clearing. Cancel/Save visible."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-existing-event-mobile-dark.png",
+      "sha256": "7dc72ff4e38611498c72c6e6cf9005b36fbbf8dfc3adbda354e80ba6bba7db4f",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "existing-event",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Phone Edit event dialog shows genuine Design review, fixed times/location/description, recurrence and Delete/Cancel/Save; natural title focus retained. Escape/replacement-anchor probes recorded after shot."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-appearance-mobile-dark.png",
+      "sha256": "32bf368113a1d4e31f874228e249a589b3df85e8ec9e9cda24892026e3a07376",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "appearance",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Appearance two-column theme-preview cards, Match system selected; description wraps, lower themes extend below initial viewport. Appearance nav selected without R2 probe-added focus outline."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-phones-and-apps-mobile-dark.png",
+      "sha256": "3eec7a3aa979a863a57c8b342874dd9ccf7895541b504a2ad79bf23bcd489ad2",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "phones-and-apps",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "everyday",
+      "notes": "Phone device/agent form, empty device name and no-password state; Setup begins at bottom. Phones & apps selected in horizontally scrolling navigation."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-overview-mobile-dark.png",
+      "sha256": "cb2305a70978d42e1b37ebedcfdb12f457bc46610bc4ec15f3e22379fce35436",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-overview",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "administrator",
+      "notes": "Administrator overview single-column People/Groups cards and partial Group calendars card below initial viewport; top admin nav only."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-people-mobile-dark.png",
+      "sha256": "8afa9a62021d02aa06e522eb0a37a024c49c933d0d0eec466eee41abdc3a9554",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-people",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "administrator",
+      "notes": "People records stack within viewport; casey actions wrap, Administrator record continues below initial viewport; Last-sign-in changes are clock/session state."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-admin-group-calendars-mobile-dark.png",
+      "sha256": "062bfb07786fe56d09d8d6b5afcc0ae9fe6f48db62c4468def8e3937c09efcd9",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "admin-group-calendars",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "administrator",
+      "notes": "Shared planning has no access yet; Add group disabled and unavailable Group disabled. REGRESSION versus stated full-width goal: Group288px and Role160px, below324px card content; fields retain different widths. No form submitted."
+    },
+    {
+      "file": "screenshots/kycalendar-03-after-login-mobile-dark.png",
+      "sha256": "e9c28f02c223cb807304183ce4dd93661f7c615c21b472566795e0f852d3c667",
+      "dimensions": [
+        390,
+        844
+      ],
+      "inspection": "individually opened original at full resolution with view_image(detail=original); no contact sheet/crop/resize",
+      "observed_product": "KyCalendar",
+      "observed_surface": "login",
+      "filename_matches_observed_product_surface": true,
+      "scheme": "dark",
+      "role": "signed-out",
+      "notes": "Genuine empty phone sign-in, logo/title/tagline, Match system and empty Username/Password form fit viewport. Browser check passed; initial Username focus is legitimate."
+    }
+  ]
+}

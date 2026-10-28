@@ -2,10 +2,10 @@
   "product": "KyCalendar",
   "priority": "highest remaining product per owner",
   "worktree": "/home/yoshi/git/busnes.app/KyCalendar/.claude/worktrees/calendar-eight",
-  "branch": "ui/calendar-eight",
+  "branch": "docs/calendar-council-results",
   "base_source": "0f01550",
-  "phase": "round2 terminal, Opus7.8 below gate; bounded round3 readability batch tested, matched recapture next",
-  "round": 2,
+  "phase": "corrected round3 captures validated; independent Opus/Sol reviews running",
+  "round": 3,
   "task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-fresh-baseline-capture-r1-20261027",
   "scores": {
     "opus": {
@@ -86,7 +86,7 @@
     },
     "gemini": "unused; known exhausted quota"
   },
-  "next": "Capture round3 from committed runtime in retained fixture without reseeding; preserve all older images/reports, validate current membership before independent Opus/Sol review.",
+  "next": "Collect terminalR3 reviews, validate freezes/arithmetic and audit spreads. Use Opus half-up overall8.0 progression; stop cosmetic work once accepted. Update workbook and gallery; deliver evidence PR separately from runtimefix.",
   "resource_limit": "targeted checks, capped sequential builds, one browser; full suites hostedCI",
   "myslop": "KnownHTTP401; no successful shared-board post; do not retry unchanged credential",
   "baseline": {
@@ -114,8 +114,8 @@
     "full_suites": "hostedCIonly,not locally run",
     "targeted_browser": "light390calendar+month2passed after focus correction;login/CSP/theme1passed on unchanged Login source"
   },
-  "pr": "https://github.com/Busnes-app/KyCalendar/pull/92",
-  "pr_head": "d7e3b89843c5893af0d18cc7e3ac147880cc91c4",
+  "pr": "https://github.com/Busnes-app/KyCalendar/pull/93",
+  "pr_head": "3aca6fcf934dacb0149aafce388cf38f02244015",
   "after_capture_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-matched-after-capture-r2-20261027",
   "codeql_findings": {
     "alerts": [
@@ -182,5 +182,33 @@
     "driver_archive_hashes": "verified",
     "scan_status": "pending new-head hosted scan"
   },
-  "round2_disagreement_audit_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-r2-disagreement-audit-20261028"
+  "round2_disagreement_audit_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-r2-disagreement-audit-20261028",
+  "round3_review_tasks": {
+    "opus": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-corrected-views-opus-r3-20261028",
+    "sol": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-corrected-views-sol-r3-20261028"
+  },
+  "round3_scores": {
+    "opus": "pending",
+    "sol": "pending",
+    "gemini": "unused; exhaustedquota"
+  },
+  "round3_capture": {
+    "source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+    "current": "04-confirmation",
+    "diagnostic": "03-after",
+    "originals": 206,
+    "current_unique": 48,
+    "checks_pass": 27,
+    "checks_fail": 0,
+    "input": "review-inputs-v3.json",
+    "capture_task": "node:delegated-task:command%3Amcp%3A1d10f0ac-4de8-40db-8971-a120cb088336%3Adelegate-task%3Akycalendar-corrected-confirmation-capture-r3-20261028",
+    "parent_verification": "round3-parent-confirmation-check.json"
+  },
+  "runtime_branch": "fix/calendar-week-visibility",
+  "fixture": {
+    "directory": "/tmp/kycalendar-eight-Fqv5Ll",
+    "pid": 798113,
+    "startticks": "5579845",
+    "binary_sha256": "cd10fe1adbd1b21c9b89935a63827f7c746b9cf83a75fd05e5556c79e2b8c762"
+  }
 }

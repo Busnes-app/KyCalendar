@@ -1,0 +1,28 @@
+{
+  "file": "KyCalendar-Round3-Changes.html",
+  "bytes": 7569760,
+  "sha256": "52ab4ef1e83a985f87e5321d37a9f6ffdaccddac73cf8123023cfbf023880796",
+  "current_round": 3,
+  "scored_through": 2,
+  "pairs": 48,
+  "offline_and_contrast": "passed HTML-page checker; six light/dark text/background pairs >=4.5:1",
+  "previews": [
+    {
+      "width": 728,
+      "appearance": "light",
+      "horizontal_overflow": false,
+      "loaded_images": true,
+      "select_options": 48
+    },
+    {
+      "width": 360,
+      "appearance": "dark",
+      "horizontal_overflow": false,
+      "loaded_images": true,
+      "select_options": 48
+    }
+  ],
+  "embedded_preview_note": "Standalone owns light/dark palettes; T3 inline preview uses host theme variables so dark-host text stays readable.",
+  "libraries": "none",
+  "rating_scope": "Round3 pending; historical scores are labeled separately."
+}

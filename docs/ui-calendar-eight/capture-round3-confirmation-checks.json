@@ -1,0 +1,2151 @@
+{
+  "schema": "kycalendar-capture-checks/4",
+  "checked_at": "2026-10-28T12:06:10.000807+00:00",
+  "head": "3aca6fcf934dacb0149aafce388cf38f02244015",
+  "capture_batch_status": "terminal; bounded corrected confirmation only; no Council acceptance",
+  "checks": [
+    {
+      "name": "all 287 protected files unchanged",
+      "status": "pass",
+      "evidence": "round3-confirmation-preservation-proof.json; every prior evidence file plus all AGENTS bytes"
+    },
+    {
+      "name": "50 originals match original surface role and interaction order",
+      "status": "pass",
+      "evidence": {
+        "originals": 50,
+        "stage": "04-confirmation",
+        "review_round": "3; not inferred from stage number"
+      }
+    },
+    {
+      "name": "427 source files bound to Git blobs and frozen HEAD",
+      "status": "pass",
+      "evidence": {
+        "head": "3aca6fcf934dacb0149aafce388cf38f02244015",
+        "runtime_sha256": "2fe32fb65ce4151b54edd81947e41c74d4b6e0f7a357446742129496f2d9da2b",
+        "source_files": 427
+      }
+    },
+    {
+      "name": "retained live PID hash ticks and actual Go metadata",
+      "status": "pass",
+      "evidence": {
+        "pid": 798113,
+        "startticks": "5579845",
+        "sha256": "cd10fe1adbd1b21c9b89935a63827f7c746b9cf83a75fd05e5556c79e2b8c762",
+        "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final"
+      }
+    },
+    {
+      "name": "unchanged fixture seed and fixed displayed reference date",
+      "status": "pass",
+      "evidence": "No seed/event/account changes or blank form submissions. Real sign-ins necessarily update sessions and last-sign-in timestamps; database bytes are not claimed immutable."
+    },
+    {
+      "name": "one capped Chromium with sequential contexts closed finally",
+      "status": "pass",
+      "evidence": {
+        "contexts": [
+          {
+            "serial": 1,
+            "scheme": "light",
+            "viewport": {
+              "width": 1280,
+              "height": 900
+            },
+            "user": "person",
+            "opened_at": "2026-10-28T11:59:50.380Z"
+          },
+          {
+            "serial": 2,
+            "scheme": "light",
+            "viewport": {
+              "width": 1280,
+              "height": 900
+            },
+            "user": "admin",
+            "opened_at": "2026-10-28T12:00:05.748Z"
+          },
+          {
+            "serial": 3,
+            "scheme": "light",
+            "viewport": {
+              "width": 1280,
+              "height": 900
+            },
+            "user": null,
+            "opened_at": "2026-10-28T12:00:16.665Z"
+          },
+          {
+            "serial": 4,
+            "scheme": "light",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "user": "person",
+            "opened_at": "2026-10-28T12:00:21.363Z"
+          },
+          {
+            "serial": 5,
+            "scheme": "light",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "user": "admin",
+            "opened_at": "2026-10-28T12:00:39.845Z"
+          },
+          {
+            "serial": 6,
+            "scheme": "light",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "user": null,
+            "opened_at": "2026-10-28T12:00:50.829Z"
+          },
+          {
+            "serial": 7,
+            "scheme": "dark",
+            "viewport": {
+              "width": 1280,
+              "height": 900
+            },
+            "user": "person",
+            "opened_at": "2026-10-28T12:00:55.553Z"
+          },
+          {
+            "serial": 8,
+            "scheme": "dark",
+            "viewport": {
+              "width": 1280,
+              "height": 900
+            },
+            "user": "admin",
+            "opened_at": "2026-10-28T12:01:11.030Z"
+          },
+          {
+            "serial": 9,
+            "scheme": "dark",
+            "viewport": {
+              "width": 1280,
+              "height": 900
+            },
+            "user": null,
+            "opened_at": "2026-10-28T12:01:22.066Z"
+          },
+          {
+            "serial": 10,
+            "scheme": "dark",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "user": "person",
+            "opened_at": "2026-10-28T12:01:26.831Z"
+          },
+          {
+            "serial": 11,
+            "scheme": "dark",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "user": "admin",
+            "opened_at": "2026-10-28T12:01:45.508Z"
+          },
+          {
+            "serial": 12,
+            "scheme": "dark",
+            "viewport": {
+              "width": 390,
+              "height": 844
+            },
+            "user": null,
+            "opened_at": "2026-10-28T12:01:56.394Z"
+          }
+        ],
+        "browser": {
+          "version": "153.0.8010.12",
+          "engine": "Chromium",
+          "executable": "/home/yoshi/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome",
+          "executable_sha256": "8c599d43aec53f2460a31ae2f4af6bd863f8258b34ff519564bc5d4726bfaa1e",
+          "playwright_module": "/home/yoshi/git/busnes.app/KyCalendar/web/node_modules/@playwright/test/index.mjs",
+          "playwright_version": "1.63.0"
+        },
+        "capture_retries": 0,
+        "prior_owned_capture_browsers": "none; unrelated desktop and T3 browsers not signalled"
+      }
+    },
+    {
+      "name": "all context screenshots precede supplemental Week and nav focus probes",
+      "status": "pass",
+      "evidence": "Driver control flow; original required Enter editor interaction preserved; read-only post-shot geometry has no focus/navigation mutation."
+    },
+    {
+      "name": "no capture errors or correction attempts",
+      "status": "pass",
+      "evidence": []
+    },
+    {
+      "name": "206 original image hashes dimensions and identities",
+      "status": "pass",
+      "evidence": "156 preserved originals + 50 new; every PNG decoded/verified and rehashed."
+    },
+    {
+      "name": "48 current members 601 pair comparisons duplicate representatives",
+      "status": "pass",
+      "evidence": {
+        "counts": {
+          "all_images": 206,
+          "matrix_images": 48,
+          "scored_candidates": 48,
+          "pairwise_comparisons": 601,
+          "current_images": 50,
+          "all_preserved_images": 156,
+          "brand_reference": 2,
+          "diagnostic_stage03": 50,
+          "other_historical_or_diagnostic": 104,
+          "current_supporting": 2
+        },
+        "duplicate_groups": [
+          [
+            "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+            "screenshots/kycalendar-04-confirmation-list-mobile-dark.png"
+          ],
+          [
+            "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+            "screenshots/kycalendar-04-confirmation-list-mobile-light.png"
+          ]
+        ],
+        "near_duplicate_nonexact_pairs": 0
+      }
+    },
+    {
+      "name": "50 individual full-resolution content inspections",
+      "status": "pass",
+      "evidence": "round3-confirmation-per-file-inspection.json; each original opened individually using view_image original; product/surface determined visually; no scores."
+    },
+    {
+      "name": "matched viewport locale timezone theme fonts and initial scroll",
+      "status": "pass",
+      "evidence": "All50 originals; neutral bottom-right pointer; fonts.ready,2rAF and400ms settle; real controls and clock; no credential capture."
+    },
+    {
+      "name": "zero horizontal page overflow across all originals",
+      "status": "pass",
+      "evidence": "Week internal horizontal scrolling is intentional and separate from page overflow."
+    },
+    {
+      "name": "no browser HTTP console CSP failed or external requests",
+      "status": "pass",
+      "evidence": "Real response/request diagnostics retained for captures and end-of-context probes."
+    },
+    {
+      "name": "production CSP service workers and role-specific navigation",
+      "status": "pass",
+      "evidence": "Driver asserts no People navigation for everyday and no Calendar for admin. One primary nav; no worker/auth mocks. Not a fresh complete authorization matrix."
+    },
+    {
+      "name": "served assets bound before after and terminal with redirects refused",
+      "status": "pass",
+      "evidence": "Nine assets including sw.js via validated fixtureOrigin/fetchFixture; eight independently observed browser response bodies; sourceprovenance-round3-confirmation.json."
+    },
+    {
+      "name": "Enter Escape logical event replacement focus 4 of 4",
+      "status": "pass",
+      "evidence": [
+        {
+          "size": "desktop",
+          "scheme": "light",
+          "list_enter_opens_real_event": true,
+          "escape_closes": true,
+          "logical_event_id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+          "original_disconnected": true,
+          "active": {
+            "tag": "A",
+            "id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+            "text": "Design review",
+            "tabindex": "0"
+          },
+          "focus_returned_to_trigger": true,
+          "scope": "Enter and Escape after refetch; replacement focusable anchor verified; complete keyboard/focus gates untested"
+        },
+        {
+          "size": "mobile",
+          "scheme": "light",
+          "list_enter_opens_real_event": true,
+          "escape_closes": true,
+          "logical_event_id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+          "original_disconnected": true,
+          "active": {
+            "tag": "A",
+            "id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+            "text": "Design review",
+            "tabindex": "0"
+          },
+          "focus_returned_to_trigger": true,
+          "scope": "Enter and Escape after refetch; replacement focusable anchor verified; complete keyboard/focus gates untested"
+        },
+        {
+          "size": "desktop",
+          "scheme": "dark",
+          "list_enter_opens_real_event": true,
+          "escape_closes": true,
+          "logical_event_id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+          "original_disconnected": true,
+          "active": {
+            "tag": "A",
+            "id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+            "text": "Design review",
+            "tabindex": "0"
+          },
+          "focus_returned_to_trigger": true,
+          "scope": "Enter and Escape after refetch; replacement focusable anchor verified; complete keyboard/focus gates untested"
+        },
+        {
+          "size": "mobile",
+          "scheme": "dark",
+          "list_enter_opens_real_event": true,
+          "escape_closes": true,
+          "logical_event_id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+          "original_disconnected": true,
+          "active": {
+            "tag": "A",
+            "id": "cal_7fc0e2ee-e72f-42f1-b6e0-21b6e573f0eb|3e6b9890-d072-452d-b41e-8f858229761a|",
+            "text": "Design review",
+            "tabindex": "0"
+          },
+          "focus_returned_to_trigger": true,
+          "scope": "Enter and Escape after refetch; replacement focusable anchor verified; complete keyboard/focus gates untested"
+        }
+      ]
+    },
+    {
+      "name": "login challenge stable after empty screenshot typing and clearing",
+      "status": "pass",
+      "evidence": [
+        {
+          "size": "desktop",
+          "scheme": "light",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "submitted": false
+        },
+        {
+          "size": "mobile",
+          "scheme": "light",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "submitted": false
+        },
+        {
+          "size": "desktop",
+          "scheme": "dark",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "submitted": false
+        },
+        {
+          "size": "mobile",
+          "scheme": "dark",
+          "beforeTyping": 1,
+          "afterTyping": 1,
+          "afterClear": 1,
+          "submitted": false
+        }
+      ]
+    },
+    {
+      "name": "phone Week native keyboard movement restores initial zero offset",
+      "status": "pass",
+      "evidence": [
+        {
+          "scheme": "light",
+          "offsets": [
+            0,
+            40,
+            0
+          ]
+        },
+        {
+          "scheme": "dark",
+          "offsets": [
+            0,
+            40,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "phone Week initial gutter actually painted and untransformed",
+      "status": "pass",
+      "evidence": "Both original phone Week images independently show7am-2pm labels. elementFromPoint hits actual axis at initial/restored0. Native hscroll can move gutter offscreen after user movement; no fixed-axis or automatic-current-day claim."
+    },
+    {
+      "name": "Day clears region attrs and Week reapplies after reused DOM",
+      "status": "pass",
+      "evidence": {
+        "day": [
+          {
+            "probe": "Day attributes cleared after Week reuse",
+            "size": "desktop",
+            "scheme": "light",
+            "attributes": {
+              "role": null,
+              "label": null,
+              "tabindex": null
+            }
+          },
+          {
+            "probe": "Day attributes cleared after Week reuse",
+            "size": "mobile",
+            "scheme": "light",
+            "attributes": {
+              "role": null,
+              "label": null,
+              "tabindex": null
+            }
+          },
+          {
+            "probe": "Day attributes cleared after Week reuse",
+            "size": "desktop",
+            "scheme": "dark",
+            "attributes": {
+              "role": null,
+              "label": null,
+              "tabindex": null
+            }
+          },
+          {
+            "probe": "Day attributes cleared after Week reuse",
+            "size": "mobile",
+            "scheme": "dark",
+            "attributes": {
+              "role": null,
+              "label": null,
+              "tabindex": null
+            }
+          }
+        ],
+        "week": [
+          {
+            "probe": "Week region attributes after remount",
+            "size": "desktop",
+            "scheme": "light",
+            "attributes": {
+              "role": "region",
+              "label": "Week calendar",
+              "tabindex": "0"
+            }
+          },
+          {
+            "probe": "Week region attributes after remount",
+            "size": "mobile",
+            "scheme": "light",
+            "attributes": {
+              "role": "region",
+              "label": "Week calendar",
+              "tabindex": "0"
+            }
+          },
+          {
+            "probe": "Week region attributes after remount",
+            "size": "desktop",
+            "scheme": "dark",
+            "attributes": {
+              "role": "region",
+              "label": "Week calendar",
+              "tabindex": "0"
+            }
+          },
+          {
+            "probe": "Week region attributes after remount",
+            "size": "mobile",
+            "scheme": "dark",
+            "attributes": {
+              "role": "region",
+              "label": "Week calendar",
+              "tabindex": "0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "all focused navigation rows fully within strip and unmasked",
+      "status": "pass",
+      "evidence": {
+        "contexts": 8,
+        "rows": 56,
+        "settle": "400ms plus350ms after focus",
+        "observations": [
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "desktop",
+            "scheme": "light",
+            "role": "everyday",
+            "items": [
+              {
+                "name": "Calendar",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Phones & apps",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "desktop",
+            "scheme": "light",
+            "role": "administrator",
+            "items": [
+              {
+                "name": "Overview",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "People",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Groups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Group calendars",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Sign-in",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Directory & SCIM",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Backups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Settings",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "mobile",
+            "scheme": "light",
+            "role": "everyday",
+            "items": [
+              {
+                "name": "Calendar",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 132,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Phones & apps",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 60,
+                "right": 215,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 31,
+                "right": 232,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 110,
+                "right": 247,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "mobile",
+            "scheme": "light",
+            "role": "administrator",
+            "items": [
+              {
+                "name": "Overview",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 133,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "People",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 137,
+                "right": 239,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Groups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 238,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Group calendars",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 111,
+                "right": 278,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Sign-in",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 236,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Directory & SCIM",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 110,
+                "right": 279,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Backups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 228,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Settings",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 138,
+                "right": 251,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 141,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 237,
+                "right": 374,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "desktop",
+            "scheme": "dark",
+            "role": "everyday",
+            "items": [
+              {
+                "name": "Calendar",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Phones & apps",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "desktop",
+            "scheme": "dark",
+            "role": "administrator",
+            "items": [
+              {
+                "name": "Overview",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "People",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Groups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Group calendars",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Sign-in",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Directory & SCIM",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Backups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Settings",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 223,
+                "nav_left": 16,
+                "nav_right": 223,
+                "viewport": 1280,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "mobile",
+            "scheme": "dark",
+            "role": "everyday",
+            "items": [
+              {
+                "name": "Calendar",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 132,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Phones & apps",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 60,
+                "right": 215,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 31,
+                "right": 232,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 110,
+                "right": 247,
+                "nav_left": 16,
+                "nav_right": 247,
+                "viewport": 390,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          },
+          {
+            "probe": "settled navigation focus reachability after all context screenshots",
+            "size": "mobile",
+            "scheme": "dark",
+            "role": "administrator",
+            "items": [
+              {
+                "name": "Overview",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 16,
+                "right": 133,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "People",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 137,
+                "right": 239,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Groups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 238,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Group calendars",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 111,
+                "right": 278,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Sign-in",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 236,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Directory & SCIM",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 110,
+                "right": 279,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Backups",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 228,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Settings",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 138,
+                "right": 251,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Two-step verification",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 141,
+                "right": 342,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              },
+              {
+                "name": "Appearance",
+                "focused": true,
+                "mask_image": "none",
+                "webkit_mask_image": "none",
+                "unmasked": true,
+                "x": 237,
+                "right": 374,
+                "nav_left": 16,
+                "nav_right": 374,
+                "viewport": 390,
+                "fully_visible": true
+              }
+            ],
+            "complete_gate": "untested"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Add group disabled zero-group fixture in all four conditions",
+      "status": "pass",
+      "evidence": "No group created or blank form submitted; availability and disabled state observed only."
+    },
+    {
+      "name": "phone Group and Role fields both fill card content width",
+      "status": "pass",
+      "evidence": [
+        {
+          "size": "desktop",
+          "scheme": "light",
+          "field_widths": [
+            252.203125,
+            288,
+            160
+          ]
+        },
+        {
+          "size": "mobile",
+          "scheme": "light",
+          "field_widths": [
+            238.40625,
+            324,
+            324
+          ]
+        },
+        {
+          "size": "desktop",
+          "scheme": "dark",
+          "field_widths": [
+            252.203125,
+            288,
+            160
+          ]
+        },
+        {
+          "size": "mobile",
+          "scheme": "dark",
+          "field_widths": [
+            238.40625,
+            324,
+            324
+          ]
+        }
+      ]
+    },
+    {
+      "name": "phone Month two visible title rows and no page overflow",
+      "status": "pass",
+      "evidence": "22 title boxes /2 phone Month originals; narrow prefixes still ellipsize; complete titles remain DOM text."
+    },
+    {
+      "name": "tall timed titles retain two-line capacity",
+      "status": "pass",
+      "evidence": "Eight Planning title blocks across4 conditions and Week/Day; desktop Day fits1 line, phone Day shows full2-line title, Week ellipsizes after2."
+    },
+    {
+      "name": "calendar workspace heading remains compact",
+      "status": "pass",
+      "evidence": [
+        {
+          "surface": "month",
+          "size": "desktop",
+          "scheme": "light",
+          "heading": {
+            "x": 264,
+            "y": 24,
+            "right": 1256,
+            "bottom": 77.5,
+            "width": 992,
+            "height": 53.5,
+            "clientWidth": 992,
+            "scrollWidth": 992,
+            "clientHeight": 54,
+            "scrollHeight": 54,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "week",
+          "size": "desktop",
+          "scheme": "light",
+          "heading": {
+            "x": 264,
+            "y": 24,
+            "right": 1256,
+            "bottom": 77.5,
+            "width": 992,
+            "height": 53.5,
+            "clientWidth": 992,
+            "scrollWidth": 992,
+            "clientHeight": 54,
+            "scrollHeight": 54,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "day",
+          "size": "desktop",
+          "scheme": "light",
+          "heading": {
+            "x": 264,
+            "y": 24,
+            "right": 1256,
+            "bottom": 77.5,
+            "width": 992,
+            "height": 53.5,
+            "clientWidth": 992,
+            "scrollWidth": 992,
+            "clientHeight": 54,
+            "scrollHeight": 54,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "month",
+          "size": "mobile",
+          "scheme": "light",
+          "heading": {
+            "x": 16,
+            "y": 113,
+            "right": 374,
+            "bottom": 176.5,
+            "width": 358,
+            "height": 63.5,
+            "clientWidth": 358,
+            "scrollWidth": 358,
+            "clientHeight": 64,
+            "scrollHeight": 64,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "week",
+          "size": "mobile",
+          "scheme": "light",
+          "heading": {
+            "x": 16,
+            "y": 113,
+            "right": 374,
+            "bottom": 176.5,
+            "width": 358,
+            "height": 63.5,
+            "clientWidth": 358,
+            "scrollWidth": 358,
+            "clientHeight": 64,
+            "scrollHeight": 64,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "day",
+          "size": "mobile",
+          "scheme": "light",
+          "heading": {
+            "x": 16,
+            "y": 113,
+            "right": 374,
+            "bottom": 176.5,
+            "width": 358,
+            "height": 63.5,
+            "clientWidth": 358,
+            "scrollWidth": 358,
+            "clientHeight": 64,
+            "scrollHeight": 64,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "month",
+          "size": "desktop",
+          "scheme": "dark",
+          "heading": {
+            "x": 264,
+            "y": 24,
+            "right": 1256,
+            "bottom": 77.5,
+            "width": 992,
+            "height": 53.5,
+            "clientWidth": 992,
+            "scrollWidth": 992,
+            "clientHeight": 54,
+            "scrollHeight": 54,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "week",
+          "size": "desktop",
+          "scheme": "dark",
+          "heading": {
+            "x": 264,
+            "y": 24,
+            "right": 1256,
+            "bottom": 77.5,
+            "width": 992,
+            "height": 53.5,
+            "clientWidth": 992,
+            "scrollWidth": 992,
+            "clientHeight": 54,
+            "scrollHeight": 54,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "day",
+          "size": "desktop",
+          "scheme": "dark",
+          "heading": {
+            "x": 264,
+            "y": 24,
+            "right": 1256,
+            "bottom": 77.5,
+            "width": 992,
+            "height": 53.5,
+            "clientWidth": 992,
+            "scrollWidth": 992,
+            "clientHeight": 54,
+            "scrollHeight": 54,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "month",
+          "size": "mobile",
+          "scheme": "dark",
+          "heading": {
+            "x": 16,
+            "y": 113,
+            "right": 374,
+            "bottom": 176.5,
+            "width": 358,
+            "height": 63.5,
+            "clientWidth": 358,
+            "scrollWidth": 358,
+            "clientHeight": 64,
+            "scrollHeight": 64,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "week",
+          "size": "mobile",
+          "scheme": "dark",
+          "heading": {
+            "x": 16,
+            "y": 113,
+            "right": 374,
+            "bottom": 176.5,
+            "width": 358,
+            "height": 63.5,
+            "clientWidth": 358,
+            "scrollWidth": 358,
+            "clientHeight": 64,
+            "scrollHeight": 64,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        },
+        {
+          "surface": "day",
+          "size": "mobile",
+          "scheme": "dark",
+          "heading": {
+            "x": 16,
+            "y": 113,
+            "right": 374,
+            "bottom": 176.5,
+            "width": 358,
+            "height": 63.5,
+            "clientWidth": 358,
+            "scrollWidth": 358,
+            "clientHeight": 64,
+            "scrollHeight": 64,
+            "display": "grid",
+            "whiteSpace": "normal",
+            "lineHeight": "22.5px",
+            "lineClamp": "none",
+            "fontSize": "15px",
+            "overflow": "visible",
+            "containerType": "normal",
+            "transform": "none"
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "pass": 27
+  },
+  "raw_failures": [],
+  "prior_failure_history": {
+    "prior_manifest": "manifest-03-after.json",
+    "prior_checks": "capture-round3-checks.json",
+    "prior_result": "19 pass / 4 fail; parent rejected implementation due actual regressions; USER did not reject layout; prior failure bytes preserved",
+    "correction_source": "3aca6fc",
+    "captures_retried": false
+  },
+  "behavior_accessibility_integration_physical_gates": "untested",
+  "scores": null,
+  "acceptance": null,
+  "private_process": {
+    "pid": 798113,
+    "startticks": "5579845",
+    "sha256": "cd10fe1adbd1b21c9b89935a63827f7c746b9cf83a75fd05e5556c79e2b8c762",
+    "executable": "/tmp/kycalendar-eight-Fqv5Ll/server-final"
+  },
+  "current_membership": "inventory-v4.json",
+  "all_artifacts": "artifacts-v4.json",
+  "per_file_inspection": "round3-confirmation-per-file-inspection.json",
+  "title_geometry": "round3-confirmation-title-geometry.json",
+  "clock_states": [
+    {
+      "file": "screenshots/kycalendar-04-confirmation-month-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:53.447Z",
+      "real_browser_time": "2026-10-28T11:59:53.400Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-week-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:54.423Z",
+      "real_browser_time": "2026-10-28T11:59:54.379Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ],
+      "time_indicator": [
+        {
+          "x": 718.921875,
+          "y": 311.0625,
+          "width": 133.140625,
+          "height": 1,
+          "scroll_width": 133,
+          "client_width": 133,
+          "overflow_x": "visible",
+          "display": "block",
+          "white_space": "normal",
+          "text_overflow": "clip",
+          "font_size": "15px"
+        }
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:55.357Z",
+      "real_browser_time": "2026-10-28T11:59:55.325Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-list-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:56.335Z",
+      "real_browser_time": "2026-10-28T11:59:56.275Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-new-event-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:57.380Z",
+      "real_browser_time": "2026-10-28T11:59:57.326Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:58.411Z",
+      "real_browser_time": "2026-10-28T11:59:58.359Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-appearance-desktop-light.png",
+      "captured_at_utc": "2026-10-28T11:59:59.777Z",
+      "real_browser_time": "2026-10-28T11:59:59.740Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-desktop-light.png",
+      "captured_at_utc": "2026-10-28T12:00:00.722Z",
+      "real_browser_time": "2026-10-28T12:00:00.689Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-desktop-light.png",
+      "captured_at_utc": "2026-10-28T12:00:06.931Z",
+      "real_browser_time": "2026-10-28T12:00:06.890Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-desktop-light.png",
+      "captured_at_utc": "2026-10-28T12:00:07.844Z",
+      "real_browser_time": "2026-10-28T12:00:07.806Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-light.png",
+      "captured_at_utc": "2026-10-28T12:00:08.773Z",
+      "real_browser_time": "2026-10-28T12:00:08.738Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-login-desktop-light.png",
+      "captured_at_utc": "2026-10-28T12:00:17.669Z",
+      "real_browser_time": "2026-10-28T12:00:17.639Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:22.926Z",
+      "real_browser_time": "2026-10-28T12:00:22.899Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-month-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:24.907Z",
+      "real_browser_time": "2026-10-28T12:00:24.877Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-week-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:25.874Z",
+      "real_browser_time": "2026-10-28T12:00:25.841Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ],
+      "time_indicator": [
+        {
+          "x": 374.921875,
+          "y": 470.5,
+          "width": 101.140625,
+          "height": 1,
+          "scroll_width": 101,
+          "client_width": 101,
+          "overflow_x": "visible",
+          "display": "block",
+          "white_space": "normal",
+          "text_overflow": "clip",
+          "font_size": "15px"
+        }
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:26.806Z",
+      "real_browser_time": "2026-10-28T12:00:26.790Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-list-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:27.725Z",
+      "real_browser_time": "2026-10-28T12:00:27.707Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-new-event-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:28.758Z",
+      "real_browser_time": "2026-10-28T12:00:28.725Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:29.759Z",
+      "real_browser_time": "2026-10-28T12:00:29.724Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:31.091Z",
+      "real_browser_time": "2026-10-28T12:00:31.070Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:32.024Z",
+      "real_browser_time": "2026-10-28T12:00:32.003Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:41.111Z",
+      "real_browser_time": "2026-10-28T12:00:41.088Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:42.027Z",
+      "real_browser_time": "2026-10-28T12:00:42.003Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:42.944Z",
+      "real_browser_time": "2026-10-28T12:00:42.922Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-login-mobile-light.png",
+      "captured_at_utc": "2026-10-28T12:00:51.857Z",
+      "real_browser_time": "2026-10-28T12:00:51.840Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-month-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:00:58.569Z",
+      "real_browser_time": "2026-10-28T12:00:58.532Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-week-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:00:59.562Z",
+      "real_browser_time": "2026-10-28T12:00:59.507Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ],
+      "time_indicator": [
+        {
+          "x": 718.921875,
+          "y": 312,
+          "width": 133.140625,
+          "height": 1,
+          "scroll_width": 133,
+          "client_width": 133,
+          "overflow_x": "visible",
+          "display": "block",
+          "white_space": "normal",
+          "text_overflow": "clip",
+          "font_size": "15px"
+        }
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:00.542Z",
+      "real_browser_time": "2026-10-28T12:01:00.491Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-list-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:01.515Z",
+      "real_browser_time": "2026-10-28T12:01:01.456Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-new-event-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:02.546Z",
+      "real_browser_time": "2026-10-28T12:01:02.490Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:03.601Z",
+      "real_browser_time": "2026-10-28T12:01:03.540Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-appearance-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:04.992Z",
+      "real_browser_time": "2026-10-28T12:01:04.954Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:05.944Z",
+      "real_browser_time": "2026-10-28T12:01:05.902Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:12.312Z",
+      "real_browser_time": "2026-10-28T12:01:12.256Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:13.259Z",
+      "real_browser_time": "2026-10-28T12:01:13.219Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:14.186Z",
+      "real_browser_time": "2026-10-28T12:01:14.151Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-login-desktop-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:23.134Z",
+      "real_browser_time": "2026-10-28T12:01:23.105Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:28.395Z",
+      "real_browser_time": "2026-10-28T12:01:28.365Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-month-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:30.375Z",
+      "real_browser_time": "2026-10-28T12:01:30.340Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-week-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:31.359Z",
+      "real_browser_time": "2026-10-28T12:01:31.324Z",
+      "today_dates": [
+        "2026-10-28",
+        "2026-10-28",
+        "2026-10-28"
+      ],
+      "time_indicator": [
+        {
+          "x": 374.921875,
+          "y": 471.421875,
+          "width": 101.140625,
+          "height": 1,
+          "scroll_width": 101,
+          "client_width": 101,
+          "overflow_x": "visible",
+          "display": "block",
+          "white_space": "normal",
+          "text_overflow": "clip",
+          "font_size": "15px"
+        }
+      ]
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-day-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:32.341Z",
+      "real_browser_time": "2026-10-28T12:01:32.306Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-list-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:33.293Z",
+      "real_browser_time": "2026-10-28T12:01:33.257Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-new-event-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:34.322Z",
+      "real_browser_time": "2026-10-28T12:01:34.290Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-existing-event-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:35.324Z",
+      "real_browser_time": "2026-10-28T12:01:35.304Z",
+      "today_dates": [
+        "2026-10-28"
+      ],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-appearance-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:36.672Z",
+      "real_browser_time": "2026-10-28T12:01:36.651Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-phones-and-apps-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:37.605Z",
+      "real_browser_time": "2026-10-28T12:01:37.584Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-overview-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:46.675Z",
+      "real_browser_time": "2026-10-28T12:01:46.652Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-people-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:47.592Z",
+      "real_browser_time": "2026-10-28T12:01:47.568Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-admin-group-calendars-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:48.508Z",
+      "real_browser_time": "2026-10-28T12:01:48.484Z",
+      "today_dates": [],
+      "time_indicator": []
+    },
+    {
+      "file": "screenshots/kycalendar-04-confirmation-login-mobile-dark.png",
+      "captured_at_utc": "2026-10-28T12:01:57.401Z",
+      "real_browser_time": "2026-10-28T12:01:57.385Z",
+      "today_dates": [],
+      "time_indicator": []
+    }
+  ],
+  "limitations": [
+    "Complete behavior, accessibility, integration and physical-device gates remain untested. No builds or test suites run: explicit capture-only scope. Parent prior tests are not fresh evidence from this worker.",
+    "Real Oct28 clock preserved; every image has UTC capture time and browser time. Today28/time indicators and People last-sign-in changes are clock effects, not UI improvement.",
+    "Native unsaved New event End segment selection is a capture artifact; original interaction and focus preserved.",
+    "Parent rejected stage03 implementation because actual regressions; USER did not reject layout. Original19pass/4fail reports retained byte-for-byte, including their historical wording. Stage03 excluded from current quality.",
+    "Earlier empty-Monday/clipped-Tuesday premise was disproved; no repair credit or scores assigned for it. Week starts at week start with native scrolling; no fixed gutter after scroll or automatic current-day claim.",
+    "Current evidence is50 originals/48 unique candidates in04; stage04 and inventory-v4 are artifact identifiers, not a fourth rubric/reviewer round. Parent owns review-inputs-v3 for actual review round3.",
+    "MySlop unavailable: user reports known revoked401; no retry or external request. DOX read/rechecked; all AGENTS intentionally unchanged under evidence-only ownership and explicit byte preservation.",
+    "No rerun, recapture, source edits, fixture reseed/account/event mutation, browser reopening, commits, pushes, subdelegation or new scores. Prior failures retained; any new product failure is reported without correction."
+  ]
+}

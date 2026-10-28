@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-10-28T12:12:13.023985+00:00",
+  "source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+  "images_hash_dimensions": 206,
+  "current_originals": 50,
+  "quality_candidates": 48,
+  "same_size_pair_membership": 601,
+  "near_duplicate_pixels_recomputed": [
+    {
+      "a": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-dark.png",
+      "b": "screenshots/kycalendar-04-confirmation-list-mobile-dark.png",
+      "changed_pixels": 0,
+      "max_channel_delta": 0
+    },
+    {
+      "a": "screenshots/kycalendar-04-confirmation-default-phone-list-mobile-light.png",
+      "b": "screenshots/kycalendar-04-confirmation-list-mobile-light.png",
+      "changed_pixels": 0,
+      "max_channel_delta": 0
+    }
+  ],
+  "source_git_blob_bindings": 427,
+  "terminal_assets": 9,
+  "protected_files_rechecked": 287,
+  "all_protected_unchanged": true,
+  "worker_checks": {
+    "pass": 27,
+    "fail": 0
+  },
+  "parent_opened_originals": [
+    "week-mobile-light",
+    "week-mobile-dark",
+    "admin-group-calendars-mobile-light"
+  ],
+  "classification": "Current round3 validated; reviews pending",
+  "byte_identical_counts": {
+    "to_baseline": 16,
+    "to_round2": 18
+  },
+  "parent_verifier_notes": "Two initial read-only helpers stopped on path/schema assumptions (root-relative proof paths; assets nested under terminal_assets.assets). Corrected complete verification passes. No evidence was modified by those attempts."
+}

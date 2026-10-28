@@ -1,0 +1,79 @@
+{
+  "checked_at": "2026-10-28T12:05:56.225Z",
+  "origin": "http://127.0.0.1:36827",
+  "redirects": "refused by fetchFixture",
+  "assets": [
+    {
+      "path": "/app-icon.png",
+      "file": "web/dist/app-icon.png",
+      "sha256": "dda4d838c4a782611a55496b28f497fd689c1339ea481733e9855ad9c3e940f8",
+      "disk_sha256": "dda4d838c4a782611a55496b28f497fd689c1339ea481733e9855ad9c3e940f8",
+      "matches_disk": true,
+      "bytes": 52765
+    },
+    {
+      "path": "/assets/CalendarPage-7LClXeVI.css",
+      "file": "web/dist/assets/CalendarPage-7LClXeVI.css",
+      "sha256": "a33da77c3a30b8bc1fa76861b8441e4be4e5ba2f9b1324590df3e7b6082cc8b4",
+      "disk_sha256": "a33da77c3a30b8bc1fa76861b8441e4be4e5ba2f9b1324590df3e7b6082cc8b4",
+      "matches_disk": true,
+      "bytes": 11464
+    },
+    {
+      "path": "/assets/CalendarPage-CQSkmjwX.js",
+      "file": "web/dist/assets/CalendarPage-CQSkmjwX.js",
+      "sha256": "8efcbf44ce6191fa445806f5fe3d7ceac93ba33c31cab28e6457eb1273526904",
+      "disk_sha256": "8efcbf44ce6191fa445806f5fe3d7ceac93ba33c31cab28e6457eb1273526904",
+      "matches_disk": true,
+      "bytes": 295362
+    },
+    {
+      "path": "/assets/index-B9hIldTh.css",
+      "file": "web/dist/assets/index-B9hIldTh.css",
+      "sha256": "3b89f2c0400e47f48addd94d9df1e03e0b6c740eafaa33e8adf85fbce508bf58",
+      "disk_sha256": "3b89f2c0400e47f48addd94d9df1e03e0b6c740eafaa33e8adf85fbce508bf58",
+      "matches_disk": true,
+      "bytes": 38869
+    },
+    {
+      "path": "/assets/index-p77E0bDy.js",
+      "file": "web/dist/assets/index-p77E0bDy.js",
+      "sha256": "4075772dabc7864e92edad86274f1a4bd82f59bb193828a37d0163ea64d89971",
+      "disk_sha256": "4075772dabc7864e92edad86274f1a4bd82f59bb193828a37d0163ea64d89971",
+      "matches_disk": true,
+      "bytes": 325251
+    },
+    {
+      "path": "/fonts/IBM_Plex_Mono/IBMPlexMono-Regular.ttf",
+      "file": "web/dist/fonts/IBM_Plex_Mono/IBMPlexMono-Regular.ttf",
+      "sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd",
+      "disk_sha256": "ab08018ccd276b79fb2c636bb95b9c543598f9d50505fe92506fcb4dae7810cd",
+      "matches_disk": true,
+      "bytes": 133796
+    },
+    {
+      "path": "/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf",
+      "file": "web/dist/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf",
+      "sha256": "697a7905c71f7c61d071648bc73449541796af865b51c86a672795f3b452b142",
+      "disk_sha256": "697a7905c71f7c61d071648bc73449541796af865b51c86a672795f3b452b142",
+      "matches_disk": true,
+      "bytes": 134112
+    },
+    {
+      "path": "/",
+      "file": "web/dist/index.html",
+      "sha256": "421c44976527c4b6d38fc3f7a028f6e12ff6ac4b645a0a41de7351e475cf7da5",
+      "disk_sha256": "421c44976527c4b6d38fc3f7a028f6e12ff6ac4b645a0a41de7351e475cf7da5",
+      "matches_disk": true,
+      "bytes": 576
+    },
+    {
+      "path": "/sw.js",
+      "file": "web/dist/sw.js",
+      "sha256": "66f463e0de474bb732ba07c1e59d7571b6c418134d10cf1ee60751d538b6b4f2",
+      "disk_sha256": "66f463e0de474bb732ba07c1e59d7571b6c418134d10cf1ee60751d538b6b4f2",
+      "matches_disk": true,
+      "bytes": 1803
+    }
+  ]
+}
