@@ -1,0 +1,43 @@
+{
+  "recorded_at": "2026-10-28T12:33:00.446953+00:00",
+  "owner_quote": "round 3 mobile month is a downgrade.",
+  "rejected_source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+  "rejected_stage": "04-confirmation (reviewround3)",
+  "gate": "reopened by owner rejection regardless of review scores",
+  "agent_response": "Show start times for timed phoneMonth entries; keep their full titles accessible/in the event form, and preserve labels on all-day bars.",
+  "verification": {
+    "frontend": "TypeScript/production build and ky-ui0.4.3 integrity passed",
+    "targeted_browser": "Month light390,dark390,light1280:3 passed in8.7s; visible start times/full accessible title, open/delete, contrast, offline/CSP.",
+    "matched_phone_captures": {
+      "manifest": "manifest-06-after.json",
+      "source": "a465aa04bea5f9bfa5ad7d736cd3d6fade9e3a41",
+      "images": 2,
+      "failures": 0,
+      "parent_visual_check": "Light/dark originals show start times for timed entries; full titles remain accessible; all-day bars retain labels.",
+      "scope": "Targeted owner correction; no fresh Council score."
+    },
+    "full_required_checks": "Hosted CI on forthcoming updatedPR95 head."
+  },
+  "rating_scope": "No score assigned to the restored source. OpusR3 exact633/80=>7.9 describes rejected04 batch; SolR3 remains separate/pending until terminal.",
+  "history": [
+    {
+      "agent_response": "Restore single-line ellipsized phone Month labels and remove forced mid-word/two-line wrapping. Preserve other improvements.",
+      "verification": {
+        "frontend": "TypeScript/production build and ky-ui0.4.3 integrity passed",
+        "targeted_browser": "Month light390,dark390,light1280:3 passed in8.4s; real server/CSP/auth, title accessible name/open/delete, contrast and offline state.",
+        "unit_tests": "Not added for the low-impact CSS restoration; existing production browser regression updated and passed.",
+        "matched_phone_captures": {
+          "manifest": "manifest-05-after.json",
+          "source": "1ff7d00ea509cdde863423ab6ad22a0ec586caa7",
+          "images": 2,
+          "failures": 0,
+          "parent_visual_check": "Both original phone light/dark images inspected; single-line ellipsis restored, no forced word fragments.",
+          "scope": "Month only; no fresh Council score."
+        },
+        "full_required_checks": "Hosted CI at the forthcoming PR head; local full suites remain excluded by hard-lock restriction."
+      },
+      "superseded_by": "Owner clarified preference for baseline start times"
+    }
+  ],
+  "owner_followup_quote": "The fresh baseline with the time of the calendar item looks better than 3 letters and some dots"
+}
