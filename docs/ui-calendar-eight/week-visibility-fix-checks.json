@@ -1,0 +1,49 @@
+{
+  "checked_at": "2026-10-28T11:54:43.259877+00:00",
+  "base": "afb60aa368d4dfb2223cd06d28fcb0b19c84f2cc (merged PR92)",
+  "defects": [
+    "Automatic Week scrolling plus transformed table cells clipped gutter paint despite in-viewport rectangles.",
+    "FullCalendar reuses Day/Week DOM without viewDidMount, losing or retaining the wrong region name/tab stop.",
+    "Native focus left some phone navigation labels partly outside their strip.",
+    "Later footer flex shorthand overrode the phone grant-field width rule."
+  ],
+  "fixes": [
+    "Remove optional automatic horizontal positioning and counter-transform; native Week begins at its normal start with the gutter visible.",
+    "Reapply Week region/tabindex on datesSet; remove Week attributes for Day.",
+    "Scroll focused navigation items into nearest view and remove the phone fade while focused.",
+    "Place a specific full-width grant-field rule after footer geometry."
+  ],
+  "before_regression": {
+    "command": "npm run test:browser -- browser/calendar.spec.mjs --project=light-390 against27690a3 binary",
+    "result": "1 failed as expected",
+    "assertion": "Actual gutter painting via elementFromPoint returned false; previous rectangle assertion had passed.",
+    "raw_log": "/tmp/kycalendar-week-paint-before.log"
+  },
+  "after": {
+    "units": "22 passed in3 affected files; single worker",
+    "typescript_production_build": "passed",
+    "ky_ui_vendor": "0.4.3 hashes verified",
+    "browser": "12 passed in27.9s; calendar,month,nav,groups across light390,dark390,light1280; one worker",
+    "checks": [
+      "gutter actually painted",
+      "Day/Week region lifecycle",
+      "keyboard Week scrolling",
+      "all focused everyday/admin labels fully visible",
+      "full-width phone Group/Role fields",
+      "disabled Add group before selection",
+      "group access reaches everyday user",
+      "dialog replacement/deletion focus",
+      "Month labels/contrast/offline/CSP"
+    ]
+  },
+  "design_detector": {
+    "side_tab": "Retain semantic current-day stripe.",
+    "overused_font": "Retain owner-pinned Space Grotesk."
+  },
+  "not_claimed": [
+    "Complete accessibility/behavior/physical-device gates",
+    "new visual score before corrected screenshots reviewed",
+    "hosted CI at this new head"
+  ],
+  "dox": "Web and browser docs updated; root unchanged because no root workflow/ownership change. Capture03 is diagnostic history, no user layout-rejection claim."
+}

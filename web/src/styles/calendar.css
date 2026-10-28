@@ -162,9 +162,6 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .kc-calendar:has(.fc-timeGridWeek-view) .kc-week-hint { display: block; margin-bottom: var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
   .kc-calendar .fc-timeGridWeek-view { overflow-x: auto; }
   .kc-calendar .fc-timeGridWeek-view > .fc-scrollgrid { min-width: 48rem; }
-  /* FullCalendar nests vertical scrollers, so sticky cannot reach the horizontal ancestor.
-     Counter its scroll offset to keep the time axis beside the visible days. */
-  .kc-calendar .fc-timeGridWeek-view :is(.fc-timegrid-axis, .fc-timegrid-slot-label) { position: relative; z-index: 3; transform: translateX(var(--kc-week-scroll, 0px)); background: var(--bg); }
   /* Two lines reveal more than a three-letter prefix; full time/title remain accessible. */
   .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event { align-items: flex-start; }
   .kc-calendar .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
