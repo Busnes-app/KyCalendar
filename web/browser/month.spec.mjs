@@ -46,7 +46,10 @@ test('month: legible other-month days, labelled events, honest offline state', a
   expect(await event.locator('.fc-event-title').evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(8);
   await expect(event.locator('.fc-event-title')).toHaveCSS('clip-path', 'none');
   if (viewport.width <= 720) {
-    expect(await event.locator('.fc-event-title').evaluate((el) => el.getBoundingClientRect().height > parseFloat(getComputedStyle(el).lineHeight))).toBe(true);
+    expect(await event.locator('.fc-event-title').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return style.whiteSpace === 'nowrap' && el.getBoundingClientRect().height <= parseFloat(style.lineHeight) + 1;
+    })).toBe(true);
   }
   await event.click();
   await expect(page.getByLabel('Title')).toHaveValue(title);

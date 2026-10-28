@@ -1,0 +1,16 @@
+{
+  "recorded_at": "2026-10-28T12:33:00.446953+00:00",
+  "owner_quote": "round 3 mobile month is a downgrade.",
+  "rejected_source": "3aca6fcf934dacb0149aafce388cf38f02244015",
+  "rejected_stage": "04-confirmation (reviewround3)",
+  "gate": "reopened by owner rejection regardless of review scores",
+  "agent_response": "Restore single-line ellipsized phone Month labels and remove forced mid-word/two-line wrapping. Preserve other improvements.",
+  "verification": {
+    "frontend": "TypeScript/production build and ky-ui0.4.3 integrity passed",
+    "targeted_browser": "Month light390,dark390,light1280:3 passed in8.4s; real server/CSP/auth, title accessible name/open/delete, contrast and offline state.",
+    "unit_tests": "Not added for the low-impact CSS restoration; existing production browser regression updated and passed.",
+    "matched_phone_captures": "pending source-bound05-after images",
+    "full_required_checks": "Hosted CI at the forthcoming PR head; local full suites remain excluded by hard-lock restriction."
+  },
+  "rating_scope": "No score assigned to the restored source. OpusR3 exact633/80=>7.9 describes rejected04 batch; SolR3 remains separate/pending until terminal."
+}
