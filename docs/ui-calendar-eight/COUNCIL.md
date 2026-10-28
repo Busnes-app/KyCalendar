@@ -14,7 +14,7 @@ Quality and brand stay separate. Current-round Opus alone controls progression; 
 | 3 | sol | Reviewed | 48 | 43/5 | 8.6 | Does not control progression | False |
 | 3 | gemini | Unused: known exhausted quota | — | — | — | — | — |
 
-PR: Not opened yet; source captures in PR94, correction in PR95
+PR: https://github.com/Busnes-app/KyCalendar/pull/96
 
 [Workbook](KyCalendar-Council.xlsx) · [Per-file CSV](ratings.csv). Raw reviews and source images remain unchanged.
 
