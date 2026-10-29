@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -74,7 +75,7 @@ func (r *Refresher) Load(ctx context.Context, calendarID, host, link, etag, last
 		return nil, nil, err
 	}
 	if skipped > 0 {
-		log.Printf("[FEED] %s (%s): skipped %d events that are not valid calendar objects", calendarID, host, skipped)
+		log.Printf("[FEED] %s (%s): skipped %d events that are not valid calendar objects", calendarID, strings.NewReplacer("\n", "", "\r", "").Replace(host), skipped)
 	}
 	return f, objs, nil
 }
