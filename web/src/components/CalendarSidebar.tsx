@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { calendarColors, nextColor } from '../calendarColors';
 import {
   ApiError, HOLDS, createCalendar, holdsOf, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo, type Holds,
@@ -83,6 +83,15 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
   const [relinking, setRelinking] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Collapsing a calendar's subscription details also closes its Change link form.
+  function toggleDetails(id: string) {
+    const next = new Set(expanded);
+    if (!next.delete(id)) next.add(id);
+    else if (relinking === id) setRelinking(null);
+    setExpanded(next);
+  }
   const colors = calendarColors(calendars);
   const colorOf = (c: CalendarInfo) => colors.get(c.id) ?? 'var(--ky-accent)';
   // A new calendar takes a colour none of the visible ones use.
@@ -136,6 +145,22 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
             {!c.components.includes('VEVENT') && <div className="kc-sub"><span>Tasks · open in a tasks app</span></div>}
             {c.subscription && (
               <div className="kc-sub">
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  aria-expanded={expanded.has(c.id)}
+                  aria-controls={`sub-${c.id}`}
+                  aria-label={`Subscription details for ${c.name}`}
+                  onClick={() => toggleDetails(c.id)}
+                >
+                  {expanded.has(c.id) ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+                  Subscription
+                </button>
+                {c.subscription.error && !expanded.has(c.id) && <span role="alert">{c.subscription.error}</span>}
+              </div>
+            )}
+            {c.subscription && expanded.has(c.id) && (
+              <div className="kc-sub" id={`sub-${c.id}`}>
                 <span>Subscribed · {c.subscription.host}</span>
                 <span>{c.subscription.refreshed_at ? `Updated ${ago(c.subscription.refreshed_at)}` : 'Not yet updated'}</span>
                 {c.subscription.error && <span role="alert">{c.subscription.error}</span>}
@@ -157,7 +182,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
                 </div>
               </div>
             )}
-            {relinking === c.id && (
+            {relinking === c.id && expanded.has(c.id) && (
               <SubscriptionForm calendar={c} color={colorOf(c)} onSaved={() => { setRelinking(null); onChanged(); }} onCancel={() => setRelinking(null)} />
             )}
             {editing === c.id && (

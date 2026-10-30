@@ -107,6 +107,14 @@ describe('CalendarSidebar', () => {
     });
     const onChanged = vi.fn();
     render(<CalendarSidebar calendars={[sub, { ...sub, id: 'cal_n', name: 'New', subscription: { host: 'x.example', refreshed_at: null, checked_at: null } }]} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+    expect(screen.getByRole('alert').textContent).toBe('The link returned 404');
+    expect(screen.queryByText('Subscribed · outlook.office365.com')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Refresh Work' })).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Subscription details for Work' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Subscription details for New' }));
     expect(screen.getByText('Subscribed · outlook.office365.com')).toBeTruthy();
     expect(screen.getByText(`Updated ${rel(-2, 'hour')}`)).toBeTruthy();
     expect(screen.getByText('Not yet updated')).toBeTruthy();
@@ -122,10 +130,25 @@ describe('CalendarSidebar', () => {
     expect(calls).toEqual(['POST /api/calendars/cal_s/refresh', 'PATCH /api/subscriptions/cal_s']);
   });
 
+  it('collapses the subscription details and closes an open link form', () => {
+    render(<CalendarSidebar calendars={[{ ...sub, subscription: { ...sub.subscription!, error: undefined } }]} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
+    const toggle = screen.getByRole('button', { name: 'Subscription details for Work' });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Change link of Work' }));
+    expect(screen.getByLabelText('Link')).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(screen.queryByLabelText('Link')).toBeNull();
+    expect(screen.queryByText('Subscribed · outlook.office365.com')).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.queryByLabelText('Link')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Change link of Work' })).toBeTruthy();
+  });
+
   it('explains a refresh refused as too soon', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: 'Refreshed less than a minute ago' }), { status: 429 }));
     const onChanged = vi.fn();
     render(<CalendarSidebar calendars={[{ ...sub, subscription: { ...sub.subscription!, error: undefined } }]} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Subscription details for Work' }));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh Work' }));
     expect((await screen.findByRole('alert')).textContent).toBe('Work was refreshed less than a minute ago; try again shortly.');
     expect(onChanged).not.toHaveBeenCalled();
