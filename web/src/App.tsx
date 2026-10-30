@@ -119,6 +119,7 @@ export const App: React.FC = () => {
         user={user}
         onLogout={handleLogout}
         sidebarSlot={setSidebarSlot}
+        version={settings?.version}
       />
 
       <main className="app-main">

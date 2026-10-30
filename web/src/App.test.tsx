@@ -57,4 +57,16 @@ describe('App landing', () => {
     fireEvent.click(within(nav).getByRole('button', { name: 'Groups' }));
     expect(await screen.findByRole('heading', { name: 'Groups' })).toBeTruthy();
   });
+
+  it('shows the server version from /api/settings in the About window', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path === '/api/auth/me') return new Response(JSON.stringify({ authenticated: true, user: { id: 'u1', username: 'u', role: 'admin' } }), { status: 200 });
+      if (path === '/api/settings') return new Response('{"version":"9.8.7"}', { status: 200 });
+      return new Response('{}', { status: 200 });
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /MIT License/ }));
+    expect(await screen.findByText('v9.8.7')).toBeTruthy();
+  });
 });
