@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { LicenseFooter } from './LicenseFooter';
 import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck, Palette } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -9,6 +10,8 @@ interface AppHeaderProps {
   onLogout: () => void;
   /** Where a page renders its own sidebar content, below the navigation. */
   sidebarSlot?: (el: HTMLDivElement | null) => void;
+  /** The server's version, from `/api/settings`. */
+  version?: string;
 }
 
 // useScrollCue marks which ends of a scroll box hide content (`data-cue="start end"`), so CSS can
@@ -37,7 +40,7 @@ function useScrollCue() {
   return setEl;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot }) => {
+export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot, version }) => {
   const navCue = useScrollCue();
   const slotCue = useScrollCue();
   const slotRef = useCallback((el: HTMLDivElement | null) => { sidebarSlot?.(el); slotCue(el); }, [sidebarSlot, slotCue]);
@@ -101,6 +104,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
               </button>
             </div>
           )}
+          <LicenseFooter version={version} />
         </div>
       </header>
     </>

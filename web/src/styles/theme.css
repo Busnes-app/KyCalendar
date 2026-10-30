@@ -179,6 +179,20 @@ body {
 /* Sign out uses the navigation row's geometry so the sidebar reads as one list. */
 button.app-logout { justify-content: flex-start; padding: 0 var(--ky-space-2) 0 var(--ky-space-3); color: var(--ink); font-size: var(--ky-type-nav); font-weight: 500; }
 button.app-logout:hover:not(:disabled) { color: var(--ink-strong); }
+/* Licence line and About window: the suite's shared markup, as in KyPost. */
+.sidebar-footer { font-size: .75rem; color: var(--ink); padding-left: var(--ky-space-3); white-space: nowrap; }
+.sidebar-footer p { margin: 0; }
+button.license-link, button.license-link:hover:not(:disabled) { min-height: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-decoration: underline; }
+.compose-backdrop { position: fixed; inset: 0; margin: 0; border: none; width: 100%; height: 100%; max-width: none; max-height: none; color: inherit; background: rgba(12, 12, 18, .68); display: grid; place-items: center; z-index: 2500; padding: 16px; }
+.compose-backdrop:not([open]) { display: none; }
+.license-window { width: min(720px, 96vw); max-height: 90vh; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; color: var(--ink-strong); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.license-window-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.license-window-title { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.license-title-main { display: flex; align-items: baseline; gap: 10px; }
+.license-app-name { font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em; line-height: 1.1; }
+.license-version-badge { font-size: .72rem; font-weight: 600; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.license-title-sub { margin: 0; font-size: .82rem; opacity: .7; }
+.license-text { width: 100%; flex: 1; min-height: 320px; resize: vertical; font-family: var(--font-mono); font-size: .78rem; line-height: 1.4; white-space: pre; background: var(--panel); color: var(--ink-strong); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .app-main { min-width: 0; }
 .app-loading { min-height: 100vh; display: grid; place-items: center; color: var(--ink); }
 /* The reset above strips the UA margin that centres modal dialogs. */
@@ -199,6 +213,7 @@ dialog { margin: auto; }
   .app-nav button { width: auto; flex: 0 0 auto; padding-inline: var(--ky-space-3); white-space: nowrap; }
   .app-header-actions { grid-column: 2 / -1; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; justify-self: end; gap: var(--ky-space-2); margin-top: 0; }
   .app-user { border-top: 0; padding: 0; }
+  .sidebar-footer { display: none; }
   .app-user-copy, .app-logout-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 

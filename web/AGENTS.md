@@ -41,6 +41,7 @@ Owns user interface components, service worker caching, PWA installation manifes
 - `Login.tsx` shows "Continue with <label>" only when `/api/settings` carries `signin_name` (a live provider with SSO enabled); there is no SSO button otherwise.
 - `Backup.tsx` shows `last_run` under the schedule, as an alert when it failed, so a failing scheduled backup is visible on screen.
 - `Settings.tsx` shows the server's version from `/api/settings` (`version`, signed-in only) under About.
+- `LicenseFooter` (in `AppHeader`, below the account region) is the suite licence line `© <year> · MIT License`; it opens the About window (KyPost's markup and class names): KyCalendar, a `v<version>` badge from `/api/settings` `version` (none without it), "Developed by Busnes.app" and `src/mit.txt`. `src/mit.txt` is `LICENSE.txt` byte for byte (`license_test.go`); the line is hidden at 720px or less, as in KyPost.
 - `Backup.tsx` warns for as long as `database_driver` from `/api/backup/status` is not `sqlite`: only the SQLite path can snapshot a database into a capsule, so a Postgres deployment makes no capsules at all.
 
 - Sign-in responses are validated at the HTTP boundary. A `managed` response disables configuration, Test and Save, explains KyQuickStart ownership and leaves callback Copy available. Source `installer` is distinct from environment and saved settings.
