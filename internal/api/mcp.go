@@ -400,7 +400,7 @@ func (t mcpTools) updateEvent(ctx context.Context, _ *mcp.CallToolRequest, in up
 	}
 	// Judged on the stored object: an edit can drop the overrides that carry the attendees, and
 	// the write would then cancel the meeting for them. The mcp:invite scope is not built yet.
-	if t.s.config.Calendar.Scheduling && hasAttendees(cal) {
+	if t.s.sched != nil && hasAttendees(cal) {
 		return nil, writeEventOut{}, errors.New(msgMeeting)
 	}
 	if own != nil && !own[c.ID+"/"+in.UID] {

@@ -21,19 +21,23 @@ const (
 )
 
 // kypostRequest verifies a signed request from KyPost and resolves who it speaks for. It writes
-// the refusal itself and returns ok false: 404 while KyPost or scheduling is off, 401 for a
+// the refusal itself and returns ok false: 404 while KyPost is unlinked or scheduling is off, 401 for a
 // bad signature, 200 for a replay already acted on, 404 for an unknown user, 429 past the limit.
 func (s *Server) kypostRequest(w http.ResponseWriter, r *http.Request, event string, into any, who func() kypost.User) (*store.User, bool) {
-	if s.sched == nil || len(s.config.Calendar.KyPostSecret) == 0 {
+	peer := s.kypost.Peer()
+	if s.sched == nil || peer == nil {
 		http.NotFound(w, r)
 		return nil, false
 	}
-	body, replayed, err := kypost.Verify(r, s.config.Calendar.KyPostSecret, event, s.kypostReplay)
+	body, replayed, err := kypost.Verify(r, peer.Secret, event, s.kypostReplay)
 	if replayed {
 		s.writeJSON(w, http.StatusOK, map[string]string{"outcome": "duplicate"})
 		return nil, false
 	}
 	if err != nil {
+		if peer.Source == kypost.SourceKyIdentity {
+			s.kickKyPost() // KyPost may hold a rotated pair secret; lookups stay rate limited
+		}
 		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Bad signature", "code": "bad_signature"})
 		return nil, false
 	}

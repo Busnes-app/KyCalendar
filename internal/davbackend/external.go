@@ -36,6 +36,9 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 	err := s.KyPost.Send(ctx, m.DedupeKey, kypost.SendRequest{User: who, From: from.Email(), Recipients: []string{to.Email()},
 		Method: m.Method, ICS: string(m.Body)})
 	var refused kypost.Refused
+	if errors.Is(err, kypost.ErrNotConnected) {
+		return errNoTransport
+	}
 	if errors.As(err, &refused) {
 		return errPermanent{"kypost_" + refused.Code}
 	}

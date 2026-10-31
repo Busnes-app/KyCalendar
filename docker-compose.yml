@@ -89,9 +89,11 @@ services:
       - KYCALENDAR_BACKUP_KEEP=${KYCALENDAR_BACKUP_KEEP:-7}
       - KYCALENDAR_BACKUP_DEPOSIT_INTERVAL=${KYCALENDAR_BACKUP_DEPOSIT_INTERVAL:-24h}
       - KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=${KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY:-false}
-      # Invitations (unfinished; leave off). KyPost mails them to people outside the instance; its
-      # shared secret is a file, e.g. ./data/kypost.secret (mode 600) seen as /app/data/kypost.secret.
-      - KYCALENDAR_SCHEDULING=${KYCALENDAR_SCHEDULING:-false}
+      # Invitations. Empty scheduling is automatic: on when KyPost is linked at startup, which
+      # happens by itself when KyIdentity is the sign-in provider and pairs KyPost with KyCalendar.
+      # true/false force it. KYCALENDAR_KYPOST_URL and _SECRET_FILE override KyIdentity; the secret
+      # is a file, e.g. ./data/kypost.secret (mode 600) seen as /app/data/kypost.secret.
+      - KYCALENDAR_SCHEDULING=${KYCALENDAR_SCHEDULING:-}
       - KYCALENDAR_KYPOST_URL=${KYCALENDAR_KYPOST_URL:-}
       - KYCALENDAR_KYPOST_SECRET_FILE=${KYCALENDAR_KYPOST_SECRET_FILE:-}
       - KYCALENDAR_KYPOST_ALLOW_PRIVATE=${KYCALENDAR_KYPOST_ALLOW_PRIVATE:-false}

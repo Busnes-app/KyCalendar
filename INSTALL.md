@@ -31,7 +31,8 @@ address according to the product’s proxy guide.
 
 Local administrator, everyday users and groups work without KyIdentity. A browser is
 sufficient for calendar use; CalDAV clients use separate device app passwords. Invitations
-through KyPost need an additional integration and working mail delivery.
+through KyPost need KyPost with working mail delivery; with KyIdentity as the sign-in provider
+the two link automatically ([accounts guide](docs/ACCOUNTS-AND-GROUPS.md)).
 
 ```sh
 [ -e .env ] || (umask 077; touch .env)

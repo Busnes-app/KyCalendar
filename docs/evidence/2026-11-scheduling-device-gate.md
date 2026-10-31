@@ -81,9 +81,11 @@ Both sides share one secret. Make it once and give the same file to both servers
 
 2. Copy that file to the KyPost host, mode 600, where KyPost's container can read it, and
    readable by the user KyPost runs as.
-3. KyCalendar `.env` (leave `KYCALENDAR_SCHEDULING` alone for now):
+3. KyCalendar `.env`. Pin scheduling off for now: unset, it is automatic and turns on as soon as
+   KyPost is linked.
 
    ```sh
+   KYCALENDAR_SCHEDULING=false
    KYCALENDAR_KYPOST_URL=https://<kypost host>
    KYCALENDAR_KYPOST_SECRET_FILE=/app/data/kypost.secret
    # Only if KyPost is on your own network (a 10.x, 192.168.x or similar address):
@@ -155,7 +157,8 @@ What changes for people:
 
 ### Roll it back
 
-1. Edit `.env`: `KYCALENDAR_SCHEDULING=false` (or delete the line; off is the default).
+1. Edit `.env`: `KYCALENDAR_SCHEDULING=false`. Do not delete the line: unset is automatic, which
+   is on while KyPost is linked.
 2. `docker compose up -d`.
 3. On every device, refresh or re-add the account. iPhone and Mac keep what they learned until
    they re-read the account; remove and re-add it if they still behave as before.
@@ -514,8 +517,7 @@ Write here any failure you accept for launch, and why (Yoshi, with the date).
 
 ## After the gate
 
-- **If it passes:** set `KYCALENDAR_SCHEDULING=true` in the launch deployment's `.env`. The code
-  default stays off. Open a follow-up PR that drops "Leave it off: unfinished" from
-  `docs/ACCOUNTS-AND-GROUPS.md` and the "unfinished" note in `AGENTS.md`.
-- **If it fails:** leave the switch off for launch. Record the failing rows here and open an
+- **If it passes:** remove the `KYCALENDAR_SCHEDULING=false` pin (automatic: on while KyPost is
+  linked) or set it `true` in the launch deployment's `.env`.
+- **If it fails:** keep `KYCALENDAR_SCHEDULING=false` pinned for launch. Record the failing rows here and open an
   issue for each.

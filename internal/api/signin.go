@@ -59,7 +59,7 @@ func (s *Server) signInSettings(ctx context.Context) (sso.Settings, error) {
 // environment edit). A provider is stored only once binding succeeds; any error leaves sign-in
 // closed. cmd/server calls it once at startup.
 func (s *Server) LoadSignIn(ctx context.Context) error {
-	s.signin.Store(nil)
+	s.setSignIn(nil)
 	if names := sso.IgnoredEnv(s.config.SSO); names != nil {
 		log.Printf("[SSO] %s ignored: KY_KYSIGNON_ISSUER is not set", strings.Join(names, " and "))
 	}
@@ -81,7 +81,7 @@ func (s *Server) LoadSignIn(ctx context.Context) error {
 		}
 		log.Printf("[SSO] sign-in provider changed from %q to %q: %d accounts of the previous provider disabled", prev, st.Identity(), n)
 	}
-	s.signin.Store(s.buildProvider(st))
+	s.setSignIn(s.buildProvider(st))
 	return nil
 }
 

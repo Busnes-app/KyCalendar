@@ -283,7 +283,7 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 		s.writeActorRevoked(w)
 		return
 	} else if err != nil {
-		s.signin.Store(nil)
+		s.setSignIn(nil)
 		log.Printf("[SSO] sign-in save failed: %v", err)
 		s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=failure step=commit")
 		s.writeError(w, http.StatusInternalServerError, "Sign-in is closed: the settings could not be saved; nothing changed, save again")
@@ -292,7 +292,7 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 	if prev != "" {
 		s.auditAction(ctx, r, "admin.signin_provider_change", st.Provider.Value, bindDetails(prev, st, disabled))
 	}
-	s.signin.Store(s.buildProvider(st))
+	s.setSignIn(s.buildProvider(st))
 	s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=success issuer="+strconv.Quote(st.Issuer.Value))
 	// The view is what was stored, read back as GET reads it.
 	saved, err = s.store.Settings().GetAllSettings(ctx)

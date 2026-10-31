@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { JSON_HEADERS, REAUTH, failure, send } from "../admin";
 import { PageHeader } from "../components/ui";
+import KyPostStatus from "./KyPostStatus";
 
 interface Field {
   value: string;
@@ -234,6 +235,7 @@ export default function SignIn() {
           )}
         </div>
       </form>
+      <KyPostStatus />
     </section>
   );
 }

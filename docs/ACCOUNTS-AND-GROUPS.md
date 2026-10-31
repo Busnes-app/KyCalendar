@@ -108,6 +108,18 @@ Switching provider, or changing the issuer, disables every account of the previo
 
 Environment variables win: `KY_KYSIGNON_ISSUER` fixes the provider to KyIdentity and locks the issuer; `KY_KYSIGNON_CLIENT_ID` and `KY_KYSIGNON_SECRET` lock their fields but apply only beside the issuer variable. KyIdentity configured through the environment also needs `KY_KYSIGNON_SECRET` (only confidential clients are supported); without it, and without a secret saved on this screen for the same issuer and client ID, single sign-on stays off and the startup log says so. Changing `KY_KYSIGNON_ISSUER` between restarts (or the provider kind) counts as a provider change too; a new client ID or secret does not. Start this version once before changing `KY_KYSIGNON_ISSUER`; the first start binds the current issuer and disables nothing. KyIdentity's directory webhook (`KY_KYSIGNON_HMAC_SECRET`) is applied only while sign-in is bound to KyIdentity; otherwise it is ignored and logged. It only takes access away: it creates new directory users and deactivates, deletes or updates the display name and email of known ones, but never re-activates a disabled account, so a stale webhook secret cannot hand a disabled row to a later login. `KY_SSO_ENABLED=false` switches single sign-on off whatever is saved. An issuer set by the environment is not rediscovered on Save and may be loopback or plain HTTP; Test still reads its discovery document without the address guard, with a 20-second limit and no redirects.
 
+**KyPost.** KyPost links itself when KyIdentity is the sign-in provider (environment, Sign-in screen or
+installer, and `KY_SSO_ENABLED` is not `false`) and `KYCALENDAR_KYPOST_URL` and `_SECRET_FILE` are empty: KyCalendar asks KyIdentity
+for KyPost's address and the secret the pair shares, using its own sign-in client ID and secret.
+Nothing is copied between servers and the secret is kept only in memory. KyCalendar asks again
+every hour, after KyPost refuses its signature (KyIdentity rotated the secret) and when the
+sign-in settings change. If KyIdentity has no KyPost for KyCalendar, refuses the credentials or
+cannot be reached, KyPost is not linked and KyCalendar keeps retrying; a link already made stays
+up while KyIdentity is merely unreachable. KyPost's address follows the same rules as an
+environment one: `https://` only, no loopback, no private address unless
+`KYCALENDAR_KYPOST_ALLOW_PRIVATE` is on. The Sign-in screen shows whether KyPost is connected,
+how, why not, and whether scheduling is on.
+
 ## Groups
 
 **Groups** lists every group: local ones you create here and, when SCIM is connected, the ones your identity provider syncs (badged "Managed by SCIM"; change those in the identity provider). Create a group, rename it, search for people to add, remove members, or delete it. Only active everyday people can be members: administrators never see calendars. Adding or removing someone reaches their phone at its next sync. Deleting a group removes its members and its access to group calendars (the confirm says how many); the calendars stay. Deleting needs a sign-in from the last 10 minutes.
@@ -126,8 +138,8 @@ positive or startup fails.
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
 | `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB), capped at a tenth of `KY_CALENDAR_MAX_BYTES_TOTAL` when that is set (4 MiB on SQLite) | Stored event bytes across all of a user's calendars, and separately per group calendar, so no single owner can fill the instance. |
 | `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite, `0` (off) on Postgres | Stored event bytes across every user. |
-| `KYCALENDAR_SCHEDULING` | `false` | Server-side invitations. **Leave it off: unfinished.** On, calendar apps hand invitations to the server and people on this instance get them in their calendar. People outside the instance need KyPost (below), which does not accept them yet. |
-| `KYCALENDAR_KYPOST_URL` | empty | KyPost's `https://` address. KyPost mails invitations to people outside the instance from the organizer's own mailbox, and hands their replies back. Needs `KYCALENDAR_KYPOST_SECRET_FILE`. |
+| `KYCALENDAR_SCHEDULING` | empty (automatic) | Server-side invitations. On, calendar apps hand invitations to the server, people on this instance get them in their calendar, and KyPost mails people outside it. Empty is automatic: on when KyPost is linked at startup, off otherwise. `true` or `false` forces it. The choice is made once at startup; restart after linking KyPost to turn automatic scheduling on. |
+| `KYCALENDAR_KYPOST_URL` | empty | KyPost's `https://` address. KyPost mails invitations to people outside the instance from the organizer's own mailbox, and hands their replies back. Needs `KYCALENDAR_KYPOST_SECRET_FILE`. Leave both empty to link KyPost through KyIdentity ([Sign-in](#sign-in)); set, they override it. |
 | `KYCALENDAR_KYPOST_SECRET_FILE` | empty | A file holding the secret KyCalendar and KyPost share, at least 32 bytes (`openssl rand -hex 32`), mode 600. In Compose, put it in `./data` and name it `/app/data/kypost.secret`. |
 | `KYCALENDAR_KYPOST_ALLOW_PRIVATE` | `false` | Let KyPost be on your own network (a private address). Loopback stays refused; `https://` is always required. |
 
