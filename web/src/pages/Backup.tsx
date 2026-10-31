@@ -139,8 +139,9 @@ const Alert: React.FC<{ kind: 'error' | 'warn' | 'success'; children: React.Reac
   </div>
 );
 
-const Badge: React.FC<{ tone: 'success' | 'accent' | 'danger' | 'muted'; children: React.ReactNode }> = ({ tone, children }) => (
-  <span className={tone === 'muted' ? 'badge dr-badge-muted' : `badge badge-${tone}`}>{children}</span>
+/** A ky-ui status pill; no status is neutral. */
+const Status: React.FC<{ status?: 'success' | 'danger'; children: React.ReactNode }> = ({ status, children }) => (
+  <span className="ky-status" data-ky-status={status}>{children}</span>
 );
 
 export const Backup: React.FC = () => {
@@ -374,7 +375,7 @@ export const Backup: React.FC = () => {
         <div className="dr-fact">
           <div className="dr-fact-label">
             <span>Recovery key</span>
-            <Badge tone={keyPinned ? 'success' : 'danger'}>{keyPinned ? 'Pinned' : 'None'}</Badge>
+            <Status status={keyPinned ? 'success' : 'danger'}>{keyPinned ? 'Pinned' : 'None'}</Status>
           </div>
           <div className="dr-fact-value dr-mono">{status?.recovery_key_id ?? '—'}</div>
           <div className="dr-fact-note">
@@ -384,7 +385,7 @@ export const Backup: React.FC = () => {
         <div className="dr-fact">
           <div className="dr-fact-label">
             <span>KyRecovery</span>
-            <Badge tone={paired ? 'success' : 'muted'}>{paired ? 'Paired' : 'Not paired'}</Badge>
+            <Status status={paired ? 'success' : undefined}>{paired ? 'Paired' : 'Not paired'}</Status>
           </div>
           <div className="dr-fact-value">{paired ? status?.recovery_url : 'No off-site copy'}</div>
           <div className="dr-fact-note">
@@ -394,7 +395,7 @@ export const Backup: React.FC = () => {
         <div className="dr-fact">
           <div className="dr-fact-label">
             <span>Local copies</span>
-            <Badge tone={hasLocal ? 'success' : 'muted'}>{hasLocal ? `${copies.length} of ${status?.local_keep}` : 'Off'}</Badge>
+            <Status status={hasLocal ? 'success' : undefined}>{hasLocal ? `${copies.length} of ${status?.local_keep}` : 'Off'}</Status>
           </div>
           <div className="dr-fact-value dr-mono">{status?.local_dir ?? 'KYCALENDAR_BACKUP_DIR not set'}</div>
           <div className="dr-fact-note">{status?.local_error ?? (newestLocal ? `Newest ${when(newestLocal.created_at)}` : hasLocal ? 'Nothing written yet' : '')}</div>
@@ -402,7 +403,7 @@ export const Backup: React.FC = () => {
         <div className="dr-fact">
           <div className="dr-fact-label">
             <span>Schedule</span>
-            <Badge tone={!scheduleOn ? 'danger' : scheduleBlock ? 'muted' : 'success'}>{every(status?.interval_sec)}</Badge>
+            <Status status={!scheduleOn ? 'danger' : scheduleBlock ? undefined : 'success'}>{every(status?.interval_sec)}</Status>
           </div>
           <div className="dr-fact-value">
             {!scheduleOn ? 'Manual only' : scheduleBlock ?? (status?.next_run_at ? `Next ${when(status.next_run_at)}` : 'Not yet scheduled')}
@@ -459,7 +460,7 @@ export const Backup: React.FC = () => {
         {drillResult && (
           <div className="dr-drill">
             <div>
-              Restore drill <Badge tone={drillResult.passed ? 'success' : 'danger'}>{drillResult.passed ? 'passed' : 'failed'}</Badge>{' '}
+              Restore drill <Status status={drillResult.passed ? 'success' : 'danger'}>{drillResult.passed ? 'passed' : 'failed'}</Status>{' '}
               <span className="dr-hint">{drillResult.duration_ms} ms</span>
             </div>
             {drillResult.error_message && <div className="dr-danger">{drillResult.error_message}</div>}
@@ -510,7 +511,7 @@ export const Backup: React.FC = () => {
             <h3>
               <Server size={16} /> KyRecovery
             </h3>
-            <Badge tone={paired ? 'success' : 'muted'}>{paired ? 'Paired' : 'Not paired'}</Badge>
+            <Status status={paired ? 'success' : undefined}>{paired ? 'Paired' : 'Not paired'}</Status>
           </div>
           <p className="dr-hint">
             KyRecovery keeps capsules it cannot open, off this host. In its dashboard, generate a pairing code for this service and enter it
@@ -556,7 +557,7 @@ export const Backup: React.FC = () => {
             <h3>
               <KeyRound size={16} /> Recovery key by hand
             </h3>
-            <Badge tone={keyPinned ? 'success' : 'danger'}>{keyPinned ? 'Pinned' : 'None'}</Badge>
+            <Status status={keyPinned ? 'success' : 'danger'}>{keyPinned ? 'Pinned' : 'None'}</Status>
           </div>
           {keyPinned ? (
             <p className="dr-hint">

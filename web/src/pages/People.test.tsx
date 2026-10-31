@@ -64,6 +64,17 @@ describe("People", () => {
     expect(within(row).getByText("Everyday")).toBeTruthy();
   });
 
+  it("shows each person's state as a worded ky-ui status pill", async () => {
+    mockFetch({ "GET /api/admin/users": () => users(person({}), person({ id: "u2", username: "bea", status: "disabled" })) });
+    render(<People me="u0" />);
+    const active = await screen.findByText("Active");
+    expect(active.className).toBe("ky-status");
+    expect(active.dataset.kyStatus).toBe("success");
+    const disabled = screen.getByText("Disabled");
+    expect(disabled.className).toBe("ky-status");
+    expect(disabled.hasAttribute("data-ky-status")).toBe(false);
+  });
+
   it("shows the Email column only when someone has an email", async () => {
     mockFetch({ "GET /api/admin/users": () => users(person({}), person({ id: "u2", username: "bea", email: "bea@example.test" })) });
     render(<People me="u0" />);

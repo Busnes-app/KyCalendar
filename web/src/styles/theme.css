@@ -59,13 +59,6 @@
   --success: #a3be8c;
 }
 
-/* The suite palettes (ky-ui themes.js sets their colours inline) have no status colours;
-   tint Busnes ones toward the palette's ink, as KyPost does, so they read on light and dark. */
-:root[data-theme]:not([data-theme^="busnes-"], [data-theme="nord"]) {
-  --danger: color-mix(in srgb, var(--ky-danger) 50%, var(--ink-strong));
-  --success: color-mix(in srgb, var(--ky-success) 50%, var(--ink-strong));
-}
-
 /* ---------- Global Layout ---------- */
 
 /* Local names for ky-ui's shared geometry, on its 8px rhythm. Colours stay ky-ui's. */
@@ -244,24 +237,6 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
   vertical-align: middle;
 }
 
-.badge-success {
-  background: var(--success-soft);
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 35%, transparent);
-}
-
-.badge-accent {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-.badge-danger {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
-}
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
@@ -295,7 +270,6 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
 .dr-alert-error { color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.08); }
 .dr-alert-warn { color: var(--ink-strong); background: var(--accent-soft); border-color: var(--accent); }
 .dr-alert-success { color: var(--success); border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.08); }
-.dr-badge-muted { background: var(--panel-hover); color: var(--ink); border: 1px solid var(--line); }
 
 .dr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .dr-fact { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; }
