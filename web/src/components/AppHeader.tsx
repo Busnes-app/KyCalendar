@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { LicenseFooter } from './LicenseFooter';
+import { AppRail, type SuiteApp } from './AppRail';
 import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck, Palette } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -12,6 +13,8 @@ interface AppHeaderProps {
   sidebarSlot?: (el: HTMLDivElement | null) => void;
   /** The server's version, from `/api/settings`. */
   version?: string;
+  /** Suite apps for the rail, from `/api/suite/apps`. */
+  apps?: SuiteApp[];
 }
 
 // useScrollCue marks which ends of a scroll box hide content (`data-cue="start end"`), so CSS can
@@ -40,7 +43,7 @@ export function useScrollCue() {
   return setEl;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot, version }) => {
+export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot, version, apps = [] }) => {
   const slotCue = useScrollCue();
   const slotRef = useCallback((el: HTMLDivElement | null) => { sidebarSlot?.(el); slotCue(el); }, [sidebarSlot, slotCue]);
   // Administrators run the instance and never see calendars; everyday users see nothing else.
@@ -103,6 +106,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         <div className="app-sidebar-slot" ref={slotRef} />
       </div>
       <div className="ky-sidebar-foot">
+        <AppRail apps={apps} />
         {user && (
           <div className="ky-user">
             <div className="ky-user-copy">
