@@ -83,7 +83,7 @@ export const SCIMAdmin: React.FC = () => {
                         <td data-label="Display name">{u.display_name || '—'}</td>
                         <td data-label="Email">{u.email || '—'}</td>
                         <td data-label="Status">
-                          <span className="ky-status" data-ky-status={u.status === 'active' ? 'success' : 'danger'}>{u.status === 'active' ? 'Active' : 'Inactive'}</span>
+                          <span className="ky-status" data-ky-status={u.status === 'active' ? 'success' : undefined}>{u.status === 'active' ? 'Active' : 'Inactive'}</span>
                         </td>
                       </tr>
                     ))}
