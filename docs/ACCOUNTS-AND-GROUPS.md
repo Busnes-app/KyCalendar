@@ -47,8 +47,9 @@ by name. CalDAV clients of a renamed everyday account must sign in with the new 
 ## Two-step verification
 
 Local accounts, the administrator included, can add a code from an authenticator app to their
-sign-in. Open **Two-step verification**, enter your password and choose **Set up**. Open the
-setup link on your phone, or type the key into the app, then enter the code the app shows and
+sign-in. Open **Settings** (the gear beside Sign out) → **Account**, enter your password under
+**Two-step verification** and choose **Set up**. Open the setup link on your phone, or type the
+key into the app, then enter the code the app shows and
 choose **Turn on**. A wrong code leaves it off. Save the ten recovery codes it then shows: each
 signs you in once instead of a code, and they are not shown again. Turning it on or off signs
 you out everywhere else and revokes your app passwords; create new ones afterwards.

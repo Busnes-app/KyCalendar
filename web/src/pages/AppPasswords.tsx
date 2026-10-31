@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { secureFetch } from "../api";
 import { REAUTH } from "../admin";
-import { CodeBlock, CopyButton, EmptyState, PageHeader } from "../components/ui";
+import { CodeBlock, CopyButton, EmptyState } from "../components/ui";
 
 type AgentScope = "mcp:read" | "mcp:write-own" | "mcp:write-any";
 type Scope = "dav" | AgentScope;
@@ -116,8 +116,7 @@ export default function AppPasswords({ username }: { username: string }) {
   const host = window.location.host;
 
   return (
-    <section>
-      <PageHeader title="Phones and apps" lede="Each device or AI agent gets its own app password. Revoke one and only that one stops working." />
+    <>
 
       <div className="card">
         <h2 className="section-title">Add a device or agent</h2>
@@ -273,7 +272,7 @@ export default function AppPasswords({ username }: { username: string }) {
           </dl>
         </div>
       </section>
-    </section>
+    </>
   );
 }
 

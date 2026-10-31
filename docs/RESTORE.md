@@ -346,7 +346,7 @@ hash as it was at the backup**, so a password that leaked and was rotated after 
 would work again; Step 3 reset those before the service opened.
 
 1. Tell users what changes:
-   - Everyone signs in again; every user creates new app passwords under Phones & apps, and
+   - Everyone signs in again; every user creates new app passwords under Settings → Phones & apps, and
      CalDAV clients resync from scratch (the epoch changes the calendar CTag).
    - Local passwords changed after the backup were reset in Step 3; their owners sign in with
      the temporary password and choose a new one. SSO accounts are unaffected.

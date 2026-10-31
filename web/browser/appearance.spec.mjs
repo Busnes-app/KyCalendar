@@ -27,8 +27,10 @@ test('Appearance: pair cards, fixed halves, OS-following pairs and the return to
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.fc')).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await nav.getByRole('button', { name: 'Appearance', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Appearance' })).toBeVisible();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  const tabs = page.getByRole('navigation', { name: 'Settings sections' });
+  await tabs.getByRole('link', { name: 'Appearance', exact: true }).click();
+  await expect(tabs.getByRole('link', { name: 'Appearance', exact: true })).toHaveAttribute('aria-current', 'page');
   const choice = (pair, mode) => page.getByRole('group', { name: pair, exact: true }).getByRole('radio', { name: new RegExp(`^${mode}`) });
   for (const pair of ['Busnes', 'Matter', 'Ocean', 'Forest', 'Ky', 'Nord']) await expect(page.getByRole('group', { name: pair, exact: true }).getByRole('radio')).toHaveCount(3);
   const system = choice('Busnes', 'Match system');
@@ -46,8 +48,7 @@ test('Appearance: pair cards, fixed halves, OS-following pairs and the return to
   // A fixed light suite half: idle and hovered navigation rows stay readable.
   await choice('Forest', 'Light').check();
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(243, 246, 239)');
-  for (const name of ['Calendar', 'Phones & apps']) {
-    const row = nav.getByRole('button', { name, exact: true });
+  for (const [name, row] of [['Calendar', nav.getByRole('button', { name: 'Calendar', exact: true })], ['Phones & apps tab', tabs.getByRole('link', { name: 'Phones & apps', exact: true })]]) {
     await page.mouse.move(0, 0);
     const idle = await contrast(row);
     await row.hover();
@@ -56,8 +57,9 @@ test('Appearance: pair cards, fixed halves, OS-following pairs and the return to
     expect(idle).toBeGreaterThanOrEqual(4.5);
     expect(hover).toBeGreaterThanOrEqual(4.5);
   }
+  // The section's address survives a reload.
   await page.reload();
-  await nav.getByRole('button', { name: 'Appearance', exact: true }).click();
+  await expect(tabs.getByRole('link', { name: 'Appearance', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(choice('Forest', 'Light')).toBeChecked();
 
   // A pair following the OS re-resolves when the scheme changes, without a reload.

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { LicenseFooter } from './LicenseFooter';
 import { AppRail, type SuiteApp } from './AppRail';
-import { Smartphone, LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, ShieldCheck, Palette } from 'lucide-react';
+import { LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, Server } from 'lucide-react';
 
 interface AppHeaderProps {
   appName: string;
@@ -56,18 +56,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         { id: 'signin', label: 'Sign-in', icon: KeyRound },
         { id: 'scim', label: 'Directory & SCIM', icon: Users },
         { id: 'backup', label: 'Backups', icon: Archive },
-        { id: 'settings', label: 'Settings', icon: SettingsIcon },
+        { id: 'server-settings', label: 'Server settings', icon: Server },
       ]
-    : [
-        { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-        { id: 'devices', label: 'Phones & apps', icon: Smartphone },
-      ];
-  // Two-step verification guards the local password; an SSO account's belongs to its provider.
-  if (user?.sso_provider === 'local') navItems.push({ id: 'security', label: 'Two-step verification', icon: ShieldCheck });
-  navItems.push({ id: 'appearance', label: 'Appearance', icon: Palette });
+    : [{ id: 'calendar', label: 'Calendar', icon: CalendarDays }];
   const role = user?.role === 'admin' ? 'Administrator' : 'Everyday account';
   // Name over role, never the same word twice: a display name equal to the role yields to the username.
   const name = user?.display_name && user.display_name !== role ? user.display_name : user?.username;
+  // Personal settings sit behind the gear, in the footer and the phone header, not in the navigation.
+  const onSettings = activeTab.startsWith('settings/');
+  const actions = (
+    <>
+      <a className="ky-icon-button" href="#/settings/account" aria-label="Settings" title="Settings" aria-current={onSettings ? 'page' : undefined}>
+        <SettingsIcon aria-hidden="true" />
+      </a>
+      <button type="button" className="ky-icon-button" aria-label="Sign out" title="Sign out" onClick={onLogout}>
+        <LogOut aria-hidden="true" />
+      </button>
+    </>
+  );
 
   return (
     <header className="ky-sidebar">
@@ -76,11 +82,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
           <img className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
           <span>{appName || 'KyCalendar'}</span>
         </div>
-        {user && (
-          <button type="button" className="ky-mobile-signout" aria-label="Sign out" onClick={onLogout}>
-            <LogOut aria-hidden="true" />
-          </button>
-        )}
+        {user && <div className="ky-mobile-actions">{actions}</div>}
       </div>
       {/* One flex row on phones: the tabs, then the page's sidebar content (the Calendars disclosure). */}
       <div className="app-nav-row">
@@ -113,10 +115,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
               <p className="ky-user-name">{name}</p>
               <p className="ky-user-role">{role}</p>
             </div>
-            <button type="button" className="ky-user-signout" onClick={onLogout}>
-              <LogOut aria-hidden="true" />
-              Sign out
-            </button>
+            <div className="ky-user-actions">{actions}</div>
           </div>
         )}
         <LicenseFooter version={version} />

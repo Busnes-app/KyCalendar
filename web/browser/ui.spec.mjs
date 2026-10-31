@@ -42,9 +42,15 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   await fits(page);
   // Themes are chosen on the Appearance page; the shell carries no theme select.
   await expect(page.getByLabel('Color theme')).toHaveCount(0);
-  const appearance = (p) => p.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Appearance', exact: true }).click();
+  // Appearance is a Settings section, behind the account footer's gear.
+  const appearance = async (p) => {
+    await p.getByRole('link', { name: 'Settings', exact: true }).click();
+    await p.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Appearance', exact: true }).click();
+  };
   const theme = (p, pair, mode) => p.getByRole('group', { name: pair, exact: true }).getByRole('radio', { name: new RegExp(`^${mode}`) }).check();
   await appearance(page);
+  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.locator('[aria-current]')).toHaveCount(0);
   await theme(page, 'Nord', 'Light');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(236, 239, 244)');
   await theme(page, 'Busnes', 'Dark');
@@ -68,9 +74,9 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   await page.keyboard.press('Tab');
   await expect(nav.getByRole('button').nth(1)).toBeFocused();
   await expect(nav.getByRole('button').nth(1)).toHaveCSS('outline-style', 'solid');
-  await nav.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(nav.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await nav.getByRole('button', { name: 'Server settings', exact: true }).click();
+  await expect(nav.getByRole('button', { name: 'Server settings', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: 'Server settings', exact: true })).toBeVisible();
   await fits(page);
   // Device pairing was removed (R27): the shell offers no pairing entry point.
   await expect(page.getByRole('button', { name: 'Pair Device' })).toHaveCount(0);

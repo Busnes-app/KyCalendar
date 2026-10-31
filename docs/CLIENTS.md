@@ -8,7 +8,7 @@ Commands and unlinked file paths below are relative to the repository root.
 
 Native clients need the server on HTTPS. With an `https://` `KY_APP_URL`, session cookies are
 `Secure` and HSTS is sent; `KY_COOKIE_SECURE=false` overrides that for local testing only. Sign in as an everyday user (administrators are refused
-on CalDAV), open **Phones & apps**, name the device and create an app password. The page shows
+on CalDAV), open **Settings** (the gear beside Sign out) → **Phones & apps**, name the device and create an app password. The page shows
 the server, your user name and the password once; revoke it there at any time.
 
 - iPhone and iPad: Settings > Calendar > Accounts > Add Account > Other > Add CalDAV Account.
@@ -21,7 +21,7 @@ Enter the app password where the client asks for a password. Per-user caps are i
 ## Connect an AI agent
 
 AI agents such as OpenClaw and Hermes Agent reach your personal calendars over MCP at
-`https://<your host>/mcp`. On **Phones & apps**, choose **AI agent** and an access level:
+`https://<your host>/mcp`. On **Settings** → **Phones & apps**, choose **AI agent** and an access level:
 
 - **Read only** (the default): the agent sees your schedule.
 - **Read and write**: it can also add events and change the ones it created. The switch

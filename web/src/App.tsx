@@ -8,13 +8,11 @@ import { ChangePassword } from './pages/ChangePassword';
 import { Backup } from './pages/Backup';
 import { SCIMAdmin } from './pages/SCIMAdmin';
 import { Settings } from './pages/Settings';
-import { Appearance } from './pages/Appearance';
-import AppPasswords from './pages/AppPasswords';
+import { PersonalSettings, settingsSections } from './pages/PersonalSettings';
 import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
 import People from './pages/People';
 import SignIn from './pages/SignIn';
-import TwoFactor from './pages/TwoFactor';
 import './styles/theme.css';
 import './styles/ui.css';
 import './ky-ui/tokens.css';
@@ -27,15 +25,37 @@ import { secureFetch } from './api';
 // FullCalendar is the bulk of the bundle; load it only for the calendar (same-origin chunk).
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 
+const ADMIN_TABS = ['dashboard', 'people', 'groups', 'group-calendars', 'signin', 'scim', 'backup', 'server-settings'];
+// Pages that became Settings sections keep their old addresses.
+const MOVED: Record<string, string> = {
+  settings: 'settings/account',
+  security: 'settings/account',
+  devices: 'settings/devices',
+  appearance: 'settings/appearance',
+};
+
+// Each page is a hash URL (#/calendar, #/settings/devices), so links and Back work.
+function hashTab(): string | null {
+  const id = location.hash.replace(/^#\/?/, '');
+  if (MOVED[id]) history.replaceState(null, '', `#/${MOVED[id]}`);
+  return MOVED[id] ?? (id || null);
+}
+
 export const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState<boolean>(true);
-  // null until the user picks a tab: the landing tab follows the role, so there is no flash.
-  const [chosenTab, setActiveTab] = useState<string | null>(null);
+  // null until a page is chosen: the landing page follows the role, so there is no flash.
+  const [chosenTab, setChosenTab] = useState<string | null>(hashTab);
   const [settings, setSettings] = useState<any>(null);
   const [sidebarSlot, setSidebarSlot] = useState<HTMLDivElement | null>(null);
   const [apps, setApps] = useState<SuiteApp[]>([]);
+
+  useEffect(() => {
+    const sync = () => setChosenTab(hashTab());
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -88,7 +108,8 @@ export const App: React.FC = () => {
   const handleLogout = async () => {
     await secureFetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
-    setActiveTab(null);
+    history.replaceState(null, '', location.pathname);
+    setChosenTab(null);
   };
 
   if (loading) {
@@ -122,14 +143,18 @@ export const App: React.FC = () => {
   }
 
   const isAdmin = user.role === 'admin';
-  const activeTab = chosenTab ?? (isAdmin ? 'dashboard' : 'calendar');
+  const tabs = [...(isAdmin ? ADMIN_TABS : ['calendar']), ...settingsSections(user).map((s) => `settings/${s.id}`)];
+  // An unknown address lands on the role's first page, or Settings' first section.
+  const fallback = chosenTab?.startsWith('settings/') ? 'settings/account' : tabs[0];
+  const activeTab = chosenTab && tabs.includes(chosenTab) ? chosenTab : fallback;
+  const go = (tab: string) => { location.hash = `/${tab}`; };
 
   return (
     <div className="ky-app">
       <AppHeader
         appName={settings?.app_name || 'KyCalendar'}
         activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab)}
+        onTabChange={go}
         user={user}
         onLogout={handleLogout}
         sidebarSlot={setSidebarSlot}
@@ -138,21 +163,18 @@ export const App: React.FC = () => {
       />
 
       <main className="ky-content">
-        {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
-        {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
-        {activeTab === 'appearance' && <Appearance />}
-        {activeTab === 'security' && user.sso_provider === 'local' && (
-          <TwoFactor enabled={user.totp_enabled === true} onChange={(on) => setUser({ ...user, totp_enabled: on })} />
+        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
+        {activeTab.startsWith('settings/') && (
+          <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onUserChange={setUser} />
         )}
-        {/* Admin pages: the API refuses everyday users anyway; never render them either. */}
-        {isAdmin && activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={(tab) => setActiveTab(tab)} />}
-        {isAdmin && activeTab === 'people' && <People me={user.id} />}
-        {isAdmin && activeTab === 'groups' && <Groups />}
-        {isAdmin && activeTab === 'group-calendars' && <GroupCalendars />}
-        {isAdmin && activeTab === 'signin' && <SignIn />}
-        {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
-        {isAdmin && activeTab === 'backup' && <Backup />}
-        {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
+        {activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={go} />}
+        {activeTab === 'people' && <People me={user.id} />}
+        {activeTab === 'groups' && <Groups />}
+        {activeTab === 'group-calendars' && <GroupCalendars />}
+        {activeTab === 'signin' && <SignIn />}
+        {activeTab === 'scim' && <SCIMAdmin />}
+        {activeTab === 'backup' && <Backup />}
+        {activeTab === 'server-settings' && <Settings settings={settings} />}
         <LicenseFooter className="ky-content-foot" version={settings?.version}>
           <AppRail apps={apps} />
         </LicenseFooter>

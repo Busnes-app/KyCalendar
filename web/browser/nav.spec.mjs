@@ -30,8 +30,7 @@ test('navigation hover: idle rows stay neutral, the selected row keeps its rail'
 
   // Colours after the hover transition has finished, normalised through a 1px canvas (the hover
   // mixes colours, which compute to color(srgb …)), with the text's contrast on its background.
-  const hovered = async (name) => {
-    const item = nav.getByRole('button', { name, exact: true });
+  const hovered = async (item) => {
     await item.hover();
     return item.evaluate(async (el) => {
       // A transition cancelled mid-way (the phone row scrolls on hover) is replaced by a new one.
@@ -50,17 +49,23 @@ test('navigation hover: idle rows stay neutral, the selected row keeps its rail'
     });
   };
 
-  for (const name of ['Phones & apps', 'Two-step verification']) {
-    const s = await hovered(name);
+  const calendar = nav.getByRole('button', { name: 'Calendar', exact: true });
+  const selected = await hovered(calendar);
+  expect(selected.bg).toEqual(selected.accentSoft);
+  expect(selected.shadow).toContain(`rgb(${selected.accent.join(', ')})`);
+  expect(selected.shadow).toContain('inset');
+  expect(selected.contrast).toBeGreaterThanOrEqual(4.5);
+
+  // On Settings no navigation row is current: Calendar and the closed section tabs take the neutral hover.
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  const tabs = page.getByRole('navigation', { name: 'Settings sections' });
+  await expect(calendar).not.toHaveAttribute('aria-current');
+  for (const [name, item] of [['Calendar', calendar], ['Phones & apps tab', tabs.getByRole('link', { name: 'Phones & apps', exact: true })], ['Appearance tab', tabs.getByRole('link', { name: 'Appearance', exact: true })]]) {
+    const s = await hovered(item);
     testInfo.annotations.push({ type: `hover contrast: ${name}`, description: s.contrast.toFixed(2) });
     expect(s.hover).toBe(true);
     expect(s.bg).toEqual(s.panelHover);
     expect(s.contrast).toBeGreaterThanOrEqual(4.5);
   }
-  const selected = await hovered('Calendar');
-  expect(selected.bg).toEqual(selected.accentSoft);
-  expect(selected.shadow).toContain(`rgb(${selected.accent.join(', ')})`);
-  expect(selected.shadow).toContain('inset');
-  expect(selected.contrast).toBeGreaterThanOrEqual(4.5);
   await context.close();
 });
