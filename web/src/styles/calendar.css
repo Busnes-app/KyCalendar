@@ -21,6 +21,7 @@ button.kc-icon.btn-danger:hover:not(:disabled), button.kc-icon.btn-danger:focus-
 .kc-sub { display: flex; flex-wrap: wrap; gap: var(--ky-space-1) var(--ky-space-2); font-size: var(--ky-type-meta); color: var(--ink); line-height: 1.5; padding-left: 1.55rem; }
 .kc-sub [role='alert'] { flex-basis: 100%; color: var(--danger); }
 .kc-sub .kc-actions { flex-basis: 100%; margin-top: .25rem; }
+.kc-cal-edit > .kc-sub { padding-left: 0; margin-bottom: var(--ky-space-2); }
 .kc-sidebar-actions { display: flex; flex-wrap: wrap; gap: var(--ky-space-2); margin-top: var(--ky-space-3); }
 .kc-hint { font-size: var(--ky-type-meta); line-height: 1.5; color: var(--ink); }
 
