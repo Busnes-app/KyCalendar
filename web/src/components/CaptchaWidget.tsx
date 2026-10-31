@@ -81,7 +81,7 @@ export const CaptchaWidget: React.FC<CaptchaProps> = ({ onToken }) => {
   }, [onToken]);
 
   return (
-    <div className={`auth-check ${status === 'done' ? 'ok' : status}`} aria-live="polite">
+    <p className="ky-auth-check" data-ky-state={status === 'done' ? 'passed' : status === 'failed' ? 'failed' : undefined} aria-live="polite">
       {status === 'working' && (
         <>
           <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -100,6 +100,6 @@ export const CaptchaWidget: React.FC<CaptchaProps> = ({ onToken }) => {
           <span>Browser check failed: {errorMsg}. Reload the page to try again.</span>
         </>
       )}
-    </div>
+    </p>
   );
 };

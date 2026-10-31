@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
+import { LicenseFooter } from './components/LicenseFooter';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
@@ -17,6 +18,7 @@ import './styles/theme.css';
 import './styles/ui.css';
 import './ky-ui/tokens.css';
 import './ky-ui/navigation.css';
+import './ky-ui/shell.css';
 import './ky-ui/appearance.css';
 import './ky-ui/appearance-themes.css';
 import { secureFetch } from './api';
@@ -111,7 +113,7 @@ export const App: React.FC = () => {
   const activeTab = chosenTab ?? (isAdmin ? 'dashboard' : 'calendar');
 
   return (
-    <div className="app-shell">
+    <div className="ky-app">
       <AppHeader
         appName={settings?.app_name || 'KyCalendar'}
         activeTab={activeTab}
@@ -122,7 +124,7 @@ export const App: React.FC = () => {
         version={settings?.version}
       />
 
-      <main className="app-main">
+      <main className="ky-content">
         {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
         {activeTab === 'appearance' && <Appearance />}
@@ -138,6 +140,7 @@ export const App: React.FC = () => {
         {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
         {isAdmin && activeTab === 'backup' && <Backup />}
         {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
+        <LicenseFooter className="ky-content-foot" version={settings?.version} />
       </main>
     </div>
   );

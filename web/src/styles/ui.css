@@ -3,19 +3,12 @@
 
 /* ---------- Page ---------- */
 
-.page { width: 100%; max-width: 72rem; margin-inline: auto; padding: var(--space-6) var(--space-6) var(--space-7); }
-.page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4) var(--space-5); margin-bottom: var(--space-6); }
-.page-header > div { min-width: 0; flex: 1 1 24rem; }
-.page-title { font-size: var(--ky-type-title); line-height: 1.25; font-weight: 600; letter-spacing: -.01em; color: var(--ink-strong); text-wrap: balance; }
-.page-lede { margin-top: var(--space-2); max-width: 68ch; color: var(--ink); font-size: var(--ky-type-body); line-height: 1.5; }
-.page-lede + .page-lede { margin-top: var(--space-2); }
 .section { margin-top: var(--space-6); }
 .section-title { font-size: var(--ky-type-section); font-weight: 600; line-height: 1.3; margin-bottom: var(--space-3); }
 .section-lede { margin: calc(var(--space-2) * -1) 0 var(--space-4); max-width: 68ch; color: var(--ink); font-size: .9rem; }
 .stack { display: grid; gap: var(--space-4); }
 .muted { color: var(--ink); }
 .small { font-size: .82rem; }
-@media (max-width: 720px) { .page { padding: var(--space-5) var(--space-4) var(--space-6); } .page-header { margin-bottom: var(--space-5); } }
 
 /* ---------- Cards ---------- */
 
@@ -69,6 +62,15 @@
 .cell-sub { display: block; color: var(--ink); font-size: .8rem; }
 .cell-nowrap { white-space: nowrap; }
 .row-actions { display: inline-flex; flex-wrap: nowrap; justify-content: flex-end; gap: .4rem; }
+/* ⋯ menu: a native popover under its trigger (MoreMenu). Always visible, so touch screens reach it. */
+button.ky-menu-trigger { width: var(--ky-control-size); padding: 0; border: 1px solid transparent; background: transparent; color: var(--ink); }
+button.ky-menu-trigger:hover:not(:disabled), button.ky-menu-trigger[aria-expanded="true"] { border-color: var(--line); background: var(--panel-hover); color: var(--ink-strong); }
+.ky-menu { position: fixed; inset: auto; margin: 0; min-width: 13rem; padding: var(--space-1); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel); color: var(--ink-strong); box-shadow: var(--shadow-modal); }
+.ky-menu:popover-open { display: grid; }
+button.ky-menu-item { justify-content: flex-start; width: 100%; min-height: 2.25rem; padding: .375rem .625rem; border: 0; border-radius: 6px; background: transparent; color: var(--ink-strong); font-size: var(--ky-type-meta); font-weight: 500; text-align: left; }
+button.ky-menu-item:hover:not(:disabled) { background: var(--panel-hover); }
+button.ky-menu-item:focus-visible { background: var(--panel-hover); outline-offset: -2px; }
+button.ky-menu-item.is-danger { color: var(--danger); }
 /* Phones: each row becomes a labelled block; nothing scrolls sideways. */
 @media (max-width: 720px) {
   .data-table.stacked, .data-table.stacked tbody { display: block; }
@@ -144,24 +146,6 @@ dialog.modal::backdrop, dialog.kc-dialog::backdrop { background: rgb(24 35 38 / 
 .tile-title svg { color: var(--ink); flex: none; }
 .tile-desc { color: var(--ink); font-size: .875rem; line-height: 1.5; }
 
-/* ---------- Auth screens ---------- */
-
-.auth-screen { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; padding: var(--space-4); background: var(--bg); }
-.auth-screen > .auth-theme { justify-self: end; padding: 0; }
-.auth-body { width: 100%; max-width: 25rem; margin: 0 auto; align-self: center; padding: var(--space-6) 0 var(--space-7); }
-.auth-brand { display: grid; justify-items: center; gap: var(--space-2); text-align: center; margin-bottom: var(--space-5); }
-.auth-brand img { border-radius: 14px; }
-.auth-brand h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.015em; }
-.auth-brand p { color: var(--ink); font-size: .95rem; }
-.auth-card { display: grid; gap: var(--space-4); padding: var(--space-5); }
-.auth-card h2 { font-size: 1.15rem; font-weight: 600; }
-.auth-card .card-meta { margin-top: .35rem; line-height: 1.5; }
-.auth-alt { display: grid; padding-top: var(--space-4); border-top: 1px solid var(--line); }
-.auth-check { display: flex; align-items: center; gap: .45rem; min-height: 1.25rem; color: var(--ink); font-size: .8rem; }
-.auth-check.ok { color: var(--success); }
-.auth-check.failed { color: var(--danger); }
-.link-button, button.link-button { min-height: 0; padding: .25rem; background: none; border: 0; color: var(--accent); font-size: .85rem; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; justify-self: center; }
-button.link-button:hover:not(:disabled) { background: none; color: var(--ink-strong); }
 .load-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); color: var(--ink); font-size: .85rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .badges { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
@@ -183,7 +167,6 @@ select.select-compact { width: auto; padding-block: 0; font-size: var(--ky-type-
 .facts-setup { gap: .75rem 1.5rem; }
 .facts-setup dt { font-weight: 600; color: var(--ink-strong); }
 @media (max-width: 560px) { .facts { grid-template-columns: minmax(0, 1fr); gap: .15rem; } .facts dd { margin-bottom: .5rem; } }
-.auth-title { font-size: 1.35rem; font-weight: 600; letter-spacing: -.015em; }
 .auth-error { display: flex; align-items: flex-start; gap: .5rem; }
 .auth-error svg { flex: none; margin-top: .15rem; }
 input.code-input { font-family: var(--font-mono); font-size: 1.15rem; letter-spacing: .15em; text-align: center; }
@@ -191,3 +174,25 @@ input.code-input { font-family: var(--font-mono); font-size: 1.15rem; letter-spa
 .notices { display: grid; gap: var(--space-3); }
 .notices:not(:empty) { margin-bottom: var(--space-4); }
 code.code-field { flex: 1; min-width: 0; padding: .55rem .75rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-hover); font-size: .85rem; overflow-wrap: anywhere; }
+
+/* ---------- Appearance ---------- */
+
+/* Six pairs; one native radio group. A segment is a native radio over its label. */
+.ky-appearance .ky-appearance-grid.appearance-pairs { grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); gap: var(--space-3); }
+.appearance-pair { display: grid; gap: var(--space-3); min-width: 0; padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel); }
+.appearance-pair:has(:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.appearance-pair-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--space-2); }
+.appearance-pair-name { font-size: 1rem; font-weight: 600; color: var(--ink-strong); }
+.appearance-pair-halves { color: var(--ink); font-size: var(--ky-type-meta, 13px); }
+.appearance-pair .ky-appearance-preview { block-size: 56px; }
+.appearance-modes { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.appearance-mode { position: relative; flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: .3rem; min-height: 40px; padding: 0 var(--space-2); color: var(--ink); font-size: .85rem; white-space: nowrap; cursor: pointer; }
+.appearance-mode + .appearance-mode { border-left: 1px solid var(--line-strong); }
+.appearance-mode > input[type='radio'] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.appearance-mode:hover { background: var(--panel-hover); color: var(--ink-strong); }
+.appearance-mode:has(:checked) { background: var(--accent); color: var(--button-text); font-weight: 600; }
+.appearance-mode:has(:focus-visible) { outline: 2px solid var(--ink-strong); outline-offset: -4px; }
+@media (forced-colors: active) {
+  .appearance-pair:has(:checked) { border-color: Highlight; }
+  .appearance-mode:has(:checked) { outline: 2px solid Highlight; outline-offset: -3px; }
+}

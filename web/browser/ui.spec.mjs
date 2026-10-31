@@ -43,21 +43,21 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   // Themes are chosen on the Appearance page; the shell carries no theme select.
   await expect(page.getByLabel('Color theme')).toHaveCount(0);
   const appearance = (p) => p.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Appearance', exact: true }).click();
-  const theme = (p, name) => p.getByRole('radio', { name: new RegExp(`^${name}`) }).check();
+  const theme = (p, pair, mode) => p.getByRole('group', { name: pair, exact: true }).getByRole('radio', { name: new RegExp(`^${mode}`) }).check();
   await appearance(page);
-  await theme(page, 'Paper Clean');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(248, 250, 252)');
-  await theme(page, 'Busnes Dark');
+  await theme(page, 'Nord', 'Light');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(236, 239, 244)');
+  await theme(page, 'Busnes', 'Dark');
   await page.reload();
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 35, 38)');
   const other = await context.newPage();
   await other.goto('/');
   await appearance(other);
-  await theme(other, 'Busnes Light');
+  await theme(other, 'Busnes', 'Light');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(248, 246, 240)');
   await other.close();
   await appearance(page);
-  await theme(page, 'Match system');
+  await theme(page, 'Busnes', 'Match system');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 35, 38)');
   await page.emulateMedia({ colorScheme: 'light' });

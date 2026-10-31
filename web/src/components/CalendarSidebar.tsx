@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { CalendarPlus, Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { calendarColors, nextColor } from '../calendarColors';
+import { MoreMenu } from './MoreMenu';
+import { Modal } from './ui';
 import {
   ApiError, HOLDS, createCalendar, holdsOf, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo, type Holds,
 } from '../calendarApi';
@@ -51,8 +54,7 @@ function SubscriptionForm({ calendar, color, onSaved, onCancel }: { calendar?: C
   }
 
   return (
-    <form ref={ref} className="kc-form kc-cal-edit" aria-label={calendar ? `Change link of ${calendar.name}` : 'Subscribe to a calendar'} onSubmit={submit}>
-      {!calendar && <h3 className="kc-form-title">Subscribe to a calendar</h3>}
+    <form ref={ref} className={calendar ? 'kc-form kc-cal-edit' : 'kc-form'} aria-label={calendar ? `Change link of ${calendar.name}` : 'Subscribe to a calendar'} onSubmit={submit}>
       {error && <p role="alert">{error}</p>}
       <label htmlFor={`${id}-url`}>Link</label>
       <input id={`${id}-url`} type="url" placeholder="https:// or webcal://" value={form.url} required onChange={(e) => setForm({ ...form, url: e.target.value })} />
@@ -66,10 +68,17 @@ function SubscriptionForm({ calendar, color, onSaved, onCancel }: { calendar?: C
         </>
       )}
       <p className="kc-hint">Anyone with the link can read this calendar. Events are read-only here, and anything you connect to KyCalendar, your AI agent included, can see them.</p>
-      <div className="kc-actions">
-        <button type="submit" className="btn-sm" disabled={busy}>{calendar ? 'Save link' : 'Subscribe'}</button>
-        <button type="button" className="btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
-      </div>
+      {calendar ? (
+        <div className="kc-actions">
+          <button type="submit" className="btn-sm" disabled={busy}>Save link</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+        </div>
+      ) : (
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button type="submit" disabled={busy}>Subscribe</button>
+        </div>
+      )}
     </form>
   );
 }
@@ -83,6 +92,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
   const [relinking, setRelinking] = useState<string | null>(null);
+  const addTrigger = useRef<HTMLButtonElement>(null);
   const colors = calendarColors(calendars);
   const colorOf = (c: CalendarInfo) => colors.get(c.id) ?? 'var(--ky-accent)';
   // A new calendar takes a colour none of the visible ones use.
@@ -101,10 +111,32 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
     }
   }
 
+  // Closing either create dialog returns focus to the + that opened its menu, after the native
+  // dialog's own close has restored focus to the (now hidden) menu item.
+  const refocus = () => requestAnimationFrame(() => addTrigger.current?.focus());
+  const closeAdd = () => { setAdding(false); setName(''); refocus(); };
+  const closeSubscribe = () => { setSubscribing(false); refocus(); };
+
   return (
     <aside className="kc-sidebar" aria-label="Calendars">
-      <h2>Calendars</h2>
-      {error && <p role="alert">{error}</p>}
+      <div className="kc-sidebar-head">
+        <h2>Calendars</h2>
+        <MoreMenu label="Add a calendar" icon={Plus} triggerRef={addTrigger}>
+          {(close) => (
+            <>
+              <button type="button" role="menuitem" className="ky-menu-item" onClick={() => { close(); setAdding(true); }}>
+                <CalendarPlus size={16} aria-hidden="true" />
+                New calendar
+              </button>
+              <button type="button" role="menuitem" className="ky-menu-item" onClick={() => { close(); setSubscribing(true); }}>
+                <Rss size={16} aria-hidden="true" />
+                Subscribe to a calendar
+              </button>
+            </>
+          )}
+        </MoreMenu>
+      </div>
+      {error && !adding && <p role="alert">{error}</p>}
       <ul>
         {calendars.map((c) => (
           <li key={c.id}>
@@ -185,43 +217,41 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
           </li>
         ))}
       </ul>
-      {adding ? (
-        <form
-          className="kc-form kc-add"
-          aria-label="New calendar"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (await run(() => createCalendar({ name, components: HOLDS[holds].components, color: fresh() }), 'Could not create the calendar')) {
-              setName('');
-              setAdding(false);
-            }
-          }}
-        >
-          <h3 className="kc-form-title">New calendar</h3>
-          <label htmlFor="kc-new-calendar">New calendar name</label>
-          <input id="kc-new-calendar" value={name} maxLength={255} required autoFocus onChange={(e) => setName(e.target.value)} />
-          <label htmlFor="kc-new-holds">Holds</label>
-          <select id="kc-new-holds" value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
-            {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
-          </select>
-          <div className="kc-actions">
-            <button type="submit" className="btn-sm">Add calendar</button>
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setAdding(false)}>Cancel</button>
-          </div>
-        </form>
-      ) : subscribing ? null : (
-        <div className="kc-sidebar-actions">
-          <button type="button" className="btn-secondary btn-sm" onClick={() => setAdding(true)}>
-            <Plus size={14} aria-hidden="true" />
-            New calendar
-          </button>
-          <button type="button" className="btn-secondary btn-sm" aria-label="Subscribe to a calendar" onClick={() => setSubscribing(true)}>
-            <Rss size={14} aria-hidden="true" />
-            Subscribe
-          </button>
-        </div>
+      {/* Create dialogs render on the body: the list may sit in a closed phone disclosure. */}
+      {adding && createPortal(
+        <Modal title="New calendar" onClose={closeAdd}>
+          <form
+            className="form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (await run(() => createCalendar({ name, components: HOLDS[holds].components, color: fresh() }), 'Could not create the calendar')) closeAdd();
+            }}
+          >
+            {error && <p role="alert">{error}</p>}
+            <div className="field">
+              <label htmlFor="kc-new-calendar">Name</label>
+              <input id="kc-new-calendar" value={name} maxLength={255} required autoFocus onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="kc-new-holds">Holds</label>
+              <select id="kc-new-holds" value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
+                {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
+              </select>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={closeAdd}>Cancel</button>
+              <button type="submit">Add calendar</button>
+            </div>
+          </form>
+        </Modal>,
+        document.body,
       )}
-      {subscribing && <SubscriptionForm color={fresh()} onSaved={() => { setSubscribing(false); onChanged(); }} onCancel={() => setSubscribing(false)} />}
+      {subscribing && createPortal(
+        <Modal title="Subscribe to a calendar" onClose={closeSubscribe}>
+          <SubscriptionForm color={fresh()} onSaved={() => { setSubscribing(false); onChanged(); refocus(); }} onCancel={closeSubscribe} />
+        </Modal>,
+        document.body,
+      )}
     </aside>
   );
 }

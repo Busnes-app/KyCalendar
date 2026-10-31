@@ -15,7 +15,7 @@ const contrast = (locator) => locator.evaluate(async (el) => {
   return (hi + 0.05) / (lo + 0.05);
 });
 
-test('Appearance: native radio cards, named palettes and the return to Busnes', async ({ browser }, testInfo) => {
+test('Appearance: pair cards, fixed halves, OS-following pairs and the return to Busnes', async ({ browser }, testInfo) => {
   const { viewport, colorScheme } = testInfo.project.use;
   const context = await browser.newContext({ extraHTTPHeaders: ownIP, viewport, colorScheme });
   const page = await context.newPage();
@@ -29,37 +29,47 @@ test('Appearance: native radio cards, named palettes and the return to Busnes', 
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await nav.getByRole('button', { name: 'Appearance', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Appearance' })).toBeVisible();
-  const system = page.getByRole('radio', { name: /^Match system/ });
+  const choice = (pair, mode) => page.getByRole('group', { name: pair, exact: true }).getByRole('radio', { name: new RegExp(`^${mode}`) });
+  for (const pair of ['Busnes', 'Matter', 'Ocean', 'Forest', 'Ky', 'Nord']) await expect(page.getByRole('group', { name: pair, exact: true }).getByRole('radio')).toHaveCount(3);
+  const system = choice('Busnes', 'Match system');
   await expect(system).toBeChecked();
 
-  // Arrow keys move the native group's selection, which applies and saves straight away.
+  // Arrow keys move the one native group's selection, which applies and saves straight away.
   await system.focus();
-  await page.keyboard.press('ArrowDown');
-  const light = page.getByRole('radio', { name: /^Busnes Light/ });
+  await page.keyboard.press('ArrowRight');
+  const light = choice('Busnes', 'Light');
   await expect(light).toBeChecked();
   await expect(light).toBeFocused();
-  await expect(page.locator('.ky-appearance-option', { has: light })).toHaveCSS('outline-style', 'solid');
+  await expect(light.locator('..')).toHaveCSS('outline-style', 'solid');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
-  // A light suite palette: idle and hovered navigation rows stay readable.
-  await page.getByRole('radio', { name: /^Sky/ }).check();
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(223, 241, 255)');
+  // A fixed light suite half: idle and hovered navigation rows stay readable.
+  await choice('Forest', 'Light').check();
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(243, 246, 239)');
   for (const name of ['Calendar', 'Phones & apps']) {
     const row = nav.getByRole('button', { name, exact: true });
     await page.mouse.move(0, 0);
     const idle = await contrast(row);
     await row.hover();
     const hover = await contrast(row);
-    testInfo.annotations.push({ type: `Sky ${name}`, description: `idle ${idle.toFixed(2)}, hover ${hover.toFixed(2)}` });
+    testInfo.annotations.push({ type: `Forest Light ${name}`, description: `idle ${idle.toFixed(2)}, hover ${hover.toFixed(2)}` });
     expect(idle).toBeGreaterThanOrEqual(4.5);
     expect(hover).toBeGreaterThanOrEqual(4.5);
   }
   await page.reload();
   await nav.getByRole('button', { name: 'Appearance', exact: true }).click();
-  await expect(page.getByRole('radio', { name: /^Sky/ })).toBeChecked();
+  await expect(choice('Forest', 'Light')).toBeChecked();
+
+  // A pair following the OS re-resolves when the scheme changes, without a reload.
+  await choice('Ocean', 'Match system').check();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(247, 249, 251)');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 27, 36)');
+  expect(await page.evaluate(() => localStorage.getItem('ky_theme'))).toBe('ocean-pair');
 
   // Back to Busnes Dark: the inline palette and colour scheme give way to the shared tokens.
-  await page.getByRole('radio', { name: /^Busnes Dark/ }).check();
+  await choice('Busnes', 'Dark').check();
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 35, 38)');
   expect(await page.evaluate(() => [document.documentElement.style.getPropertyValue('--bg'), getComputedStyle(document.documentElement).colorScheme])).toEqual(['', 'dark']);
 

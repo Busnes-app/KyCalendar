@@ -12,6 +12,7 @@ import { ApiError, browserZone, canAddEvents, listCalendars, listEvents, updateE
 import { calendarColors, textOn } from '../calendarColors';
 import { CalendarSidebar } from '../components/CalendarSidebar';
 import { EventDialog } from '../components/EventDialog';
+import { useScrollCue } from '../components/AppHeader';
 import { ScopeDialog } from '../components/ScopeDialog';
 import { WEEKDAYS, addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, validZone, type FormState } from '../eventForm';
 import '../styles/calendar.css';
@@ -105,7 +106,7 @@ function useNarrow() {
 }
 // Day and week views fill the window below the page heading and scroll inside it, opening on
 // the working day; the night hours stay a scroll away.
-const TIME_GRID_HEIGHT = 'max(30rem, calc(100vh - 7.5rem))';
+const TIME_GRID_HEIGHT = 'max(30rem, calc(100vh - 8rem))';
 const SCROLL_TIME = '07:00:00';
 
 // scheduling and me (the user's email) let the event dialog offer invitations. sidebarSlot is the
@@ -129,10 +130,13 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const isNarrow = useNarrow();
   const [picker, setPicker] = useState(false);
   const summary = useRef<HTMLElement>(null);
+  // The hour grid scrolls under its sticky day headings and all-day strip; faded edges say so.
+  const hourCue = useScrollCue();
   const datesSet = useCallback((arg: DatesSetArg) => {
     setTimeGrid(arg.view.type.startsWith('timeGrid'));
     // Day and Week reuse FullCalendar's time-grid DOM, without another viewDidMount call.
     requestAnimationFrame(() => {
+      hourCue(calendarElement.current?.querySelector<HTMLElement>('.fc-timegrid .fc-scrollgrid-section-liquid .fc-scroller') ?? null);
       const grid = calendarElement.current?.querySelector<HTMLElement>('.fc-timegrid');
       if (!grid) return;
       if (arg.view.type === 'timeGridWeek') {
@@ -145,7 +149,7 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
         grid.removeAttribute('aria-label');
       }
     });
-  }, []);
+  }, [hourCue]);
   // A view switched from month or list renders before its fixed height applies, so FullCalendar's
   // own scrollTime finds nothing to scroll: open on the working day once the height is in place.
   useEffect(() => {
@@ -310,7 +314,8 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
     <details
       className="kc-picker"
       open={!isNarrow || picker}
-      onKeyDown={(e) => { if (e.key === 'Escape' && isNarrow && picker) { setPicker(false); summary.current?.focus(); } }}
+      // Escape inside a dialog the list opened closes only that dialog (React events bubble out of portals).
+      onKeyDown={(e) => { if (e.key === 'Escape' && isNarrow && picker && !(e.target as Element).closest('dialog, [popover]')) { setPicker(false); summary.current?.focus(); } }}
     >
       <summary ref={summary} onClick={(e) => { e.preventDefault(); setPicker(!picker); }}>
         Calendars
@@ -324,7 +329,7 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   );
 
   return (
-    <section className="page kc-layout">
+    <section className="kc-layout">
       <div className="kc-calendar" ref={calendarElement}>
         {error && <p role="alert">{error}</p>}
         <div className="kc-workspace-heading"><h1>Calendar</h1>
@@ -342,7 +347,9 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           timeZone="local"
           height={timeGrid ? TIME_GRID_HEIGHT : 'auto'}
           scrollTime={SCROLL_TIME}
-          views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20 } }}
+          // Compact ranges ("9 – 9:20"): the hour axis already says am or pm.
+          views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20, eventTimeFormat: { hour: 'numeric', minute: '2-digit', omitZeroMinute: true, meridiem: false } } }}
+          defaultRangeSeparator=" – "
           datesSet={datesSet}
           loading={setLoadingEvents}
           // Grid events are focusable anchors without href; as buttons their whole text (time and

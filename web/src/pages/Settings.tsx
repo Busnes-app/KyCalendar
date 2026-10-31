@@ -11,7 +11,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const driver = String(settings?.db_driver || 'sqlite');
   const version = settings?.version ? String(settings.version) : '';
   return (
-    <section className="page">
+    <section>
       <PageHeader title="Settings" lede="Where the server keeps its data, and which version it runs. Themes are under Appearance." />
 
       <div className="card">

@@ -17,7 +17,7 @@ test('calendar list keeps its drafts across the phone breakpoint', async ({ brow
   await expect(page.locator('.fc')).toBeVisible();
 
   const list = page.getByRole('complementary', { name: 'Calendars' });
-  const picker = page.locator('.app-header details.kc-picker');
+  const picker = page.locator('.ky-sidebar details.kc-picker');
   const summary = picker.locator('summary');
   // Phones show the list behind the header's Calendars disclosure.
   if (width <= 720) {
@@ -31,17 +31,11 @@ test('calendar list keeps its drafts across the phone breakpoint', async ({ brow
   await list.getByRole('button', { name: 'Edit Calendar', exact: true }).click();
   const rename = list.locator('input[id^="name-"]');
   await rename.fill('Draft rename');
-  await list.getByRole('button', { name: 'Subscribe to a calendar' }).click();
-  const sub = list.getByRole('form', { name: 'Subscribe to a calendar' });
-  await sub.getByLabel('Link').fill('https://example.test/feed.ics');
-  await sub.getByLabel('Name', { exact: true }).fill('Draft feed');
 
   const kept = async () => {
-    expect(await list.evaluate((el) => ({ probe: el.dataset.probe, inShell: !!el.closest('.app-header') }))).toEqual({ probe: 'same node', inShell: true });
+    expect(await list.evaluate((el) => ({ probe: el.dataset.probe, inShell: !!el.closest('.ky-sidebar') }))).toEqual({ probe: 'same node', inShell: true });
     await expect(rename).toBeVisible();
     await expect(rename).toHaveValue('Draft rename');
-    await expect(sub.getByLabel('Link')).toHaveValue('https://example.test/feed.ics');
-    await expect(sub.getByLabel('Name', { exact: true })).toHaveValue('Draft feed');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   };
   // Typing in the list keeps the disclosure open when the screen narrows, and back.
@@ -52,21 +46,39 @@ test('calendar list keeps its drafts across the phone breakpoint', async ({ brow
 
   // On a phone the disclosure closes (Escape returns focus to it) and reopens with the drafts.
   await page.setViewportSize({ width: 390, height });
-  await sub.getByLabel('Link').focus();
+  await rename.focus();
   await page.keyboard.press('Escape');
   await expect(list).toBeHidden();
   await expect(summary).toBeFocused();
   await page.keyboard.press('Enter');
   await kept();
 
-  // The add form, opened on one side, survives the trip too.
-  await sub.getByRole('button', { name: 'Cancel' }).click();
-  await list.getByRole('button', { name: 'New calendar' }).click();
-  await list.getByLabel('New calendar name').fill('Draft calendar');
+  // The + menu opens the subscribe and new-calendar dialogs; their drafts survive the trip, and
+  // Escape closes only the dialog, returning focus to the +.
+  const plus = list.getByRole('button', { name: 'Add a calendar' });
+  await plus.click();
+  await page.getByRole('menuitem', { name: 'Subscribe to a calendar' }).click();
+  const sub = page.getByRole('dialog', { name: 'Subscribe to a calendar' });
+  await sub.getByLabel('Link').fill('https://example.test/feed.ics');
+  await sub.getByLabel('Name', { exact: true }).fill('Draft feed');
   for (const w of [1280, 390]) {
     await page.setViewportSize({ width: w, height });
-    await expect(list.getByLabel('New calendar name')).toHaveValue('Draft calendar');
-    await expect(list.getByLabel('New calendar name')).toBeVisible();
+    await expect(sub.getByLabel('Link')).toHaveValue('https://example.test/feed.ics');
+    await expect(sub.getByLabel('Name', { exact: true })).toHaveValue('Draft feed');
+  }
+  await page.keyboard.press('Escape');
+  await expect(sub).toBeHidden();
+  await expect(plus).toBeFocused();
+  await kept();
+
+  await plus.click();
+  await page.getByRole('menuitem', { name: 'New calendar' }).click();
+  const add = page.getByRole('dialog', { name: 'New calendar' });
+  await add.getByLabel('Name').fill('Draft calendar');
+  for (const w of [1280, 390]) {
+    await page.setViewportSize({ width: w, height });
+    await expect(add.getByLabel('Name')).toHaveValue('Draft calendar');
+    await expect(add.getByLabel('Name')).toBeVisible();
   }
   await context.close();
 });

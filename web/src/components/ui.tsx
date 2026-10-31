@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 
-/** The page title, its one-paragraph explanation and the page's primary action. */
+/** The suite page head (ky-ui shell): title, a one-sentence lede and the page's primary action (`ky-page-action`). */
 export function PageHeader({ title, lede, action }: { title: string; lede?: ReactNode; action?: ReactNode }) {
   return (
-    <header className="page-header">
+    <header className="ky-page-head">
       <div>
-        <h1 className="page-title">{title}</h1>
-        {lede && <p className="page-lede">{lede}</p>}
+        <h1 className="ky-page-title">{title}</h1>
+        {lede && <p className="ky-page-lede">{lede}</p>}
       </div>
       {action}
     </header>

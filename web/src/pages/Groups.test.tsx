@@ -35,6 +35,7 @@ describe("Groups", () => {
       },
     });
     render(<Groups />);
+    fireEvent.click(screen.getByRole("button", { name: "New group" }));
     fireEvent.change(screen.getByLabelText("Group name"), { target: { value: "Crew" } });
     fireEvent.click(screen.getByRole("button", { name: "Create group" }));
     await waitFor(() => expect(posted).toEqual({ display_name: "Crew" }));

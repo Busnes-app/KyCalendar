@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Plus } from "lucide-react";
 import { JSON_HEADERS, LoadMore, REAUTH, SourceBadge, failure, pageURL, send } from "../admin";
-import { EmptyState, PageHeader } from "../components/ui";
+import { EmptyState, Modal, PageHeader } from "../components/ui";
 
 interface Group {
   id: string;
@@ -37,6 +37,8 @@ export default function Groups() {
   const [busy, setBusy] = useState(false);
   const latest = useRef(0);
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,14 +65,20 @@ export default function Groups() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setCreateError(null);
     const res = await send("/api/admin/groups", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ display_name: name }) });
     if (!res?.ok) {
-      setError((await failure(res)).error ?? "Could not create the group");
+      setCreateError((await failure(res)).error ?? "Could not create the group");
       return;
     }
-    setName("");
+    closeCreate();
     await load();
+  }
+
+  function closeCreate() {
+    setCreating(false);
+    setCreateError(null);
+    setName("");
   }
 
   async function rename(g: Group, next: string): Promise<boolean> {
@@ -105,26 +113,37 @@ export default function Groups() {
   }
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="Groups"
         lede="Groups give people access to group calendars. Groups from your identity provider are read-only here; change them there."
-      />
-      <div className="toolbar">
-        <form className="inline-form" onSubmit={create}>
-          <div className="field">
-            <label htmlFor="group-new">Group name</label>
-            <input id="group-new" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} placeholder="For example, Studio" required />
-          </div>
-          <button type="submit">
-            <Plus size={16} aria-hidden="true" />
-            Create group
+        action={
+          <button type="button" className="ky-page-action" onClick={() => setCreating(true)}>
+            <Plus aria-hidden="true" />
+            New group
           </button>
-        </form>
-      </div>
+        }
+      />
+      {creating && (
+        <Modal title="New group" onClose={closeCreate}>
+          <form className="form" onSubmit={create}>
+            <div className="field">
+              <label htmlFor="group-new">Group name</label>
+              <input id="group-new" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} placeholder="For example, Studio" required autoFocus />
+            </div>
+            {createError && <p role="alert">{createError}</p>}
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={closeCreate}>
+                Cancel
+              </button>
+              <button type="submit">Create group</button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {error && <p role="alert">{error}</p>}
       {groups.length === 0 ? (
-        <EmptyState title="No groups yet.">Create one above, then add people to it. A group calendar is shared with the groups you give access.</EmptyState>
+        <EmptyState title="No groups yet.">Create one with New group, then add people to it. A group calendar is shared with the groups you give access.</EmptyState>
       ) : (
         groups.map((g) => (
           <GroupCard

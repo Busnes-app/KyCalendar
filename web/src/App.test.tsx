@@ -66,7 +66,8 @@ describe('App landing', () => {
       return new Response('{}', { status: 200 });
     });
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: /MIT License/ }));
-    expect(await screen.findByText('v9.8.7')).toBeTruthy();
+    // The sidebar's licence line; phones show a second one at the page end (CSS decides which).
+    fireEvent.click((await screen.findAllByRole('button', { name: /MIT License/ }))[0]);
+    expect((await screen.findAllByText('v9.8.7')).length).toBeGreaterThan(0);
   });
 });

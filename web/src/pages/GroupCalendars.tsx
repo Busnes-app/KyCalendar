@@ -3,7 +3,7 @@ import { JSON_HEADERS, send } from "../admin";
 import { Plus } from "lucide-react";
 import { HOLDS, holdsOf, type Holds } from "../calendarApi";
 import { calendarColors, nextColor } from "../calendarColors";
-import { EmptyState, PageHeader } from "../components/ui";
+import { EmptyState, Modal, PageHeader } from "../components/ui";
 
 interface Grant {
   group_id: string;
@@ -38,6 +38,8 @@ export default function GroupCalendars() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [name, setName] = useState("");
   const [holds, setHolds] = useState<Holds>("events");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -56,14 +58,20 @@ export default function GroupCalendars() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setCreateError(null);
     const res = await send("/api/admin/calendars", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name, components: HOLDS[holds].components, color: nextColor(calendars.map((c) => c.color), GROUP_PALETTE_START) }) });
     if (!res?.ok) {
-      setError(await errorText(res, "Could not create the calendar"));
+      setCreateError(await errorText(res, "Could not create the calendar"));
       return;
     }
-    setName("");
+    closeCreate();
     await load();
+  }
+
+  function closeCreate() {
+    setCreating(false);
+    setCreateError(null);
+    setName("");
   }
 
   async function setGrant(cal: string, group: string, role: string) {
@@ -105,32 +113,43 @@ export default function GroupCalendars() {
   const colors = calendarColors(calendars);
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="Group calendars"
-        lede="Group calendars belong to the organisation. Readers see events, editors change them, and managers also rename the calendar and change who has access. Administrators manage access but never see events."
-      />
-      <div className="toolbar">
-        <form className="inline-form" onSubmit={create}>
-          <div className="field">
-            <label htmlFor="gcal-name">Calendar name</label>
-            <input id="gcal-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} placeholder="For example, Studio" required />
-          </div>
-          <div className="field field-narrow">
-            <label htmlFor="gcal-holds">Holds</label>
-            <select id="gcal-holds" value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
-              {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
-            </select>
-          </div>
-          <button type="submit">
-            <Plus size={16} aria-hidden="true" />
-            Create
+        lede="Group calendars belong to the organisation: readers see events, editors change them, managers also rename the calendar and choose who has access."
+        action={
+          <button type="button" className="ky-page-action" onClick={() => setCreating(true)}>
+            <Plus aria-hidden="true" />
+            New group calendar
           </button>
-        </form>
-      </div>
+        }
+      />
+      {creating && (
+        <Modal title="New group calendar" description="Administrators manage access but never see events." onClose={closeCreate}>
+          <form className="form" onSubmit={create}>
+            <div className="field">
+              <label htmlFor="gcal-name">Calendar name</label>
+              <input id="gcal-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} placeholder="For example, Studio" required autoFocus />
+            </div>
+            <div className="field">
+              <label htmlFor="gcal-holds">Holds</label>
+              <select id="gcal-holds" value={holds} onChange={(e) => setHolds(holdsOf(e.target.value))}>
+                {Object.entries(HOLDS).map(([k, h]) => <option key={k} value={k}>{h.label}</option>)}
+              </select>
+            </div>
+            {createError && <p role="alert">{createError}</p>}
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={closeCreate}>
+                Cancel
+              </button>
+              <button type="submit">Create</button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {error && <p role="alert">{error}</p>}
       {calendars.length === 0 ? (
-        <EmptyState title="No group calendars yet.">Create one above, then give a group access so its members see it.</EmptyState>
+        <EmptyState title="No group calendars yet.">Create one with New group calendar, then give a group access so its members see it.</EmptyState>
       ) : (
         calendars.map((cal) => (
           <CalendarCard key={cal.id} cal={cal} color={colors.get(cal.id)!} groups={groups} onSet={setGrant} onRemove={removeGrant} onDelete={remove} />

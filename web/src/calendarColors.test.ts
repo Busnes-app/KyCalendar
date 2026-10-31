@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PALETTE, calendarColors, nextColor, textOn } from './calendarColors';
+import { ACCENT, PALETTE, calendarColors, nextColor, textOn } from './calendarColors';
 
 describe('calendar colours', () => {
   it('gives a new calendar the first colour its neighbours do not use', () => {
@@ -8,14 +8,16 @@ describe('calendar colours', () => {
     expect(nextColor([], 2)).toBe(PALETTE[2]);
   });
 
-  it('shows calendars stored without a colour in distinct colours', () => {
+  it('shows calendars stored without a colour in distinct colours, the first in the accent', () => {
     const shown = calendarColors([
       { id: 'a', color: '' },
       { id: 'b', color: PALETTE[1] },
       { id: 'c', color: '' },
     ]);
     expect(new Set(shown.values()).size).toBe(3);
+    expect(shown.get('a')).toBe(ACCENT);
     expect(shown.get('b')).toBe(PALETTE[1]);
+    expect(shown.get('c')).toBe(PALETTE[0]);
   });
 
   it('keeps event text readable on any calendar colour', () => {

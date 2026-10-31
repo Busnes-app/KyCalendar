@@ -33,7 +33,7 @@ export const SCIMAdmin: React.FC = () => {
   }, []);
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="Directory (SCIM)"
         lede="Your identity provider can create, update and disable people and groups here over SCIM 2.0. People it provisions are read-only in KyCalendar."

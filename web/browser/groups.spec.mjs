@@ -27,6 +27,7 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
     })).toBe(true);
   }
   await nav.getByRole('button', { name: 'Groups', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click();
   await page.getByLabel('Group name').fill(group);
   await page.getByRole('button', { name: 'Create group' }).click();
 
@@ -38,6 +39,7 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
   await expect(card.getByRole('button', { name: 'Remove walter' })).toBeVisible();
 
   await nav.getByRole('button', { name: 'Group calendars', exact: true }).click();
+  await page.getByRole('button', { name: 'New group calendar' }).click();
   await page.getByLabel('Calendar name').fill(calendar);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   const calCard = page.getByRole('article', { name: calendar });
@@ -59,7 +61,7 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
   const walter = await context.newPage();
   await signIn(walter, 'walter', 'WalterUpdated456!');
   // Phones keep the calendar list behind the header's Calendars disclosure.
-  if (testInfo.project.use.viewport.width <= 720) await walter.locator('.app-header summary', { hasText: 'Calendars' }).click();
+  if (testInfo.project.use.viewport.width <= 720) await walter.locator('.ky-sidebar summary', { hasText: 'Calendars' }).click();
   await expect(walter.getByRole('complementary', { name: 'Calendars' }).getByLabel(`Show ${calendar}`)).toBeVisible();
   await context.close();
 });
