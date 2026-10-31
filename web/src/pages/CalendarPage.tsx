@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FullCalendar from '@fullcalendar/react';
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
@@ -104,10 +104,14 @@ function useNarrow() {
   }, []);
   return isNarrow;
 }
-// Day and week views fill the window below the page heading and scroll inside it, opening on
+// Day and week views fill the window below the content padding and scroll inside it, opening on
 // the working day; the night hours stay a scroll away.
-const TIME_GRID_HEIGHT = 'max(30rem, calc(100vh - 8rem))';
+const TIME_GRID_HEIGHT = 'max(30rem, calc(100vh - 3.5rem))';
 const SCROLL_TIME = '07:00:00';
+// The time grid's corner names the zone it renders in, compactly ("CDT", "GMT-5"), as of `date`.
+export function zoneAbbr(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(date).find((p) => p.type === 'timeZoneName')?.value ?? '';
+}
 
 // scheduling and me (the user's email) let the event dialog offer invitations. sidebarSlot is the
 // app sidebar's slot: the calendar list always renders there, never as a second column.
@@ -124,7 +128,8 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const opens = useRef(0);
   const ref = useRef<FullCalendar>(null);
   const calendarElement = useRef<HTMLDivElement>(null);
-  const newEvent = useRef<HTMLButtonElement>(null);
+  // New event is a FullCalendar toolbar button, so it shares the view switch's row.
+  const newEventButton = () => calendarElement.current?.querySelector<HTMLButtonElement>('.fc-newEvent-button') ?? null;
   const focusAfterReload = useRef<string | null>(null);
   const [timeGrid, setTimeGrid] = useState(() => !narrow());
   const isNarrow = useNarrow();
@@ -186,11 +191,16 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
       focusAfterReload.current = null;
       const events = calendarElement.current?.querySelectorAll<HTMLElement>('[data-event-id]');
       const target = Array.from(events ?? []).find((el) => el.dataset.eventId === id);
-      (target ?? newEvent.current)?.focus({ preventScroll: true });
+      (target ?? newEventButton())?.focus({ preventScroll: true });
     });
   }, []);
 
   const writable = calendars.filter(canAddEvents);
+  // Custom toolbar buttons have no disabled option: set it on the rendered button after each render.
+  useEffect(() => {
+    const button = newEventButton();
+    if (button) button.disabled = writable.length === 0;
+  });
 
   // Stable identity: FullCalendar re-fetches whenever this function changes.
   const fetchEvents = useCallback(
@@ -332,23 +342,23 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
     <section className="kc-layout">
       <div className="kc-calendar" ref={calendarElement}>
         {error && <p role="alert">{error}</p>}
-        <div className="kc-workspace-heading"><h1>Calendar</h1>
-        <button ref={newEvent} type="button" className="kc-new" disabled={writable.length === 0} onClick={() => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); }}>
-          <Plus size={16} aria-hidden="true" />
-          New event
-        </button>
-        <p>Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p></div>
+        {/* No visible head: the active nav row names the page and the grid's corner names the zone. */}
+        <h1 className="sr-only">Calendar</h1>
+        <p className="sr-only">Times shown in {browserZone()}<span role="status">{loadingEvents ? ' · Loading events…' : ''}</span></p>
         <p className="kc-week-hint">Scroll across the week to see other days.</p>
         <FullCalendar
           ref={ref}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView={narrow() ? 'listWeek' : 'timeGridWeek'}
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' }}
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek newEvent' }}
+          customButtons={{ newEvent: { text: 'New event', click: () => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); openCreate(s, new Date(s.getTime() + 3600_000), false); } } }}
           timeZone="local"
           height={timeGrid ? TIME_GRID_HEIGHT : 'auto'}
           scrollTime={SCROLL_TIME}
           // Compact ranges ("9 – 9:20"): the hour axis already says am or pm.
-          views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20, eventTimeFormat: { hour: 'numeric', minute: '2-digit', omitZeroMinute: true, meridiem: false } } }}
+          views={{ timeGrid: { dayHeaderFormat: { weekday: 'short' }, dayHeaderContent: (arg) => <span className="kc-day-head">{arg.text}<b>{arg.date.getDate()}</b></span>, eventMinHeight: 20, eventTimeFormat: { hour: 'numeric', minute: '2-digit', omitZeroMinute: true, meridiem: false },
+            // The corner above the hour gutter (FullCalendar's week-number cell) shows the zone instead.
+            weekNumbers: true, weekNumberContent: (arg) => <span className="kc-zone" title={browserZone()}>{zoneAbbr(arg.date)}</span> } }}
           defaultRangeSeparator=" – "
           datesSet={datesSet}
           loading={setLoadingEvents}

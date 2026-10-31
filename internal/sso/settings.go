@@ -116,7 +116,7 @@ func Resolve(env config.SSOConfig, saved map[string]string) Settings {
 		st.Provider = Field{KindNone, SourceUnset}
 	}
 	if st.DisplayName.Value == "" && st.Provider.Value == KindKyIdentity {
-		st.DisplayName.Value = "Single Sign On"
+		st.DisplayName.Value = "single sign-on"
 	}
 	if st.Secret.Source == SourceSaved && !SavedSecretFits(saved, st) {
 		st.Secret = SecretField{Source: SourceUnset}

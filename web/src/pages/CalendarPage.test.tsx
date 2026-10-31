@@ -5,11 +5,13 @@ const fcProps: Record<string, unknown>[] = [];
 vi.mock('@fullcalendar/react', () => ({
   default: (props: Record<string, unknown>) => {
     fcProps.push(props);
-    return <div data-testid="fullcalendar" />;
+    // Render the custom toolbar buttons (New event) as FullCalendar does: a button per entry.
+    const custom = (props.customButtons ?? {}) as Record<string, { text: string; click: () => void }>;
+    return <div data-testid="fullcalendar">{Object.entries(custom).map(([name, b]) => <button key={name} type="button" className={`fc-${name}-button`} onClick={b.click}>{b.text}</button>)}</div>;
   },
 }));
 
-import { CalendarPage, HIDDEN_KEY, loadHidden, toFcEvent } from './CalendarPage';
+import { CalendarPage, HIDDEN_KEY, loadHidden, toFcEvent, zoneAbbr } from './CalendarPage';
 import type { EventInfo } from '../calendarApi';
 
 const calendars = [
@@ -116,7 +118,11 @@ describe('CalendarPage', () => {
     renderPage();
     await screen.findByLabelText('Show Team');
     const props = fcProps.at(-1)!;
-    expect(String((props.headerToolbar as { right: string }).right)).toBe('dayGridMonth,timeGridWeek,timeGridDay,listWeek');
+    expect(String((props.headerToolbar as { right: string }).right)).toBe('dayGridMonth,timeGridWeek,timeGridDay,listWeek newEvent');
+    // The time grid's corner names the zone; Month and List have no corner.
+    expect((props.views as { timeGrid: { weekNumbers: boolean } }).timeGrid.weekNumbers).toBe(true);
+    expect(zoneAbbr(new Date('2026-07-01T12:00:00Z'))).not.toBe('');
+    expect(screen.getByRole('heading', { level: 1, name: 'Calendar' })).toBeTruthy();
     expect(props.timeZone).toBe('local');
     expect(props.eventInteractive).toBe(true);
 
