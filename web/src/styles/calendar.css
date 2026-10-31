@@ -135,8 +135,9 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 .kc-calendar .fc .fc-scroller { scrollbar-color: var(--line-strong) transparent; }
 
 /* One left column: the calendar list lives in the app sidebar (a portal), so the canvas takes
-   the full width. On phones the same list sits behind a Calendars disclosure in the header. */
-.page.kc-layout { max-width: none; padding: var(--ky-space-5) var(--ky-space-5) var(--ky-space-4); }
+   the full width, with a short foot so the window-high time grid does not scroll the page. On
+   phones the same list sits behind a Calendars disclosure in the header. */
+.ky-content:has(> .kc-layout) { max-width: none; padding-bottom: var(--ky-space-4); }
 .kc-picker > summary { display: none; }
 
 /* In the app sidebar the list reads as a navigation group: rows align with the navigation's
@@ -157,7 +158,7 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 .kc-workspace-heading .kc-new { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
 .kc-week-hint { display: none; }
 @media (max-width: 720px) {
-  .page.kc-layout { padding: var(--ky-space-3); }
+  .ky-content:has(> .kc-layout) { padding-bottom: 0; }
   .kc-workspace-heading { margin-bottom: var(--ky-space-2); }
   .kc-workspace-heading .kc-new { grid-row: 1; }
   .kc-workspace-heading p { grid-column: 1 / -1; }

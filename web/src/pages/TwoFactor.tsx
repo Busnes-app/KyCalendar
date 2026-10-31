@@ -81,7 +81,7 @@ export default function TwoFactor({ enabled, onChange }: { enabled: boolean; onC
   );
 
   return (
-    <section className="page">
+    <section>
       <PageHeader title="Two-step verification" lede="Sign-in asks for a code from an authenticator app as well as your password." />
       {error && <p role="alert" className="section">{error}</p>}
 

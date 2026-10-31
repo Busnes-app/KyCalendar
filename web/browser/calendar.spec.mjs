@@ -18,11 +18,11 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   const list = page.getByRole('complementary', { name: 'Calendars' });
   if (testInfo.project.use.viewport.width <= 720) {
     await expect(list).toBeHidden();
-    await page.locator('.app-header summary', { hasText: 'Calendars' }).click();
+    await page.locator('.ky-sidebar summary', { hasText: 'Calendars' }).click();
   }
   await expect(list.getByLabel('Show Calendar')).toBeVisible();
-  expect(await list.evaluate((el) => !!el.closest('.app-header'))).toBe(true);
-  if (testInfo.project.use.viewport.width <= 720) await page.locator('.app-header summary', { hasText: 'Calendars' }).click();
+  expect(await list.evaluate((el) => !!el.closest('.ky-sidebar'))).toBe(true);
+  if (testInfo.project.use.viewport.width <= 720) await page.locator('.ky-sidebar summary', { hasText: 'Calendars' }).click();
 
   await page.getByRole('button', { name: 'New event' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

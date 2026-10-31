@@ -127,7 +127,7 @@ export default function People({ me }: { me: string }) {
   const withEmail = people.some((p) => p.email);
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="People"
         lede="Everyone who can sign in. Identity provider accounts are read-only here."

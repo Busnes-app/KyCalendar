@@ -113,7 +113,7 @@ export const App: React.FC = () => {
   const activeTab = chosenTab ?? (isAdmin ? 'dashboard' : 'calendar');
 
   return (
-    <div className="app-shell">
+    <div className="ky-app">
       <AppHeader
         appName={settings?.app_name || 'KyCalendar'}
         activeTab={activeTab}
@@ -124,7 +124,7 @@ export const App: React.FC = () => {
         version={settings?.version}
       />
 
-      <main className="app-main">
+      <main className="ky-content">
         {activeTab === 'calendar' && !isAdmin && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab === 'devices' && !isAdmin && <AppPasswords username={user.username} />}
         {activeTab === 'appearance' && <Appearance />}
@@ -140,9 +140,7 @@ export const App: React.FC = () => {
         {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
         {isAdmin && activeTab === 'backup' && <Backup />}
         {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
-        <div className="app-page-footer">
-          <LicenseFooter version={settings?.version} />
-        </div>
+        <LicenseFooter className="ky-content-foot" version={settings?.version} />
       </main>
     </div>
   );

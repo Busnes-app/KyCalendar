@@ -78,7 +78,7 @@ export default function SignIn() {
 
   if (!view || !form) {
     return (
-      <section className="page">
+      <section>
         <PageHeader title="Sign-in" />
         {error && <p role="alert">{error}</p>}
       </section>
@@ -141,7 +141,7 @@ export default function SignIn() {
   }
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="Sign-in"
         lede="Let people sign in with Single Sign On or another OpenID Connect provider."

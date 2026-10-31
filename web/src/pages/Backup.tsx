@@ -344,7 +344,7 @@ export const Backup: React.FC = () => {
   const newestLocal = copies[0];
 
   return (
-    <div className="page dr-page">
+    <div className="dr-page">
       <PageHeader
         title="Backups"
         lede="Sealed, encrypted backups of this KyCalendar. Only the suite's recovery custodians, together, can open one."

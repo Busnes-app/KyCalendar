@@ -116,7 +116,7 @@ export default function AppPasswords({ username }: { username: string }) {
   const host = window.location.host;
 
   return (
-    <section className="page">
+    <section>
       <PageHeader title="Phones and apps" lede="Each device or AI agent gets its own app password. Revoke one and only that one stops working." />
 
       <div className="card">

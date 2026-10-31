@@ -113,7 +113,7 @@ export default function GroupCalendars() {
   const colors = calendarColors(calendars);
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="Group calendars"
         lede="Group calendars belong to the organisation: readers see events, editors change them, managers also rename the calendar and choose who has access."

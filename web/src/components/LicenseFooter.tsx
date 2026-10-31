@@ -2,11 +2,11 @@ import { useRef } from 'react';
 import mitLicenseText from '../mit.txt?raw';
 
 /** The suite's licence line and About dialog (ky-ui shell); `version` comes from `/api/settings`, which has it only for a session. */
-export function LicenseFooter({ version }: { version?: string }) {
+export function LicenseFooter({ version, className }: { version?: string; className?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   const year = new Date().getFullYear();
   return (
-    <footer className="app-footer">
+    <footer className={className}>
       <button type="button" className="ky-license-link" onClick={() => ref.current?.showModal()}>
         &copy; {year} &middot; MIT License
       </button>

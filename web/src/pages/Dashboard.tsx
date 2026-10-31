@@ -67,7 +67,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate
   ];
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title={`Welcome, ${user?.display_name || user?.username}`}
         lede={`Manage who can sign in to ${settings?.app_name || 'KyCalendar'}, who shares which calendars, and how it is backed up. Administrators never see calendars or events.`}

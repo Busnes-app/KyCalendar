@@ -329,7 +329,7 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   );
 
   return (
-    <section className="page kc-layout">
+    <section className="kc-layout">
       <div className="kc-calendar" ref={calendarElement}>
         {error && <p role="alert">{error}</p>}
         <div className="kc-workspace-heading"><h1>Calendar</h1>

@@ -41,7 +41,6 @@ export function useScrollCue() {
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot, version }) => {
-  const navCue = useScrollCue();
   const slotCue = useScrollCue();
   const slotRef = useCallback((el: HTMLDivElement | null) => { sidebarSlot?.(el); slotCue(el); }, [sidebarSlot, slotCue]);
   // Administrators run the instance and never see calendars; everyday users see nothing else.
@@ -68,48 +67,56 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
   const name = user?.display_name && user.display_name !== role ? user.display_name : user?.username;
 
   return (
-    <>
-      <header className="app-header">
-        <div className="app-brand">
-            <img className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
-            <span>{appName || 'KyCalendar'}</span>
-          </div>
-
-          <nav className="app-nav" aria-label="Primary" ref={navCue}>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const active = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onTabChange(item.id)}
-                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}
-                  className={active ? 'ky-nav-item active' : 'ky-nav-item'}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        <div className="app-sidebar-slot" ref={slotRef} />
-        <div className="app-header-actions">
-          {user && (
-            <div className="ky-user">
-              <div className="ky-user-copy">
-                <p className="ky-user-name">{name}</p>
-                <p className="ky-user-role">{role}</p>
-              </div>
-              <button type="button" className="ky-user-signout" onClick={onLogout}>
-                <LogOut aria-hidden="true" />
-                <span className="app-logout-label">Sign out</span>
-              </button>
-            </div>
-          )}
-          <LicenseFooter version={version} />
+    <header className="ky-sidebar">
+      <div className="ky-mobile-head">
+        <div className="ky-brand">
+          <img className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
+          <span>{appName || 'KyCalendar'}</span>
         </div>
-      </header>
-    </>
+        {user && (
+          <button type="button" className="ky-mobile-signout" aria-label="Sign out" onClick={onLogout}>
+            <LogOut aria-hidden="true" />
+          </button>
+        )}
+      </div>
+      {/* One flex row on phones: the tabs, then the page's sidebar content (the Calendars disclosure). */}
+      <div className="app-nav-row">
+        <nav className="ky-nav" aria-label="Primary">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onTabChange(item.id)}
+                onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}
+                className="ky-nav-item"
+                aria-current={active ? 'page' : undefined}
+              >
+                <Icon aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="app-sidebar-slot" ref={slotRef} />
+      </div>
+      <div className="ky-sidebar-foot">
+        {user && (
+          <div className="ky-user">
+            <div className="ky-user-copy">
+              <p className="ky-user-name">{name}</p>
+              <p className="ky-user-role">{role}</p>
+            </div>
+            <button type="button" className="ky-user-signout" onClick={onLogout}>
+              <LogOut aria-hidden="true" />
+              Sign out
+            </button>
+          </div>
+        )}
+        <LicenseFooter version={version} />
+      </div>
+    </header>
   );
 };

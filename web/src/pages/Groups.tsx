@@ -113,7 +113,7 @@ export default function Groups() {
   }
 
   return (
-    <section className="page">
+    <section>
       <PageHeader
         title="Groups"
         lede="Groups give people access to group calendars. Groups from your identity provider are read-only here; change them there."

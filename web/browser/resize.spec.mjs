@@ -17,7 +17,7 @@ test('calendar list keeps its drafts across the phone breakpoint', async ({ brow
   await expect(page.locator('.fc')).toBeVisible();
 
   const list = page.getByRole('complementary', { name: 'Calendars' });
-  const picker = page.locator('.app-header details.kc-picker');
+  const picker = page.locator('.ky-sidebar details.kc-picker');
   const summary = picker.locator('summary');
   // Phones show the list behind the header's Calendars disclosure.
   if (width <= 720) {
@@ -33,7 +33,7 @@ test('calendar list keeps its drafts across the phone breakpoint', async ({ brow
   await rename.fill('Draft rename');
 
   const kept = async () => {
-    expect(await list.evaluate((el) => ({ probe: el.dataset.probe, inShell: !!el.closest('.app-header') }))).toEqual({ probe: 'same node', inShell: true });
+    expect(await list.evaluate((el) => ({ probe: el.dataset.probe, inShell: !!el.closest('.ky-sidebar') }))).toEqual({ probe: 'same node', inShell: true });
     await expect(rename).toBeVisible();
     await expect(rename).toHaveValue('Draft rename');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

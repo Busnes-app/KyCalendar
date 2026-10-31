@@ -13,7 +13,7 @@ export function Appearance() {
     return () => window.removeEventListener('storage', sync);
   }, []);
   return (
-    <section className="page">
+    <section>
       <PageHeader title="Appearance" lede="Pick a palette and how it handles light and dark. Match system switches with your device’s setting; Light or Dark keeps one. Your choice applies straight away and is saved in this browser only." />
       <fieldset className="ky-appearance">
         <legend className="ky-appearance-legend">Theme</legend>
