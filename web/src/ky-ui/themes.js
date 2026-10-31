@@ -11,16 +11,16 @@ const entry = (id, name, scheme, pair, aliases = []) => Object.freeze({ id, name
 export const THEME_CATALOG = Object.freeze([
   entry('busnes-light', 'Busnes Light', 'light', 'busnes-pair'),
   entry('busnes-dark', 'Busnes Dark', 'dark', 'busnes-pair'),
-  entry('light-matter', 'Light Matter', 'light', 'matter-pair'),
-  entry('dark-matter', 'Dark Matter', 'dark', 'matter-pair', ['Current']),
-  entry('white-cliffs', 'White Cliffs', 'light', 'ocean-pair', ['Cliffs']),
-  entry('ocean', 'Ocean', 'dark', 'ocean-pair'),
+  entry('light-matter', 'Matter Light', 'light', 'matter-pair', ['Light Matter']),
+  entry('dark-matter', 'Matter Dark', 'dark', 'matter-pair', ['Dark Matter', 'Current']),
+  entry('white-cliffs', 'Ocean Light', 'light', 'ocean-pair', ['White Cliffs', 'Cliffs']),
+  entry('ocean', 'Ocean Dark', 'dark', 'ocean-pair', ['Ocean']),
   entry('forest-light', 'Forest Light', 'light', 'forest-pair'),
-  entry('forest', 'Forest', 'dark', 'forest-pair'),
-  entry('polished-ky', 'Polished Ky', 'light', 'ky-pair'),
-  entry('patina-ky', 'Patina Ky', 'dark', 'ky-pair', ['patina', 'Patina Ky (base)']),
+  entry('forest', 'Forest Dark', 'dark', 'forest-pair', ['Forest']),
+  entry('polished-ky', 'Ky Light', 'light', 'ky-pair', ['Polished Ky']),
+  entry('patina-ky', 'Ky Dark', 'dark', 'ky-pair', ['Patina Ky', 'patina', 'Patina Ky (base)']),
   entry('paper', 'Nord Light', 'light', 'nord-pair', ['Paper Clean']),
-  entry('nord', 'Nord', 'dark', 'nord-pair', ['Nord Slate']),
+  entry('nord', 'Nord Dark', 'dark', 'nord-pair', ['Nord', 'Nord Slate']),
 ]);
 
 // A saved pair ID follows the OS scheme. Pair IDs end in `-pair`, which no half ID does.
@@ -44,10 +44,10 @@ const p = (bg, panel, ink, inkStrong, accent, accentSoft, line, glow, sidebarSta
 
 // Every named theme except Busnes Light/Dark.
 export const THEME_PALETTES = Object.freeze({
-  'light-matter': p('#f5efe5', '#fff8ee', '#4c3d32', '#2d1f15', '#805a39', '#eadfce', '#d4c7b5', 'transparent', '#ede2d2', '#ede2d2', '#ffffff'),
+  'light-matter': p('#f5efe5', '#fff8ee', '#4c3d32', '#2d1f15', '#805a39', '#e2d0b8', '#d4c7b5', 'transparent', '#ede2d2', '#ede2d2', '#ffffff'),
   'dark-matter': p('#1d1b19', '#292725', '#cfc6bb', '#f0e9df', '#c29a72', '#49392c', '#45403a', 'transparent', '#25221f', '#25221f', '#24170f'),
-  'white-cliffs': p('#f7f9fb', '#ffffff', '#2e4c63', '#163246', '#246b8d', '#dff1fb', '#c7d6df', 'transparent', '#edf3f7', '#edf3f7', '#ffffff'),
-  ocean: p('#0f1b24', '#152a36', '#b8d8e8', '#e0f2fb', '#5ea9be', '#214657', '#2f5567', 'rgba(58, 130, 155, 0.24)', '#112430', '#173342', '#0a1b22'),
+  'white-cliffs': p('#f7f9fb', '#ffffff', '#2e4c63', '#163246', '#1d5fa6', '#dde9f7', '#c7d6df', 'transparent', '#eaf1f8', '#eaf1f8', '#ffffff'),
+  ocean: p('#0f1b24', '#152a36', '#b8d8e8', '#e0f2fb', '#6aa8e8', '#1f3a55', '#2f5567', 'rgba(58, 130, 155, 0.24)', '#112430', '#173342', '#0a1b22'),
   'forest-light': p('#f3f6ef', '#fcfdf9', '#435342', '#203322', '#4b6b37', '#e2ebda', '#c5d0bc', 'transparent', '#e8eee1', '#e8eee1', '#ffffff'),
   forest: p('#142018', '#1f2f24', '#c7dbc7', '#e3f0df', '#8faa74', '#3a5837', '#4f694f', 'rgba(118, 148, 95, 0.24)', '#18261c', '#223629', '#12200f'),
   'polished-ky': p('#eef2f6', '#ffffff', '#475569', '#0f172a', '#08758b', '#daf2f4', '#c2cdd8', 'transparent', '#e7edf3', '#e7edf3', '#ffffff'),
