@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
+import { LicenseFooter } from './components/LicenseFooter';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
@@ -139,6 +140,9 @@ export const App: React.FC = () => {
         {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
         {isAdmin && activeTab === 'backup' && <Backup />}
         {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
+        <div className="app-page-footer">
+          <LicenseFooter version={settings?.version} />
+        </div>
       </main>
     </div>
   );

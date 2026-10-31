@@ -133,6 +133,9 @@ body {
 /* Dark schemes invert the mark: a light tile with a dark letter, on sign-in and in the sidebar. */
 :root[data-scheme="dark"] .brand-mark { filter: invert(1) hue-rotate(180deg); }
 .app-main { min-width: 0; }
+/* Phones: the licence line closes the page instead of the sidebar. */
+.app-page-footer { display: none; }
+@media (max-width: 720px) { .app-page-footer { display: block; padding-bottom: var(--ky-space-4); } }
 .app-loading { min-height: 100vh; display: grid; place-items: center; color: var(--ink); }
 /* The reset above strips the UA margin that centres modal dialogs. */
 dialog { margin: auto; }
@@ -143,17 +146,17 @@ dialog { margin: auto; }
   .app-header { height: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--ky-space-2) var(--ky-space-3); padding: var(--ky-space-2) var(--ky-space-3) 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .app-brand { padding: 0; min-width: 0; }
   .app-nav { grid-column: 1 / -1; grid-row: 2; flex-direction: row; overflow-x: auto; scroll-padding-inline: 2rem; }
-  .app-nav[data-cue='end'] { mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent); }
-  .app-nav[data-cue='start'] { mask-image: linear-gradient(to left, #000 calc(100% - 2rem), transparent); }
-  .app-nav[data-cue='start end'] { mask-image: linear-gradient(to right, transparent, #000 2rem, #000 calc(100% - 2rem), transparent); }
+  .app-nav[data-cue='end'] { mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent); }
+  .app-nav[data-cue='start'] { mask-image: linear-gradient(to left, #000 calc(100% - 3.5rem), transparent); }
+  .app-nav[data-cue='start end'] { mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent); }
   .app-nav:focus-within { mask-image: none; }
   .app-header:has(.app-sidebar-slot:not(:empty)) .app-nav { grid-column: 1 / 3; }
-  .app-sidebar-slot { grid-column: 3; grid-row: 2; overflow: visible; margin: 0; padding: 0; }
+  .app-sidebar-slot { grid-column: 3; grid-row: 2; overflow: visible; margin: 0; padding: 0 0 0 var(--ky-space-1); border-left: 1px solid var(--line); }
   .app-nav button { width: auto; flex: 0 0 auto; padding-inline: var(--ky-space-3); white-space: nowrap; }
   /* The account joins the brand row; the licence line closes the header, under the navigation. */
   .app-header-actions { display: contents; }
   .app-header .ky-user { grid-column: 2 / -1; grid-row: 1; justify-self: end; border-top: 0; padding: 0; }
-  .app-footer { grid-column: 1 / -1; grid-row: 3; padding-bottom: var(--ky-space-1); }
+  .app-header .app-footer { display: none; }
   .app-header .ky-user-copy, .app-logout-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
@@ -215,7 +218,9 @@ button:disabled, .btn:disabled { background: var(--panel-hover); color: var(--in
 .btn-danger:hover:not(:disabled), button.btn-danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
 button.btn-ghost.btn-danger { background: transparent; border-color: transparent; }
 button.btn-ghost.btn-danger:hover:not(:disabled) { background: var(--danger-soft); }
-button.btn-secondary:disabled, button.btn-ghost:disabled, button.btn-danger:disabled { background: transparent; color: var(--ink); border-color: var(--line); opacity: .7; }
+/* One disabled look for filled and outlined buttons alike; ghost buttons stay transparent. */
+button.btn-secondary:disabled, button.btn-danger:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
+button.btn-ghost:disabled { background: transparent; color: var(--ink); border-color: transparent; }
 
 /* Smaller text and padding for rows; the 40px target stays. */
 .btn-sm, button.btn-sm { padding: 0 var(--ky-space-3); font-size: var(--ky-type-meta); }
@@ -339,6 +344,7 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
 .dr-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 12px; flex-wrap: wrap; }
 .dr-field { display: flex; flex-direction: column; gap: 4px; flex: 1; font-size: 13px; color: var(--ink); }
 .dr-narrow { flex: 0 0 6rem; }
+.dr-row > .dr-field { max-width: 40rem; }
 
 /* Busnes.app light/dark defaults. Existing named palettes remain selectable. */
 :root[data-theme="busnes-light"] {
@@ -436,5 +442,12 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
 }
 }
 
-.theme-selector { width: auto; max-width: 100%; font-size: var(--ky-type-nav); }
+/* Sign-in theme picker: the field look with its own padded chevron, drawn from two gradients so it
+   follows the palette and needs no image source. */
+select.theme-selector {
+  width: auto; max-width: 100%; padding-right: 2.5rem; font-size: var(--ky-type-nav); appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 1.15rem) 52%, calc(100% - .8rem) 52%;
+  background-size: .35rem .35rem; background-repeat: no-repeat;
+}
 

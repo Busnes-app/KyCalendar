@@ -338,6 +338,8 @@ export const Backup: React.FC = () => {
   const hasLocal = Boolean(status?.local_dir);
   const canBackUp = keyPinned && (paired || hasLocal);
   const scheduleOn = (status?.interval_sec ?? 0) > 0;
+  // A schedule only runs once something can be sealed and sent: say what it waits for, never a time it will not keep.
+  const scheduleBlock = !keyPinned ? 'Waiting for recovery key' : !canBackUp ? 'Waiting for a destination' : null;
   const copies = status?.local_copies ?? [];
   const newestLocal = copies[0];
 
@@ -400,9 +402,11 @@ export const Backup: React.FC = () => {
         <div className="dr-fact">
           <div className="dr-fact-label">
             <span>Schedule</span>
-            <Badge tone={scheduleOn ? 'success' : 'danger'}>{every(status?.interval_sec)}</Badge>
+            <Badge tone={!scheduleOn ? 'danger' : scheduleBlock ? 'muted' : 'success'}>{every(status?.interval_sec)}</Badge>
           </div>
-          <div className="dr-fact-value">{scheduleOn && status?.next_run_at ? `Next ${when(status.next_run_at)}` : 'Manual only'}</div>
+          <div className="dr-fact-value">
+            {!scheduleOn ? 'Manual only' : scheduleBlock ?? (status?.next_run_at ? `Next ${when(status.next_run_at)}` : 'Not yet scheduled')}
+          </div>
           <div className="dr-fact-note" role={status?.last_run?.outcome === 'failure' ? 'alert' : undefined}>
             {lastRunNote(status?.last_run)}
           </div>

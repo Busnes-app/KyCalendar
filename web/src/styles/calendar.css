@@ -7,6 +7,8 @@
 .kc-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-2); margin-bottom: var(--ky-space-1); }
 .kc-sidebar h2 { font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); margin: 0; }
 .kc-sidebar-head button.ky-menu-trigger { width: 2rem; min-height: 2rem; }
+/* The + sits on the sidebar's edge: keep its ring inside. */
+.kc-sidebar-head button.ky-menu-trigger:focus-visible { outline-offset: -2px; }
 .kc-sidebar > ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
 .kc-sidebar li { display: grid; gap: var(--ky-space-1); padding-block: var(--ky-space-1); border-bottom: 1px solid var(--line); }
 .kc-cal-row { display: flex; align-items: center; gap: var(--ky-space-1); min-height: var(--ky-control-size); }
@@ -109,14 +111,16 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 @container (min-height: 60px) {
   .kc-calendar .fc .fc-timegrid-event .fc-event-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
 }
-/* A short event has one line: the title, then its compact range where the column is wide enough. */
-.kc-calendar .fc .fc-timegrid-event-short .fc-event-main-frame { align-items: baseline; }
-.kc-calendar .fc .fc-timegrid-event-short .fc-event-title-container { flex: 0 1 auto; }
+/* A short event has one line at the usual sizes: the title, then its compact range. When both do not
+   fit, the range wraps to a second row the block clips, so it drops before the title shortens. */
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-main-frame { flex-wrap: wrap; align-items: baseline; align-content: flex-start; row-gap: .5rem; height: 100%; overflow: hidden; }
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-title-container { flex: 0 1 auto; min-width: 0; }
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-title { font-size: inherit; }
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-main { padding-block: 1px; line-height: 1.2; }
 .kc-calendar .fc .fc-timegrid-event-short .fc-event-time { order: 1; flex: none; margin: 0 0 0 .375rem; }
 .kc-calendar .fc .fc-timegrid-event-short .fc-event-time::after { content: none; }
-@container (max-width: 7.5rem) {
-  .kc-calendar .fc .fc-timegrid-event-short .fc-event-time { display: none; }
-}
+/* One rule between the all-day strip and the hours, not FullCalendar's doubled divider. */
+.kc-calendar .fc .fc-timegrid-divider { padding: 0; border-bottom-width: 0; }
 /* The hour grid scrolls under the sticky day headings and all-day strip: fade the edge with more hours. */
 .kc-calendar .fc-timegrid .fc-scroller[data-cue='end'] { mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent); }
 .kc-calendar .fc-timegrid .fc-scroller[data-cue='start'] { mask-image: linear-gradient(to top, #000 calc(100% - 1rem), transparent); }

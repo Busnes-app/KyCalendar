@@ -33,6 +33,18 @@ afterEach(() => {
 });
 
 describe('Backup', () => {
+  it('says what a schedule waits for instead of a next run it cannot keep', async () => {
+    const next = '2026-11-01T03:00:00Z';
+    mockStatus({ ...PAIRED, key_pinned: false, paired: false, next_run_at: next });
+    render(<Backup />);
+    expect(await screen.findByText('Waiting for recovery key')).toBeTruthy();
+    expect(screen.queryByText(/^Next /)).toBeNull();
+    cleanup();
+    mockStatus({ ...PAIRED, next_run_at: next });
+    render(<Backup />);
+    expect(await screen.findByText(/^Next /)).toBeTruthy();
+  });
+
   it('warns when a key is pinned but there is no destination', async () => {
     mockStatus({ key_pinned: true, paired: false, interval_sec: 0, recovery_key_id: 'k1', threshold: 2, total_shares: 3, database_driver: 'sqlite', members: [] });
     render(<Backup />);
