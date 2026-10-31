@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { JSON_HEADERS, send } from "../admin";
-import { CopyButton, PageHeader } from "../components/ui";
+import { CopyButton } from "../components/ui";
 
 interface Pending {
   secret: string;
@@ -81,8 +81,7 @@ export default function TwoFactor({ enabled, onChange }: { enabled: boolean; onC
   );
 
   return (
-    <section>
-      <PageHeader title="Two-step verification" lede="Sign-in asks for a code from an authenticator app as well as your password." />
+    <>
       {error && <p role="alert" className="section">{error}</p>}
 
       {recovery && (
@@ -144,6 +143,6 @@ export default function TwoFactor({ enabled, onChange }: { enabled: boolean; onC
           </form>
         </div>
       )}
-    </section>
+    </>
   );
 }

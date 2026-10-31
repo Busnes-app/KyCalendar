@@ -12,7 +12,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const version = settings?.version ? String(settings.version) : '';
   return (
     <section>
-      <PageHeader title="Settings" lede="Where the server keeps its data, and which version it runs. Themes are under Appearance." />
+      <PageHeader title="Server settings" lede="Where the server keeps its data, and which version it runs." />
 
       <div className="card">
         <h2 className="section-title">Database</h2>

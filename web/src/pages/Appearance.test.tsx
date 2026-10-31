@@ -20,7 +20,7 @@ describe('Appearance', () => {
 
   it('offers six pairs with Match system, Light and Dark, Busnes Match system checked by default', async () => {
     await page(null);
-    expect(screen.getByRole('heading', { level: 1, name: 'Appearance' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Theme' })).toBeTruthy();
     for (const pair of ['Busnes', 'Matter', 'Ocean', 'Forest', 'Ky', 'Nord']) {
       expect(within(screen.getByRole('group', { name: pair })).getAllByRole('radio').map(r => r.closest('label')?.textContent)).toEqual(['Match system', 'Light', 'Dark']);
     }

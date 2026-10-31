@@ -62,7 +62,7 @@ Write the versions here:
 
 | Item | Value |
 |---|---|
-| KyCalendar version (web app → Settings → Version) | |
+| KyCalendar version (web app → Server settings → Version) | |
 | KyPost version | |
 | KyCalendar address (`https://…`) | |
 | KyPost address (`https://…`) | |
@@ -116,7 +116,7 @@ See "The switch" below. Do that now, then come back.
 
 ### 4. Check the server tells clients it schedules
 
-Create an app password for Alice (KyCalendar web app → **Phones & apps** → name it "gate check"),
+Create an app password for Alice (KyCalendar web app → **Settings** → **Phones & apps** → name it "gate check"),
 then on any computer:
 
 ```sh
@@ -128,7 +128,7 @@ Alice has no email address. Revoke the "gate check" password afterwards.
 
 ### 5. Add Alice's account to every device
 
-Each device gets its own app password (KyCalendar web app as Alice → **Phones & apps** → one per
+Each device gets its own app password (KyCalendar web app as Alice → **Settings** → **Phones & apps** → one per
 device). Steps per app are in "Client steps" below. Remove any old KyCalendar account from the
 device first, so it reads the server fresh.
 

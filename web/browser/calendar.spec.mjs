@@ -107,7 +107,8 @@ test('calendar: CSP, create by form, list view by keyboard, escape, delete', asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   // AI agent setup: its long commands scroll inside their own blocks, never the page.
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Phones & apps' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Phones & apps' }).click();
   await page.getByLabel(/AI agent/).check();
   // Three access levels, narrowest first and chosen by default.
   const access = page.getByRole('group', { name: 'Agent access' }).getByRole('radio');

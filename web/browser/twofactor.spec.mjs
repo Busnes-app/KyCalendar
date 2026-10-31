@@ -51,7 +51,9 @@ test('two-step verification: a person enrols, then sign-in asks for the code', a
   await expect(person.getByRole('status')).toContainText('Password changed');
   await signIn(person, username, chosen);
 
-  await person.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Two-step verification' }).click();
+  // Two-step verification is in Settings, on the Account section the gear opens.
+  await person.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(person.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
   await person.getByLabel('Password').fill(chosen);
   await person.getByRole('button', { name: 'Set up' }).click();
   await expect(person.getByRole('link', { name: 'setup link' })).toHaveAttribute('href', /^otpauth:\/\/totp\//);
