@@ -1,12 +1,13 @@
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import mitLicenseText from '../mit.txt?raw';
 
-/** The suite's licence line and About dialog (ky-ui shell); `version` comes from `/api/settings`, which has it only for a session. */
-export function LicenseFooter({ version, className }: { version?: string; className?: string }) {
+/** The suite's licence line and About dialog (ky-ui shell); `version` comes from `/api/settings`, which has it only for a session. `children` render above the line (the phone app rail). */
+export function LicenseFooter({ version, className, children }: { version?: string; className?: string; children?: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   const year = new Date().getFullYear();
   return (
     <footer className={className}>
+      {children}
       <button type="button" className="ky-license-link" onClick={() => ref.current?.showModal()}>
         &copy; {year} &middot; MIT License
       </button>

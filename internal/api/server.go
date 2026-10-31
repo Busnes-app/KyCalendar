@@ -51,6 +51,8 @@ type Server struct {
 	signinHTTP *http.Client
 	// feed mirrors subscribed calendars; its client reaches public HTTPS addresses only.
 	feed *feed.Refresher
+	// suiteApps caches each user's KyIdentity app list for the app rail (suite_apps.go).
+	suiteApps suiteAppsCache
 	// sched is server-side scheduling; nil while it is off. Decided by NewServer or StartKyPost
 	// before serving, then fixed.
 	sched *davbackend.Scheduler
@@ -356,6 +358,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
 	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))
 	s.handle("GET /api/admin/kypost", s.requireAdmin(s.handleKyPostStatus))
+	s.handle("GET /api/suite/apps", s.requireSession(s.handleSuiteApps))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))

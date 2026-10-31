@@ -73,3 +73,9 @@ Capture conditions: the built server on disposable SQLite data, real sign-in per
 ## Fleet Appearance picker — 2026-10-26
 
 KyCalendar gained an Appearance page for both roles (Match system plus the 22-theme suite catalog as native radio cards, saved `ky_theme` IDs kept); the sidebar and admin Settings theme selects are gone. Staged before/after captures at 1280×900 and 390×844 in OS light and dark, with source patches, binary and asset hashes and per-file measurements, are in [docs/ui-fleet-2026-10-26/](docs/ui-fleet-2026-10-26/README.md) (`manifest.json`, `captures.csv`, `checks.csv`). They are scratch captures with synthetic data and carry no rating.
+
+## App rail — 2026-10-31
+
+The suite app rail (ky-ui 0.9.0) in the sidebar foot and, on phones, above the licence line, before (main at `0f83e33`) and after, in OS light and dark at 1440×900 and 390×844 CSS pixels: [docs/screenshots/app-rail/](docs/screenshots/app-rail/) (`before-*` and `after-*`).
+
+Capture conditions: each build on disposable SQLite data, real sign-in as the local everyday user `walter`, production CSP (no violations; every mark loaded). A local account gets an empty list, so for the after captures the browser answered `GET /api/suite/apps` with six fictional apps (KyIdentity, KyPost, KyCalendar, KyDrive, KyNotes, KyMessages); the server side is covered by `internal/api/suite_apps_internal_test.go`. Exactly one rail was visible at each width. With six apps the desktop rail wraps to two rows and the calendar list's first row scrolls under the sidebar fade at 1440×900.

@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
 import { LicenseFooter } from './components/LicenseFooter';
+import { AppRail, loadSuiteApps, type SuiteApp } from './components/AppRail';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
@@ -34,6 +35,7 @@ export const App: React.FC = () => {
   const [chosenTab, setActiveTab] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
   const [sidebarSlot, setSidebarSlot] = useState<HTMLDivElement | null>(null);
+  const [apps, setApps] = useState<SuiteApp[]>([]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -63,6 +65,16 @@ export const App: React.FC = () => {
 
     checkAuth();
   }, []);
+
+  // The app rail: once per signed-in user, never for a pending password change.
+  const railUser = user && !user.must_change_password ? user.id : null;
+  useEffect(() => {
+    setApps([]);
+    if (!railUser) return;
+    let current = true;
+    void loadSuiteApps().then((list) => { if (current) setApps(list); });
+    return () => { current = false; };
+  }, [railUser]);
 
   // /api/settings returns more fields once authenticated, so re-read it after login.
   const loadSettings = async () => {
@@ -122,6 +134,7 @@ export const App: React.FC = () => {
         onLogout={handleLogout}
         sidebarSlot={setSidebarSlot}
         version={settings?.version}
+        apps={apps}
       />
 
       <main className="ky-content">
@@ -140,7 +153,9 @@ export const App: React.FC = () => {
         {isAdmin && activeTab === 'scim' && <SCIMAdmin />}
         {isAdmin && activeTab === 'backup' && <Backup />}
         {isAdmin && activeTab === 'settings' && <Settings settings={settings} />}
-        <LicenseFooter className="ky-content-foot" version={settings?.version} />
+        <LicenseFooter className="ky-content-foot" version={settings?.version}>
+          <AppRail apps={apps} />
+        </LicenseFooter>
       </main>
     </div>
   );
