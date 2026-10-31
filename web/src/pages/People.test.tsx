@@ -53,12 +53,32 @@ describe("People", () => {
     expect(within(row).queryAllByRole("button")).toHaveLength(0);
   });
 
+  it("keeps one Edit per row, the rest in its menu, with Role in its own column", async () => {
+    mockFetch({ "GET /api/admin/users": () => users(person({})) });
+    render(<People me="u0" />);
+    const row = (await screen.findByRole("button", { name: "Edit ann" })).closest("tr")!;
+    expect(within(row).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Edit ann", "More actions for ann"]);
+    fireEvent.click(within(row).getByRole("button", { name: "More actions for ann" }));
+    expect(within(row).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["Reset password", "Make administrator", "Disable"]);
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Person", "Role", "Status", "Last sign-in", "Actions"]);
+    expect(within(row).getByText("Everyday")).toBeTruthy();
+  });
+
+  it("shows the Email column only when someone has an email", async () => {
+    mockFetch({ "GET /api/admin/users": () => users(person({}), person({ id: "u2", username: "bea", email: "bea@example.test" })) });
+    render(<People me="u0" />);
+    expect(await screen.findByRole("columnheader", { name: "Email" })).toBeTruthy();
+    expect(screen.getByText("bea@example.test")).toBeTruthy();
+  });
+
   it("offers no demote or disable on your own row", async () => {
     mockFetch({ "GET /api/admin/users": () => users(person({ id: "me", username: "root", role: "admin" })) });
     render(<People me="me" />);
     await screen.findByRole("button", { name: "Edit root" });
-    expect(screen.queryByRole("button", { name: /Make root/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Disable root/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for root" }));
+    expect(screen.getByRole("menuitem", { name: "Reset password for root" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /Make root/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Disable root/ })).toBeNull();
   });
 
   it("asks for a fresh sign-in when a reset needs step-up", async () => {
@@ -68,7 +88,8 @@ describe("People", () => {
       "POST /api/admin/users/u1/reset-password": () => new Response(JSON.stringify({ error: "Sign in again", code: "reauth_required" }), { status: 403 }),
     });
     render(<People me="u0" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Reset password for ann" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for ann" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reset password for ann" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/sign in again/i);
   });
 
@@ -80,7 +101,8 @@ describe("People", () => {
         new Response(JSON.stringify({ error: "This is the last active local administrator; make another one first", code: "last_admin" }), { status: 409 }),
     });
     render(<People me="u0" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Disable ann" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for ann" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disable ann" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/last active local administrator/);
   });
 

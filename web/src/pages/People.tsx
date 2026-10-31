@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { UserPlus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { JSON_HEADERS, LoadMore, REAUTH, SourceBadge, failure, pageURL, send } from "../admin";
+import { MoreMenu } from "../components/MoreMenu";
 import { CopyButton, EmptyState, Modal, PageHeader } from "../components/ui";
 
 interface Person {
@@ -122,20 +123,17 @@ export default function People({ me }: { me: string }) {
     }
   }
 
+  // An Email column of dashes only says nothing.
+  const withEmail = people.some((p) => p.email);
+
   return (
     <section className="page">
       <PageHeader
         title="People"
-        lede={
-          <>
-            Add people who sign in with a password here. People from your identity provider are read-only; change them there.
-            After a sign-in provider change, you can reattach one to the current provider. Administrators manage this instance
-            and never see calendars.
-          </>
-        }
+        lede="Everyone who can sign in. Identity provider accounts are read-only here."
         action={
-          <button type="button" onClick={() => setAdding(true)}>
-            <UserPlus size={16} aria-hidden="true" />
+          <button type="button" className="ky-page-action" onClick={() => setAdding(true)}>
+            <Plus aria-hidden="true" />
             Add person
           </button>
         }
@@ -169,7 +167,8 @@ export default function People({ me }: { me: string }) {
             <thead>
               <tr>
                 <th>Person</th>
-                <th>Email</th>
+                <th>Role</th>
+                {withEmail && <th>Email</th>}
                 <th>Status</th>
                 <th>Last sign-in</th>
                 <th className="col-actions">
@@ -182,11 +181,15 @@ export default function People({ me }: { me: string }) {
                 <tr key={p.id}>
                   <td>
                     <span className="cell-strong">{p.display_name || p.username}</span>
-                    <span className="cell-sub">
-                      <span>{p.username}</span> · {p.role === "admin" ? "Administrator" : "Everyday"} <SourceBadge source={p.source} />
-                    </span>
+                    {/* The username only when a display name differs from it; never the same word twice. */}
+                    {((p.display_name && p.display_name !== p.username) || p.source !== "local") && (
+                      <span className="cell-sub">
+                        {p.display_name && p.display_name !== p.username ? p.username : null} <SourceBadge source={p.source} />
+                      </span>
+                    )}
                   </td>
-                  <td data-label="Email">{p.email || <span className="muted">—</span>}</td>
+                  <td data-label="Role">{p.role === "admin" ? "Administrator" : "Everyday"}</td>
+                  {withEmail && <td data-label="Email">{p.email || <span className="muted">—</span>}</td>}
                   <td data-label="Status">
                     <span className="badges">
                       <span className={p.status === "active" ? "badge badge-success" : "badge"}>{p.status === "active" ? "Active" : "Disabled"}</span>
@@ -200,7 +203,7 @@ export default function People({ me }: { me: string }) {
                     <div className="row-actions">
                       {p.source !== "local" && p.needs_reattach && (
                         <button type="button" className="btn-secondary btn-sm" aria-label={`Reattach ${p.username} to current sign-in`} onClick={() => reattach(p)}>
-                          Reattach to current sign-in
+                          Reattach
                         </button>
                       )}
                       {p.source === "local" && (
@@ -208,29 +211,37 @@ export default function People({ me }: { me: string }) {
                           <button type="button" className="btn-secondary btn-sm" aria-label={`Edit ${p.username}`} onClick={() => setEditing(p)}>
                             Edit
                           </button>
-                          <button type="button" className="btn-secondary btn-sm" aria-label={`Reset password for ${p.username}`} onClick={() => reset(p)}>
-                            Reset password
-                          </button>
-                          {p.id !== me && (
-                            <>
-                              <button
-                                type="button"
-                                className="btn-secondary btn-sm"
-                                aria-label={p.role === "admin" ? `Make ${p.username} a user` : `Make ${p.username} an admin`}
-                                onClick={() => toggleRole(p)}
-                              >
-                                {p.role === "admin" ? "Make user" : "Make admin"}
-                              </button>
-                              <button
-                                type="button"
-                                className={p.status === "active" ? "btn-danger btn-sm" : "btn-secondary btn-sm"}
-                                aria-label={p.status === "active" ? `Disable ${p.username}` : `Enable ${p.username}`}
-                                onClick={() => toggleStatus(p)}
-                              >
-                                {p.status === "active" ? "Disable" : "Enable"}
-                              </button>
-                            </>
-                          )}
+                          <MoreMenu label={`More actions for ${p.username}`}>
+                            {(close) => (
+                              <>
+                                <button type="button" role="menuitem" className="ky-menu-item" aria-label={`Reset password for ${p.username}`} onClick={() => { close(); reset(p); }}>
+                                  Reset password
+                                </button>
+                                {p.id !== me && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="ky-menu-item"
+                                      aria-label={p.role === "admin" ? `Make ${p.username} a user` : `Make ${p.username} an admin`}
+                                      onClick={() => { close(); toggleRole(p); }}
+                                    >
+                                      {p.role === "admin" ? "Make everyday user" : "Make administrator"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className={p.status === "active" ? "ky-menu-item is-danger" : "ky-menu-item"}
+                                      aria-label={p.status === "active" ? `Disable ${p.username}` : `Enable ${p.username}`}
+                                      onClick={() => { close(); toggleStatus(p); }}
+                                    >
+                                      {p.status === "active" ? "Disable" : "Enable"}
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </MoreMenu>
                         </>
                       )}
                     </div>

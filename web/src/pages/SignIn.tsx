@@ -144,13 +144,7 @@ export default function SignIn() {
     <section className="page">
       <PageHeader
         title="Sign-in"
-        lede={
-          <>
-            Let people sign in with Single Sign On or another OpenID Connect provider. Only Single Sign On's <code>kycalendar.admin</code>{" "}
-            role makes an administrator; everyone from another provider is an everyday user. Switching provider or issuer disables
-            the previous provider's accounts.
-          </>
-        }
+        lede="Let people sign in with Single Sign On or another OpenID Connect provider."
       />
       <div className="notices">
         {!view.sso_enabled && <p role="status">KY_SSO_ENABLED=false: single sign-on stays off whatever you save here.</p>}
@@ -166,11 +160,16 @@ export default function SignIn() {
         <div className="form form-wide">
           <div className="field">
             <label htmlFor="signin-provider">Provider</label>
-            <select id="signin-provider" value={form.provider} onChange={set("provider")} disabled={view.managed || env(view.provider)}>
+            <select id="signin-provider" aria-describedby="signin-provider-hint" value={form.provider} onChange={set("provider")} disabled={view.managed || env(view.provider)}>
               <option value="none">None (passwords only)</option>
               <option value="kyidentity">Single Sign On</option>
               <option value="oidc">Another OpenID Connect provider</option>
             </select>
+            <span className="field-hint" id="signin-provider-hint">
+              Only Single Sign On's <code>kycalendar.admin</code> role makes an administrator; everyone from another provider is an everyday
+              user. Switching provider or issuer disables the previous provider's accounts. After a change, you can reattach one to the
+              current provider from People.
+            </span>
             {env(view.provider) && <EnvNote name="the KY_KYSIGNON_ variables" />}
           </div>
           {form.provider !== "none" && (

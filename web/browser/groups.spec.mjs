@@ -27,6 +27,7 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
     })).toBe(true);
   }
   await nav.getByRole('button', { name: 'Groups', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click();
   await page.getByLabel('Group name').fill(group);
   await page.getByRole('button', { name: 'Create group' }).click();
 
@@ -38,6 +39,7 @@ test('groups: an admin puts walter in a group and walter sees its calendar', asy
   await expect(card.getByRole('button', { name: 'Remove walter' })).toBeVisible();
 
   await nav.getByRole('button', { name: 'Group calendars', exact: true }).click();
+  await page.getByRole('button', { name: 'New group calendar' }).click();
   await page.getByLabel('Calendar name').fill(calendar);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   const calCard = page.getByRole('article', { name: calendar });
