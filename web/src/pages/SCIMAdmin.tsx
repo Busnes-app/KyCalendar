@@ -44,7 +44,7 @@ export const SCIMAdmin: React.FC = () => {
           <div className="card">
             <div className="card-header">
               <h2 className="card-title">Provisioning</h2>
-              <span className={status.enabled ? 'badge badge-success' : 'badge'}>{status.enabled ? 'Enabled' : 'Disabled'}</span>
+              <span className="ky-status" data-ky-status={status.enabled ? 'success' : undefined}>{status.enabled ? 'Enabled' : 'Disabled'}</span>
             </div>
             <p className="card-body muted">
               {status.token_configured
@@ -83,7 +83,7 @@ export const SCIMAdmin: React.FC = () => {
                         <td data-label="Display name">{u.display_name || '—'}</td>
                         <td data-label="Email">{u.email || '—'}</td>
                         <td data-label="Status">
-                          <span className={`badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}>{u.status === 'active' ? 'Active' : 'Inactive'}</span>
+                          <span className="ky-status" data-ky-status={u.status === 'active' ? 'success' : 'danger'}>{u.status === 'active' ? 'Active' : 'Inactive'}</span>
                         </td>
                       </tr>
                     ))}

@@ -83,7 +83,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ settings, user, onNavigate
                   <Icon size={18} aria-hidden="true" />
                   {t.title}
                 </h2>
-                {t.status && <span className={t.status.on ? 'badge badge-success' : 'badge'}>{t.status.label}</span>}
+                {t.status && <span className="ky-status" data-ky-status={t.status.on ? 'success' : undefined}>{t.status.label}</span>}
               </div>
               <p className="tile-desc">{t.desc}</p>
               <button type="button" className="btn-secondary btn-sm tile-action" onClick={() => onNavigate(t.tab)}>

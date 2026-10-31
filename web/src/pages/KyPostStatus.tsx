@@ -62,7 +62,7 @@ export default function KyPostStatus() {
     <section className="card" aria-labelledby="kypost-title">
       <div className="card-header">
         <h2 className="card-title" id="kypost-title">KyPost</h2>
-        {status && <span className={status.connected ? "badge badge-success" : "badge"}>{status.connected ? "Connected" : "Not connected"}</span>}
+        {status && <span className="ky-status" data-ky-status={status.connected ? "success" : undefined}>{status.connected ? "Connected" : "Not connected"}</span>}
       </div>
       <div className="card-body">
         {error && <p role="alert">Could not load the KyPost status. Reload the page to try again.</p>}

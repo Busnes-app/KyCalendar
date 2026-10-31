@@ -192,7 +192,7 @@ export default function People({ me }: { me: string }) {
                   {withEmail && <td data-label="Email">{p.email || <span className="muted">—</span>}</td>}
                   <td data-label="Status">
                     <span className="badges">
-                      <span className={p.status === "active" ? "badge badge-success" : "badge"}>{p.status === "active" ? "Active" : "Disabled"}</span>
+                      <span className="ky-status" data-ky-status={p.status === "active" ? "success" : undefined}>{p.status === "active" ? "Active" : "Disabled"}</span>
                       {p.mfa ? <span className="badge">MFA</span> : null}
                     </span>
                   </td>
