@@ -80,28 +80,35 @@ describe('CalendarPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Mine' }));
     const rename = screen.getByLabelText('Name');
     fireEvent.change(rename, { target: { value: 'Draft' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Subscribe to a calendar' }));
-    const link = screen.getByLabelText('Link');
-    fireEvent.change(link, { target: { value: 'https://example.test/a.ics' } });
     expect(details.open).toBe(true);
 
-    // Opening the subscribe form moved focus into it, so narrowing keeps the disclosure open.
-    expect(document.activeElement).toBe(link);
+    // Focus in the list keeps the disclosure open when the screen narrows; Escape closes it.
+    rename.focus();
     narrow(true);
     expect(details.open).toBe(true);
-    fireEvent.keyDown(link, { key: 'Escape' });
+    fireEvent.keyDown(rename, { key: 'Escape' });
     expect(details.open).toBe(false);
     expect(document.activeElement).toBe(slot.querySelector('summary'));
     fireEvent.click(slot.querySelector('summary')!);
     expect(details.open).toBe(true);
 
+    // The subscribe dialog keeps its draft across the breakpoint, and Escape in it leaves the list open.
+    fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Subscribe to a calendar' }));
+    const link = screen.getByLabelText('Link');
+    fireEvent.change(link, { target: { value: 'https://example.test/a.ics' } });
     narrow(false);
+    narrow(true);
     expect(details.open).toBe(true);
+    expect(link).toHaveProperty('value', 'https://example.test/a.ics');
+    fireEvent.keyDown(link, { key: 'Escape' });
+    expect(details.open).toBe(true);
+
+    narrow(false);
     expect(screen.getByRole('complementary', { name: 'Calendars' })).toBe(aside);
     expect(slot.contains(aside)).toBe(true);
-    expect(aside.contains(rename) && aside.contains(link)).toBe(true);
+    expect(aside.contains(rename)).toBe(true);
     expect(rename).toHaveProperty('value', 'Draft');
-    expect(link).toHaveProperty('value', 'https://example.test/a.ics');
   });
 
   it('loads calendars, offers the four views and fetches only visible calendars', async () => {
@@ -145,9 +152,10 @@ describe('CalendarPage', () => {
     await waitFor(() => expect(success).toHaveBeenCalled());
     const [team, mine] = success.mock.calls[0][0] as { backgroundColor: string; textColor?: string }[];
     expect(mine.backgroundColor).toBe('#00aa11');
-    expect(team.backgroundColor).not.toBe(mine.backgroundColor);
-    expect(team.backgroundColor).toMatch(/^#[0-9a-f]{6}$/);
-    expect(team.textColor).toBe('#ffffff');
+    expect(mine.textColor).toBe('#182326');
+    // The first calendar without a colour takes the theme accent, whose text is the theme's button text.
+    expect(team.backgroundColor).toBe('var(--accent)');
+    expect(team.textColor).toBeUndefined();
   });
 
   it('shows an alert when calendars cannot load', async () => {

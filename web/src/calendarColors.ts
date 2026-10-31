@@ -1,6 +1,8 @@
-// Calendar colours. A new calendar gets the first palette colour its neighbours don't use, and
-// a calendar stored without one (older calendars, CalDAV or agent-created) is shown in one, so
-// two calendars never share the accent by default. Every colour holds white text at 4.5:1.
+// Calendar colours. A new calendar gets the first palette colour its neighbours don't use. The
+// first calendar stored without one (the default calendar, CalDAV or agent-created) shows the
+// theme accent; any further one shows the next unused palette colour, so no two share a colour by
+// default. Every palette colour holds white text at 4.5:1; the accent carries `--button-text`.
+export const ACCENT = 'var(--accent)';
 export const PALETTE = ['#1f7a6d', '#bf3f18', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75'] as const;
 
 const norm = (c: string) => c.slice(0, 7).toLowerCase();
@@ -15,13 +17,19 @@ export function nextColor(used: Iterable<string>, from = 0): string {
   return PALETTE[(from + taken.size) % PALETTE.length];
 }
 
-/** Each calendar's display colour: its own, else the next one unused by the calendars before it. */
+/** Each calendar's display colour: its own, else the accent for the first without one, else the next unused. */
 export function calendarColors(calendars: { id: string; color: string }[]): Map<string, string> {
   const used = calendars.map((c) => c.color).filter(Boolean);
   const out = new Map<string, string>();
+  let accentTaken = false;
   for (const c of calendars) {
     if (c.color) {
       out.set(c.id, c.color);
+      continue;
+    }
+    if (!accentTaken) {
+      accentTaken = true;
+      out.set(c.id, ACCENT);
       continue;
     }
     const pick = nextColor(used);

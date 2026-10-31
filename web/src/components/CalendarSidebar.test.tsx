@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CalendarSidebar, ago } from './CalendarSidebar';
 import type { CalendarInfo } from '../calendarApi';
@@ -22,14 +22,27 @@ const cals: CalendarInfo[] = [
 ];
 
 describe('CalendarSidebar', () => {
+  it('adds through one + menu that opens a dialog, and returns focus to the + on cancel', () => {
+    render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
+    const plus = screen.getByRole('button', { name: 'Add a calendar' });
+    fireEvent.click(plus);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['New calendar', 'Subscribe to a calendar']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New calendar' }));
+    const dialog = screen.getByRole('dialog', { name: 'New calendar' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(plus);
+  });
+
   it('shows calendars stored without a colour in distinct colours, and gives a new one an unused colour', async () => {
     const post = vi.fn((_init?: RequestInit) => new Response(JSON.stringify(cals[0]), { status: 201 }));
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_i, init) => post(init));
     const { container } = render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
     const shown = [...container.querySelectorAll<HTMLElement>('.kc-swatch')].map((el) => el.style.background);
     expect(new Set(shown).size).toBe(cals.length);
-    fireEvent.click(screen.getByRole('button', { name: 'New calendar' }));
-    fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Work' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New calendar' }));
+    fireEvent.change(within(screen.getByRole('dialog', { name: 'New calendar' })).getByLabelText('Name'), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
     const color = JSON.parse(String(post.mock.calls[0][0]?.body)).color;
@@ -55,8 +68,9 @@ describe('CalendarSidebar', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_i, init) => post(init));
     const onChanged = vi.fn();
     render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
-    fireEvent.click(screen.getByRole('button', { name: 'New calendar' }));
-    fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Work' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New calendar' }));
+    fireEvent.change(within(screen.getByRole('dialog', { name: 'New calendar' })).getByLabelText('Name'), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
@@ -68,8 +82,9 @@ describe('CalendarSidebar', () => {
     const list: CalendarInfo = { ...cals[0], id: 'cal_t', name: 'Todo', components: ['VTODO'] };
     render(<CalendarSidebar calendars={[...cals, list]} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
     expect(screen.getByText('Tasks · open in a tasks app')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'New calendar' }));
-    fireEvent.change(screen.getByLabelText('New calendar name'), { target: { value: 'Shared' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New calendar' }));
+    fireEvent.change(within(screen.getByRole('dialog', { name: 'New calendar' })).getByLabelText('Name'), { target: { value: 'Shared' } });
     fireEvent.change(screen.getByLabelText('Holds'), { target: { value: 'tasks' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
@@ -81,7 +96,9 @@ describe('CalendarSidebar', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (i, init) => post(String(i), init));
     const onChanged = vi.fn();
     render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Subscribe to a calendar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Subscribe to a calendar' }));
+    expect(screen.getByRole('dialog', { name: 'Subscribe to a calendar' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Link'), { target: { value: 'webcal://outlook.office365.com/owa/calendar/x/reachcalendar.ics' } });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('button', { name: 'Subscribe' }));

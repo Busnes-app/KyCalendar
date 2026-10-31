@@ -4,7 +4,9 @@
 
 /* ---------- Sidebar ---------- */
 
-.kc-sidebar h2 { font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); margin: 0 0 var(--ky-space-2); }
+.kc-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-2); margin-bottom: var(--ky-space-1); }
+.kc-sidebar h2 { font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); margin: 0; }
+.kc-sidebar-head button.ky-menu-trigger { width: 2rem; min-height: 2rem; }
 .kc-sidebar > ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
 .kc-sidebar li { display: grid; gap: var(--ky-space-1); padding-block: var(--ky-space-1); border-bottom: 1px solid var(--line); }
 .kc-cal-row { display: flex; align-items: center; gap: var(--ky-space-1); min-height: var(--ky-control-size); }
@@ -15,14 +17,11 @@ button.kc-icon { min-height: var(--ky-control-size); width: var(--ky-control-siz
 /* Row tools stay quiet until used; deleting still asks first. */
 button.kc-icon.btn-danger { color: var(--ink); }
 button.kc-icon.btn-danger:hover:not(:disabled), button.kc-icon.btn-danger:focus-visible { color: var(--danger); }
-.kc-cal-edit, .kc-add { padding: var(--ky-space-3) 0; border-top: 1px solid var(--line); }
-.kc-add { margin-top: var(--ky-space-3); }
-.kc-form-title { font-size: var(--ky-type-body); font-weight: 600; }
+.kc-cal-edit { padding: var(--ky-space-3) 0; border-top: 1px solid var(--line); }
 .kc-sub { display: flex; flex-wrap: wrap; gap: var(--ky-space-1) var(--ky-space-2); font-size: var(--ky-type-meta); color: var(--ink); line-height: 1.5; padding-left: 1.55rem; }
 .kc-sub [role='alert'] { flex-basis: 100%; color: var(--danger); }
 .kc-sub .kc-actions { flex-basis: 100%; margin-top: .25rem; }
 .kc-cal-edit > .kc-sub { padding-left: 0; margin-bottom: var(--ky-space-2); }
-.kc-sidebar-actions { display: flex; flex-wrap: wrap; gap: var(--ky-space-2); margin-top: var(--ky-space-3); }
 .kc-hint { font-size: var(--ky-type-meta); line-height: 1.5; color: var(--ink); }
 
 /* ---------- Forms in the sidebar and dialogs ---------- */
@@ -50,7 +49,7 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 
 /* ---------- FullCalendar ---------- */
 
-/* Calm chrome: neutral buttons, a surface plus accent rail for the selected view, and a quiet
+/* Calm chrome: neutral buttons, an accent tint and rail for the selected view, and a quiet
    today marker, so the page's one filled orange control stays New event. */
 .kc-calendar {
   min-width: 0;
@@ -80,8 +79,10 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 /* FullCalendar draws its own focus shadow, which lingers after a click; keep only the shared ring. */
 .kc-calendar .fc .fc-button.fc-button-primary:focus { box-shadow: none; }
 .kc-calendar .fc .fc-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.kc-calendar .fc .fc-button-primary:not(:disabled).fc-button-active, .kc-calendar .fc .fc-button-primary:not(:disabled).fc-button-active:focus { color: var(--ink-strong); font-weight: 600; box-shadow: inset 0 -3px var(--accent); }
+.kc-calendar .fc .fc-button-primary:not(:disabled).fc-button-active, .kc-calendar .fc .fc-button-primary:not(:disabled).fc-button-active:focus { background: var(--accent-soft); color: var(--ink-strong); font-weight: 600; box-shadow: inset 0 -3px var(--accent); }
 .kc-calendar .fc .fc-button-primary:disabled { background: transparent; color: var(--ink); border-color: var(--line); opacity: 1; }
+/* Today keeps the arrows' outline while today is already in view, so it never reads as broken. */
+.kc-calendar .fc .fc-today-button.fc-button-primary:disabled { background: var(--fc-button-bg-color); color: var(--ink-strong); border-color: var(--fc-button-border-color); cursor: default; }
 .kc-calendar .fc .fc-col-header-cell-cushion { padding-block: var(--ky-space-2); font-size: var(--ky-type-meta); font-weight: 500; color: var(--ink); }
 .kc-calendar .fc .kc-day-head { display: inline-grid; justify-items: center; line-height: 1.25; }
 .kc-calendar .fc .kc-day-head b { font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); font-variant-numeric: tabular-nums; }
@@ -108,8 +109,18 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 @container (min-height: 60px) {
   .kc-calendar .fc .fc-timegrid-event .fc-event-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
 }
-/* A short event has room for one line: the title, which the time axis already places. */
-.kc-calendar .fc .fc-timegrid-event-short .fc-event-time { display: none; }
+/* A short event has one line: the title, then its compact range where the column is wide enough. */
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-main-frame { align-items: baseline; }
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-title-container { flex: 0 1 auto; }
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-time { order: 1; flex: none; margin: 0 0 0 .375rem; }
+.kc-calendar .fc .fc-timegrid-event-short .fc-event-time::after { content: none; }
+@container (max-width: 7.5rem) {
+  .kc-calendar .fc .fc-timegrid-event-short .fc-event-time { display: none; }
+}
+/* The hour grid scrolls under the sticky day headings and all-day strip: fade the edge with more hours. */
+.kc-calendar .fc-timegrid .fc-scroller[data-cue='end'] { mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent); }
+.kc-calendar .fc-timegrid .fc-scroller[data-cue='start'] { mask-image: linear-gradient(to top, #000 calc(100% - 1rem), transparent); }
+.kc-calendar .fc-timegrid .fc-scroller[data-cue='start end'] { mask-image: linear-gradient(transparent, #000 1rem, #000 calc(100% - 2.5rem), transparent); }
 .kc-calendar .fc .fc-daygrid-dot-event .fc-event-title { color: var(--ink-strong); }
 .kc-calendar .fc .fc-daygrid-dot-event .fc-event-time { color: var(--ink); }
 .kc-calendar .fc .fc-daygrid-event-dot { border-width: 5px; }
@@ -121,18 +132,17 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 
 /* One left column: the calendar list lives in the app sidebar (a portal), so the canvas takes
    the full width. On phones the same list sits behind a Calendars disclosure in the header. */
-.page.kc-layout { max-width: none; padding: var(--ky-space-4); }
+.page.kc-layout { max-width: none; padding: var(--ky-space-5) var(--ky-space-5) var(--ky-space-4); }
 .kc-picker > summary { display: none; }
 
 /* In the app sidebar the list reads as a navigation group: rows align with the navigation's
    icons, and on pointer screens row tools appear on hover or keyboard focus over the name. */
 .app-sidebar-slot .kc-sidebar { padding-top: var(--ky-space-3); border-top: 1px solid var(--line); }
-.app-sidebar-slot .kc-sidebar h2 { padding-inline: var(--ky-space-3); font-size: var(--ky-type-nav); }
+.app-sidebar-slot .kc-sidebar-head { padding-inline: var(--ky-space-3) 0; }
+.app-sidebar-slot .kc-sidebar h2 { font-size: var(--ky-type-nav); }
 .app-sidebar-slot .kc-sidebar li { padding: 0 0 0 var(--ky-space-3); border-bottom: 0; }
 .app-sidebar-slot .kc-sidebar li:has(form) { padding-block-end: var(--ky-space-2); }
 .app-sidebar-slot .kc-cal-row { position: relative; }
-.app-sidebar-slot .kc-sidebar-actions, .app-sidebar-slot .kc-sidebar > form { padding-inline: var(--ky-space-3) 0; }
-.app-sidebar-slot .kc-sidebar-actions { flex-direction: column; align-items: flex-start; }
 @media (hover: hover) {
   .app-sidebar-slot .kc-cal-actions { position: absolute; inset-block: 0; right: 0; align-items: center; padding-left: var(--ky-space-2); background: var(--sidebar-end, var(--panel)); opacity: 0; }
   .app-sidebar-slot .kc-cal-row:hover .kc-cal-actions, .app-sidebar-slot .kc-cal-row:focus-within .kc-cal-actions { opacity: 1; }
