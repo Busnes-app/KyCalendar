@@ -22,7 +22,7 @@ const cals: CalendarInfo[] = [
 ];
 
 describe('CalendarSidebar', () => {
-  it('adds through one + menu that opens a dialog, and returns focus to the + on cancel', () => {
+  it('adds through one + menu that opens a dialog, and returns focus to the + on cancel', async () => {
     render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
     const plus = screen.getByRole('button', { name: 'Add a calendar' });
     fireEvent.click(plus);
@@ -31,7 +31,7 @@ describe('CalendarSidebar', () => {
     const dialog = screen.getByRole('dialog', { name: 'New calendar' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(plus);
+    await waitFor(() => expect(document.activeElement).toBe(plus));
   });
 
   it('shows calendars stored without a colour in distinct colours, and gives a new one an unused colour', async () => {

@@ -111,9 +111,11 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
     }
   }
 
-  // Closing either create dialog returns focus to the + that opened its menu.
-  const closeAdd = () => { setAdding(false); setName(''); addTrigger.current?.focus(); };
-  const closeSubscribe = () => { setSubscribing(false); addTrigger.current?.focus(); };
+  // Closing either create dialog returns focus to the + that opened its menu, after the native
+  // dialog's own close has restored focus to the (now hidden) menu item.
+  const refocus = () => requestAnimationFrame(() => addTrigger.current?.focus());
+  const closeAdd = () => { setAdding(false); setName(''); refocus(); };
+  const closeSubscribe = () => { setSubscribing(false); refocus(); };
 
   return (
     <aside className="kc-sidebar" aria-label="Calendars">
@@ -246,7 +248,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
       )}
       {subscribing && createPortal(
         <Modal title="Subscribe to a calendar" onClose={closeSubscribe}>
-          <SubscriptionForm color={fresh()} onSaved={() => { setSubscribing(false); onChanged(); addTrigger.current?.focus(); }} onCancel={closeSubscribe} />
+          <SubscriptionForm color={fresh()} onSaved={() => { setSubscribing(false); onChanged(); refocus(); }} onCancel={closeSubscribe} />
         </Modal>,
         document.body,
       )}
