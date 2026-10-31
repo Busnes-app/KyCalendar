@@ -43,7 +43,7 @@ func (s *Server) signInSettings(ctx context.Context) (sso.Settings, error) {
 			return sso.Settings{}, err
 		}
 		field := func(value string) sso.Field { return sso.Field{Value: value, Source: sso.SourceInstaller} }
-		return sso.Settings{Provider: field(sso.KindKyIdentity), DisplayName: field("Single Sign On"), Issuer: field(managed.IssuerURL), ClientID: field(managed.ClientID), Secret: sso.SecretField{Value: secret, Source: sso.SourceInstaller}}, nil
+		return sso.Settings{Provider: field(sso.KindKyIdentity), DisplayName: field("single sign-on"), Issuer: field(managed.IssuerURL), ClientID: field(managed.ClientID), Secret: sso.SecretField{Value: secret, Source: sso.SourceInstaller}}, nil
 	}
 	st := sso.Resolve(s.config.SSO, saved)
 	if st.Secret.Source == sso.SourceSaved {

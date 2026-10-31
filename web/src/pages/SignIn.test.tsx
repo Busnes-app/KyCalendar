@@ -21,7 +21,7 @@ function mockFetch(handlers: Record<string, (init?: RequestInit) => unknown>) {
 const field = (value: string, source = "saved") => ({ value, source });
 const saved = {
   provider: field("kyidentity"),
-  display_name: field("Single Sign On"),
+  display_name: field("single sign-on"),
   issuer: field("https://id.example"),
   client_id: field("kc"),
   client_secret: { set: true, source: "saved" },

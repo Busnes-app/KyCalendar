@@ -44,7 +44,7 @@ func TestResolveEnvironmentKyIdentityDropsForeignSavedRow(t *testing.T) {
 	st := sso.Resolve(config.SSOConfig{KySignOnIssuer: "https://id.example/", KySignOnSecret: "env-secret"}, savedOIDC)
 	want := sso.Settings{
 		Provider:    sso.Field{Value: sso.KindKyIdentity, Source: sso.SourceEnvironment},
-		DisplayName: sso.Field{Value: "Single Sign On", Source: sso.SourceUnset},
+		DisplayName: sso.Field{Value: "single sign-on", Source: sso.SourceUnset},
 		Issuer:      sso.Field{Value: "https://id.example", Source: sso.SourceEnvironment},
 		ClientID:    sso.Field{Source: sso.SourceUnset},
 		Secret:      sso.SecretField{Value: "env-secret", Source: sso.SourceEnvironment},
@@ -191,7 +191,7 @@ func TestResolveSavedAndUnset(t *testing.T) {
 	if empty.Provider != (sso.Field{Value: sso.KindNone, Source: sso.SourceUnset}) || empty.Live() {
 		t.Fatalf("nothing configured: %+v", empty)
 	}
-	if ky := sso.Resolve(config.SSOConfig{}, map[string]string{sso.KeyProvider: sso.KindKyIdentity}); ky.DisplayName.Value != "Single Sign On" {
+	if ky := sso.Resolve(config.SSOConfig{}, map[string]string{sso.KeyProvider: sso.KindKyIdentity}); ky.DisplayName.Value != "single sign-on" {
 		t.Fatalf("kyidentity default label: %+v", ky.DisplayName)
 	}
 }
