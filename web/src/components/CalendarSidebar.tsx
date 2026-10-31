@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
+import { Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { calendarColors, nextColor } from '../calendarColors';
 import {
   ApiError, HOLDS, createCalendar, holdsOf, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo, type Holds,
@@ -83,15 +83,6 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
   const [relinking, setRelinking] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  // Collapsing a calendar's subscription details also closes its Change link form.
-  function toggleDetails(id: string) {
-    const next = new Set(expanded);
-    if (!next.delete(id)) next.add(id);
-    else if (relinking === id) setRelinking(null);
-    setExpanded(next);
-  }
   const colors = calendarColors(calendars);
   const colorOf = (c: CalendarInfo) => colors.get(c.id) ?? 'var(--ky-accent)';
   // A new calendar takes a colour none of the visible ones use.
@@ -125,7 +116,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
               </label>
               <span className="kc-cal-actions">
                 {canManage(c) && editing !== c.id && (
-                  <button type="button" className="btn-ghost kc-icon" aria-label={`Edit ${c.name}`} title="Edit" onClick={() => { setEditing(c.id); setDraft({ name: c.name, color: colorOf(c) }); }}>
+                  <button type="button" className="btn-ghost kc-icon" aria-label={`Edit ${c.name}`} title="Edit" onClick={() => { setEditing(c.id); setRelinking(null); setDraft({ name: c.name, color: colorOf(c) }); }}>
                     <Pencil size={14} aria-hidden="true" />
                   </button>
                 )}
@@ -143,66 +134,53 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
               </span>
             </div>
             {!c.components.includes('VEVENT') && <div className="kc-sub"><span>Tasks · open in a tasks app</span></div>}
-            {c.subscription && (
-              <div className="kc-sub">
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  aria-expanded={expanded.has(c.id)}
-                  aria-controls={`sub-${c.id}`}
-                  aria-label={`Subscription details for ${c.name}`}
-                  onClick={() => toggleDetails(c.id)}
-                >
-                  {expanded.has(c.id) ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
-                  Subscription
-                </button>
-                {c.subscription.error && !expanded.has(c.id) && <span role="alert">{c.subscription.error}</span>}
-              </div>
-            )}
-            {c.subscription && expanded.has(c.id) && (
-              <div className="kc-sub" id={`sub-${c.id}`}>
-                <span>Subscribed · {c.subscription.host}</span>
-                <span>{c.subscription.refreshed_at ? `Updated ${ago(c.subscription.refreshed_at)}` : 'Not yet updated'}</span>
-                {c.subscription.error && <span role="alert">{c.subscription.error}</span>}
-                <div className="kc-actions">
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    aria-label={`Refresh ${c.name}`}
-                    onClick={() => void run(() => refreshSubscription(c.id).catch((e) => {
-                      throw e instanceof ApiError && e.status === 429 ? new Error(`${c.name} was refreshed less than a minute ago; try again shortly.`) : e;
-                    }), 'Could not refresh the calendar')}
-                  >
-                    <RefreshCw size={12} aria-hidden="true" />
-                    Refresh
-                  </button>
-                  {relinking !== c.id && (
-                    <button type="button" className="btn-ghost btn-sm" aria-label={`Change link of ${c.name}`} onClick={() => setRelinking(c.id)}>Change link</button>
-                  )}
-                </div>
-              </div>
-            )}
-            {relinking === c.id && expanded.has(c.id) && (
-              <SubscriptionForm calendar={c} color={colorOf(c)} onSaved={() => { setRelinking(null); onChanged(); }} onCancel={() => setRelinking(null)} />
-            )}
+            {c.subscription?.error && editing !== c.id && <div className="kc-sub"><span role="alert">{c.subscription.error}</span></div>}
             {editing === c.id && (
-              <form
-                className="kc-form kc-cal-edit"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  // An unchanged colour is not sent, so a calendar keeps whatever it had stored.
-                  if (await run(() => patchCalendar(c.id, draft.color === colorOf(c) ? { name: draft.name } : draft), 'Could not save the calendar')) setEditing(null);
-                }}
-              >
-                <label htmlFor={`name-${c.id}`}>Name</label>
-                <input id={`name-${c.id}`} value={draft.name} maxLength={255} required autoFocus onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-                <label htmlFor={`color-${c.id}`}>Colour</label>
-                <input id={`color-${c.id}`} type="color" value={draft.color} onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
-                <div className="kc-actions">
-                  <button type="submit" className="btn-sm">Save</button>
-                  <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
-                </div>
-              </form>
+              <div className="kc-cal-edit">
+                {c.subscription && (
+                  <div className="kc-sub">
+                    <span>Subscribed · {c.subscription.host}</span>
+                    <span>{c.subscription.refreshed_at ? `Updated ${ago(c.subscription.refreshed_at)}` : 'Not yet updated'}</span>
+                    {c.subscription.error && <span role="alert">{c.subscription.error}</span>}
+                    {relinking !== c.id && (
+                      <div className="kc-actions">
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          aria-label={`Refresh ${c.name}`}
+                          onClick={() => void run(() => refreshSubscription(c.id).catch((e) => {
+                            throw e instanceof ApiError && e.status === 429 ? new Error(`${c.name} was refreshed less than a minute ago; try again shortly.`) : e;
+                          }), 'Could not refresh the calendar')}
+                        >
+                          <RefreshCw size={12} aria-hidden="true" />
+                          Refresh
+                        </button>
+                        <button type="button" className="btn-ghost btn-sm" aria-label={`Change link of ${c.name}`} onClick={() => setRelinking(c.id)}>Change link</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {relinking === c.id && (
+                  <SubscriptionForm calendar={c} color={colorOf(c)} onSaved={() => { setRelinking(null); onChanged(); }} onCancel={() => setRelinking(null)} />
+                )}
+                <form
+                  className="kc-form"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    // An unchanged colour is not sent, so a calendar keeps whatever it had stored.
+                    if (await run(() => patchCalendar(c.id, draft.color === colorOf(c) ? { name: draft.name } : draft), 'Could not save the calendar')) setEditing(null);
+                  }}
+                >
+                  <label htmlFor={`name-${c.id}`}>Name</label>
+                  <input id={`name-${c.id}`} value={draft.name} maxLength={255} required autoFocus onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                  <label htmlFor={`color-${c.id}`}>Colour</label>
+                  <input id={`color-${c.id}`} type="color" value={draft.color} onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
+                  <div className="kc-actions">
+                    <button type="submit" className="btn-sm">Save</button>
+                    <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                  </div>
+                </form>
+              </div>
             )}
           </li>
         ))}
