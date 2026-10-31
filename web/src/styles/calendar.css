@@ -40,7 +40,6 @@ button.kc-icon.btn-danger:hover:not(:disabled), button.kc-icon.btn-danger:focus-
 .kc-check { display: flex; align-items: center; gap: var(--ky-space-2); min-height: var(--ky-control-size); font-size: var(--ky-type-body); cursor: pointer; }
 .kc-actions { display: flex; flex-wrap: wrap; gap: var(--ky-space-2); margin-top: var(--ky-space-2); }
 .kc-push { margin-left: auto; }
-.kc-new { display: flex; margin: 0 0 .75rem auto; }
 .kc-layout p[role='alert'] { margin-bottom: var(--ky-space-3); }
 .kc-description { white-space: pre-wrap; }
 .kc-people { list-style: none; padding: 0; display: grid; }
@@ -74,9 +73,18 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   --fc-button-active-border-color: var(--field-border);
   --fc-now-indicator-color: var(--danger);
 }
+/* A 2px now line; the arrow moves down 1px to stay centred on it. */
+.kc-calendar .fc .fc-timegrid-now-indicator-line { border-top-width: 2px; }
+.kc-calendar .fc .fc-timegrid-now-indicator-arrow { margin-top: -4px; }
 .kc-calendar .fc .fc-toolbar { flex-wrap: wrap; gap: var(--ky-space-3); margin-bottom: var(--ky-space-3); }
 .kc-calendar .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 600; letter-spacing: -.01em; color: var(--ink-strong); }
 .kc-calendar .fc .fc-button { min-height: var(--ky-control-size); padding: 0 var(--ky-space-3); font-size: var(--ky-type-nav); font-weight: 500; text-transform: capitalize; border-radius: var(--ky-control-radius); }
+.kc-calendar .fc .fc-newEvent-button { display: inline-flex; align-items: center; gap: var(--ky-space-2); border-color: transparent; background: var(--accent); color: var(--button-text, #0d0f14); font-weight: 600; text-transform: none; }
+.kc-calendar .fc .fc-newEvent-button::before { content: ""; width: 16px; height: 16px; background: linear-gradient(currentColor, currentColor) center / 12px 2px no-repeat, linear-gradient(currentColor, currentColor) center / 2px 12px no-repeat; }
+.kc-calendar .fc .fc-newEvent-button:hover:not(:disabled) { border-color: transparent; background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); color: var(--button-text, #0d0f14); }
+.kc-calendar .fc .fc-newEvent-button:disabled { border-color: var(--line); background: var(--panel-hover); color: var(--ink); opacity: 1; }
+/* The zone label in the time grid's top-left corner. */
+.kc-calendar .fc .kc-zone { color: var(--ink); font-size: var(--ky-type-meta); }
 .kc-calendar .fc .fc-prev-button, .kc-calendar .fc .fc-next-button { min-width: var(--ky-control-size); padding-inline: var(--ky-space-2); }
 /* FullCalendar draws its own focus shadow, which lingers after a click; keep only the shared ring. */
 .kc-calendar .fc .fc-button.fc-button-primary:focus { box-shadow: none; }
@@ -152,16 +160,9 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .app-sidebar-slot .kc-cal-actions { position: absolute; inset-block: 0; right: 0; align-items: center; padding-left: var(--ky-space-2); background: var(--sidebar-end, var(--panel)); opacity: 0; }
   .app-sidebar-slot .kc-cal-row:hover .kc-cal-actions, .app-sidebar-slot .kc-cal-row:focus-within .kc-cal-actions { opacity: 1; }
 }
-.kc-workspace-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ky-space-1) var(--ky-space-3); margin-bottom: var(--ky-space-3); }
-.kc-workspace-heading h1 { margin: 0; font-size: var(--ky-type-title); line-height: 1.25; font-weight: 600; letter-spacing: -.01em; color: var(--ink-strong); }
-.kc-workspace-heading p { grid-column: 1; color: var(--ink); font-size: var(--ky-type-meta); overflow-wrap: anywhere; }
-.kc-workspace-heading .kc-new { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
 .kc-week-hint { display: none; }
 @media (max-width: 720px) {
   .ky-content:has(> .kc-layout) { padding-bottom: 0; }
-  .kc-workspace-heading { margin-bottom: var(--ky-space-2); }
-  .kc-workspace-heading .kc-new { grid-row: 1; }
-  .kc-workspace-heading p { grid-column: 1 / -1; }
   .kc-picker > summary { display: flex; align-items: center; gap: var(--ky-space-1); min-height: var(--ky-control-size); padding: 0 var(--ky-space-2) 0 var(--ky-space-3); border-radius: var(--ky-control-radius); color: var(--ink); font-size: var(--ky-type-nav); font-weight: 500; white-space: nowrap; cursor: pointer; list-style: none; }
   .kc-picker > summary::-webkit-details-marker { display: none; }
   .kc-picker > summary:hover { background: var(--panel-hover); color: var(--ink-strong); }
@@ -173,6 +174,10 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .kc-picker-panel .kc-sidebar h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .kc-calendar .fc .fc-toolbar { justify-content: flex-start; gap: var(--ky-space-2); margin-bottom: var(--ky-space-2); }
   .kc-calendar .fc .fc-toolbar-chunk { max-width: 100%; }
+  /* Two rows: arrows, Today and the range, then the view switch with New event beside it. */
+  .kc-calendar .fc .fc-toolbar-chunk:last-child { display: flex; flex-wrap: wrap; gap: var(--ky-space-2); }
+  .kc-calendar .fc .fc-toolbar-chunk:last-child > * { margin-left: 0; }
+  .kc-calendar .fc .fc-toolbar-chunk:last-child .fc-button { padding-inline: .625rem; }
   .kc-calendar .fc .fc-toolbar-title { font-size: 1.125rem; }
   /* Keep readable day columns inside a keyboard-scrollable Week region. */
   .kc-calendar:has(.fc-timeGridWeek-view) .kc-week-hint { display: block; margin-bottom: var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
