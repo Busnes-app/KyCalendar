@@ -29,7 +29,7 @@
 
 /* ---------- Theme Definitions ---------- */
 
-:root, [data-theme="patina"] {
+:root {
   --bg: #0d0f14;
   --panel: #161a22;
   --panel-hover: #1c222c;
@@ -43,20 +43,6 @@
   --success: #10b981;
   --font-sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-}
-
-[data-theme="cyber"] {
-  --bg: #05070a;
-  --panel: #0d121d;
-  --panel-hover: #131b2a;
-  --ink: #aab7c8;
-  --ink-strong: #eef6f5;
-  --accent: #00d9bd;
-  --accent-soft: rgba(0, 255, 204, 0.18);
-  --line: #1e293b;
-  --line-strong: #00ffcc44;
-  --danger: #ff0055;
-  --success: #00ff66;
 }
 
 [data-theme="nord"] {
@@ -73,37 +59,9 @@
   --success: #a3be8c;
 }
 
-[data-theme="paper"] {
-  --bg: #f8fafc;
-  --panel: #ffffff;
-  --panel-hover: #f1f5f9;
-  --ink: #64748b;
-  --ink-strong: #0f172a;
-  --accent: #0284c7;
-  --accent-soft: rgba(2, 132, 199, 0.12);
-  --line: #e2e8f0;
-  --line-strong: #cbd5e1;
-  --danger: #dc2626;
-  --success: #16a34a;
-}
-
-[data-theme="oled"] {
-  --bg: #000000;
-  --panel: #111111;
-  --panel-hover: #1a1a1a;
-  --ink: #a1a1aa;
-  --ink-strong: #fafafa;
-  --accent: #4deeea;
-  --accent-soft: rgba(77, 238, 234, 0.15);
-  --line: #222222;
-  --line-strong: #333333;
-  --danger: #ef4444;
-  --success: #10b981;
-}
-
 /* The suite palettes (ky-ui themes.js sets their colours inline) have no status colours;
    tint Busnes ones toward the palette's ink, as KyPost does, so they read on light and dark. */
-:root[data-theme]:not([data-theme^="busnes-"], [data-theme="patina"], [data-theme="cyber"], [data-theme="nord"], [data-theme="paper"], [data-theme="oled"]) {
+:root[data-theme]:not([data-theme^="busnes-"], [data-theme="nord"]) {
   --danger: color-mix(in srgb, var(--ky-danger) 50%, var(--ink-strong));
   --success: color-mix(in srgb, var(--ky-success) 50%, var(--ink-strong));
 }
