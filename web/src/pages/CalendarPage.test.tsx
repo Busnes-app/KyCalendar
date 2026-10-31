@@ -141,10 +141,10 @@ describe('CalendarPage', () => {
     renderPage();
     await screen.findByLabelText('Show Team');
     expect(fcProps.at(-1)!.scrollTime).toBe('07:00:00');
-    const datesSet = fcProps.at(-1)!.datesSet as (arg: { view: { type: string } }) => void;
-    act(() => datesSet({ view: { type: 'dayGridMonth' } }));
+    const datesSet = fcProps.at(-1)!.datesSet as (arg: { view: { type: string; currentStart: Date; currentEnd: Date } }) => void;
+    act(() => datesSet({ view: { type: 'dayGridMonth', currentStart: new Date(2026, 9, 1), currentEnd: new Date(2026, 10, 1) } }));
     expect(fcProps.at(-1)!.height).toBe('auto');
-    act(() => datesSet({ view: { type: 'timeGridWeek' } }));
+    act(() => datesSet({ view: { type: 'timeGridWeek', currentStart: new Date(2026, 9, 25), currentEnd: new Date(2026, 10, 1) } }));
     expect(fcProps.at(-1)!.height).not.toBe('auto');
   });
 

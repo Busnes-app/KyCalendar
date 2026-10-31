@@ -12,6 +12,7 @@ import { ApiError, browserZone, canAddEvents, listCalendars, listEvents, updateE
 import { calendarColors, textOn } from '../calendarColors';
 import { CalendarSidebar } from '../components/CalendarSidebar';
 import { EventDialog } from '../components/EventDialog';
+import { MiniMonth } from '../components/MiniMonth';
 import { useScrollCue } from '../components/AppHeader';
 import { ScopeDialog } from '../components/ScopeDialog';
 import { WEEKDAYS, addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, validZone, type FormState } from '../eventForm';
@@ -134,11 +135,14 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
   const [timeGrid, setTimeGrid] = useState(() => !narrow());
   const isNarrow = useNarrow();
   const [picker, setPicker] = useState(false);
+  // The main view's own period (a month, week or day), highlighted in the sidebar's mini-month.
+  const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
   const summary = useRef<HTMLElement>(null);
   // The hour grid scrolls under its sticky day headings and all-day strip; faded edges say so.
   const hourCue = useScrollCue();
   const datesSet = useCallback((arg: DatesSetArg) => {
     setTimeGrid(arg.view.type.startsWith('timeGrid'));
+    setRange({ start: arg.view.currentStart, end: arg.view.currentEnd });
     // Day and Week reuse FullCalendar's time-grid DOM, without another viewDidMount call.
     requestAnimationFrame(() => {
       hourCue(calendarElement.current?.querySelector<HTMLElement>('.fc-timegrid .fc-scrollgrid-section-liquid .fc-scroller') ?? null);
@@ -320,22 +324,26 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
 
   // One portal target at every width, so crossing the breakpoint never remounts the list and its
   // half-filled forms. Wide screens force the disclosure open and hide its summary.
+  // The mini-month is for pointer-sized screens; phones keep their Calendars disclosure alone.
   const sidebar = (
-    <details
-      className="kc-picker"
-      open={!isNarrow || picker}
-      // Escape inside a dialog the list opened closes only that dialog (React events bubble out of portals).
-      onKeyDown={(e) => { if (e.key === 'Escape' && isNarrow && picker && !(e.target as Element).closest('dialog, [popover]')) { setPicker(false); summary.current?.focus(); } }}
-    >
-      <summary ref={summary} onClick={(e) => { e.preventDefault(); setPicker(!picker); }}>
-        Calendars
-        <ChevronDown size={16} aria-hidden="true" />
-      </summary>
-      {/* Using the list keeps it open when the screen narrows. */}
-      <div className="kc-picker-panel" onFocus={() => setPicker(true)}>
-        <CalendarSidebar calendars={calendars} hidden={hidden} onToggle={toggle} onChanged={loadCalendars} />
-      </div>
-    </details>
+    <>
+      {!isNarrow && <MiniMonth range={range} onPick={(d) => ref.current?.getApi().gotoDate(d)} />}
+      <details
+        className="kc-picker"
+        open={!isNarrow || picker}
+        // Escape inside a dialog the list opened closes only that dialog (React events bubble out of portals).
+        onKeyDown={(e) => { if (e.key === 'Escape' && isNarrow && picker && !(e.target as Element).closest('dialog, [popover]')) { setPicker(false); summary.current?.focus(); } }}
+      >
+        <summary ref={summary} onClick={(e) => { e.preventDefault(); setPicker(!picker); }}>
+          Calendars
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        {/* Using the list keeps it open when the screen narrows. */}
+        <div className="kc-picker-panel" onFocus={() => setPicker(true)}>
+          <CalendarSidebar calendars={calendars} hidden={hidden} onToggle={toggle} onChanged={loadCalendars} />
+        </div>
+      </details>
+    </>
   );
 
   return (

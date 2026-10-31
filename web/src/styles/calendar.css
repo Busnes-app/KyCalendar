@@ -160,6 +160,23 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
   .app-sidebar-slot .kc-cal-actions { position: absolute; inset-block: 0; right: 0; align-items: center; padding-left: var(--ky-space-2); background: var(--sidebar-end, var(--panel)); opacity: 0; }
   .app-sidebar-slot .kc-cal-row:hover .kc-cal-actions, .app-sidebar-slot .kc-cal-row:focus-within .kc-cal-actions { opacity: 1; }
 }
+/* The mini-month: a compact month grid between the navigation and the calendar list. Today
+   is accent text in a hairline ring, the main view's period an accent tint, and days of other
+   months muted by colour alone. Phones do not render it. */
+.kc-mini { padding-block: var(--ky-space-3); border-top: 1px solid var(--line); }
+.kc-mini-head { display: flex; align-items: center; gap: 2px; padding-left: var(--ky-space-3); }
+.kc-mini-head h2 { flex: 1; margin: 0; font-size: var(--ky-type-nav); font-weight: 600; color: var(--ink-strong); }
+.kc-mini-head button.btn-ghost { width: 2rem; min-height: 2rem; padding: 0; color: var(--ink); }
+.kc-mini table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: var(--ky-space-1); font-variant-numeric: tabular-nums; }
+.kc-mini th { height: 1.5rem; font-size: .75rem; font-weight: 500; color: var(--ink); }
+.kc-mini td { padding: 1px 0; }
+.kc-mini td[data-range] { background: var(--accent-soft); }
+.kc-mini tr > td[data-range]:first-child, .kc-mini td:not([data-range]) + td[data-range] { border-start-start-radius: var(--ky-control-radius); border-end-start-radius: var(--ky-control-radius); }
+.kc-mini tr > td[data-range]:last-child, .kc-mini td[data-range]:has(+ td:not([data-range])) { border-start-end-radius: var(--ky-control-radius); border-end-end-radius: var(--ky-control-radius); }
+.kc-mini td button.btn-ghost { width: 100%; min-height: 1.75rem; padding: 0; border-radius: var(--ky-control-radius); font-size: .75rem; font-weight: 500; color: var(--ink-strong); }
+.kc-mini td[data-other] button.btn-ghost { color: var(--ink); }
+.kc-mini td button.btn-ghost[aria-current='date'] { color: var(--accent); font-weight: 700; box-shadow: inset 0 0 0 1px var(--accent); }
+.kc-mini td button.btn-ghost:focus-visible { outline-offset: 0; }
 .kc-week-hint { display: none; }
 @media (max-width: 720px) {
   .ky-content:has(> .kc-layout) { padding-bottom: 0; }

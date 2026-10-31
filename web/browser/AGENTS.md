@@ -25,6 +25,7 @@ This directory owns test setup, disposable server launch and UI assertions. The 
 - `about.spec.mjs` signs in as `walter` (own `X-Forwarded-For`, 203.0.113.27); at both widths the licence line opens the About window with a `vX.Y.Z` badge and the MIT text, and Escape closes it, returning focus to the line.
 - `week.spec.mjs` signs in as `walter` (own `X-Forwarded-For`, 203.0.113.28; 1280px only): the disabled Today button matches the previous arrow's outline, and the hour grid scroller is marked as having more below, then more above once scrolled, while the day headings stay put.
 - `twofactor.spec.mjs` has `admin` add a person who replaces the password, opens Two-step verification, reads the setup key, fails with a wrong code, confirms with the previous 30-second step's code (computed in the spec, RFC 6238), saves the recovery codes, signs out, and signs in again through the code prompt with the current step's code. It uses its own `X-Forwarded-For` (203.0.113.22).
+- `minimonth.spec.mjs` signs in as `walter` (own `X-Forwarded-For`, 203.0.113.29); at 1440x900 the sidebar mini-month grid is named by the month, marks today, highlights the 7 days of the week view, keeps the 240px sidebar with the first calendar in view unscrolled, moves the week view by ArrowDown and Enter, and pages a month then clicks the 15th into Day view; at 390px there is no grid.
 - Screenshots and failure traces live in ignored `test-results/` and CI artifacts, not production assets.
 
 ## Work Guidance
