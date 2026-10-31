@@ -20,8 +20,10 @@ export function applyTheme(theme: string, persist = false) {
   const option = findTheme(theme);
   if (!option) return;
   const resolved = option.id === 'system' ? (media?.matches ? 'busnes-dark' : 'busnes-light') : option.id;
+  const scheme = applyThemeVariables(resolved) ?? (resolved === 'busnes-light' ? 'light' : 'dark');
   document.documentElement.dataset.theme = resolved;
-  document.documentElement.style.colorScheme = applyThemeVariables(resolved) ?? (resolved === 'busnes-light' ? 'light' : 'dark');
+  document.documentElement.dataset.scheme = scheme;
+  document.documentElement.style.colorScheme = scheme;
   if (persist) saveChoice('ky_theme', findPair(theme)?.id ?? option.id);
 }
 applyTheme(storedTheme());

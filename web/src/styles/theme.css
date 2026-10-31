@@ -130,27 +130,8 @@ body {
   .app-sidebar-slot[data-cue='start end'] { mask-image: linear-gradient(transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent); }
 }
 .app-header-actions { display: grid; gap: var(--ky-space-3); margin-top: auto; }
-.app-user { display: grid; gap: var(--ky-space-2); border-top: 1px solid var(--line); padding-top: var(--ky-space-3); }
-.app-user-copy { min-width: 0; padding-inline: var(--ky-space-3) var(--ky-space-2); line-height: 1.4; }
-.app-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ky-type-nav); font-weight: 600; color: var(--ink-strong); }
-.app-user-role { color: var(--ink); font-size: var(--ky-type-meta); }
-/* Sign out uses the navigation row's geometry so the sidebar reads as one list. */
-button.app-logout { justify-content: flex-start; padding: 0 var(--ky-space-2) 0 var(--ky-space-3); color: var(--ink); font-size: var(--ky-type-nav); font-weight: 500; }
-button.app-logout:hover:not(:disabled) { color: var(--ink-strong); }
-/* Licence line and About window: the suite's shared markup, as in KyPost. */
-.sidebar-footer { font-size: .75rem; color: var(--ink); padding-left: var(--ky-space-3); white-space: nowrap; }
-.sidebar-footer p { margin: 0; }
-button.license-link, button.license-link:hover:not(:disabled) { min-height: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-decoration: underline; }
-.compose-backdrop { position: fixed; inset: 0; margin: 0; border: none; width: 100%; height: 100%; max-width: none; max-height: none; color: inherit; background: rgba(12, 12, 18, .68); display: grid; place-items: center; z-index: 2500; padding: 16px; }
-.compose-backdrop:not([open]) { display: none; }
-.license-window { width: min(720px, 96vw); max-height: 90vh; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; color: var(--ink-strong); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.license-window-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.license-window-title { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.license-title-main { display: flex; align-items: baseline; gap: 10px; }
-.license-app-name { font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em; line-height: 1.1; }
-.license-version-badge { font-size: .72rem; font-weight: 600; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
-.license-title-sub { margin: 0; font-size: .82rem; opacity: .7; }
-.license-text { width: 100%; flex: 1; min-height: 320px; resize: vertical; font-family: var(--font-mono); font-size: .78rem; line-height: 1.4; white-space: pre; background: var(--panel); color: var(--ink-strong); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+/* Dark schemes invert the mark: a light tile with a dark letter, on sign-in and in the sidebar. */
+:root[data-scheme="dark"] .brand-mark { filter: invert(1) hue-rotate(180deg); }
 .app-main { min-width: 0; }
 .app-loading { min-height: 100vh; display: grid; place-items: center; color: var(--ink); }
 /* The reset above strips the UA margin that centres modal dialogs. */
@@ -169,10 +150,11 @@ dialog { margin: auto; }
   .app-header:has(.app-sidebar-slot:not(:empty)) .app-nav { grid-column: 1 / 3; }
   .app-sidebar-slot { grid-column: 3; grid-row: 2; overflow: visible; margin: 0; padding: 0; }
   .app-nav button { width: auto; flex: 0 0 auto; padding-inline: var(--ky-space-3); white-space: nowrap; }
-  .app-header-actions { grid-column: 2 / -1; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; justify-self: end; gap: var(--ky-space-2); margin-top: 0; }
-  .app-user { border-top: 0; padding: 0; }
-  .sidebar-footer { display: none; }
-  .app-user-copy, .app-logout-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* The account joins the brand row; the licence line closes the header, under the navigation. */
+  .app-header-actions { display: contents; }
+  .app-header .ky-user { grid-column: 2 / -1; grid-row: 1; justify-self: end; border-top: 0; padding: 0; }
+  .app-footer { grid-column: 1 / -1; grid-row: 3; padding-bottom: var(--ky-space-1); }
+  .app-header .ky-user-copy, .app-logout-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
 code, pre, .font-mono {
@@ -218,8 +200,8 @@ button, .btn {
   text-decoration: none;
   transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
 }
-/* Navigation rows take ky-ui's neutral hover; :where keeps this rule's specificity unchanged. */
-button:not(:where(.ky-nav-item)):hover:not(:disabled), .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); }
+/* Navigation rows and the shell's quiet controls take ky-ui's own hover; :where keeps this rule's specificity unchanged. */
+button:not(:where(.ky-nav-item, .ky-user-signout, .ky-license-link, .ky-about-close, .ky-auth-link, .ky-menu-trigger, .ky-menu-item)):hover:not(:disabled), .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); }
 button:active:not(:disabled), .btn:active { transform: translateY(1px); }
 button:disabled, .btn:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); cursor: not-allowed; }
 
@@ -237,7 +219,6 @@ button.btn-secondary:disabled, button.btn-ghost:disabled, button.btn-danger:disa
 
 /* Smaller text and padding for rows; the 40px target stays. */
 .btn-sm, button.btn-sm { padding: 0 var(--ky-space-3); font-size: var(--ky-type-meta); }
-.btn-block { width: 100%; }
 
 /* ---------- Fields ---------- */
 
@@ -256,9 +237,10 @@ input, select, textarea {
 textarea { line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--ink); opacity: .85; }
 input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--ink); }
-input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Fields draw the ring on their own border, so it reads as one ring (as ky-ui's sign-in fields do). */
+input:not([type='checkbox'], [type='radio'], [type='color']):focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* Date fields focus an inner segment, which :focus-visible does not report on the input. */
-input[type='date']:focus, input[type='datetime-local']:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type='date']:focus, input[type='datetime-local']:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 input:disabled, select:disabled, textarea:disabled, input:read-only:not([type='checkbox']):not([type='radio']) { background: var(--panel-hover); color: var(--ink); }
 input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; }
 input[type='checkbox'], input[type='radio'] { width: 1rem; height: 1rem; min-height: 0; padding: 0; flex: none; accent-color: var(--accent); }
@@ -337,7 +319,7 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
 
 .dr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .dr-fact { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; }
-.dr-fact-label { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dr-fact-label { font-size: var(--ky-type-meta); font-weight: 600; color: var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dr-fact-value { font-size: 15px; color: var(--ink-strong); overflow-wrap: anywhere; }
 .dr-fact-note { font-size: 12px; color: var(--ink); }
 
@@ -455,4 +437,4 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
 }
 
 .theme-selector { width: auto; max-width: 100%; font-size: var(--ky-type-nav); }
-.auth-theme { padding: var(--ky-space-3); text-align: right; }
+

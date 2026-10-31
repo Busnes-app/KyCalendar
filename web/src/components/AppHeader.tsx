@@ -16,7 +16,7 @@ interface AppHeaderProps {
 
 // useScrollCue marks which ends of a scroll box hide content (`data-cue="start end"`), so CSS can
 // fade those edges and show there is more to scroll to.
-function useScrollCue() {
+export function useScrollCue() {
   const [el, setEl] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (!el) return;
@@ -63,12 +63,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
   // Two-step verification guards the local password; an SSO account's belongs to its provider.
   if (user?.sso_provider === 'local') navItems.push({ id: 'security', label: 'Two-step verification', icon: ShieldCheck });
   navItems.push({ id: 'appearance', label: 'Appearance', icon: Palette });
+  const role = user?.role === 'admin' ? 'Administrator' : 'Everyday account';
+  // Name over role, never the same word twice: a display name equal to the role yields to the username.
+  const name = user?.display_name && user.display_name !== role ? user.display_name : user?.username;
 
   return (
     <>
       <header className="app-header">
         <div className="app-brand">
-            <img src="/app-icon.png" width={28} height={28} alt="" />
+            <img className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
             <span>{appName || 'KyCalendar'}</span>
           </div>
 
@@ -93,13 +96,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         <div className="app-sidebar-slot" ref={slotRef} />
         <div className="app-header-actions">
           {user && (
-            <div className="app-user">
-              <div className="app-user-copy">
-                <div className="app-user-name">{user.display_name || user.username}</div>
-                <div className="app-user-role">{user.role === 'admin' ? 'Administrator' : 'Everyday account'}</div>
+            <div className="ky-user">
+              <div className="ky-user-copy">
+                <p className="ky-user-name">{name}</p>
+                <p className="ky-user-role">{role}</p>
               </div>
-              <button type="button" className="btn-ghost app-logout" onClick={onLogout}>
-                <LogOut size={16} aria-hidden="true" />
+              <button type="button" className="ky-user-signout" onClick={onLogout}>
+                <LogOut aria-hidden="true" />
                 <span className="app-logout-label">Sign out</span>
               </button>
             </div>

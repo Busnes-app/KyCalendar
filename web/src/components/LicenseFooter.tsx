@@ -1,54 +1,35 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import mitLicenseText from '../mit.txt?raw';
 
-/** The suite's licence line and About window; `version` comes from `/api/settings`, which has it only for a session. */
+/** The suite's licence line and About dialog (ky-ui shell); `version` comes from `/api/settings`, which has it only for a session. */
 export function LicenseFooter({ version }: { version?: string }) {
-  const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
   const year = new Date().getFullYear();
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    else if (!open && dialog.open) dialog.close();
-  }, [open]);
-
   return (
-    <>
-      <div className="sidebar-footer">
-        <p>
-          <button type="button" className="license-link" onClick={() => setOpen(true)}>
-            &copy; {year} &middot; MIT License
-          </button>
-        </p>
-      </div>
+    <footer className="app-footer">
+      <button type="button" className="ky-license-link" onClick={() => ref.current?.showModal()}>
+        &copy; {year} &middot; MIT License
+      </button>
       <dialog
         ref={ref}
-        className="compose-backdrop"
+        className="ky-about"
         aria-label="About KyCalendar"
-        onCancel={() => setOpen(false)}
         onClick={(event) => {
-          if (event.target === ref.current) setOpen(false);
+          if (event.target === ref.current) ref.current.close();
         }}
       >
-        <div className="license-window">
-          <div className="license-window-header">
-            <div className="license-window-title">
-              <div className="license-title-main">
-                <span className="license-app-name">KyCalendar</span>
-                {version ? <span className="license-version-badge">v{version}</span> : null}
-              </div>
-              <p className="license-title-sub">Developed by Busnes.app</p>
-              <p className="license-title-sub">&copy; {year} &middot; Licensed under the MIT License</p>
-            </div>
-            <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-              Close
-            </button>
+        <div className="ky-about-head">
+          <div>
+            <h2 className="ky-about-name">KyCalendar {version ? <span className="ky-about-version">v{version}</span> : null}</h2>
+            <p className="ky-about-meta">Developed by Busnes.app</p>
+            <p className="ky-about-meta">&copy; {year} &middot; Licensed under the MIT License</p>
           </div>
-          <textarea className="license-text" readOnly aria-label="MIT License" value={mitLicenseText} />
+          <button type="button" className="ky-about-close" onClick={() => ref.current?.close()}>
+            Close
+          </button>
         </div>
+        <textarea className="ky-about-license" readOnly aria-label="MIT License" value={mitLicenseText} />
       </dialog>
-    </>
+    </footer>
   );
 }
