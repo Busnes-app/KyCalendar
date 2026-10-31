@@ -24,7 +24,13 @@ type Scheduler struct {
 	Store  store.Store
 	Limits store.OwnerLimits // applied to deliveries into a recipient's calendar
 	Now    func() time.Time
-	KyPost *kypost.Client // nil: nothing reaches people outside the instance (no_transport)
+	KyPost KyPostSender // nil: nothing reaches people outside the instance (no_transport)
+}
+
+// KyPostSender mails a message to people outside the instance: a *kypost.Client, or the
+// *kypost.Link KyIdentity can change at runtime (kypost.ErrNotConnected while unlinked).
+type KyPostSender interface {
+	Send(ctx context.Context, id string, req kypost.SendRequest) error
 }
 
 // errNoTransport is an external recipient with no KyPost configured: it fails at once.

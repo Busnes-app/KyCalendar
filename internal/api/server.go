@@ -51,8 +51,14 @@ type Server struct {
 	signinHTTP *http.Client
 	// feed mirrors subscribed calendars; its client reaches public HTTPS addresses only.
 	feed *feed.Refresher
-	// sched is server-side scheduling; nil while KYCALENDAR_SCHEDULING is off.
+	// sched is server-side scheduling; nil while it is off. Decided by NewServer or StartKyPost
+	// before serving, then fixed.
 	sched *davbackend.Scheduler
+	// kypost is the KyPost link (environment or KyIdentity); kypostState and kypostKick belong
+	// to the KyIdentity lookup (kypost_link.go).
+	kypost      *kypost.Link
+	kypostState kypostState
+	kypostKick  chan struct{}
 	// kypostReplay remembers KyPost event IDs inside the signature window.
 	kypostReplay syncauth.Replay
 	scim         *scim.Server
@@ -177,17 +183,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	// No provider is live yet: LoadSignIn stores one after binding accounts to it.
 	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
-	if cfg.Calendar.Scheduling {
-		s.sched = &davbackend.Scheduler{Store: st, Limits: s.objectLimits()}
-		if cfg.Calendar.KyPostURL != "" {
-			policy := feed.RefusePrivate
-			if cfg.Calendar.KyPostAllowPrivate {
-				policy = sso.RefuseLocal
-			}
-			s.sched.KyPost = &kypost.Client{BaseURL: cfg.Calendar.KyPostURL, Secret: cfg.Calendar.KyPostSecret, HTTP: sso.NewGuardedClient(policy, nil)}
-			s.kypostReplay = syncauth.NewMemoryReplay(syncauth.DefaultWindow, 100000)
-		}
-	}
+	s.newKyPost()
 	s.routes()
 	return s
 }
@@ -359,6 +355,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/admin/signin", s.requireAdmin(s.handleGetSignIn))
 	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
 	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))
+	s.handle("GET /api/admin/kypost", s.requireAdmin(s.handleKyPostStatus))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))
@@ -377,7 +374,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/freebusy", s.requireEveryday(s.handleFreeBusy))
 
 	// KyPost, server to server: syncauth-signed under the shared secret, never a session. 404
-	// unless scheduling and KyPost are both configured.
+	// unless scheduling is on and KyPost linked.
 	s.handle("POST /api/itip/inbound", http.HandlerFunc(s.handleITIPInbound))
 	s.handle("POST /api/itip/respond", http.HandlerFunc(s.handleITIPRespond))
 	s.handle("POST /api/subscriptions", s.requireEveryday(s.handleCreateSubscription))

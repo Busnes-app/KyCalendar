@@ -85,3 +85,16 @@ const (
 // SetKyPostClientForTest points the scheduler's KyPost client at c (an httptest server's client:
 // the real guarded client refuses loopback). Scheduling and KyPost must be configured.
 func SetKyPostClientForTest(s *Server, c *kypost.Client) { s.sched.KyPost = c }
+
+// SetKyPostTimingForTest shortens the KyIdentity lookup's waits and returns the restore func.
+func SetKyPostTimingForTest(firstWait, refresh, retry, minGap time.Duration) func() {
+	old := []time.Duration{kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap}
+	kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap = firstWait, refresh, retry, minGap
+	return func() { kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap = old[0], old[1], old[2], old[3] }
+}
+
+// KyPostLinkForTest is the server's KyPost link.
+func KyPostLinkForTest(s *Server) *kypost.Link { return s.kypost }
+
+// SchedulingOnForTest reports whether server-side scheduling is on.
+func SchedulingOnForTest(s *Server) bool { return s.sched != nil }

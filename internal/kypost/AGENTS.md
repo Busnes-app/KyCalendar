@@ -7,8 +7,8 @@ kypost-server's `docs/` once written.
 
 ## Local Contracts
 - **Signing.** Every request is signed with `ky-primitives/syncauth` (scheme v1) under one shared
-  secret of at least 32 bytes (`KYCALENDAR_KYPOST_SECRET_FILE`). The event type names route and
-  direction:
+  secret of at least 32 bytes: `KYCALENDAR_KYPOST_SECRET_FILE`, or KyIdentity's 32-byte pair
+  secret (`internal/api/kypost_link.go`). The event type names route and direction:
   - `kycalendar.itip.send`: KyCalendar to KyPost, `POST /api/calendar/itip/send`;
   - `kypost.itip.inbound`, `kypost.itip.respond`: KyPost to KyCalendar.
 
@@ -25,6 +25,11 @@ kypost-server's `docs/` once written.
     kept, else `status_<n>`.
   - At most 64 KiB of the reply is read.
 - **`Verify`** reads at most 2 MiB, checks the event type, then the signature and replay window.
+- **`Link`** (`link.go`) is the live connection: a `Peer` (URL, secret, source `environment` or
+  `kyidentity`) swapped atomically, nil while unlinked. `Send` with no peer is `ErrNotConnected`
+  (the scheduler's `no_transport`). On a `kyidentity` peer a `bad_signature`/`status_401`
+  refusal calls `Rotated` (a lookup soon) and is `ErrRetry`; on an environment peer it stays
+  `Refused`.
 - **What KyPost must enforce** (its half of the contract):
   - **Sender:** mail only for a user who turned calendar sending on, only from their own address
     or a verified send-as alias.
@@ -37,4 +42,4 @@ kypost-server's `docs/` once written.
     covers From.
 
 ## Verification
-- `go test -race ./internal/kypost/ ./internal/api/ -run 'TestSend|TestVerify|TestKyPostRoutes'`
+- `go test -race ./internal/kypost/ ./internal/api/ -run 'TestSend|TestVerify|TestLinkSend|TestKyPost|TestSchedulingModes'`

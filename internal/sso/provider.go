@@ -2,8 +2,11 @@ package sso
 
 import (
 	"context"
-	"github.com/Busnes-app/ky-primitives/applysetup"
+	"errors"
 	"net/http"
+
+	"github.com/Busnes-app/ky-primitives/applysetup"
+	"github.com/Busnes-app/ky-primitives/suitedir"
 
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 )
@@ -83,4 +86,18 @@ func (p *Provider) currentFlow() (*oauthFlow, error) {
 		return nil, err
 	}
 	return p.flow.withSecret(secret), nil
+}
+
+// SuiteDirectory is a client for KyIdentity's suite directory under this provider's own client
+// credentials (re-read for an installer-managed provider) and transport. Only a KyIdentity
+// provider has one.
+func (p *Provider) SuiteDirectory() (*suitedir.Client, error) {
+	if p.Kind != KindKyIdentity {
+		return nil, errors.New("sso: the suite directory is KyIdentity's")
+	}
+	flow, err := p.currentFlow()
+	if err != nil {
+		return nil, err
+	}
+	return &suitedir.Client{Issuer: flow.issuer, ClientID: flow.clientID, ClientSecret: flow.clientSecret, HTTP: flow.client}, nil
 }

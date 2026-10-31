@@ -380,3 +380,21 @@ func TestKyPostConfigValidated(t *testing.T) {
 		})
 	}
 }
+
+func TestSchedulingMode(t *testing.T) {
+	for v, want := range map[string]string{"": config.SchedulingAuto, "auto": config.SchedulingAuto, "true": config.SchedulingOn, "ON": config.SchedulingOn, "1": config.SchedulingOn, "false": config.SchedulingOff, "no": config.SchedulingOff} {
+		t.Setenv("KY_DATA_DIR", t.TempDir())
+		t.Setenv("KYCALENDAR_SCHEDULING", v)
+		cfg, err := config.LoadFromEnv()
+		if err != nil {
+			t.Fatalf("KYCALENDAR_SCHEDULING=%q: %v", v, err)
+		}
+		if cfg.Calendar.Scheduling != want {
+			t.Errorf("KYCALENDAR_SCHEDULING=%q: %s, want %s", v, cfg.Calendar.Scheduling, want)
+		}
+	}
+	t.Setenv("KYCALENDAR_SCHEDULING", "sometimes")
+	if _, err := config.LoadFromEnv(); err == nil {
+		t.Error("KYCALENDAR_SCHEDULING=sometimes accepted")
+	}
+}

@@ -59,7 +59,8 @@ key (they are the server), and a malicious administrator.
    link-local (including 169.254.169.254) and other cloud-metadata addresses (`RefuseLocal`).
    Subscription links come from everyday users, so the LAN and CGNAT ranges are refused as well
    (`RefusePrivate` in `internal/feed/feed.go`); the KyPost connection uses the same policy unless
-   the operator allows private addresses.
+   the operator allows private addresses, whether its address came from the environment or from
+   KyIdentity.
 3. **CalDAV clients → KyCalendar.** App passwords, never the account password. A path that is not
    canonical, or whose first segment is not the caller's user ID, is refused before the backend
    runs (`TestCalDAVEncodedTraversal`).
@@ -69,7 +70,12 @@ key (they are the server), and a malicious administrator.
    live provider signed for this client, with the logout event and no nonce, ends sessions
    (`internal/sso/backchannel.go`). A forged or replayed ID token is refused. The route reuses the
    provider's discovery and key cache, so a request does not trigger discovery.
-6. **KyCalendar → its database.** Credentials are hashed and secrets sealed before they are stored.
+6. **KyIdentity → KyCalendar's KyPost link.** With no KyPost in the environment, the KyPost address
+   and shared secret come from the sign-in provider's suite directory (`GET /api/suite/peer`,
+   `ky-primitives/suitedir`, KyCalendar's own client credentials, no redirects). This adds no
+   trust: KyIdentity can already sign anyone in. The secret stays in memory, never logged or
+   shown (`internal/api/kypost_link.go`).
+7. **KyCalendar → its database.** Credentials are hashed and secrets sealed before they are stored.
 
 ## Secure design principles applied
 

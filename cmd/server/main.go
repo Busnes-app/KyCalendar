@@ -140,6 +140,8 @@ func runServer() {
 	if err := srv.LoadSignIn(ctx); err != nil {
 		log.Printf("[SSO] sign-in closed: settings not applied: %v", err)
 	}
+	// Before serving: automatic scheduling is decided on the first KyPost lookup.
+	srv.StartKyPost(ctx)
 	backupDone := make(chan struct{})
 	go backupLoop(ctx, cfg, st, backupDone)
 	go func() {

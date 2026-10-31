@@ -7,10 +7,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// The page also loads the KyPost status; tests that do not care get an unlinked one.
+const unlinked = { connected: false, reason: "no_kyidentity", scheduling: false, scheduling_mode: "auto" };
+
 function mockFetch(handlers: Record<string, (init?: RequestInit) => unknown>) {
+  const all: Record<string, (init?: RequestInit) => unknown> = { "GET /api/admin/kypost": () => unlinked, ...handlers };
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const key = `${init?.method ?? "GET"} ${String(input)}`;
-    const handler = handlers[key];
+    const handler = all[key];
     if (!handler) throw new Error(`unexpected ${key}`);
     const body = handler(init);
     if (body instanceof Response) return body;
@@ -181,4 +185,45 @@ it("rejects malformed sign-in data at the HTTP boundary", async () => {
   render(<SignIn />);
   expect((await screen.findByRole("alert")).textContent).toMatch(/Invalid sign-in settings/);
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+});
+
+describe("KyPost status", () => {
+  const kypost = { connected: true, source: "kyidentity", url: "https://mail.example", scheduling: true, scheduling_mode: "auto" };
+
+  it("shows how KyPost is connected and whether scheduling is on", async () => {
+    mockFetch({ "GET /api/admin/signin": () => saved, "GET /api/admin/kypost": () => kypost });
+    render(<SignIn />);
+    expect(await screen.findByText("Connected through KyIdentity")).toBeTruthy();
+    expect(screen.getByText("Connected")).toBeTruthy();
+    expect(screen.getByText("https://mail.example")).toBeTruthy();
+    expect(screen.getByText("On (automatic, decided at startup)")).toBeTruthy();
+  });
+
+  it("says why KyPost is not connected and when a restart is needed", async () => {
+    mockFetch({
+      "GET /api/admin/signin": () => saved,
+      "GET /api/admin/kypost": () => ({ connected: false, reason: "no_peer", scheduling: false, scheduling_mode: "auto" }),
+    });
+    render(<SignIn />);
+    expect(await screen.findByText("Not connected: KyIdentity has no KyPost paired with KyCalendar.")).toBeTruthy();
+    expect(screen.getByText("Off (automatic, decided at startup)")).toBeTruthy();
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("asks for a restart when a link appeared after startup", async () => {
+    mockFetch({ "GET /api/admin/signin": () => saved, "GET /api/admin/kypost": () => ({ ...kypost, scheduling: false }) });
+    render(<SignIn />);
+    expect((await screen.findByRole("note")).textContent).toBe("Restart KyCalendar to turn scheduling on.");
+  });
+
+  it("shows an environment link and a failed load", async () => {
+    mockFetch({ "GET /api/admin/signin": () => saved, "GET /api/admin/kypost": () => ({ ...kypost, source: "environment", scheduling_mode: "on" }) });
+    render(<SignIn />);
+    expect(await screen.findByText("Connected through KYCALENDAR_KYPOST_URL")).toBeTruthy();
+    expect(screen.getByText("On (set by KYCALENDAR_SCHEDULING)")).toBeTruthy();
+    cleanup();
+    mockFetch({ "GET /api/admin/signin": () => saved, "GET /api/admin/kypost": () => new Response("{}", { status: 500 }) });
+    render(<SignIn />);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Could not load the KyPost status/);
+  });
 });

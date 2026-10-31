@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/netip"
 	"net/url"
@@ -37,11 +38,13 @@ type CalendarConfig struct {
 	MaxCalendarsPerUser int   `json:"max_calendars_per_user"`
 	MaxBytesPerUser     int64 `json:"max_bytes_per_user"`
 	MaxBytesTotal       int64 `json:"max_bytes_total"`
-	// Scheduling turns on server-side scheduling (RFC 6638): implicit iTIP on every write.
-	// Off by default; off, CalDAV behaves exactly as it did before scheduling existed.
-	Scheduling bool `json:"scheduling"`
+	// Scheduling is server-side scheduling (RFC 6638), implicit iTIP on every write:
+	// SchedulingOn, SchedulingOff, or SchedulingAuto (unset), which is on exactly when a KyPost
+	// link is up at startup. Off, CalDAV behaves exactly as it did before scheduling existed.
+	Scheduling string `json:"scheduling"`
 	// KyPost carries invitation mail for people outside the instance: its https base URL and
-	// the shared syncauth secret, read from KYCALENDAR_KYPOST_SECRET_FILE. Empty URL: no KyPost.
+	// the shared syncauth secret, read from KYCALENDAR_KYPOST_SECRET_FILE. Empty URL: the link
+	// comes from KyIdentity when it is the sign-in provider.
 	KyPostURL          string `json:"kypost_url,omitempty"`
 	KyPostSecret       []byte `json:"-"`
 	KyPostAllowPrivate bool   `json:"kypost_allow_private"` // a LAN address; loopback stays refused
@@ -205,14 +208,14 @@ func LoadFromEnv() (*Config, error) {
 	calCfg := CalendarConfig{
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
-		Scheduling:          getEnvBool("KYCALENDAR_SCHEDULING", false),
-		KyPostURL:           strings.TrimSuffix(getEnv("KYCALENDAR_KYPOST_URL", ""), "/"),
 		KyPostAllowPrivate:  getEnvBool("KYCALENDAR_KYPOST_ALLOW_PRIVATE", false),
 	}
-	if secretFile := getEnv("KYCALENDAR_KYPOST_SECRET_FILE", ""); calCfg.KyPostURL != "" || secretFile != "" {
-		u, err := url.Parse(calCfg.KyPostURL)
-		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-			return nil, fmt.Errorf("KYCALENDAR_KYPOST_URL must be https://host with no path or credentials")
+	if calCfg.Scheduling, err = schedulingMode(getEnv("KYCALENDAR_SCHEDULING", "")); err != nil {
+		return nil, err
+	}
+	if rawURL, secretFile := getEnv("KYCALENDAR_KYPOST_URL", ""), getEnv("KYCALENDAR_KYPOST_SECRET_FILE", ""); rawURL != "" || secretFile != "" {
+		if calCfg.KyPostURL, err = KyPostURL(rawURL); err != nil {
+			return nil, fmt.Errorf("KYCALENDAR_KYPOST_URL: %w", err)
 		}
 		if secretFile == "" {
 			return nil, fmt.Errorf("KYCALENDAR_KYPOST_URL needs KYCALENDAR_KYPOST_SECRET_FILE")
@@ -413,6 +416,37 @@ func unmapPrefix(p netip.Prefix) netip.Prefix {
 		return p
 	}
 	return netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+}
+
+// Scheduling modes; see CalendarConfig.Scheduling.
+const (
+	SchedulingAuto = "auto"
+	SchedulingOn   = "on"
+	SchedulingOff  = "off"
+)
+
+// schedulingMode reads KYCALENDAR_SCHEDULING: unset, empty or "auto" is automatic. Anything
+// unrecognised fails startup rather than quietly choosing a mode.
+func schedulingMode(v string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "auto":
+		return SchedulingAuto, nil
+	case "true", "1", "yes", "on":
+		return SchedulingOn, nil
+	case "false", "0", "no", "off":
+		return SchedulingOff, nil
+	}
+	return "", fmt.Errorf("KYCALENDAR_SCHEDULING must be true, false or auto (unset), got %q", v)
+}
+
+// KyPostURL checks a KyPost base URL, from the environment or from KyIdentity, and returns it
+// without a trailing slash.
+func KyPostURL(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("must be https://host with no path or credentials")
+	}
+	return strings.TrimSuffix(raw, "/"), nil
 }
 
 // kypostSecret reads the shared KyPost secret: at least 32 bytes once trimmed.
