@@ -24,6 +24,14 @@ test('settings menu: keyboard, current section and closing', async ({ browser },
   await expect(gear).toHaveCount(1); // the other placement is hidden at this width
   await expect(gear).toHaveAttribute('aria-expanded', 'false');
   await expect(menu).toBeHidden();
+  // The app's own popover menus keep their local class, so ky-ui's .ky-menu never shows or lays them out.
+  await expect(page.getByRole('menu', { name: 'Add a calendar' })).toBeHidden();
+  // The gear and Sign out sit side by side, inside the sidebar.
+  const [g, out] = [await gear.boundingBox(), await page.getByRole('button', { name: 'Sign out' }).boundingBox()];
+  expect(Math.abs(g.y - out.y)).toBeLessThan(1);
+  expect(g.width).toBeLessThanOrEqual(44);
+  const bar = await page.locator('.ky-sidebar').boundingBox();
+  expect(out.x + out.width).toBeLessThanOrEqual(bar.x + bar.width);
 
   await gear.focus();
   await page.keyboard.press('Enter');

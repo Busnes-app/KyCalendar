@@ -124,11 +124,11 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
         <MoreMenu label="Add a calendar" icon={Plus} triggerRef={addTrigger}>
           {(close) => (
             <>
-              <button type="button" role="menuitem" className="ky-menu-item" onClick={() => { close(); setAdding(true); }}>
+              <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setAdding(true); }}>
                 <CalendarPlus size={16} aria-hidden="true" />
                 New calendar
               </button>
-              <button type="button" role="menuitem" className="ky-menu-item" onClick={() => { close(); setSubscribing(true); }}>
+              <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setSubscribing(true); }}>
                 <Rss size={16} aria-hidden="true" />
                 Subscribe to a calendar
               </button>

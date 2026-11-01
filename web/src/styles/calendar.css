@@ -6,9 +6,9 @@
 
 .kc-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-2); margin-bottom: var(--ky-space-1); }
 .kc-sidebar h2 { font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); margin: 0; }
-.kc-sidebar-head button.ky-menu-trigger { width: 2rem; min-height: 2rem; }
+.kc-sidebar-head button.app-menu-trigger { width: 2rem; min-height: 2rem; }
 /* The + sits on the sidebar's edge: keep its ring inside. */
-.kc-sidebar-head button.ky-menu-trigger:focus-visible { outline-offset: -2px; }
+.kc-sidebar-head button.app-menu-trigger:focus-visible { outline-offset: -2px; }
 .kc-sidebar > ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
 .kc-sidebar li { display: grid; gap: var(--ky-space-1); padding-block: var(--ky-space-1); border-bottom: 1px solid var(--line); }
 .kc-cal-row { display: flex; align-items: center; gap: var(--ky-space-1); min-height: var(--ky-control-size); }

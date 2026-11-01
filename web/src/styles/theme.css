@@ -172,7 +172,7 @@ button:where(:not(.ky-nav-item, .ky-icon-button)), .btn {
   transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
 }
 /* Navigation rows and the shell's quiet controls take ky-ui's own hover; :where keeps this rule's specificity unchanged. */
-button:not(:where(.ky-nav-item, .ky-icon-button, .ky-license-link, .ky-about-close, .ky-auth-link, .ky-menu-trigger, .ky-menu-item)):hover:not(:disabled), .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); }
+button:not(:where(.ky-nav-item, .ky-icon-button, .ky-license-link, .ky-about-close, .ky-auth-link, .app-menu-trigger, .app-menu-item)):hover:not(:disabled), .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); }
 button:active:not(:disabled), .btn:active { transform: translateY(1px); }
 button:disabled, .btn:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); cursor: not-allowed; }
 
