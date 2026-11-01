@@ -57,7 +57,8 @@ test('navigation hover: idle rows stay neutral, the selected row keeps its rail'
   expect(selected.contrast).toBeGreaterThanOrEqual(4.5);
 
   // On Settings no navigation row is current: Calendar and the closed section tabs take the neutral hover.
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Settings' }).getByRole('menuitem', { name: 'Account' }).click();
   const tabs = page.getByRole('navigation', { name: 'Settings sections' });
   await expect(calendar).not.toHaveAttribute('aria-current');
   for (const [name, item] of [['Calendar', calendar], ['Phones & apps tab', tabs.getByRole('link', { name: 'Phones & apps', exact: true })], ['Appearance tab', tabs.getByRole('link', { name: 'Appearance', exact: true })]]) {

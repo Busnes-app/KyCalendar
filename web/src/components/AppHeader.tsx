@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { LicenseFooter } from './LicenseFooter';
 import { AppRail, type SuiteApp } from './AppRail';
-import { LogOut, Users, Settings as SettingsIcon, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, Server } from 'lucide-react';
+import { SettingsMenu } from './SettingsMenu';
+import { LogOut, Users, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, Server } from 'lucide-react';
 
 interface AppHeaderProps {
   appName: string;
@@ -62,13 +63,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
   const role = user?.role === 'admin' ? 'Administrator' : 'Everyday account';
   // Name over role, never the same word twice: a display name equal to the role yields to the username.
   const name = user?.display_name && user.display_name !== role ? user.display_name : user?.username;
-  // Personal settings sit behind the gear, in the footer and the phone header, not in the navigation.
-  const onSettings = activeTab.startsWith('settings/');
-  const actions = (
+  // Personal settings sit behind the gear, in the footer and the phone header, not in the navigation:
+  // it opens a menu of the Settings sections. Each placement names its own menu.
+  const section = activeTab.startsWith('settings/') ? activeTab.slice('settings/'.length) : undefined;
+  const actions = (menuId: string) => (
     <>
-      <a className="ky-icon-button" href="#/settings/account" aria-label="Settings" title="Settings" aria-current={onSettings ? 'page' : undefined}>
-        <SettingsIcon aria-hidden="true" />
-      </a>
+      <SettingsMenu id={menuId} user={user} section={section} />
       <button type="button" className="ky-icon-button" aria-label="Sign out" title="Sign out" onClick={onLogout}>
         <LogOut aria-hidden="true" />
       </button>
@@ -82,7 +82,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
           <img className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
           <span>{appName || 'KyCalendar'}</span>
         </div>
-        {user && <div className="ky-mobile-actions">{actions}</div>}
+        {user && <div className="ky-mobile-actions">{actions('ky-settings-menu-phone')}</div>}
       </div>
       {/* One flex row on phones: the tabs, then the page's sidebar content (the Calendars disclosure). */}
       <div className="app-nav-row">
@@ -115,7 +115,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
               <p className="ky-user-name">{name}</p>
               <p className="ky-user-role">{role}</p>
             </div>
-            <div className="ky-user-actions">{actions}</div>
+            <div className="ky-user-actions">{actions('ky-settings-menu')}</div>
           </div>
         )}
         <LicenseFooter version={version} />

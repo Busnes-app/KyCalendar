@@ -27,9 +27,9 @@ test('Appearance: pair cards, fixed halves, OS-following pairs and the return to
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.fc')).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Primary' });
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menu', { name: 'Settings' }).getByRole('menuitem', { name: 'Appearance', exact: true }).click();
   const tabs = page.getByRole('navigation', { name: 'Settings sections' });
-  await tabs.getByRole('link', { name: 'Appearance', exact: true }).click();
   await expect(tabs.getByRole('link', { name: 'Appearance', exact: true })).toHaveAttribute('aria-current', 'page');
   const choice = (pair, mode) => page.getByRole('group', { name: pair, exact: true }).getByRole('radio', { name: new RegExp(`^${mode}`) });
   for (const pair of ['Busnes', 'Matter', 'Ocean', 'Forest', 'Ky', 'Nord']) await expect(page.getByRole('group', { name: pair, exact: true }).getByRole('radio')).toHaveCount(3);
