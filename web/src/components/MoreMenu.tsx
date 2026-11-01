@@ -34,20 +34,20 @@ export function MoreMenu({ label, icon: Icon = Ellipsis, triggerRef, children }:
       const below = at.bottom + 4 + el.offsetHeight <= window.innerHeight;
       el.style.top = `${below ? at.bottom + 4 : Math.max(8, at.top - 4 - el.offsetHeight)}px`;
       el.style.left = `${Math.max(8, Math.min(at.right - el.offsetWidth, window.innerWidth - 8 - el.offsetWidth))}px`;
-      el.querySelector<HTMLElement>('.ky-menu-item:not(:disabled)')?.focus();
+      el.querySelector<HTMLElement>('.app-menu-item:not(:disabled)')?.focus();
       window.addEventListener('scroll', onScroll, true);
     };
     el.addEventListener('toggle', toggled);
     return () => { el.removeEventListener('toggle', toggled); window.removeEventListener('scroll', onScroll, true); };
   }, [trigger]);
   return <>
-    <button ref={trigger} type="button" className="ky-menu-trigger" popoverTarget={id} aria-haspopup="menu" aria-expanded="false" aria-label={label} title={label}>
+    <button ref={trigger} type="button" className="app-menu-trigger" popoverTarget={id} aria-haspopup="menu" aria-expanded="false" aria-label={label} title={label}>
       <Icon size={18} aria-hidden="true" />
     </button>
-    <div ref={menu} id={id} popover="auto" className="ky-menu" role="menu" aria-label={label} onKeyDown={(event) => {
+    <div ref={menu} id={id} popover="auto" className="app-menu" role="menu" aria-label={label} onKeyDown={(event) => {
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
       event.preventDefault();
-      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('.ky-menu-item:not(:disabled)')];
+      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('.app-menu-item:not(:disabled)')];
       const at = items.indexOf(document.activeElement as HTMLElement);
       items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
     }}>{children(close)}</div>

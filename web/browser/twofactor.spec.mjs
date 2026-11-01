@@ -51,8 +51,9 @@ test('two-step verification: a person enrols, then sign-in asks for the code', a
   await expect(person.getByRole('status')).toContainText('Password changed');
   await signIn(person, username, chosen);
 
-  // Two-step verification is in Settings, on the Account section the gear opens.
-  await person.getByRole('link', { name: 'Settings', exact: true }).click();
+  // Two-step verification is in Settings, on the Account section of the gear's menu.
+  await person.getByRole('button', { name: 'Settings', exact: true }).click();
+  await person.getByRole('menu', { name: 'Settings' }).getByRole('menuitem', { name: 'Account' }).click();
   await expect(person.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
   await person.getByLabel('Password').fill(chosen);
   await person.getByRole('button', { name: 'Set up' }).click();

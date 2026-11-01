@@ -214,7 +214,7 @@ export default function People({ me }: { me: string }) {
                           <MoreMenu label={`More actions for ${p.username}`}>
                             {(close) => (
                               <>
-                                <button type="button" role="menuitem" className="ky-menu-item" aria-label={`Reset password for ${p.username}`} onClick={() => { close(); reset(p); }}>
+                                <button type="button" role="menuitem" className="app-menu-item" aria-label={`Reset password for ${p.username}`} onClick={() => { close(); reset(p); }}>
                                   Reset password
                                 </button>
                                 {p.id !== me && (
@@ -222,7 +222,7 @@ export default function People({ me }: { me: string }) {
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      className="ky-menu-item"
+                                      className="app-menu-item"
                                       aria-label={p.role === "admin" ? `Make ${p.username} a user` : `Make ${p.username} an admin`}
                                       onClick={() => { close(); toggleRole(p); }}
                                     >
@@ -231,7 +231,7 @@ export default function People({ me }: { me: string }) {
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      className={p.status === "active" ? "ky-menu-item is-danger" : "ky-menu-item"}
+                                      className={p.status === "active" ? "app-menu-item is-danger" : "app-menu-item"}
                                       aria-label={p.status === "active" ? `Disable ${p.username}` : `Enable ${p.username}`}
                                       onClick={() => { close(); toggleStatus(p); }}
                                     >

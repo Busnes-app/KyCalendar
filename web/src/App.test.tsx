@@ -81,8 +81,9 @@ describe('Settings', () => {
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
     expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Calendar']);
     expect(screen.queryByText('Sign out')).toBeNull();
-    const gear = screen.getAllByRole('link', { name: 'Settings' })[0];
+    const gear = screen.getAllByRole('button', { name: 'Settings' })[0];
     fireEvent.click(gear);
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Settings' })).getByRole('menuitem', { name: 'Account' }));
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy();
     const tabs = screen.getByRole('navigation', { name: 'Settings sections' });
