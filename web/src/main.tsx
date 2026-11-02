@@ -2,6 +2,7 @@ import './theme';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import { watchForUpdate } from './ky-ui/update.js';
 
 // Keep registration in the bundled script so script-src 'self' permits it.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -9,6 +10,8 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     void navigator.serviceWorker.register('/sw.js').catch(() => {});
   }, { once: true });
 }
+
+watchForUpdate({ name: 'KyCalendar' });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
