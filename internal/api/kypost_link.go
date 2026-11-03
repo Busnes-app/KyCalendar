@@ -85,7 +85,7 @@ func (s *Server) newKyPost() {
 
 func (s *Server) startScheduling() {
 	s.sched = &davbackend.Scheduler{Store: s.store, Limits: s.objectLimits(), KyPost: s.kypost}
-	s.kypostReplay = syncauth.NewMemoryReplay(syncauth.DefaultWindow, 100000)
+	s.kypostReplay = &retryableReplay{Replay: syncauth.NewMemoryReplay(syncauth.DefaultWindow, 100000), retry: map[string]bool{}}
 }
 
 // StartKyPost links KyPost through KyIdentity when the environment names none and scheduling

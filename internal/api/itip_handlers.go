@@ -5,8 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Busnes-app/ky-primitives/syncauth"
 	"github.com/emersion/go-ical"
 
 	"github.com/Busnes-app/kycalendar/internal/itip"
@@ -51,10 +53,44 @@ func (s *Server) kypostRequest(w http.ResponseWriter, r *http.Request, event str
 		return nil, false
 	}
 	if !s.allowAccountAttempt("itip:"+u.ID, itipPerUser, itipWindow) {
+		s.retryKyPost(r)
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many messages", "code": "rate_limited"})
 		return nil, false
 	}
 	return u, true
+}
+
+// retryableReplay is the KyPost replay guard. An event that was verified but not acted on (rate
+// limited, or a failure KyPost retries) is let through once more, so KyPost's retry under the same
+// event ID is applied instead of acknowledged as a duplicate of something that never happened.
+type retryableReplay struct {
+	syncauth.Replay
+	mu    sync.Mutex
+	retry map[string]bool
+}
+
+func (g *retryableReplay) Check(id string, at time.Time) error {
+	g.mu.Lock()
+	again := g.retry[id]
+	delete(g.retry, id)
+	g.mu.Unlock()
+	if again {
+		return nil
+	}
+	return g.Replay.Check(id, at)
+}
+
+// retryKyPost lets KyPost's retry of r's event through the replay guard.
+func (s *Server) retryKyPost(r *http.Request) {
+	g, ok := s.kypostReplay.(*retryableReplay)
+	if !ok {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.retry) < 10000 {
+		g.retry[syncauth.FromRequest(r).EventID] = true
+	}
 }
 
 // kypostUser is the one active everyday account bound to who's KyIdentity subject and issuer.
@@ -97,6 +133,7 @@ func (s *Server) handleITIPInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		s.retryKyPost(r)
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "The message could not be applied", "code": "error"})
 		return
 	}
