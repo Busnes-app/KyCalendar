@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarPlus, Pencil, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
+import { CalendarPlus, Pencil, Plus, RefreshCw, Rss, Trash2, Upload } from 'lucide-react';
 import { calendarColors, nextColor } from '../calendarColors';
 import { MoreMenu } from './MoreMenu';
 import { Modal } from './ui';
 import {
-  ApiError, HOLDS, createCalendar, holdsOf, deleteCalendar, patchCalendar, refreshSubscription, subscribeCalendar, updateSubscriptionLink, type CalendarInfo, type Holds,
+  ApiError, HOLDS, MAX_IMPORT_BYTES, browserDateOrder, browserZone, canAddEvents, createCalendar, holdsOf, deleteCalendar, importCSV, patchCalendar, refreshSubscription, subscribeCalendar,
+  updateSubscriptionLink, type CalendarInfo, type Holds, type ImportResult,
 } from '../calendarApi';
 
 interface Props {
@@ -83,6 +84,110 @@ function SubscriptionForm({ calendar, color, onSaved, onCancel }: { calendar?: C
   );
 }
 
+const NEW = 'new';
+
+// ImportForm adds the events of an Outlook or Google Calendar CSV to a calendar the user can add
+// events to, or to a new one. A new calendar whose import fails is deleted again.
+function ImportForm({ calendars, color, onImported, onClose }: { calendars: CalendarInfo[]; color: string; onImported: () => void; onClose: () => void }) {
+  const targets = calendars.filter(canAddEvents);
+  const [file, setFile] = useState<File | null>(null);
+  const [target, setTarget] = useState(targets[0]?.id ?? NEW);
+  const [form, setForm] = useState({ name: '', color });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      setError('The file is too large; the limit is 1 MiB.');
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    let created: CalendarInfo | null = null;
+    try {
+      if (target === NEW) created = await createCalendar({ name: form.name, color: form.color, components: HOLDS.events.components });
+      setResult(await importCSV(created?.id ?? target, file, browserZone(), browserDateOrder()));
+      onImported();
+    } catch (err) {
+      if (created) await deleteCalendar(created.id).catch(() => undefined);
+      setError(err instanceof Error && err.message ? err.message : 'Could not import the file');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (result) {
+    const more = result.skipped_count - result.skipped.length;
+    return (
+      <div className="form">
+        <div role="status">
+          <p>
+            Imported {result.imported} {result.imported === 1 ? 'event' : 'events'}.
+            {result.duplicates > 0 && ` ${result.duplicates} already there.`}
+            {result.skipped_count > 0 && ` ${result.skipped_count} ${result.skipped_count === 1 ? 'row' : 'rows'} skipped.`}
+          </p>
+          {result.skipped.length > 0 && (
+            <ul className="kc-hint kc-skips">
+              {result.skipped.map((s) => <li key={s.row}>Row {s.row}: {s.reason}</li>)}
+              {more > 0 && <li>…and {more} more</li>}
+            </ul>
+          )}
+        </div>
+        {result.stopped && <p role="alert">{result.stopped}</p>}
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form className="form" onSubmit={submit}>
+      {error && <p role="alert">{error}</p>}
+      <div className="field">
+        <label htmlFor="kc-import-file">File</label>
+        <input
+          id="kc-import-file"
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            setFile(f);
+            if (f && !form.name) setForm({ ...form, name: f.name.replace(/\.csv$/i, '').slice(0, 255) });
+          }}
+        />
+        <p className="kc-hint">An Outlook export (File → Open &amp; Export → Import/Export → Export to a file → Comma Separated Values) or a CSV in Google Calendar's import format, up to 1 MiB. Times are read in your time zone; rows already imported are skipped.</p>
+      </div>
+      <div className="field">
+        <label htmlFor="kc-import-target">Add to</label>
+        <select id="kc-import-target" value={target} onChange={(e) => setTarget(e.target.value)}>
+          {targets.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value={NEW}>New calendar…</option>
+        </select>
+      </div>
+      {target === NEW && (
+        <>
+          <div className="field">
+            <label htmlFor="kc-import-name">Name</label>
+            <input id="kc-import-name" value={form.name} maxLength={255} required onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="kc-import-color">Colour</label>
+            <input id="kc-import-color" type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
+          </div>
+        </>
+      )}
+      <div className="modal-actions">
+        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button type="submit" disabled={busy || !file}>{busy ? 'Importing…' : 'Import'}</button>
+      </div>
+    </form>
+  );
+}
+
 export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Props) {
   const [name, setName] = useState('');
   const [holds, setHolds] = useState<Holds>('events');
@@ -92,6 +197,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
   const [relinking, setRelinking] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const addTrigger = useRef<HTMLButtonElement>(null);
   const colors = calendarColors(calendars);
   const colorOf = (c: CalendarInfo) => colors.get(c.id) ?? 'var(--ky-accent)';
@@ -111,11 +217,12 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
     }
   }
 
-  // Closing either create dialog returns focus to the + that opened its menu, after the native
+  // Closing any create dialog returns focus to the + that opened its menu, after the native
   // dialog's own close has restored focus to the (now hidden) menu item.
   const refocus = () => requestAnimationFrame(() => addTrigger.current?.focus());
   const closeAdd = () => { setAdding(false); setName(''); refocus(); };
   const closeSubscribe = () => { setSubscribing(false); refocus(); };
+  const closeImport = () => { setImporting(false); refocus(); };
 
   return (
     <aside className="kc-sidebar" aria-label="Calendars">
@@ -131,6 +238,10 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
               <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setSubscribing(true); }}>
                 <Rss size={16} aria-hidden="true" />
                 Subscribe to a calendar
+              </button>
+              <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setImporting(true); }}>
+                <Upload size={16} aria-hidden="true" />
+                Import a CSV file
               </button>
             </>
           )}
@@ -249,6 +360,12 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
       {subscribing && createPortal(
         <Modal title="Subscribe to a calendar" onClose={closeSubscribe}>
           <SubscriptionForm color={fresh()} onSaved={() => { setSubscribing(false); onChanged(); refocus(); }} onCancel={closeSubscribe} />
+        </Modal>,
+        document.body,
+      )}
+      {importing && createPortal(
+        <Modal title="Import a CSV file" onClose={closeImport}>
+          <ImportForm calendars={calendars} color={fresh()} onImported={onChanged} onClose={closeImport} />
         </Modal>,
         document.body,
       )}

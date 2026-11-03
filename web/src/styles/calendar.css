@@ -25,6 +25,7 @@ button.kc-icon.btn-danger:hover:not(:disabled), button.kc-icon.btn-danger:focus-
 .kc-sub .kc-actions { flex-basis: 100%; margin-top: .25rem; }
 .kc-cal-edit > .kc-sub { padding-left: 0; margin-bottom: var(--ky-space-2); }
 .kc-hint { font-size: var(--ky-type-meta); line-height: 1.5; color: var(--ink); }
+.kc-skips { padding-left: 1.25em; }
 
 /* ---------- Forms in the sidebar and dialogs ---------- */
 

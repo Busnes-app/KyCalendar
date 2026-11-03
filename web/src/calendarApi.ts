@@ -71,6 +71,27 @@ export const updateSubscriptionLink = (id: string, url: string) =>
 export const refreshSubscription = (id: string) =>
   send(`/api/calendars/${encodeURIComponent(id)}/refresh`, { method: 'POST' }).then((r) => parse<CalendarInfo>(r));
 
+// ImportResult reports a CSV import: rows added, rows already there, rows not read and why.
+export interface ImportResult {
+  imported: number; duplicates: number; skipped: { row: number; reason: string }[]; skipped_count: number;
+  stopped?: string; // the import ended early; earlier rows stay imported
+}
+export type DateOrder = 'mdy' | 'dmy';
+// MAX_IMPORT_BYTES is the server's request body cap.
+export const MAX_IMPORT_BYTES = 1 << 20;
+// The file goes up as is, so the server reads its own encoding (classic Outlook writes Windows-1252).
+export const importCSV = (calendarId: string, file: Blob, tz: string, dateOrder: DateOrder) =>
+  send(`/api/calendars/${encodeURIComponent(calendarId)}/import?${new URLSearchParams({ tz, date_order: dateOrder })}`, {
+    method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: file,
+  }).then((r) => parse<ImportResult>(r));
+// browserDateOrder is the order the browser's locale writes dates in; the server uses it only for
+// a file whose dates could be read either way.
+export function browserDateOrder(locale?: string): DateOrder {
+  const parts = new Intl.DateTimeFormat(locale).formatToParts(new Date(2000, 10, 22));
+  const at = (type: string) => parts.findIndex((p) => p.type === type);
+  return at('day') < at('month') ? 'dmy' : 'mdy';
+}
+
 export function listEvents(start: Date, end: Date, tz: string, ids: string[]) {
   const q = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), tz });
   if (ids.length) q.set('calendar', ids.join(','));

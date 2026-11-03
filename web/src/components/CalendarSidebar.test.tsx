@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CalendarSidebar, ago } from './CalendarSidebar';
-import type { CalendarInfo } from '../calendarApi';
+import { browserDateOrder, browserZone, type CalendarInfo } from '../calendarApi';
 import { PALETTE, calendarColors, nextColor } from '../calendarColors';
 
 // The colour a new calendar gets: one none of the listed calendars shows.
@@ -26,7 +26,7 @@ describe('CalendarSidebar', () => {
     render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
     const plus = screen.getByRole('button', { name: 'Add a calendar' });
     fireEvent.click(plus);
-    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['New calendar', 'Subscribe to a calendar']);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['New calendar', 'Subscribe to a calendar', 'Import a CSV file']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'New calendar' }));
     const dialog = screen.getByRole('dialog', { name: 'New calendar' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
@@ -172,5 +172,97 @@ describe('CalendarSidebar', () => {
     expect(ago('2026-10-15T11:59:30Z', now)).toBe('just now');
     expect(ago('2026-10-15T11:55:00Z', now)).toBe(rel(-5, 'minute'));
     expect(ago('2026-10-14T12:00:00Z', now)).toBe(rel(-1, 'day'));
+  });
+
+  const csv = () => new File(['Subject,Start Date\nX,10/29/2026\n'], 'Work trips.csv', { type: 'text/csv' });
+  const openImport = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import a CSV file' }));
+    return screen.getByRole('dialog', { name: 'Import a CSV file' });
+  };
+
+  it('imports a CSV into an existing calendar and reports the rows', async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (i, init) => {
+      calls.push({ url: String(i), init });
+      return new Response(JSON.stringify({ imported: 2, duplicates: 1, skipped: [{ row: 4, reason: 'Start Date is missing or not a date' }], skipped_count: 3 }), { status: 200 });
+    });
+    const onChanged = vi.fn();
+    render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+    const plus = screen.getByRole('button', { name: 'Add a calendar' });
+    openImport();
+    // Readers cannot be imported into; a new calendar always can.
+    const options = Array.from((screen.getByLabelText('Add to') as HTMLSelectElement).options).map((o) => o.textContent);
+    expect(options).toEqual(['Mine', 'Team', 'New calendar…']);
+    const file = csv();
+    fireEvent.change(screen.getByLabelText('File'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('Imported 2 events. 1 already there. 3 rows skipped.');
+    expect(status.textContent).toContain('Row 4: Start Date is missing or not a date');
+    expect(status.textContent).toContain('…and 2 more');
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(1);
+    const url = new URL(calls[0].url, 'http://x');
+    expect(url.pathname).toBe('/api/calendars/cal_p/import');
+    expect(url.searchParams.get('tz')).toBe(browserZone());
+    expect(url.searchParams.get('date_order')).toBe(browserDateOrder());
+    expect(calls[0].init?.method).toBe('POST');
+    expect(calls[0].init?.body).toBe(file);
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(plus));
+  });
+
+  it('renders server text in the result as text, and the stop as an alert', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      imported: 1, duplicates: 0, skipped: [{ row: 2, reason: '<img src=x onerror=alert(1)>' }], skipped_count: 1, stopped: 'Stopped at row 3: Calendar storage is full',
+    }), { status: 200 }));
+    render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
+    const dialog = openImport();
+    fireEvent.change(within(dialog).getByLabelText('File'), { target: { files: [csv()] } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('Stopped at row 3: Calendar storage is full');
+    expect(within(dialog).getByRole('status').textContent).toContain('Row 2: <img src=x onerror=alert(1)>');
+    expect(dialog.querySelector('img')).toBeNull();
+  });
+
+  it('refuses a file over the server cap before creating anything', () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={vi.fn()} />);
+    const dialog = openImport();
+    const big = new File([new Uint8Array((1 << 20) + 1)], 'big.csv', { type: 'text/csv' });
+    fireEvent.change(within(dialog).getByLabelText('File'), { target: { files: [big] } });
+    fireEvent.change(within(dialog).getByLabelText('Add to'), { target: { value: 'new' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
+    expect(within(dialog).getByRole('alert').textContent).toBe('The file is too large; the limit is 1 MiB.');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('deletes a new calendar again when its import fails', async () => {
+    const calls: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (i, init) => {
+      const call = `${init?.method ?? 'GET'} ${String(i).split('?')[0]}`;
+      calls.push(call);
+      if (call === 'POST /api/calendars') return new Response(JSON.stringify({ ...cals[0], id: 'cal_new', name: 'Work trips' }), { status: 201 });
+      if (call === 'DELETE /api/calendars/cal_new') return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ error: 'This is not an Outlook or Google Calendar CSV' }), { status: 422 });
+    });
+    const onChanged = vi.fn();
+    render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+    openImport();
+    fireEvent.change(screen.getByLabelText('File'), { target: { files: [csv()] } });
+    fireEvent.change(screen.getByLabelText('Add to'), { target: { value: 'new' } });
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Work trips');
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('This is not an Outlook or Google Calendar CSV');
+    expect(calls).toEqual(['POST /api/calendars', 'POST /api/calendars/cal_new/import', 'DELETE /api/calendars/cal_new']);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('reads the date order from the locale', () => {
+    expect(browserDateOrder('en-US')).toBe('mdy');
+    expect(browserDateOrder('en-GB')).toBe('dmy');
+    expect(browserDateOrder('de-DE')).toBe('dmy');
   });
 });
