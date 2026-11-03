@@ -376,7 +376,9 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil {
 		return err
 	}
-	addOverrides(stored, msg, from)
+	if err := addOverrides(stored, msg, from); err != nil {
+		return err
+	}
 	changed, err := itip.ApplyReply(stored, msg, from)
 	if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) || errors.Is(err, itip.ErrInvalid) {
 		return errPermanent{"not_attendee"}
@@ -387,18 +389,30 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	return s.put(ctx, c, o.Name, stored, o.ETag, false)
 }
 
-// maxReplyOverrides caps the overrides one REPLY may add to an organizer's object.
-const maxReplyOverrides = 20
+// maxNewOverrides caps the overrides one message may add to a stored series: each is a copy of the
+// master. A message that would add more is refused whole, so it is never half applied.
+const maxNewOverrides = 20
+
+var errTooManyOccurrences = errPermanent{"too_many_occurrences"}
+
+func sequenceOf(c *ical.Component) int {
+	n := 0
+	if p := c.Props.Get(ical.PropSequence); p != nil {
+		n, _ = p.Int()
+	}
+	return n
+}
 
 // addOverrides readies stored, an organizer's series, for sender's reply. A reply component naming
-// an occurrence gets its RECURRENCE-ID written as the object's override for that occurrence has it,
-// and when the object holds that occurrence only through its master, and sender (an attendee of
-// the series) answers it differently from the series, the override is added first (RFC 5546
-// 3.2.3), at most maxReplyOverrides per reply. ApplyReply then records the answer there.
-func addOverrides(stored, reply *ical.Calendar, sender itip.Address) {
+// an occurrence gets its RECURRENCE-ID written as the object's override for that occurrence has it.
+// When the object holds that occurrence only through its master, and sender (an attendee of the
+// series) answers it, as of the series' current SEQUENCE, differently from the series, the
+// override is added first (RFC 5546 3.2.3). ApplyReply then records the answer there. More than
+// maxNewOverrides to add is errTooManyOccurrences, and nothing is added.
+func addOverrides(stored, reply *ical.Calendar, sender itip.Address) error {
 	m, err := calendar.Master(stored)
 	if err != nil {
-		return
+		return nil
 	}
 	answerOf := func(c *ical.Component) string {
 		for _, a := range itip.AttendeesOf(c) {
@@ -410,7 +424,7 @@ func addOverrides(stored, reply *ical.Calendar, sender itip.Address) {
 	}
 	series := answerOf(m)
 	have := overridesOf(stored)
-	added := 0
+	missing := map[string]*ical.Component{}
 	for _, c := range reply.Children {
 		rid := c.Props.Get(ical.PropRecurrenceID)
 		if c.Name != ical.CompEvent || rid == nil {
@@ -420,16 +434,19 @@ func addOverrides(stored, reply *ical.Calendar, sender itip.Address) {
 		if !ok {
 			continue
 		}
-		o := have[key]
-		if ps := answerOf(c); o == nil && series != "" && ps != "" && ps != series && added < maxReplyOverrides {
-			if o, err = calendar.AddOverride(stored, key); err != nil {
-				continue
-			}
-			have[key] = o
-			added++
+		if o := have[key]; o != nil {
+			sameOccurrence(c, o)
+		} else if ps := answerOf(c); series != "" && ps != "" && ps != series && sequenceOf(c) >= sequenceOf(m) {
+			missing[key] = c
 		}
-		if o != nil {
+	}
+	if len(missing) > maxNewOverrides {
+		return errTooManyOccurrences
+	}
+	for key, c := range missing {
+		if o, err := calendar.AddOverride(stored, key); err == nil {
 			sameOccurrence(c, o)
 		}
 	}
+	return nil
 }

@@ -77,7 +77,9 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		if err != nil {
 			return "", err
 		}
-		addOverrides(stored, msg, from)
+		if addOverrides(stored, msg, from) != nil {
+			return InboundIgnored, nil
+		}
 		changed, err := itip.ApplyReply(stored, msg, from)
 		if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) {
 			return InboundIgnored, nil
@@ -185,6 +187,18 @@ func sameOccurrence(c, o *ical.Component) {
 // cancelled. The master and every other override stay as they are.
 func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) (*ical.Calendar, error) {
 	have := overridesOf(existing)
+	adding := 0
+	for _, c := range msg.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		if key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID)); ok && have[key] == nil {
+			adding++
+		}
+	}
+	if adding > maxNewOverrides {
+		return nil, errTooManyOccurrences
+	}
 	// occurrence is the copy's override for the occurrence c names, added when the copy holds it only
 	// through its master; nil when c names no occurrence of the series.
 	occurrence := func(c *ical.Component) *ical.Component {
@@ -205,7 +219,10 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 	if method == itip.MethodCancel {
 		cancelled := false
 		for _, c := range msg.Children {
-			if o := occurrence(c); c.Name == ical.CompEvent && o != nil {
+			if c.Name != ical.CompEvent {
+				continue // a VTIMEZONE
+			}
+			if o := occurrence(c); o != nil {
 				o.Props.SetText(ical.PropStatus, "CANCELLED")
 				cancelled = true
 			}

@@ -186,6 +186,7 @@ func (s *Server) handleITIPRespond(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrQuotaExceeded):
 		s.writeJSON(w, http.StatusInsufficientStorage, map[string]string{"error": "Calendar storage is full", "code": "quota"})
 	default:
+		s.retryKyPost(r)
 		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "The answer could not be recorded", "code": "error"})
 	}
 }

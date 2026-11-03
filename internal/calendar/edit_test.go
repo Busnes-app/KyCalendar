@@ -550,3 +550,35 @@ func TestEditAllMoveAcrossDSTKeepsTheEndDate(t *testing.T) {
 		t.Fatalf("got %s, want %s\n%s", got, want, encode(t, cal))
 	}
 }
+
+// Moving a UTC series to the same wall time in another zone recomputes UNTIL there: every
+// occurrence is kept.
+func TestEditAllZoneChangeKeepsTheLastOccurrence(t *testing.T) {
+	ny := zone(t, "America/New_York")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART:20261102T140000Z\nDTEND:20261102T150000Z\nRRULE:FREQ=WEEKLY;UNTIL=20261123T140000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 11, 2, 14, 0, 0, 0, ny), End: time.Date(2026, 11, 2, 15, 0, 0, 0, ny), Zone: ny, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, _ := roundTrip(t, cal)
+	if got := starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)); strings.Count(got, ",") != 3 {
+		t.Fatalf("after moving to New York: %s\n%s", got, encode(t, cal))
+	}
+}
+
+// A kept rule that sets its own clock (BYHOUR) does not follow DTSTART's time of day: its UNTIL
+// stays, and so does its last occurrence.
+func TestEditAllKeepsUntilOfAClockRule(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261110T100000\nDTEND;TZID=Europe/Berlin:20261110T103000\nRRULE:FREQ=DAILY;BYHOUR=9,10;UNTIL=20261112T090000Z\nSUMMARY:Twice\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Twice", Start: time.Date(2026, 11, 10, 9, 0, 0, 0, berlin), End: time.Date(2026, 11, 10, 9, 30, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, raw := roundTrip(t, cal)
+	if !strings.Contains(raw, "UNTIL=20261112T090000Z") || !strings.Contains(starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)), "2026-11-12T10:00") {
+		t.Fatalf("the rule's own last occurrence was lost:\n%s", raw)
+	}
+}

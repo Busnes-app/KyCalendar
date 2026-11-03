@@ -271,19 +271,22 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 }
 
 // shiftUntil moves a kept rule's UTC UNTIL by the change in time of day from the old start to the
-// new one, on the wall clock, so a series moved later in the day keeps its last occurrence and
-// its end date.
+// new one, on the wall clock (in the new start's zone), so a series moved later in the day or to
+// another zone keeps its last occurrence and its end date.
 func shiftUntil(m *ical.Component, from, to time.Time) {
 	p := m.Props.Get(ical.PropRecurrenceRule)
-	if p == nil {
-		return
+	if p == nil || strings.Contains(strings.ToUpper(p.Value), "BYHOUR") || strings.Contains(strings.ToUpper(p.Value), "BYMINUTE") || strings.Contains(strings.ToUpper(p.Value), "BYSECOND") {
+		return // occurrences keep the rule's own clock, not DTSTART's
 	}
 	clock := func(t time.Time) int { h, mi, s := t.Clock(); return h*3600 + mi*60 + s }
 	by := clock(to) - clock(from)
+	if by == 0 && from.Location().String() == to.Location().String() {
+		return
+	}
 	parts := strings.Split(p.Value, ";")
 	for i, part := range parts {
 		k, v, _ := strings.Cut(part, "=")
-		if t, err := time.Parse("20060102T150405Z", v); err == nil && strings.EqualFold(k, "UNTIL") && by != 0 {
+		if t, err := time.Parse("20060102T150405Z", v); err == nil && strings.EqualFold(k, "UNTIL") {
 			w := t.In(from.Location())
 			moved := time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second()+by, 0, to.Location())
 			parts[i] = k + "=" + moved.UTC().Format("20060102T150405Z")
@@ -456,7 +459,7 @@ func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error
 // master's form, which AddOverride, EditOne and Expand take, whatever form rid is written in.
 func OccurrenceKey(cal *ical.Calendar, rid *ical.Prop) (string, bool) {
 	m, err := Master(cal)
-	if err != nil {
+	if err != nil || rid == nil {
 		return "", false
 	}
 	form, err := spanOf(m, time.UTC)

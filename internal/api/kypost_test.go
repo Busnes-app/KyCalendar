@@ -339,7 +339,11 @@ func TestKyPostInboundOneOccurrenceOfAZonedSeries(t *testing.T) {
 	if strings.Count(got, "BEGIN:VEVENT") != 2 || !strings.Contains(got, "Agenda attached") || strings.Count(got, "PARTSTAT=ACCEPTED") != 2 {
 		t.Fatalf("bob's copy after one occurrence changed its description:\n%s", got)
 	}
-	in.ICS = msg("CANCEL", vevent("RECURRENCE-ID;TZID=Europe/Berlin:20261126T090000\r\nDTSTART;TZID=Europe/Berlin:20261126T090000\r\nSTATUS:CANCELLED\r\n"))
+	// Clients send the zone's VTIMEZONE alongside.
+	berlin := "BEGIN:VTIMEZONE\r\nTZID:Europe/Berlin\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\n" +
+		"TZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:19700329T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\n" +
+		"TZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\n"
+	in.ICS = msg("CANCEL", berlin+vevent("RECURRENCE-ID;TZID=Europe/Berlin:20261126T090000\r\nDTSTART;TZID=Europe/Berlin:20261126T090000\r\nSTATUS:CANCELLED\r\n"))
 	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-z2", in); !strings.Contains(w.Body.String(), "applied") {
 		t.Fatalf("cancelling one occurrence: %d %s", w.Code, w.Body.String())
 	}
