@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -263,5 +264,153 @@ func TestImportCSVReportsTheFirstSkips(t *testing.T) {
 	code, v := importInto(t, srv, cookie, cal.ID, "?tz=UTC", file)
 	if code != http.StatusOK || v.SkippedCount != 150 || len(v.Skipped) != 100 || v.Skipped[99].Row != 101 {
 		t.Fatalf("import %d count %d listed %d", code, v.SkippedCount, len(v.Skipped))
+	}
+}
+
+// pausedWrites holds every event write until release is closed, signalling entered first, so a
+// test can keep imports in flight.
+type pausedWrites struct {
+	store.Store
+	entered chan string // calendar ID of each write that reached the store
+	release chan struct{}
+	unpause func()
+}
+
+func (p pausedWrites) Calendars() store.CalendarStore {
+	return pausedCalendars{CalendarStore: p.Store.Calendars(), p: p}
+}
+
+type pausedCalendars struct {
+	store.CalendarStore
+	p pausedWrites
+}
+
+func (c pausedCalendars) PutObjectPlanned(ctx context.Context, o *store.CalendarObject, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits, plan store.Planner) (bool, error) {
+	c.p.entered <- o.CalendarID
+	<-c.p.release
+	return c.CalendarStore.PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan)
+}
+
+func pauseWrites(t *testing.T, srv *api.Server, st store.Store) pausedWrites {
+	p := pausedWrites{Store: st, entered: make(chan string, 64), release: make(chan struct{})}
+	var once sync.Once
+	p.unpause = func() { once.Do(func() { close(p.release) }) }
+	t.Cleanup(p.unpause) // a failed test must not leave imports blocked under the closing store
+	api.SetStoreForTest(srv, p)
+	return p
+}
+
+// startImport posts importCSV in the background and returns the response once it ends.
+func startImport(srv *api.Server, cookie *http.Cookie, calID string) <-chan *httptest.ResponseRecorder {
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		req := httptest.NewRequest("POST", "/api/calendars/"+calID+"/import?tz=UTC", strings.NewReader(importCSV))
+		req.AddCookie(cookie)
+		addCSRF(req, cookie)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		done <- w
+	}()
+	return done
+}
+
+// refused waits for an import that must be turned away before it writes anything.
+func refused(t *testing.T, p pausedWrites, done <-chan *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+	t.Helper()
+	select {
+	case w := <-done:
+		return w
+	case <-p.entered:
+		t.Fatal("the import was admitted and reached the store")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the import neither answered nor wrote")
+	}
+	return nil
+}
+
+func waitEntered(t *testing.T, p pausedWrites) {
+	t.Helper()
+	select {
+	case <-p.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the import never reached the store")
+	}
+}
+
+// TestImportCSVIsTrackedForShutdown: an import keeps writing after its client is gone, so
+// shutdown must wait for it before the store closes, or the rest of the rows and the audit row
+// are lost.
+func TestImportCSVIsTrackedForShutdown(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "ivy", "user")
+	call(t, srv, "GET", "/api/calendars", "", cookie)
+	cal := personalCalendar(t, st, "usr_ivy")
+	p := pauseWrites(t, srv, st)
+
+	done := startImport(srv, cookie, cal.ID)
+	waitEntered(t, p)
+	waited := make(chan struct{})
+	go func() { defer close(waited); srv.WaitDetached() }()
+	select {
+	case <-waited:
+		t.Fatal("WaitDetached returned with an import still writing; the store would close under it")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	p.unpause()
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitDetached did not return after the import finished")
+	}
+	if w := <-done; w.Code != http.StatusOK {
+		t.Fatalf("import %d %s", w.Code, w.Body.String())
+	}
+	if !audited(t, st, "calendar.import") {
+		t.Error("the wait returned before the import was audited")
+	}
+}
+
+// TestImportCSVOnePerUser: a second import from the same person while one is writing is refused
+// with a message the web app shows; other people still import, up to the server-wide cap.
+func TestImportCSVOnePerUser(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "ivy", "user")
+	call(t, srv, "GET", "/api/calendars", "", cookie)
+	cal := personalCalendar(t, st, "usr_ivy")
+	p := pauseWrites(t, srv, st)
+
+	first := startImport(srv, cookie, cal.ID)
+	waitEntered(t, p)
+	w := refused(t, p, startImport(srv, cookie, cal.ID))
+	if w.Code != http.StatusConflict || codeOf(t, w.Body.Bytes()) != "import_running" || !strings.Contains(w.Body.String(), "still running") {
+		t.Fatalf("second import while the first runs: %d %s", w.Code, w.Body.String())
+	}
+
+	// Other people fill the remaining server-wide slots; one more is turned away.
+	var others []<-chan *httptest.ResponseRecorder
+	for i := 1; i < api.MaxConcurrentImportsForTest; i++ {
+		name := fmt.Sprintf("user%d", i)
+		c := loginAs(t, srv, st, name, "user")
+		call(t, srv, "GET", "/api/calendars", "", c)
+		others = append(others, startImport(srv, c, personalCalendar(t, st, "usr_"+name).ID))
+		waitEntered(t, p)
+	}
+	extra := loginAs(t, srv, st, "extra", "user")
+	call(t, srv, "GET", "/api/calendars", "", extra)
+	w = refused(t, p, startImport(srv, extra, personalCalendar(t, st, "usr_extra").ID))
+	if w.Code != http.StatusServiceUnavailable || codeOf(t, w.Body.Bytes()) != "imports_busy" {
+		t.Fatalf("import over the server-wide cap: %d %s", w.Code, w.Body.String())
+	}
+
+	p.unpause()
+	for _, done := range append(others, first) {
+		if w := <-done; w.Code != http.StatusOK {
+			t.Fatalf("import %d %s", w.Code, w.Body.String())
+		}
+	}
+	// Slots are given back: the same person can import again.
+	if code, v := importInto(t, srv, cookie, cal.ID, "?tz=UTC", importCSV); code != http.StatusOK || v.Duplicates != 2 {
+		t.Fatalf("import after the first finished: %d %+v", code, v)
 	}
 }

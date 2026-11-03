@@ -76,6 +76,8 @@ type Server struct {
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
 	detached detachedCounter
+	// imports admits one CSV import per user and a few server-wide (imports.go).
+	imports importGate
 }
 
 // detachedCounter is a WaitGroup that tolerates a registration arriving while the wait is
@@ -383,7 +385,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/subscriptions", s.requireEveryday(s.handleCreateSubscription))
 	s.handle("PATCH /api/subscriptions/{id}", s.requireEveryday(s.handlePatchSubscription))
 	s.handle("POST /api/calendars/{id}/refresh", s.requireEveryday(s.handleRefreshSubscription))
-	s.handle("POST /api/calendars/{id}/import", s.requireEveryday(s.handleImportCSV))
+	s.handle("POST /api/calendars/{id}/import", s.tracked(s.requireEveryday(s.handleImportCSV)))
 
 	// CalDAV for native clients; app-password Basic auth, never the session cookie.
 	dav := s.withDAVAuth(http.HandlerFunc(s.handleDAV))

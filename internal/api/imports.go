@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -22,6 +23,46 @@ const maxReportedSkips = 100
 // importWriteBudget is how long the connection may stay open for the report: csvimport.MaxRows
 // writes take seconds, and the listener's WriteTimeout is sized for JSON replies.
 const importWriteBudget = 5 * time.Minute
+
+// maxConcurrentImports caps imports running at once across the server. Each holds the single
+// database writer for up to csvimport.MaxRows writes; one per user is enforced on top.
+const maxConcurrentImports = 4
+
+// importGate admits one import per user and maxConcurrentImports in total. The zero value is
+// ready to use.
+type importGate struct {
+	mu      sync.Mutex
+	running map[string]bool // user ID -> an import of theirs is writing
+}
+
+var (
+	errImportRunning = &apiError{status: http.StatusConflict, msg: "Another import of yours is still running; wait for it to finish, then try again", code: "import_running"}
+	errImportsBusy   = &apiError{status: http.StatusServiceUnavailable, msg: "The server is busy with other imports; try again in a minute", code: "imports_busy"}
+)
+
+// acquire reserves userID's import slot, or returns why it cannot. A nil result must be paired
+// with release.
+func (g *importGate) acquire(userID string) *apiError {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch {
+	case g.running[userID]:
+		return errImportRunning
+	case len(g.running) >= maxConcurrentImports:
+		return errImportsBusy
+	}
+	if g.running == nil {
+		g.running = map[string]bool{}
+	}
+	g.running[userID] = true
+	return nil
+}
+
+func (g *importGate) release(userID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.running, userID)
+}
 
 type importView struct {
 	Imported     int              `json:"imported"`
@@ -82,10 +123,17 @@ func (s *Server) handleImportCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(importWriteBudget))
-	// Detached: a dropped connection must not stop an import halfway without a report or audit row.
-	ctx := context.WithoutCancel(r.Context())
 	user := sessionUser(r.Context())
+	if apiErr := s.imports.acquire(user.ID); apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	defer s.imports.release(user.ID)
+
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(importWriteBudget))
+	// Detached: a dropped connection must not stop an import halfway without a report or audit
+	// row. The route is s.tracked, so shutdown waits for it before closing the store.
+	ctx := context.WithoutCancel(r.Context())
 	now := time.Now()
 	v := importView{}
 	for _, row := range rows {
