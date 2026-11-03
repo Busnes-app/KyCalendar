@@ -247,7 +247,7 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	setRepeat(m, in.Repeat)
 	if moved {
 		if in.Repeat.Freq == "custom" && !old.floating && !old.allDay {
-			shiftUntil(m, in.Start.Sub(old.start))
+			shiftUntil(m, old.start, in.Start.In(in.Zone))
 		}
 		setTimes(cal, m, in)
 		m.Props.Del(ical.PropExceptionDates)
@@ -270,18 +270,23 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	return nil
 }
 
-// shiftUntil moves a kept rule's UTC UNTIL with the series start, so a series moved later keeps
-// its last occurrence.
-func shiftUntil(m *ical.Component, by time.Duration) {
+// shiftUntil moves a kept rule's UTC UNTIL by the change in time of day from the old start to the
+// new one, on the wall clock, so a series moved later in the day keeps its last occurrence and
+// its end date.
+func shiftUntil(m *ical.Component, from, to time.Time) {
 	p := m.Props.Get(ical.PropRecurrenceRule)
-	if p == nil || by == 0 {
+	if p == nil {
 		return
 	}
+	clock := func(t time.Time) int { h, mi, s := t.Clock(); return h*3600 + mi*60 + s }
+	by := clock(to) - clock(from)
 	parts := strings.Split(p.Value, ";")
 	for i, part := range parts {
 		k, v, _ := strings.Cut(part, "=")
-		if t, err := time.Parse("20060102T150405Z", v); err == nil && strings.EqualFold(k, "UNTIL") {
-			parts[i] = k + "=" + t.Add(by).Format("20060102T150405Z")
+		if t, err := time.Parse("20060102T150405Z", v); err == nil && strings.EqualFold(k, "UNTIL") && by != 0 {
+			w := t.In(from.Location())
+			moved := time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second()+by, 0, to.Location())
+			parts[i] = k + "=" + moved.UTC().Format("20060102T150405Z")
 		}
 	}
 	setRaw(m, ical.PropRecurrenceRule, strings.Join(parts, ";"))
@@ -445,6 +450,20 @@ func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error
 		cal.Children = append(cal.Children, o)
 	}
 	return o, nil
+}
+
+// OccurrenceKey is the occurrence rid (a RECURRENCE-ID) names in cal's series, as a key in the
+// master's form, which AddOverride, EditOne and Expand take, whatever form rid is written in.
+func OccurrenceKey(cal *ical.Calendar, rid *ical.Prop) (string, bool) {
+	m, err := Master(cal)
+	if err != nil {
+		return "", false
+	}
+	form, err := spanOf(m, time.UTC)
+	if err != nil {
+		return "", false
+	}
+	return overrideKey(rid, time.UTC, &form)
 }
 
 // AddOverride returns the override of one occurrence of a series, first adding one (a copy of the

@@ -77,7 +77,7 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		if err != nil {
 			return "", err
 		}
-		addOverrides(stored, msg)
+		addOverrides(stored, msg, from)
 		changed, err := itip.ApplyReply(stored, msg, from)
 		if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) {
 			return InboundIgnored, nil
@@ -104,25 +104,25 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		return "", err
 	}
 	if err := s.deliverInto(ctx, c, o, existing, self, method, msg); err != nil {
+		var perm errPermanent
+		if errors.As(err, &perm) { // nothing here it applies to, or an object that cannot be stored
+			return InboundIgnored, nil
+		}
 		return "", err
 	}
 	return InboundApplied, nil
 }
 
-// deliverInto writes an organizer's REQUEST or CANCEL over an attendee's existing copy.
+// deliverInto writes an organizer's REQUEST or CANCEL over an attendee's existing copy. A message
+// about occurrences that names none of the copy's series is errPermanent{"no_occurrence"}.
 func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store.CalendarObject, existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) error {
-	if rids := occurrencesOnly(msg); rids != nil {
+	if occurrencesOnly(msg) {
 		if _, err := calendar.Master(existing); err == nil {
-			next, err := deliverOccurrences(existing, self, method, msg, rids)
+			next, err := deliverOccurrences(existing, self, method, msg)
 			if err != nil {
-				return errPermanent{"invalid_object"}
+				return err
 			}
 			return s.put(ctx, c, o.Name, next, o.ETag, false)
-		}
-	}
-	if m, err := calendar.Master(msg); err == nil {
-		if e, err := calendar.Master(existing); err == nil && sequenceOf(m) < sequenceOf(e) {
-			return nil // an older version of the meeting arriving after a newer one (RFC 5546 2.1.5)
 		}
 	}
 	if method == itip.MethodCancel {
@@ -140,73 +140,133 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 	return s.put(ctx, c, o.Name, next, o.ETag, false)
 }
 
-func sequenceOf(c *ical.Component) int {
+// occurrencesOnly reports a message whose every VEVENT has a RECURRENCE-ID: it is about some
+// occurrences of a series, not the series.
+func occurrencesOnly(msg *ical.Calendar) bool {
 	n := 0
-	if p := c.Props.Get(ical.PropSequence); p != nil {
-		n, _ = p.Int()
-	}
-	return n
-}
-
-// occurrencesOnly is the RECURRENCE-ID of every VEVENT in msg when each has one: a message about
-// some occurrences of a series, not the series. nil otherwise.
-func occurrencesOnly(msg *ical.Calendar) map[string]bool {
-	rids := map[string]bool{}
 	for _, c := range msg.Children {
 		if c.Name != ical.CompEvent {
 			continue
 		}
-		p := c.Props.Get(ical.PropRecurrenceID)
-		if p == nil {
-			return nil
+		if c.Props.Get(ical.PropRecurrenceID) == nil {
+			return false
 		}
-		rids[p.Value] = true
+		n++
 	}
-	if len(rids) == 0 {
-		return nil
+	return n > 0
+}
+
+// overridesOf indexes cal's overrides by the occurrence each names (calendar.OccurrenceKey), so a
+// RECURRENCE-ID written in another form (UTC against TZID) still finds its override.
+func overridesOf(cal *ical.Calendar) map[string]*ical.Component {
+	out := map[string]*ical.Component{}
+	for _, c := range cal.Children {
+		if rid := c.Props.Get(ical.PropRecurrenceID); c.Name == ical.CompEvent && rid != nil {
+			if key, ok := calendar.OccurrenceKey(cal, rid); ok {
+				out[key] = c
+			}
+		}
 	}
-	return rids
+	return out
+}
+
+// sameOccurrence writes c's RECURRENCE-ID as o's, so the two match by value.
+func sameOccurrence(c, o *ical.Component) {
+	rid := *o.Props.Get(ical.PropRecurrenceID)
+	rid.Params = ical.Params{}
+	for k, v := range o.Props.Get(ical.PropRecurrenceID).Params {
+		rid.Params[k] = append([]string(nil), v...)
+	}
+	c.Props.Set(&rid)
 }
 
 // deliverOccurrences applies an organizer's message about single occurrences to the attendee's copy
 // of the series: a REQUEST replaces or adds those overrides, a CANCEL marks those occurrences
 // cancelled. The master and every other override stay as they are.
-func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, rids map[string]bool) (*ical.Calendar, error) {
+func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) (*ical.Calendar, error) {
+	have := overridesOf(existing)
+	// occurrence is the copy's override for the occurrence c names, added when the copy holds it only
+	// through its master; nil when c names no occurrence of the series.
+	occurrence := func(c *ical.Component) *ical.Component {
+		key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID))
+		if !ok {
+			return nil
+		}
+		if o := have[key]; o != nil {
+			return o
+		}
+		o, err := calendar.AddOverride(existing, key)
+		if err != nil {
+			return nil
+		}
+		have[key] = o
+		return o
+	}
 	if method == itip.MethodCancel {
-		for rid := range rids {
-			if o, err := calendar.AddOverride(existing, rid); err == nil { // else not an occurrence here
+		cancelled := false
+		for _, c := range msg.Children {
+			if o := occurrence(c); c.Name == ical.CompEvent && o != nil {
 				o.Props.SetText(ical.PropStatus, "CANCELLED")
+				cancelled = true
 			}
+		}
+		if !cancelled {
+			return nil, errPermanent{"no_occurrence"}
 		}
 		return existing, nil
 	}
-	// Answers and alarms carry over from the overrides being replaced, judged against them alone.
+	// Each replaced override, as the copy has it, is what answers and alarms carry over from.
 	before := ical.NewCalendar()
-	kept := existing.Children[:0:0]
-	for _, ev := range existing.Children {
-		if p := ev.Props.Get(ical.PropRecurrenceID); ev.Name == ical.CompEvent && p != nil && rids[p.Value] {
-			before.Children = append(before.Children, ev)
+	replaced := map[*ical.Component]bool{}
+	for _, c := range msg.Children {
+		if c.Name != ical.CompEvent {
 			continue
 		}
-		kept = append(kept, ev)
+		if o := occurrence(c); o != nil {
+			sameOccurrence(c, o)
+			before.Children = append(before.Children, o)
+			replaced[o] = true
+		}
+	}
+	if len(before.Children) == 0 {
+		return nil, errPermanent{"no_occurrence"}
 	}
 	next, err := itip.AttendeeCopy(msg, before, self)
 	if err != nil {
-		return nil, err
+		return nil, errPermanent{"invalid_object"}
 	}
+	kept := existing.Children[:0:0]
 	zones := map[string]bool{}
-	for _, c := range kept {
+	for _, c := range existing.Children {
+		if replaced[c] {
+			continue
+		}
 		if id, _ := c.Props.Text(ical.PropTimezoneID); c.Name == ical.CompTimezone {
 			zones[id] = true
 		}
+		kept = append(kept, c)
 	}
 	for _, c := range next.Children {
-		if id, _ := c.Props.Text(ical.PropTimezoneID); c.Name == ical.CompEvent || c.Name == ical.CompTimezone && !zones[id] {
-			kept = append(kept, c)
+		if c.Name == ical.CompTimezone {
+			if id, _ := c.Props.Text(ical.PropTimezoneID); zones[id] {
+				continue
+			}
+		} else if r := c.Props.Get(ical.PropRecurrenceID); c.Name == ical.CompEvent && (r == nil || !isOverride(before, r.Value)) {
+			continue // an occurrence the series does not have
 		}
+		kept = append(kept, c)
 	}
 	existing.Children = kept
 	return existing, nil
+}
+
+func isOverride(cal *ical.Calendar, rid string) bool {
+	for _, c := range cal.Children {
+		if p := c.Props.Get(ical.PropRecurrenceID); p != nil && p.Value == rid {
+			return true
+		}
+	}
+	return false
 }
 
 // Respond records u's answer from a KyPost RSVP card to invite, the invitation as mailed. The
@@ -243,9 +303,11 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 		return err
 	}
 	if recurrenceID != "" {
-		if err := calendar.EditText(cal, recurrenceID, calendar.TextEdit{}, s.now()); err != nil {
+		o, err := calendar.AddOverride(cal, recurrenceID)
+		if err != nil {
 			return err
 		}
+		recurrenceID = o.Props.Get(ical.PropRecurrenceID).Value
 	}
 	if err := itip.SetPartstat(cal, recurrenceID, self, partstat); err != nil {
 		return err

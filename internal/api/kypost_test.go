@@ -213,6 +213,12 @@ func TestKyPostRoutes(t *testing.T) {
 
 // kypostBob is a server linked to KyPost with scheduling on and bob, an SSO user, and his dav token.
 func kypostBob(t *testing.T) (*api.Server, *httptest.Server, string) {
+	srv, ts, _, token := kypostWorld(t)
+	return srv, ts, token
+}
+
+// kypostWorld is kypostBob with the store.
+func kypostWorld(t *testing.T) (*api.Server, *httptest.Server, store.Store, string) {
 	t.Helper()
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	t.Setenv("KYCALENDAR_KYPOST_URL", "https://kypost.example")
@@ -227,7 +233,7 @@ func kypostBob(t *testing.T) (*api.Server, *httptest.Server, string) {
 	api.SetKyPostClientForTest(srv, &kypost.Client{BaseURL: kp.URL, Secret: kypostSecret, HTTP: kp.Client()})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
-	return srv, ts, ssoUser(t, st, "bob")
+	return srv, ts, st, ssoUser(t, st, "bob")
 }
 
 // A message refused with 429 was not acted on: KyPost's retry under the same event ID is not a
@@ -298,14 +304,82 @@ func TestKyPostInboundOneOccurrence(t *testing.T) {
 		}
 	}
 
-	// A newer version of the whole series lands; an older one arriving after it changes nothing.
-	in.ICS = msg("REQUEST", strings.Replace(vevent("DTSTART:20261112T090000Z\r\nDTEND:20261112T100000Z\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nSEQUENCE:3\r\n"), "Supplier call", "Supplier call v3", 1))
-	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-w3", in); !strings.Contains(w.Body.String(), "applied") {
-		t.Fatalf("series update: %d %s", w.Code, w.Body.String())
+}
+
+// Real clients name an occurrence of a zoned series in its zone (RECURRENCE-ID;TZID=...): moving
+// and cancelling one that way reaches the right occurrence, and its answer is kept for a change
+// that is not significant.
+func TestKyPostInboundOneOccurrenceOfAZonedSeries(t *testing.T) {
+	srv, ts, token := kypostBob(t)
+	bob := kypost.User{Sub: "sub-bob", Issuer: "https://id.example"}
+	vevent := func(extra string) string {
+		return "BEGIN:VEVENT\r\nUID:dave-z\r\nDTSTAMP:20261101T000000Z\r\n" + extra + "SUMMARY:Supplier call\r\n" +
+			"ORGANIZER:mailto:dave@example.org\r\nATTENDEE;RSVP=TRUE:mailto:bob@example.com\r\nEND:VEVENT\r\n"
 	}
-	in.ICS = msg("REQUEST", strings.Replace(vevent("DTSTART:20261112T090000Z\r\nDTEND:20261112T100000Z\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nSEQUENCE:2\r\n"), "Supplier call", "Supplier call v2", 1))
-	signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-w4", in)
-	if got = copyOf(); !strings.Contains(got, "Supplier call v3") || strings.Contains(got, "Supplier call v2") {
-		t.Fatalf("a stale update overwrote a newer one:\n%s", got)
+	msg := func(method, body string) string {
+		return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nMETHOD:" + method + "\r\n" + body + "END:VCALENDAR\r\n"
+	}
+	invite := msg("REQUEST", vevent("DTSTART;TZID=Europe/Berlin:20261112T090000\r\nDTEND;TZID=Europe/Berlin:20261112T100000\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\n"))
+	if w := signedPost(t, srv, "/api/itip/respond", kypost.EventRespond, "rsp-z", kypost.RespondRequest{User: bob, UID: "dave-z", Partstat: "ACCEPTED", ICS: invite}); w.Code != 200 {
+		t.Fatalf("respond %d %s", w.Code, w.Body.String())
+	}
+	copyOf := func() string {
+		t.Helper()
+		r := rawDAV(t, ts, "REPORT", "/dav/usr_bob/calendars/default/", "bob", token,
+			`<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR"/></c:filter></c:calendar-query>`,
+			map[string]string{"Content-Type": "application/xml", "Depth": "1"})
+		return strings.ReplaceAll(readAll(r), "\r\n ", "")
+	}
+	in := kypost.InboundRequest{User: bob, From: "dave@example.org", DKIMAligned: true}
+	in.ICS = msg("REQUEST", vevent("RECURRENCE-ID;TZID=Europe/Berlin:20261119T090000\r\nDTSTART;TZID=Europe/Berlin:20261119T090000\r\nDTEND;TZID=Europe/Berlin:20261119T100000\r\nDESCRIPTION:Agenda attached\r\n"))
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-z1", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("updating one occurrence: %d %s", w.Code, w.Body.String())
+	}
+	got := copyOf()
+	if strings.Count(got, "BEGIN:VEVENT") != 2 || !strings.Contains(got, "Agenda attached") || strings.Count(got, "PARTSTAT=ACCEPTED") != 2 {
+		t.Fatalf("bob's copy after one occurrence changed its description:\n%s", got)
+	}
+	in.ICS = msg("CANCEL", vevent("RECURRENCE-ID;TZID=Europe/Berlin:20261126T090000\r\nDTSTART;TZID=Europe/Berlin:20261126T090000\r\nSTATUS:CANCELLED\r\n"))
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-z2", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("cancelling one occurrence: %d %s", w.Code, w.Body.String())
+	}
+	got = copyOf()
+	cancelled := 0
+	for _, part := range strings.Split(got, "BEGIN:VEVENT")[1:] {
+		if strings.Contains(part, "STATUS:CANCELLED") {
+			cancelled++
+			if !strings.Contains(part, "RECURRENCE-ID;TZID=Europe/Berlin:20261126T090000") {
+				t.Fatalf("the wrong occurrence was cancelled:\n%s", got)
+			}
+		}
+	}
+	if cancelled != 1 || !strings.Contains(got, "RRULE:FREQ=WEEKLY;COUNT=4") {
+		t.Fatalf("bob's copy after one occurrence was cancelled:\n%s", got)
+	}
+	in.ICS = msg("CANCEL", vevent("RECURRENCE-ID;TZID=Europe/Berlin:20261127T090000\r\nDTSTART;TZID=Europe/Berlin:20261127T090000\r\nSTATUS:CANCELLED\r\n"))
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-z3", in); !strings.Contains(w.Body.String(), "ignored") {
+		t.Fatalf("cancelling a day the series does not have: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Bob keeps his copy of an outside organizer's meeting in a group calendar he can edit: the
+// organizer's cancel still reaches it there.
+func TestKyPostInboundReachesACopyInAGroupCalendar(t *testing.T) {
+	srv, ts, st, token := kypostWorld(t)
+	team := groupCalendar(t, st, "Team")
+	grantRole(t, st, team, "editor", "usr_bob")
+	invite := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:dave-g\r\nDTSTAMP:20261101T000000Z\r\n" +
+		"DTSTART:20261112T090000Z\r\nDTEND:20261112T100000Z\r\nSUMMARY:Supplier call\r\nORGANIZER:mailto:dave@example.org\r\n" +
+		"ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	if r := rawDAV(t, ts, "PUT", "/dav/usr_bob/calendars/_"+team.ID+"/dave-g.ics", "bob", token, invite, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 201 {
+		t.Fatalf("PUT %d", r.StatusCode)
+	}
+	cancel := strings.Replace(strings.Replace(invite, "PRODID:x\r\n", "PRODID:x\r\nMETHOD:CANCEL\r\n", 1), "SUMMARY", "STATUS:CANCELLED\r\nSUMMARY", 1)
+	in := kypost.InboundRequest{User: kypost.User{Sub: "sub-bob", Issuer: "https://id.example"}, From: "dave@example.org", DKIMAligned: true, ICS: cancel}
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-g", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("cancel: %d %s", w.Code, w.Body.String())
+	}
+	if o, err := st.Calendars().GetObjectByUID(context.Background(), team.ID, "dave-g"); err != nil || !strings.Contains(string(o.Data), "STATUS:CANCELLED") {
+		t.Fatalf("bob's copy in the group calendar was not cancelled (%v)", err)
 	}
 }

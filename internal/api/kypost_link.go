@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/suitedir"
-	"github.com/Busnes-app/ky-primitives/syncauth"
 
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
@@ -85,7 +84,7 @@ func (s *Server) newKyPost() {
 
 func (s *Server) startScheduling() {
 	s.sched = &davbackend.Scheduler{Store: s.store, Limits: s.objectLimits(), KyPost: s.kypost}
-	s.kypostReplay = &retryableReplay{Replay: syncauth.NewMemoryReplay(syncauth.DefaultWindow, 100000), retry: map[string]bool{}}
+	s.kypostReplay = &kypostReplay{seen: map[string]time.Time{}}
 }
 
 // StartKyPost links KyPost through KyIdentity when the environment names none and scheduling

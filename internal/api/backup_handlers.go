@@ -243,13 +243,11 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 			s.writeError(w, http.StatusConflict, "Already paired to a different recovery key")
 			return
 		}
-		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=recovery key not saved: "+err.Error())
 		s.writeError(w, http.StatusInternalServerError, "Failed to save recovery key")
 		return
 	}
 	sealer, err := backup.NewSealer(s.config)
 	if err != nil {
-		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=key pinned but the pairing seal failed: "+err.Error())
 		s.writeError(w, http.StatusInternalServerError, "Failed to prepare the pairing seal")
 		return
 	}
@@ -430,7 +428,6 @@ func (s *Server) handlePinKey(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, http.StatusConflict, "Already pinned to a different recovery key")
 			return
 		}
-		s.auditBackup(ctx, actor, r, "admin.backup_key_pin", key.Public.ID(), "error=recovery key not saved: "+err.Error())
 		s.writeError(w, http.StatusInternalServerError, "Failed to save recovery key")
 		return
 	}

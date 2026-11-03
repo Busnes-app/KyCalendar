@@ -60,36 +60,51 @@ func (s *Server) kypostRequest(w http.ResponseWriter, r *http.Request, event str
 	return u, true
 }
 
-// retryableReplay is the KyPost replay guard. An event that was verified but not acted on (rate
-// limited, or a failure KyPost retries) is let through once more, so KyPost's retry under the same
-// event ID is applied instead of acknowledged as a duplicate of something that never happened.
-type retryableReplay struct {
-	syncauth.Replay
-	mu    sync.Mutex
-	retry map[string]bool
+// kypostReplay is the KyPost replay guard: an event ID is refused for syncauth's window after it was
+// recorded (or after its signed time, if later). forget releases an ID that was verified but not
+// acted on (rate limited, or a failure KyPost retries), so KyPost's retry under the same ID is
+// applied, and then recorded afresh, instead of answered as a duplicate.
+type kypostReplay struct {
+	mu   sync.Mutex
+	seen map[string]time.Time
 }
 
-func (g *retryableReplay) Check(id string, at time.Time) error {
+const kypostReplayMax = 100000
+
+func (g *kypostReplay) Check(id string, at time.Time) error {
 	g.mu.Lock()
-	again := g.retry[id]
-	delete(g.retry, id)
-	g.mu.Unlock()
-	if again {
-		return nil
+	defer g.mu.Unlock()
+	now := time.Now()
+	if t, ok := g.seen[id]; ok && now.Sub(t) < syncauth.DefaultWindow {
+		return syncauth.ErrReplay
 	}
-	return g.Replay.Check(id, at)
+	if len(g.seen) >= kypostReplayMax {
+		for k, t := range g.seen {
+			if now.Sub(t) >= syncauth.DefaultWindow {
+				delete(g.seen, k)
+			}
+		}
+		if len(g.seen) >= kypostReplayMax {
+			return syncauth.ErrReplayGuardFull
+		}
+	}
+	if at.After(now) {
+		now = at
+	}
+	g.seen[id] = now
+	return nil
+}
+
+func (g *kypostReplay) forget(id string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.seen, id)
 }
 
 // retryKyPost lets KyPost's retry of r's event through the replay guard.
 func (s *Server) retryKyPost(r *http.Request) {
-	g, ok := s.kypostReplay.(*retryableReplay)
-	if !ok {
-		return
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if len(g.retry) < 10000 {
-		g.retry[syncauth.FromRequest(r).EventID] = true
+	if g, ok := s.kypostReplay.(*kypostReplay); ok {
+		g.forget(syncauth.FromRequest(r).EventID)
 	}
 }
 

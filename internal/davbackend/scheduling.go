@@ -250,9 +250,9 @@ func (s *Scheduler) writable(ctx context.Context, u *store.User) ([]*store.Calen
 	return out, nil
 }
 
-// find is u's object with uid whose ORGANIZER is org, in a calendar u can edit. An attendee's copy
-// (org is not u) is looked for in u's personal calendars only: in a group calendar that object is
-// the organizer's own, shared with u.
+// find is u's object with uid whose ORGANIZER is org, in a calendar u can edit. Looking for an
+// attendee's copy (org is not u), a group calendar the organizer can also edit is skipped: an
+// object there is the organizer's own, shared with u, not u's copy.
 func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org itip.Address) (*store.Calendar, *store.CalendarObject, *ical.Calendar, error) {
 	cals, err := s.writable(ctx, u)
 	if err != nil {
@@ -261,7 +261,13 @@ func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org iti
 	self, _ := address(u)
 	for _, c := range cals {
 		if org != self && c.OwnerKind != ownerUser {
-			continue
+			shared, err := s.organizerEdits(ctx, org, c)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if shared {
+				continue
+			}
 		}
 		o, err := s.Store.Calendars().GetObjectByUID(ctx, c.ID, uid)
 		if errors.Is(err, store.ErrNotFound) {
@@ -280,6 +286,22 @@ func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org iti
 		return c, o, cal, nil
 	}
 	return nil, nil, nil, store.ErrNotFound
+}
+
+// organizerEdits reports whether org is a user on this instance who can edit events in c.
+func (s *Scheduler) organizerEdits(ctx context.Context, org itip.Address, c *store.Calendar) (bool, error) {
+	ou, err := s.Store.Users().CalendarUser(ctx, org.Email())
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	grants, err := s.Store.Calendars().UserGrants(ctx, ou.ID)
+	if err != nil {
+		return false, err
+	}
+	return access.CanEditEvents(c, access.Resolve(ou, c, grants)), nil
 }
 
 func (s *Scheduler) put(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, ifMatch string, create bool) error {
@@ -354,7 +376,7 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil {
 		return err
 	}
-	addOverrides(stored, msg)
+	addOverrides(stored, msg, from)
 	changed, err := itip.ApplyReply(stored, msg, from)
 	if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) || errors.Is(err, itip.ErrInvalid) {
 		return errPermanent{"not_attendee"}
@@ -365,21 +387,49 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	return s.put(ctx, c, o.Name, stored, o.ETag, false)
 }
 
-// addOverrides gives stored, an organizer's series, an override for each occurrence reply answers
-// that stored holds only through its master, so an answer to one occurrence has somewhere to land
-// (RFC 5546 3.2.3). A RECURRENCE-ID that is not an occurrence of the series adds nothing, and
-// ApplyReply then ignores it.
-func addOverrides(stored, reply *ical.Calendar) {
-	have := map[string]bool{}
-	for _, c := range stored.Children {
-		if p := c.Props.Get(ical.PropRecurrenceID); c.Name == ical.CompEvent && p != nil {
-			have[p.Value] = true
-		}
+// maxReplyOverrides caps the overrides one REPLY may add to an organizer's object.
+const maxReplyOverrides = 20
+
+// addOverrides readies stored, an organizer's series, for sender's reply. A reply component naming
+// an occurrence gets its RECURRENCE-ID written as the object's override for that occurrence has it,
+// and when the object holds that occurrence only through its master, and sender (an attendee of
+// the series) answers it differently from the series, the override is added first (RFC 5546
+// 3.2.3), at most maxReplyOverrides per reply. ApplyReply then records the answer there.
+func addOverrides(stored, reply *ical.Calendar, sender itip.Address) {
+	m, err := calendar.Master(stored)
+	if err != nil {
+		return
 	}
+	answerOf := func(c *ical.Component) string {
+		for _, a := range itip.AttendeesOf(c) {
+			if a.Address == sender {
+				return a.Status
+			}
+		}
+		return ""
+	}
+	series := answerOf(m)
+	have := overridesOf(stored)
+	added := 0
 	for _, c := range reply.Children {
-		if p := c.Props.Get(ical.PropRecurrenceID); c.Name == ical.CompEvent && p != nil && !have[p.Value] {
-			have[p.Value] = true
-			_, _ = calendar.AddOverride(stored, p.Value)
+		rid := c.Props.Get(ical.PropRecurrenceID)
+		if c.Name != ical.CompEvent || rid == nil {
+			continue
+		}
+		key, ok := calendar.OccurrenceKey(stored, rid)
+		if !ok {
+			continue
+		}
+		o := have[key]
+		if ps := answerOf(c); o == nil && series != "" && ps != "" && ps != series && added < maxReplyOverrides {
+			if o, err = calendar.AddOverride(stored, key); err != nil {
+				continue
+			}
+			have[key] = o
+			added++
+		}
+		if o != nil {
+			sameOccurrence(c, o)
 		}
 	}
 }

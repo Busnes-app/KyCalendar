@@ -533,3 +533,20 @@ func TestEditAllMoveKeepsTheLastOccurrenceBeforeUntil(t *testing.T) {
 		t.Fatalf("after moving an hour later: %s\n%s", got, encode(t, cal))
 	}
 }
+
+// Moving a series to an earlier date across a DST change keeps the same end date and every
+// occurrence up to it.
+func TestEditAllMoveAcrossDSTKeepsTheEndDate(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261026T090000\nDTEND;TZID=Europe/Berlin:20261026T100000\nRRULE:FREQ=WEEKLY;UNTIL=20261116T080000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 10, 19, 10, 0, 0, 0, berlin), End: time.Date(2026, 10, 19, 11, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, _ := roundTrip(t, cal)
+	got := starts(t, back, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
+	if want := "2026-10-19T10:00,2026-10-26T10:00,2026-11-02T10:00,2026-11-09T10:00,2026-11-16T10:00"; got != want {
+		t.Fatalf("got %s, want %s\n%s", got, want, encode(t, cal))
+	}
+}
