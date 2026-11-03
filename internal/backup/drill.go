@@ -273,11 +273,7 @@ func DrillRoot(cfg *config.Config) string { return filepath.Join(cfg.Database.Da
 
 func installerCredentialCheck(dir string, required []string) recoveryclient.Check {
 	c := recoveryclient.Check{Name: "Installer Credentials"}
-	u := url.URL{Scheme: "file", Path: filepath.Join(dir, "data", "kycalendar.db")}
-	q := u.Query()
-	q.Set("mode", "ro")
-	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
+	db, err := openReadOnly(filepath.Join(dir, DatabaseMember))
 	if err != nil {
 		c.Message = "Cannot inspect restored database"
 		return c
