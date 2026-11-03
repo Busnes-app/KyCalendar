@@ -35,7 +35,7 @@ function message(e: unknown, fallback: string): string {
 export function EventDialog({ calendars, event, initial, onDone, onClose, scheduling = false, me = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
-  const [scope, setScope] = useState<'this' | 'all'>(choose || !event ? 'this' : 'all');
+  const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
   const [form, setForm] = useState<FormState>(() => (event && !choose ? formFromEvent(event, 'all') : initial));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
