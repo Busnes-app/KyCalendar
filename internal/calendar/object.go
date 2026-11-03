@@ -184,6 +184,9 @@ func ruleLast(comp *ical.Component, start time.Time, budget *int) (last time.Tim
 	if err != nil || opt == nil {
 		return time.Time{}, false
 	}
+	if u, ok := zonedUntil(*comp.Props.Get(ical.PropRecurrenceRule), start.Location(), false); ok {
+		opt.Until = u // as Expand reads it
+	}
 	limit := start.Add(horizon)
 	cut := false
 	switch {
