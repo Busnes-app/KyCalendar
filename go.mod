@@ -10,9 +10,9 @@ require (
 	github.com/elimity-com/scim v0.0.0-20260728105928-2641426a1539
 	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 	github.com/emersion/go-webdav v0.7.0
-	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 v4.1.7
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/scim2/filter-parser/v2 v2.3.1
 	github.com/teambition/rrule-go v1.8.2
@@ -26,7 +26,7 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/q-uint/parser v0.3.1 // indirect
