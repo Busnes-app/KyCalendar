@@ -77,9 +77,6 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		if err != nil {
 			return "", err
 		}
-		if addOverrides(stored, msg, from) != nil {
-			return InboundIgnored, nil
-		}
 		changed, err := itip.ApplyReply(stored, msg, from)
 		if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) {
 			return InboundIgnored, nil

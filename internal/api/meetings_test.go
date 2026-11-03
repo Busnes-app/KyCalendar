@@ -190,8 +190,7 @@ func TestWebFreeBusyNeedsScheduling(t *testing.T) {
 }
 
 // Bob answers one occurrence of alice's weekly meeting in Berlin time from the web: his answer is
-// recorded on that occurrence in his calendar and in alice's, and every other occurrence keeps
-// the series' answer.
+// recorded on that occurrence, and every other occurrence keeps the series' answer.
 func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	srv, st, _ := setupTestServer(t)
@@ -222,7 +221,7 @@ func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 		t.Fatalf("answering one occurrence: %d %s", r.Code, r.Body.String())
 	}
 	srv.DeliverScheduled(context.Background())
-	for who, c := range map[string]*http.Cookie{"bob": bob, "alice": alice} {
+	for who, c := range map[string]*http.Cookie{"bob": bob} {
 		for i, e := range occurrences(c) {
 			status := ""
 			for _, a := range e.Attendees {

@@ -246,9 +246,6 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	applyText(m, in)
 	setRepeat(m, in.Repeat)
 	if moved {
-		if in.Repeat.Freq == "custom" && !old.floating && !old.allDay {
-			shiftUntil(m, old.start, in.Start.In(in.Zone))
-		}
 		setTimes(cal, m, in)
 		m.Props.Del(ical.PropExceptionDates)
 		m.Props.Del(ical.PropRecurrenceDates)
@@ -268,31 +265,6 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	}
 	touch(m, now)
 	return nil
-}
-
-// shiftUntil moves a kept rule's UTC UNTIL by the change in time of day from the old start to the
-// new one, on the wall clock (in the new start's zone), so a series moved later in the day or to
-// another zone keeps its last occurrence and its end date.
-func shiftUntil(m *ical.Component, from, to time.Time) {
-	p := m.Props.Get(ical.PropRecurrenceRule)
-	if p == nil || strings.Contains(strings.ToUpper(p.Value), "BYHOUR") || strings.Contains(strings.ToUpper(p.Value), "BYMINUTE") || strings.Contains(strings.ToUpper(p.Value), "BYSECOND") {
-		return // occurrences keep the rule's own clock, not DTSTART's
-	}
-	clock := func(t time.Time) int { h, mi, s := t.Clock(); return h*3600 + mi*60 + s }
-	by := clock(to) - clock(from)
-	if by == 0 && from.Location().String() == to.Location().String() {
-		return
-	}
-	parts := strings.Split(p.Value, ";")
-	for i, part := range parts {
-		k, v, _ := strings.Cut(part, "=")
-		if t, err := time.Parse("20060102T150405Z", v); err == nil && strings.EqualFold(k, "UNTIL") {
-			w := t.In(from.Location())
-			moved := time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second()+by, 0, to.Location())
-			parts[i] = k + "=" + moved.UTC().Format("20060102T150405Z")
-		}
-	}
-	setRaw(m, ical.PropRecurrenceRule, strings.Join(parts, ";"))
 }
 
 // occurrenceProp names an occurrence (RECURRENCE-ID or EXDATE) in the form of the master's
