@@ -17,6 +17,9 @@ func SetRecoveryClientForTest(s *Server, p recoveryClient) { s.recovery = p }
 // SetStoreForTest replaces the handlers' store, so a test can break one write. Test-only.
 func SetStoreForTest(s *Server, st store.Store) { s.store = st }
 
+// MaxConcurrentImportsForTest is the server-wide cap on running CSV imports.
+const MaxConcurrentImportsForTest = maxConcurrentImports
+
 // AttemptsCapForTest is the limiter's hard bound on distinct keys.
 const AttemptsCapForTest = attemptsCap
 
