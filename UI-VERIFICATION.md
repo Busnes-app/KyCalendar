@@ -79,3 +79,8 @@ KyCalendar gained an Appearance page for both roles (Match system plus the 22-th
 The suite app rail (ky-ui 0.9.0) in the sidebar foot and, on phones, above the licence line, before (main at `0f83e33`) and after, in OS light and dark at 1440×900 and 390×844 CSS pixels: [docs/screenshots/app-rail/](docs/screenshots/app-rail/) (`before-*` and `after-*`).
 
 Capture conditions: each build on disposable SQLite data, real sign-in as the local everyday user `walter`, production CSP (no violations; every mark loaded). A local account gets an empty list, so for the after captures the browser answered `GET /api/suite/apps` with six fictional apps (KyIdentity, KyPost, KyCalendar, KyDrive, KyNotes, KyMessages); the server side is covered by `internal/api/suite_apps_internal_test.go`. Exactly one rail was visible at each width. With six apps the desktop rail wraps to two rows and the calendar list's first row scrolls under the sidebar fade at 1440×900.
+
+## Stale tab after an upgrade — 2026-11-02
+
+The ky-ui update notice ("<app> was updated. Reload to use the new version.", Reload and Dismiss) is started from `web/src/main.tsx`; the entry document is never reused from a cache. Not captured in this repository: the notice is the shared ky-ui component, captured end to end (a real server upgrade under an open tab, 1440×900, Busnes Light and Dark) in KyIdentity and KyPost (`docs/ui-stale-tab-2026-11-02/`), and checked by ky-ui's `browser/update.spec.js` under a strict CSP at 390 and 1280 px. `check-vendor.mjs` passes and the web tests and build pass with Node 26.12.1.
+
