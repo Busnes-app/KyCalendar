@@ -185,6 +185,9 @@ func Outgoing(self Address, oldCal, newCal *ical.Calendar, now time.Time) ([]Mes
 	}
 	org, ok := Organizer(cur)
 	if !ok {
+		if before, had := Organizer(oldCal); had && before == self && newCal != nil {
+			return organizerMessages(self, oldCal, nil) // the organizer removed everyone: no longer a meeting
+		}
 		return nil, nil
 	}
 	if org == self {

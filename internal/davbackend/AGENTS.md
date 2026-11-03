@@ -18,10 +18,12 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
   - A user's calendar user address is `mailto:` plus their email. A writer with no email, or an administrator, schedules nothing.
   - When the stored bytes differ from the PUT body, CalDAV returns no ETag so the client refetches. The JSON API still returns the stored ETag.
   - `DeliverDue` (`cmd/server`, every 5 s) resolves each recipient with `store.CalendarUser` at delivery time. Internal recipients:
-    - REQUEST writes `itip.AttendeeCopy` into their existing copy, or a new object `<hex of the UID hash>.ics` in their default calendar.
-    - CANCEL marks their copy `STATUS:CANCELLED` and keeps it.
-    - REPLY runs `itip.ApplyReply` on the organizer's object.
-    - Copies are looked up across personal non-subscribed event calendars and group calendars the user can edit, and are written against their ETag.
+    - REQUEST writes `itip.AttendeeCopy` into their existing copy, or a new object `<hex of the UID hash>.ics` in their default calendar (their first personal event calendar when `default` is gone or holds no events).
+    - CANCEL marks their copy `STATUS:CANCELLED` and keeps it, alarms as they were.
+    - A REQUEST or CANCEL whose master SEQUENCE is below the copy's master is an older version arriving late and changes nothing.
+    - A REQUEST or CANCEL with only RECURRENCE-ID components (and a copy with a master) is about those occurrences: a REQUEST replaces or adds their overrides, a CANCEL marks them cancelled (adding the override when needed). The master and other overrides stay. The same rules apply to `Inbound`.
+    - REPLY runs `itip.ApplyReply` on the organizer's object, after adding an override (`calendar.AddOverride`) for each occurrence the reply answers that the object holds only through its master.
+    - An attendee's copy is looked up in their personal non-subscribed event calendars only: in a group calendar the object with that UID is the organizer's own. The organizer's object (for a REPLY) is looked up there and in group calendars the organizer can edit. Writes go against the ETag.
   - Delivery checks:
     - a message whose ORGANIZER is not its sender (REQUEST, CANCEL), or not its recipient (REPLY), fails;
     - so does one meeting an existing object with that UID and another ORGANIZER (`uid_taken`), so no internal user can overwrite another's event by reusing its UID.

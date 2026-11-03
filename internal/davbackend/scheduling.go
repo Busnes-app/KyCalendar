@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -249,13 +250,19 @@ func (s *Scheduler) writable(ctx context.Context, u *store.User) ([]*store.Calen
 	return out, nil
 }
 
-// find is u's object with uid whose ORGANIZER is org, in a calendar u can edit.
+// find is u's object with uid whose ORGANIZER is org, in a calendar u can edit. An attendee's copy
+// (org is not u) is looked for in u's personal calendars only: in a group calendar that object is
+// the organizer's own, shared with u.
 func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org itip.Address) (*store.Calendar, *store.CalendarObject, *ical.Calendar, error) {
 	cals, err := s.writable(ctx, u)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	self, _ := address(u)
 	for _, c := range cals {
+		if org != self && c.OwnerKind != ownerUser {
+			continue
+		}
 		o, err := s.Store.Calendars().GetObjectByUID(ctx, c.ID, uid)
 		if errors.Is(err, store.ErrNotFound) {
 			continue
@@ -300,7 +307,7 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		if method == itip.MethodCancel {
 			return nil // nothing to cancel
 		}
-		def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
+		def, err := s.inviteCalendar(ctx, u)
 		if err != nil {
 			return err
 		}
@@ -316,6 +323,28 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 	return s.deliverInto(ctx, c, o, existing, self, method, msg)
 }
 
+// inviteCalendar is where a new invitation lands: the user's default calendar, or their first
+// personal event calendar when they deleted it or it holds no events.
+func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.Calendar, error) {
+	def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
+	if err == nil && !def.Subscribed && def.Holds(ical.CompEvent) {
+		return def, nil
+	}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	cals, err := s.writable(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range cals {
+		if c.OwnerKind == ownerUser {
+			return c, nil
+		}
+	}
+	return nil, errPermanent{"no_calendar"}
+}
+
 // deliverReply records an internal attendee's answer on the organizer's object.
 func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, self itip.Address, uid string, from itip.Address, msg *ical.Calendar) error {
 	c, o, stored, err := s.find(ctx, organizer, uid, self)
@@ -325,6 +354,7 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil {
 		return err
 	}
+	addOverrides(stored, msg)
 	changed, err := itip.ApplyReply(stored, msg, from)
 	if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) || errors.Is(err, itip.ErrInvalid) {
 		return errPermanent{"not_attendee"}
@@ -333,4 +363,23 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 		return err
 	}
 	return s.put(ctx, c, o.Name, stored, o.ETag, false)
+}
+
+// addOverrides gives stored, an organizer's series, an override for each occurrence reply answers
+// that stored holds only through its master, so an answer to one occurrence has somewhere to land
+// (RFC 5546 3.2.3). A RECURRENCE-ID that is not an occurrence of the series adds nothing, and
+// ApplyReply then ignores it.
+func addOverrides(stored, reply *ical.Calendar) {
+	have := map[string]bool{}
+	for _, c := range stored.Children {
+		if p := c.Props.Get(ical.PropRecurrenceID); c.Name == ical.CompEvent && p != nil {
+			have[p.Value] = true
+		}
+	}
+	for _, c := range reply.Children {
+		if p := c.Props.Get(ical.PropRecurrenceID); c.Name == ical.CompEvent && p != nil && !have[p.Value] {
+			have[p.Value] = true
+			_, _ = calendar.AddOverride(stored, p.Value)
+		}
+	}
 }

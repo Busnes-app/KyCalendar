@@ -77,6 +77,7 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		if err != nil {
 			return "", err
 		}
+		addOverrides(stored, msg)
 		changed, err := itip.ApplyReply(stored, msg, from)
 		if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) {
 			return InboundIgnored, nil
@@ -110,22 +111,102 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 
 // deliverInto writes an organizer's REQUEST or CANCEL over an attendee's existing copy.
 func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store.CalendarObject, existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) error {
-	src := msg
-	if method == itip.MethodCancel {
-		src = existing
+	if rids := occurrencesOnly(msg); rids != nil {
+		if _, err := calendar.Master(existing); err == nil {
+			next, err := deliverOccurrences(existing, self, method, msg, rids)
+			if err != nil {
+				return errPermanent{"invalid_object"}
+			}
+			return s.put(ctx, c, o.Name, next, o.ETag, false)
+		}
 	}
-	next, err := itip.AttendeeCopy(src, existing, self)
-	if err != nil {
-		return errPermanent{"invalid_object"}
+	if m, err := calendar.Master(msg); err == nil {
+		if e, err := calendar.Master(existing); err == nil && sequenceOf(m) < sequenceOf(e) {
+			return nil // an older version of the meeting arriving after a newer one (RFC 5546 2.1.5)
+		}
 	}
 	if method == itip.MethodCancel {
-		for _, ev := range next.Children {
+		for _, ev := range existing.Children {
 			if ev.Name == ical.CompEvent {
 				ev.Props.SetText(ical.PropStatus, "CANCELLED")
 			}
 		}
+		return s.put(ctx, c, o.Name, existing, o.ETag, false)
+	}
+	next, err := itip.AttendeeCopy(msg, existing, self)
+	if err != nil {
+		return errPermanent{"invalid_object"}
 	}
 	return s.put(ctx, c, o.Name, next, o.ETag, false)
+}
+
+func sequenceOf(c *ical.Component) int {
+	n := 0
+	if p := c.Props.Get(ical.PropSequence); p != nil {
+		n, _ = p.Int()
+	}
+	return n
+}
+
+// occurrencesOnly is the RECURRENCE-ID of every VEVENT in msg when each has one: a message about
+// some occurrences of a series, not the series. nil otherwise.
+func occurrencesOnly(msg *ical.Calendar) map[string]bool {
+	rids := map[string]bool{}
+	for _, c := range msg.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		p := c.Props.Get(ical.PropRecurrenceID)
+		if p == nil {
+			return nil
+		}
+		rids[p.Value] = true
+	}
+	if len(rids) == 0 {
+		return nil
+	}
+	return rids
+}
+
+// deliverOccurrences applies an organizer's message about single occurrences to the attendee's copy
+// of the series: a REQUEST replaces or adds those overrides, a CANCEL marks those occurrences
+// cancelled. The master and every other override stay as they are.
+func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, rids map[string]bool) (*ical.Calendar, error) {
+	if method == itip.MethodCancel {
+		for rid := range rids {
+			if o, err := calendar.AddOverride(existing, rid); err == nil { // else not an occurrence here
+				o.Props.SetText(ical.PropStatus, "CANCELLED")
+			}
+		}
+		return existing, nil
+	}
+	// Answers and alarms carry over from the overrides being replaced, judged against them alone.
+	before := ical.NewCalendar()
+	kept := existing.Children[:0:0]
+	for _, ev := range existing.Children {
+		if p := ev.Props.Get(ical.PropRecurrenceID); ev.Name == ical.CompEvent && p != nil && rids[p.Value] {
+			before.Children = append(before.Children, ev)
+			continue
+		}
+		kept = append(kept, ev)
+	}
+	next, err := itip.AttendeeCopy(msg, before, self)
+	if err != nil {
+		return nil, err
+	}
+	zones := map[string]bool{}
+	for _, c := range kept {
+		if id, _ := c.Props.Text(ical.PropTimezoneID); c.Name == ical.CompTimezone {
+			zones[id] = true
+		}
+	}
+	for _, c := range next.Children {
+		if id, _ := c.Props.Text(ical.PropTimezoneID); c.Name == ical.CompEvent || c.Name == ical.CompTimezone && !zones[id] {
+			kept = append(kept, c)
+		}
+	}
+	existing.Children = kept
+	return existing, nil
 }
 
 // Respond records u's answer from a KyPost RSVP card to invite, the invitation as mailed. The
