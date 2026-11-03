@@ -381,6 +381,13 @@ Spec `docs/superpowers/specs/2026-10-15-kycalendar-ics-subscriptions-design.md`.
 - The link is a bearer secret: sealed under a derived key, never returned, logged or audited (the host only).
 - The server fetches public addresses only (`feed.RefusePrivate`, checked at dial time on every redirect hop); 10 link tries per user per 15 minutes; 10 subscriptions per user, counted in the calendar cap and the storage quota.
 
+#### CSV import contracts
+
+Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
+
+- A user imports an Outlook or Google Calendar CSV once, into a calendar they can edit events in, or into a new personal calendar created for it (the web deletes that calendar again if the import fails). Imported events are ordinary editable events. Nothing stays linked to the file.
+- Rows are written one at a time through the normal event write path (`saveEvent`, so quota and the CalDAV checks apply). The same row imported again has the same UID and is counted as a duplicate, not added twice. A quota or server failure stops the import, and earlier rows stay.
+
 #### Installer setup
 
 - Container-local `kycalendar apply-setup` uses `ky.product-setup/1` and private `<DataDir>/installer/setup.sock`; `--check` inspects without migrations, key creation or writes. First setup atomically creates exact issuer/subject accounts, immutable ownership, sign-in binding and audit under the native `local-admins`, then `user-names` locks. Existing identities and sign-in settings are refused. Activation uses the normal graceful restart and drain.
@@ -405,6 +412,7 @@ Spec `docs/superpowers/specs/2026-10-15-kycalendar-ics-subscriptions-design.md`.
 - [internal/kypost/AGENTS.md](internal/kypost/AGENTS.md): The signed KyCalendar and KyPost invitation messages, and KyCalendar's client.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
+- [internal/csvimport/AGENTS.md](internal/csvimport/AGENTS.md): Outlook and Google Calendar CSV files read into event rows for a one-time import.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 - [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.
 
