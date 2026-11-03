@@ -249,13 +249,25 @@ func (s *Scheduler) writable(ctx context.Context, u *store.User) ([]*store.Calen
 	return out, nil
 }
 
-// find is u's object with uid whose ORGANIZER is org, in a calendar u can edit.
+// find is u's object with uid whose ORGANIZER is org, in a calendar u can edit. Looking for an
+// attendee's copy (org is not u), a group calendar the organizer can also edit is skipped: an
+// object there is the organizer's own, shared with u, not u's copy.
 func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org itip.Address) (*store.Calendar, *store.CalendarObject, *ical.Calendar, error) {
 	cals, err := s.writable(ctx, u)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	self, _ := address(u)
 	for _, c := range cals {
+		if org != self && c.OwnerKind != ownerUser {
+			shared, err := s.organizerEdits(ctx, org, c)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if shared {
+				continue
+			}
+		}
 		o, err := s.Store.Calendars().GetObjectByUID(ctx, c.ID, uid)
 		if errors.Is(err, store.ErrNotFound) {
 			continue
@@ -273,6 +285,22 @@ func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org iti
 		return c, o, cal, nil
 	}
 	return nil, nil, nil, store.ErrNotFound
+}
+
+// organizerEdits reports whether org is a user on this instance who can edit events in c.
+func (s *Scheduler) organizerEdits(ctx context.Context, org itip.Address, c *store.Calendar) (bool, error) {
+	ou, err := s.Store.Users().CalendarUser(ctx, org.Email())
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	grants, err := s.Store.Calendars().UserGrants(ctx, ou.ID)
+	if err != nil {
+		return false, err
+	}
+	return access.CanEditEvents(c, access.Resolve(ou, c, grants)), nil
 }
 
 func (s *Scheduler) put(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, ifMatch string, create bool) error {
@@ -300,7 +328,7 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		if method == itip.MethodCancel {
 			return nil // nothing to cancel
 		}
-		def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
+		def, err := s.inviteCalendar(ctx, u)
 		if err != nil {
 			return err
 		}
@@ -314,6 +342,28 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		return err
 	}
 	return s.deliverInto(ctx, c, o, existing, self, method, msg)
+}
+
+// inviteCalendar is where a new invitation lands: the user's default calendar, or their first
+// personal event calendar when they deleted it or it holds no events.
+func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.Calendar, error) {
+	def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
+	if err == nil && !def.Subscribed && def.Holds(ical.CompEvent) {
+		return def, nil
+	}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	cals, err := s.writable(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range cals {
+		if c.OwnerKind == ownerUser {
+			return c, nil
+		}
+	}
+	return nil, errPermanent{"no_calendar"}
 }
 
 // deliverReply records an internal attendee's answer on the organizer's object.
@@ -334,3 +384,9 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	}
 	return s.put(ctx, c, o.Name, stored, o.ETag, false)
 }
+
+// maxNewOverrides caps the overrides one organizer message may add to an attendee's copy: each is a
+// copy of the master. A message that would add more is refused whole, so it is never half applied.
+const maxNewOverrides = 20
+
+var errTooManyOccurrences = errPermanent{"too_many_occurrences"}

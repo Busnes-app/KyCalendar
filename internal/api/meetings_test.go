@@ -188,3 +188,50 @@ func TestWebFreeBusyNeedsScheduling(t *testing.T) {
 		t.Errorf("scheduling off: %d", r.Code)
 	}
 }
+
+// Bob answers one occurrence of alice's weekly meeting in Berlin time from the web: his answer is
+// recorded on that occurrence, and every other occurrence keeps the series' answer.
+func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	body := `{"title":"Weekly","start":"2026-11-10T09:00:00+01:00","end":"2026-11-10T10:00:00+01:00","zone":"Europe/Berlin","repeat":{"freq":"weekly"},"attendees":["bob@example.com"]}`
+	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice); w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	type occ struct {
+		meetingJSON
+		RecurrenceID string `json:"recurrence_id"`
+		Start        string `json:"start"`
+	}
+	occurrences := func(c *http.Cookie) []occ {
+		t.Helper()
+		w := call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", c)
+		var evs []occ
+		if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil || len(evs) != 3 {
+			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		return evs
+	}
+	second := occurrences(bob)[1]
+	path := "/api/events/" + second.CalendarID + "/" + second.UID + "/rsvp"
+	if r := withIfMatch(t, srv, "POST", path, `{"partstat":"DECLINED","recurrence_id":"`+second.RecurrenceID+`"}`, second.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("answering one occurrence: %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	for who, c := range map[string]*http.Cookie{"bob": bob} {
+		for i, e := range occurrences(c) {
+			status := ""
+			for _, a := range e.Attendees {
+				if a.Email == "bob@example.com" {
+					status = a.Status
+				}
+			}
+			if want := map[bool]string{true: "DECLINED", false: "NEEDS-ACTION"}[i == 1]; status != want || e.Start != occurrences(bob)[i].Start {
+				t.Errorf("%s, occurrence %d (%s): bob %q, want %q", who, i, e.Start, status, want)
+			}
+		}
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/feed"
@@ -235,5 +236,40 @@ func TestSubscriptionRefusesLocalAddresses(t *testing.T) {
 	}
 	if last != http.StatusTooManyRequests {
 		t.Errorf("attempt 13: %d, want 429", last)
+	}
+}
+
+// A feed slower than the listener's WriteTimeout still gets its reply: the calendar is created
+// either way, so a lost reply would make the user subscribe twice.
+func TestSubscriptionReplyOutlivesTheWriteTimeout(t *testing.T) {
+	w := newMCPWorld(t)
+	body, err := os.ReadFile("../feed/testdata/m365.ics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slow := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		time.Sleep(700 * time.Millisecond)
+		_, _ = rw.Write(body)
+	}))
+	t.Cleanup(slow.Close)
+	pool := x509.NewCertPool()
+	pool.AddCert(slow.Certificate())
+	api.SetFeedClientForTest(w.srv, feed.NewClient(func(netip.Addr) error { return nil }, pool))
+	ts := httptest.NewUnstartedServer(w.srv)
+	ts.Config.WriteTimeout = 300 * time.Millisecond
+	ts.Start()
+	t.Cleanup(ts.Close)
+	data, _ := json.Marshal(map[string]string{"url": slow.URL + "/cal.ics", "name": "Slow"})
+	req, _ := http.NewRequest("POST", ts.URL+"/api/subscriptions", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(w.alice)
+	addCSRF(req, w.alice)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("the reply was lost: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("subscribe: %d", resp.StatusCode)
 	}
 }

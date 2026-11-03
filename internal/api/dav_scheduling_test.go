@@ -333,3 +333,91 @@ func TestSchedulingOutboxCountsAgainstQuota(t *testing.T) {
 		t.Fatalf("a small meeting: %d", code)
 	}
 }
+
+// A cancelled copy keeps the attendee's own reminders, once each.
+func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
+	w := newSchedWorld(t, true)
+	if code, _ := w.put("alice", "m-alarm.ics", meeting("m-alarm", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
+		t.Fatalf("invite PUT %d", code)
+	}
+	w.deliver()
+	bobCopy, bobObj := w.copyOf("bob", "m-alarm")
+	if bobObj == nil {
+		t.Fatal("bob got no copy")
+	}
+	alarm := "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Planning\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT"
+	r := rawDAV(t, w.ts, "PUT", "/dav/usr_bob/calendars/default/"+bobObj.Name, "bob", w.tokens["bob"], strings.Replace(bobCopy, "END:VEVENT", alarm, 1),
+		map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + bobObj.ETag + `"`})
+	if r.StatusCode != 201 && r.StatusCode != 204 {
+		t.Fatalf("bob's alarm: %d %s", r.StatusCode, readAll(r))
+	}
+	if r := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/m-alarm.ics", "alice", w.tokens["alice"], "", nil); r.StatusCode != 204 {
+		t.Fatalf("delete %d", r.StatusCode)
+	}
+	w.deliver()
+	if got, _ := w.copyOf("bob", "m-alarm"); !strings.Contains(got, "STATUS:CANCELLED") || strings.Count(got, "BEGIN:VALARM") != 1 {
+		t.Fatalf("bob's copy after the cancel:\n%s", got)
+	}
+}
+
+// Bob deleted his "default" calendar and kept another: invitations land in that one.
+func TestSchedulingInviteWithoutADefaultCalendar(t *testing.T) {
+	w := newSchedWorld(t, true)
+	ctx := context.Background()
+	def, err := w.st.Calendars().GetCalendarBySlug(ctx, "user", "usr_bob", "default")
+	if err != nil {
+		if code, _ := w.put("bob", "seed.ics", meeting("seed", "bob"), ""); code != 201 {
+			t.Fatalf("seed PUT %d", code)
+		}
+		if def, err = w.st.Calendars().GetCalendarBySlug(ctx, "user", "usr_bob", "default"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	work := &store.Calendar{ID: "cal_bob_work", OwnerKind: "user", OwnerID: "usr_bob", Slug: "work", Name: "Work"}
+	if err := w.st.Calendars().CreateCalendar(ctx, work, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.st.Calendars().DeleteCalendar(ctx, def.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := w.put("alice", "m-nodef.ics", meeting("m-nodef", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
+		t.Fatalf("invite PUT %d", code)
+	}
+	w.deliver()
+	if _, err := w.st.Calendars().GetObjectByUID(ctx, work.ID, "m-nodef"); err != nil {
+		t.Fatalf("bob's invitation did not land in his remaining calendar: %v", err)
+	}
+}
+
+// Alice's meeting lives in a group calendar bob can also edit. Bob's copy is his own: delivering to
+// him never rewrites or cancels alice's object in the shared calendar.
+func TestSchedulingLeavesAGroupCalendarMeetingAlone(t *testing.T) {
+	w := newSchedWorld(t, true)
+	team := groupCalendar(t, w.st, "Team")
+	grantRole(t, w.st, team, "manager", "usr_alice")
+	grantRole(t, w.st, team, "editor", "usr_bob")
+	path := "/dav/usr_alice/calendars/_" + team.ID + "/m-team.ics"
+	body := meeting("m-team", "alice", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com", "ATTENDEE:mailto:bob@example.com", "ATTENDEE:mailto:mallory@example.com")
+	if r := rawDAV(t, w.ts, "PUT", path, "alice", w.tokens["alice"], body, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 201 {
+		t.Fatalf("invite PUT %d", r.StatusCode)
+	}
+	w.deliver()
+	stored, err := w.st.Calendars().GetObjectByUID(context.Background(), team.ID, "m-team")
+	if err != nil || string(stored.Data) != body {
+		t.Fatalf("delivery to bob rewrote alice's object in the group calendar (%v):\n%s", err, stored.Data)
+	}
+	if got, _ := w.copyOf("bob", "m-team"); got == "" {
+		t.Fatal("bob got no copy of his own")
+	}
+	dropped := strings.Replace(body, "ATTENDEE:mailto:bob@example.com\r\n", "", 1)
+	if r := rawDAV(t, w.ts, "PUT", path, "alice", w.tokens["alice"], dropped, map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + stored.ETag + `"`}); r.StatusCode != 201 && r.StatusCode != 204 {
+		t.Fatalf("removing bob: %d %s", r.StatusCode, readAll(r))
+	}
+	w.deliver()
+	if stored, _ := w.st.Calendars().GetObjectByUID(context.Background(), team.ID, "m-team"); strings.Contains(string(stored.Data), "CANCELLED") {
+		t.Fatalf("removing bob cancelled the meeting for the whole team:\n%s", stored.Data)
+	}
+	if got, _ := w.copyOf("bob", "m-team"); !strings.Contains(got, "STATUS:CANCELLED") {
+		t.Fatalf("bob's own copy after he was removed:\n%s", got)
+	}
+}

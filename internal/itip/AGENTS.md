@@ -17,7 +17,8 @@ Delivery, queues, credentials and storage belong to their callers; nothing here 
   - **Organizer** (ORGANIZER is self):
     - REQUEST to every server-scheduled attendee on a create or when `Changed`;
     - CANCEL to removed attendees;
-    - CANCEL to all on delete.
+    - CANCEL to all on delete, and on a write that drops ORGANIZER (the last attendee removed), built
+      from the previous version so it still names the organizer.
     An answer recorded on the organizer's copy (PARTSTAT only) sends nothing.
   - **Attendee:** a REPLY to the organizer only when self's own PARTSTAT changed and ORGANIZER is
     unchanged since the previous version (so a rewritten ORGANIZER cannot aim a reply at any

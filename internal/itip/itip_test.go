@@ -414,3 +414,23 @@ func TestScheduleTag(t *testing.T) {
 		t.Error("a non-scheduling object has a tag")
 	}
 }
+
+// Removing the last invitee drops ORGANIZER with the attendees (SetAttendees with none): the
+// people who were invited must still hear the meeting is off.
+func TestRemovingEveryAttendeeCancels(t *testing.T) {
+	base := ics(t, "ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com", "ATTENDEE:mailto:bob@example.com")
+	plain := ics(t, "ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com", "ATTENDEE:mailto:bob@example.com")
+	if err := SetAttendees(plain, alice, nil); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := Outgoing(alice, base, plain, now)
+	if got := summary(msgs, err); got != "CANCEL bob@example.com" {
+		t.Fatalf("got %q", got)
+	}
+	if org, ok := Organizer(msgs[0].Calendar); !ok || org != alice {
+		t.Errorf("the CANCEL must name its organizer, got %q", org)
+	}
+	if got := summary(Outgoing(bob, base, plain, now)); got != "" {
+		t.Errorf("an attendee's copy losing ORGANIZER sends nothing, got %q", got)
+	}
+}

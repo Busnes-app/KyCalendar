@@ -404,14 +404,48 @@ func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error
 		return nil, err
 	}
 	if o == nil {
+		// The copy keeps the master's times; it takes the occurrence's own start and end.
+		ds, at, err := occurrenceProp(m, ical.PropDateTimeStart, recurrenceID)
+		if err != nil {
+			return nil, err
+		}
+		form, err := spanOf(m, time.UTC)
+		if err != nil {
+			return nil, err
+		}
 		o = cloneComp(m)
 		for _, name := range []string{ical.PropRecurrenceRule, ical.PropRecurrenceDates, ical.PropExceptionDates} {
 			o.Props.Del(name)
 		}
 		o.Props.Set(rid)
+		o.Props.Set(ds)
+		if de := m.Props.Get(ical.PropDateTimeEnd); de != nil {
+			o.Props.Set(formProp(de, ical.PropDateTimeEnd, form.endAt(at), time.UTC))
+		}
 		cal.Children = append(cal.Children, o)
 	}
 	return o, nil
+}
+
+// OccurrenceKey is the occurrence rid (a RECURRENCE-ID) names in cal's series, as a key in the
+// master's form, which AddOverride, EditOne and Expand take, whatever form rid is written in.
+func OccurrenceKey(cal *ical.Calendar, rid *ical.Prop) (string, bool) {
+	m, err := Master(cal)
+	if err != nil || rid == nil {
+		return "", false
+	}
+	form, err := spanOf(m, time.UTC)
+	if err != nil {
+		return "", false
+	}
+	return overrideKey(rid, time.UTC, &form)
+}
+
+// AddOverride returns the override of one occurrence of a series, first adding one (a copy of the
+// master without its recurrence, at the occurrence's times) when there is none. Nothing else
+// changes, SEQUENCE included.
+func AddOverride(cal *ical.Calendar, recurrenceID string) (*ical.Component, error) {
+	return overrideOf(cal, recurrenceID)
 }
 
 // TextEdit changes an event's text; a nil field keeps its value, an empty one removes it.

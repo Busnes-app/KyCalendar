@@ -101,6 +101,7 @@ func (s *Server) handleBackupDrill(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(depositWriteBudget))
 	ctx := r.Context()
 	payload, err := backup.Collect(ctx, s.config, appversion.String())
 	if errors.Is(err, backup.ErrNoDatabaseSnapshot) {
@@ -136,6 +137,7 @@ func (s *Server) handleExportCapsule(w http.ResponseWriter, r *http.Request) {
 	if !s.requireStepUp(w, r, "export a capsule") {
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(depositWriteBudget))
 	ctx := r.Context()
 	actor := s.actorID(r)
 	settings := backup.Settings(ctx, s.store.Settings())

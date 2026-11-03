@@ -15,7 +15,9 @@ kypost-server's `docs/` once written.
   A request is never accepted under another type, so one cannot be reflected back at its sender.
 - **The event ID** is stable across retries of one message (the outbox dedupe key). A verified
   replay is acknowledged (`replayed`) and not acted on again, so a retry after a lost response is
-  idempotent.
+  idempotent. An event verified but not acted on (429, or a 500 from applying it) is forgotten by
+  the guard (`internal/api` `kypostReplay`), so KyPost's retry under the same ID is applied and
+  recorded afresh for a full window.
 - **Every body** names the user as `{sub, issuer}`: their KyIdentity subject and issuer URL.
   Local accounts have none, so their external invitations fail `no_kypost_account`.
 - **`Send` outcomes:**

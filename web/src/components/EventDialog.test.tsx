@@ -43,6 +43,19 @@ describe('EventDialog', () => {
     expect((calls[0].body as { title: string }).title).toBe('Lunch');
   });
 
+  it('creates a repeating event in one step', async () => {
+    const calls = capture();
+    const onDone = vi.fn();
+    render(<EventDialog calendars={cals} initial={emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p')} onDone={onDone} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Standup' } });
+    fireEvent.change(screen.getByLabelText('Repeat'), { target: { value: 'daily' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(calls[0]).toMatchObject({ method: 'POST', url: '/api/calendars/cal_p/events' });
+    expect(calls[0].body).toMatchObject({ repeat: { freq: 'daily' } });
+    expect(calls[0].body).not.toHaveProperty('scope');
+  });
+
   it('edits one occurrence or the series, keeping a custom rule, with If-Match', async () => {
     const calls = capture();
     render(<EventDialog calendars={cals} event={recurring} initial={formFromEvent(recurring, 'this')} onDone={vi.fn()} onClose={vi.fn()} />);

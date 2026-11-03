@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/emersion/go-ical"
 
@@ -88,14 +87,17 @@ func (s *Server) handleRSVP(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, errNotInvited)
 		return
 	}
-	if b.RecurrenceID != "" {
-		// Answering one occurrence needs its own override; EditText with no change makes one.
-		if err := calendar.EditText(cal, b.RecurrenceID, calendar.TextEdit{}, time.Now()); err != nil {
+	rid := b.RecurrenceID
+	if rid != "" {
+		// Answering one occurrence needs its own override, named as the object writes it.
+		o, err := calendar.AddOverride(cal, rid)
+		if err != nil {
 			s.writeAPIError(w, editFailure(err))
 			return
 		}
+		rid = o.Props.Get(ical.PropRecurrenceID).Value
 	}
-	switch err := itip.SetPartstat(cal, b.RecurrenceID, self, b.Partstat); {
+	switch err := itip.SetPartstat(cal, rid, self, b.Partstat); {
 	case errors.Is(err, itip.ErrBadPartstat):
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Answer with ACCEPTED, TENTATIVE or DECLINED", "code": "bad_partstat"})
 		return

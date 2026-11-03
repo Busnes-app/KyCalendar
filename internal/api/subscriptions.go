@@ -53,6 +53,10 @@ func (s *Server) loadLink(w http.ResponseWriter, r *http.Request, calendarID, ra
 	return link, host, f, objs, true
 }
 
+// feedWriteBudget is how long a reply that waits on a feed may take: a fetch slot, a 20 s fetch, a
+// 5 s parse, a refresh's full minute. The listener's WriteTimeout is sized for JSON replies.
+const feedWriteBudget = 2 * time.Minute
+
 // subscribedCalendar is the caller's subscribed calendar id; anything else answers 404.
 func (s *Server) subscribedCalendar(w http.ResponseWriter, r *http.Request) (*store.Calendar, *store.Subscription) {
 	c, role := s.calendarFor(w, r, r.PathValue("id"))
@@ -72,6 +76,7 @@ func (s *Server) subscribedCalendar(w http.ResponseWriter, r *http.Request) (*st
 }
 
 func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(feedWriteBudget))
 	user := sessionUser(r.Context())
 	var b struct {
 		URL string `json:"url"`
@@ -137,6 +142,7 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 // handlePatchSubscription replaces the link, for example after the user reset it at the source.
 // The new link must load before anything changes.
 func (s *Server) handlePatchSubscription(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(feedWriteBudget))
 	c, sub := s.subscribedCalendar(w, r)
 	if c == nil {
 		return
@@ -184,6 +190,7 @@ func (s *Server) handlePatchSubscription(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleRefreshSubscription(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(feedWriteBudget))
 	c, sub := s.subscribedCalendar(w, r)
 	if c == nil {
 		return

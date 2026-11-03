@@ -475,3 +475,41 @@ END:VCALENDAR
 		t.Fatalf("a repeated delete changed the object:\n%s", after)
 	}
 }
+
+// Answering or retitling one occurrence makes an override with no time change: it must stay at
+// that occurrence's own start and end, not jump to the series' first one.
+func TestNewOverrideKeepsItsOccurrenceTimes(t *testing.T) {
+	for _, tc := range []struct{ name, start, end, rid, want string }{
+		{"utc", "DTSTART:20261110T090000Z", "DTEND:20261110T100000Z", "20261117T090000Z", "2026-11-10T09:00,2026-11-17T09:00,2026-11-24T09:00"},
+		{"tzid", "DTSTART;TZID=Europe/Berlin:20261110T090000", "DTEND;TZID=Europe/Berlin:20261110T100000", "20261117T080000Z", "2026-11-10T09:00,2026-11-17T09:00,2026-11-24T09:00"},
+		{"floating", "DTSTART:20261110T090000", "DTEND:20261110T100000", "20261117T090000", "2026-11-10T09:00,2026-11-17T09:00,2026-11-24T09:00"},
+		{"all-day", "DTSTART;VALUE=DATE:20261110", "DTEND;VALUE=DATE:20261111", "20261117", "2026-11-10T00:00,2026-11-17T00:00,2026-11-24T00:00"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+				tc.start+"\n"+tc.end+"\nRRULE:FREQ=WEEKLY;COUNT=3\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+			title := "Moved title"
+			if err := EditText(cal, tc.rid, TextEdit{Title: &title}, now); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := AddOverride(cal, "20261124"+tc.rid[8:]); err != nil {
+				t.Fatal(err)
+			}
+			back, _ := roundTrip(t, cal)
+			got, err := Expand(back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.UTC, 50)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for _, in := range got {
+				out = append(out, in.Start.Format("2006-01-02T15:04"))
+				if !in.End.After(in.Start) {
+					t.Errorf("%s ends at %s", in.RecurrenceID, in.End)
+				}
+			}
+			if s := strings.Join(out, ","); s != tc.want {
+				t.Fatalf("starts %s, want %s\n%s", s, tc.want, encode(t, cal))
+			}
+		})
+	}
+}

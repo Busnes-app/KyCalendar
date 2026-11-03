@@ -452,3 +452,23 @@ func deref(p *int64) any {
 	}
 	return *p
 }
+
+// A date or floating UNTIL on a zoned series is wall time in that zone, as Expand reads it: the
+// index must not end the series before its last occurrence.
+func TestInspectZonedUntilMatchesExpand(t *testing.T) {
+	for _, until := range []string{"20261210", "20261210T235959"} {
+		cal := decode(t, ev("DTSTART;TZID=America/New_York:20261201T200000\nDTEND;TZID=America/New_York:20261201T210000\nRRULE:FREQ=DAILY;UNTIL="+until+"\n"))
+		o, err := Inspect(cal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := Expand(cal, time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC), time.UTC, 100)
+		if err != nil || len(got) == 0 {
+			t.Fatalf("expand: %v", err)
+		}
+		lastEnd := got[len(got)-1].End.Unix()
+		if o.LastEnd == nil || *o.LastEnd < lastEnd {
+			t.Fatalf("UNTIL=%s: indexed last end %v, last expanded occurrence ends %v", until, o.LastEnd, time.Unix(lastEnd, 0).UTC())
+		}
+	}
+}

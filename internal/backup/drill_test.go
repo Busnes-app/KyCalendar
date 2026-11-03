@@ -92,6 +92,13 @@ func TestChecksPassesOnACompleteScratchDir(t *testing.T) {
 			t.Errorf("check %q failed: %s", c.Name, c.Message)
 		}
 	}
+	// The default data directory is ./data, so a drill's scratch directory is often relative.
+	t.Chdir(filepath.Dir(scratch))
+	for _, c := range backup.Checks(filepath.Base(scratch), manifestFor(payload)) {
+		if !c.Passed {
+			t.Errorf("relative scratch dir: check %q failed: %s", c.Name, c.Message)
+		}
+	}
 }
 
 func TestDrillRootIsUnderTheDataDir(t *testing.T) {
