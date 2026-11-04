@@ -50,10 +50,13 @@ func TestCalDAVSponsoredRewritePaysWriterQuota(t *testing.T) {
 		}
 		return n
 	}
+	if !strings.Contains(original, "X-KYCALENDAR-ORGANIZER-SEQUENCE:0\r\n") {
+		t.Fatal("missing original delivery binding")
+	}
 	beforeUsage := senderUsage()
 	path := "/dav/usr_bob/calendars/default/" + copy.Name
 	grown := strings.Replace(original, "END:VEVENT", "DESCRIPTION:"+strings.Repeat("g", 1000)+"\r\nEND:VEVENT", 1)
-	for _, rewrite := range []struct{ name, body string }{{"growth", grown}, {"uid", strings.ReplaceAll(original, "UID:sponsored", "UID:different")}, {"organizer", strings.ReplaceAll(original, "mailto:alice@example.com", "mailto:carol@example.com")}} {
+	for _, rewrite := range []struct{ name, body string }{{"growth", grown}, {"uid", strings.ReplaceAll(original, "UID:sponsored", "UID:different")}, {"organizer", strings.ReplaceAll(original, "mailto:alice@example.com", "mailto:carol@example.com")}, {"delivery_binding", strings.Replace(original, "X-KYCALENDAR-ORGANIZER-SEQUENCE:0", "X-KYCALENDAR-ORGANIZER-SEQUENCE:9", 1)}, {"removed_binding", strings.Replace(original, "X-KYCALENDAR-ORGANIZER-SEQUENCE:0\r\n", "", 1)}} {
 		t.Run(rewrite.name, func(t *testing.T) {
 			res := rawDAV(t, w.ts, "PUT", path, "bob", w.tokens["bob"], rewrite.body, map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + copy.ETag + `"`})
 			if res.StatusCode != http.StatusInsufficientStorage {
@@ -72,7 +75,19 @@ func TestCalDAVSponsoredRewritePaysWriterQuota(t *testing.T) {
 	if err := st.Calendars().DeleteObject(context.Background(), filled.CalendarID, filled.Name, filled.ETag); err != nil {
 		t.Fatal(err)
 	}
-	res := rawDAV(t, w.ts, "PUT", path, "bob", w.tokens["bob"], grown, map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + copy.ETag + `"`})
+	ownedMarker := strings.Replace(original, "X-KYCALENDAR-ORGANIZER-SEQUENCE:0", "X-KYCALENDAR-ORGANIZER-SEQUENCE:9", 1)
+	markerResult := rawDAV(t, w.ts, "PUT", path, "bob", w.tokens["bob"], ownedMarker, map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + copy.ETag + `"`})
+	if markerResult.StatusCode != 201 && markerResult.StatusCode != 204 {
+		t.Fatalf("writer-paid marker edit: %d %s", markerResult.StatusCode, readAll(markerResult))
+	}
+	markerCopy, err := st.Calendars().GetObject(context.Background(), copy.CalendarID, copy.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markerCopy.InvitationSender != "" || markerCopy.InvitationRecipient != "usr_bob" {
+		t.Fatal("marker rewrite not charged to its writer")
+	}
+	res := rawDAV(t, w.ts, "PUT", path, "bob", w.tokens["bob"], grown, map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + markerCopy.ETag + `"`})
 	if res.StatusCode != 201 && res.StatusCode != 204 {
 		t.Fatalf("writer with room: %d %s", res.StatusCode, readAll(res))
 	}

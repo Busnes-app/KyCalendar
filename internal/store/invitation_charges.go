@@ -6,8 +6,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/emersion/go-ical"
 )
@@ -73,7 +76,7 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 	}
 
 	// Delivery can establish sponsorship but can never prove an attendee's response.
-	if o.InvitationSender == "" || o.DeliveryID != "" || o.WriterID == "" {
+	if o.InvitationRecipient == "" || o.DeliveryID != "" || o.WriterID == "" {
 		return nil
 	}
 	before, err := ical.NewDecoder(bytes.NewReader(previous)).Decode()
@@ -87,7 +90,7 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 
 	beforeOrganizer, beforeOK := itip.Organizer(before)
 	nextOrganizer, nextOK := itip.Organizer(next)
-	identityChanged := o.UID != previousUID || beforeOK != nextOK || beforeOrganizer != nextOrganizer
+	identityChanged := o.UID != previousUID || beforeOK != nextOK || beforeOrganizer != nextOrganizer || !sameDeliveryBindings(before, next)
 	for _, ev := range next.Children {
 		if ev.Name != ical.CompEvent {
 			continue
@@ -110,6 +113,11 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 		o.InvitationAttendee = ""
 		return nil
 	}
+	// Answered copies still protect their charged attendee from another editor's replacement.
+	if o.InvitationSender == "" {
+		return nil
+	}
+
 	var email string
 	err = tx.QueryRowContext(ctx, c.q(`SELECT email FROM users u WHERE id = ? AND status = 'active' AND role = 'user'
  AND (SELECT COUNT(*) FROM users v WHERE LOWER(v.email) = LOWER(u.email) AND v.status = 'active' AND v.role = 'user') = 1`), o.WriterID).Scan(&email)
@@ -144,4 +152,41 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 		}
 	}
 	return nil
+}
+
+// Component order and the attendee's ordinary SEQUENCE do not change the server's delivery
+// binding. Compare only its marker, matched by UID and semantic occurrence identity.
+type deliveryEventID struct{ uid, recurrence, zone, valueType string }
+
+func deliveryBindings(cal *ical.Calendar) map[deliveryEventID][]string {
+	bindings := map[deliveryEventID][]string{}
+	for _, ev := range cal.Children {
+		if ev.Name != ical.CompEvent {
+			continue
+		}
+		uid, _ := ev.Props.Text(ical.PropUID)
+		id := deliveryEventID{uid: uid}
+		if rid := ev.Props.Get(ical.PropRecurrenceID); rid != nil {
+			if key, ok := calendar.OccurrenceKey(cal, rid); ok {
+				id.recurrence = key
+			} else {
+				id.recurrence = rid.Value
+				id.zone = rid.Params.Get(ical.ParamTimezoneID)
+				id.valueType = rid.Params.Get(ical.ParamValue)
+			}
+		}
+		binding := "missing:"
+		if p := ev.Props.Get("X-KYCALENDAR-ORGANIZER-SEQUENCE"); p != nil {
+			binding = "present:" + p.Value
+		}
+		bindings[id] = append(bindings[id], binding)
+	}
+	for _, values := range bindings {
+		slices.Sort(values)
+	}
+	return bindings
+}
+
+func sameDeliveryBindings(before, next *ical.Calendar) bool {
+	return maps.EqualFunc(deliveryBindings(before), deliveryBindings(next), func(a, b []string) bool { return slices.Equal(a, b) })
 }
