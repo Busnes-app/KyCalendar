@@ -555,8 +555,25 @@ func TextOf(cal *ical.Calendar, recurrenceID string) (title, location, descripti
 	return text(ical.PropSummary), text(ical.PropLocation), text(ical.PropDescription), nil
 }
 
-// DeleteOne hides one occurrence: an EXDATE on the master, and its override removed.
+// ErrLastOccurrence: DeleteOne would remove the only occurrence of an object with no master; the
+// caller deletes the object.
+var ErrLastOccurrence = errors.New("calendar: the last occurrence")
+
+// DeleteOne hides one occurrence: an EXDATE on the master, and its override removed. With no
+// master (only some occurrences) it removes that occurrence's component.
 func DeleteOne(cal *ical.Calendar, recurrenceID string, now time.Time) error {
+	if _, err := Master(cal); err != nil {
+		o, err := overrideOf(cal, recurrenceID)
+		if err != nil {
+			return err
+		}
+		rest := slices.DeleteFunc(slices.Clone(cal.Children), func(c *ical.Component) bool { return c == o })
+		if !slices.ContainsFunc(rest, func(c *ical.Component) bool { return c.Name == ical.CompEvent }) {
+			return ErrLastOccurrence
+		}
+		cal.Children = rest
+		return nil
+	}
 	m, ex, o, err := seriesOf(cal, ical.PropExceptionDates, recurrenceID)
 	if err != nil {
 		return err

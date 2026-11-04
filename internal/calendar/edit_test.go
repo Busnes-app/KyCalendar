@@ -514,7 +514,6 @@ func TestNewOverrideKeepsItsOccurrenceTimes(t *testing.T) {
 	}
 }
 
-
 // A kept rule's UTC UNTIL moves with the series: moving four weekly meetings an hour later keeps
 // all four.
 func TestEditAllMoveKeepsTheLastOccurrenceBeforeUntil(t *testing.T) {
@@ -613,5 +612,29 @@ func TestEditAllLeavesAnUntilBeforeItsDaysOccurrence(t *testing.T) {
 	back, raw := roundTrip(t, cal)
 	if got := starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)); strings.Count(got, ",") != 2 || !strings.Contains(raw, "UNTIL=20261123T000000Z") {
 		t.Fatalf("an UNTIL before its day's occurrence moved: %s\n%s", got, raw)
+	}
+}
+
+// A copy of only some occurrences (no master) edits and deletes them one by one; deleting the
+// last is ErrLastOccurrence, for the caller to delete the object.
+func TestEditAndDeleteOneWithoutAMaster(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	occ := func(day string) string {
+		return "BEGIN:VEVENT\nUID:o\nDTSTAMP:20261001T000000Z\nRECURRENCE-ID;TZID=Europe/Berlin:202611" + day + "T090000\n" +
+			"DTSTART;TZID=Europe/Berlin:202611" + day + "T090000\nDTEND;TZID=Europe/Berlin:202611" + day + "T100000\nSUMMARY:Call\nEND:VEVENT\n"
+	}
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\n"+occ("19")+occ("26")+"END:VCALENDAR\n")
+	in := EventInput{Title: "Call (moved)", Start: time.Date(2026, 11, 19, 10, 0, 0, 0, berlin), End: time.Date(2026, 11, 19, 11, 0, 0, 0, berlin), Zone: berlin}
+	if err := EditOne(cal, "20261119T080000Z", in, now); err != nil {
+		t.Fatalf("editing one occurrence: %v", err)
+	}
+	if err := DeleteOne(cal, "20261126T080000Z", now); err != nil {
+		t.Fatalf("deleting one occurrence: %v", err)
+	}
+	if raw := encode(t, cal); strings.Count(raw, "BEGIN:VEVENT") != 1 || !strings.Contains(raw, "Call (moved)") {
+		t.Fatalf("after editing 19 and deleting 26 November:\n%s", raw)
+	}
+	if err := DeleteOne(cal, "20261119T080000Z", now); !errors.Is(err, ErrLastOccurrence) {
+		t.Fatalf("deleting the last occurrence: %v", err)
 	}
 }

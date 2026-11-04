@@ -603,7 +603,23 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	switch q.Get("scope") {
+	scope := q.Get("scope")
+	if scope == "this" {
+		err := calendar.DeleteOne(cal, q.Get("recurrence_id"), time.Now())
+		switch {
+		case errors.Is(err, calendar.ErrLastOccurrence):
+			scope = "all" // the only occurrence the object holds: it goes whole
+		case err != nil:
+			s.editError(w, err)
+			return
+		default:
+			if saved, ok := s.writeEvent(w, r, c, o.Name, cal, etag, false); ok {
+				s.writeJSON(w, http.StatusOK, map[string]string{"etag": saved.ETag})
+			}
+			return
+		}
+	}
+	switch scope {
 	case "", "all":
 		err := davbackend.Delete(r.Context(), s.store, c, o.Name, etag, s.objectLimits(), s.sched.Plan(r.Context(), sessionUser(r.Context()), nil))
 		switch {
@@ -619,14 +635,6 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, http.StatusInternalServerError, "Failed to delete the event")
 		default:
 			w.WriteHeader(http.StatusNoContent)
-		}
-	case "this":
-		if err := calendar.DeleteOne(cal, q.Get("recurrence_id"), time.Now()); err != nil {
-			s.editError(w, err)
-			return
-		}
-		if saved, ok := s.writeEvent(w, r, c, o.Name, cal, etag, false); ok {
-			s.writeJSON(w, http.StatusOK, map[string]string{"etag": saved.ETag})
 		}
 	default:
 		s.writeError(w, http.StatusBadRequest, "scope must be this or all")
