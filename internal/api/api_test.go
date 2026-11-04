@@ -818,7 +818,7 @@ func TestDepositOutlivesTheRequest(t *testing.T) {
 	}
 }
 
-// Login and MFA run before a session exists, so a cross-site form could plant the attacker's
+// Login runs before a session exists, so a cross-site form could plant the attacker's
 // session; the browser's Sec-Fetch-Site header refuses it, and a same-origin browser request
 // still needs the token of its pre-session cookie.
 func TestPreSessionRoutesRefuseCrossSiteRequests(t *testing.T) {

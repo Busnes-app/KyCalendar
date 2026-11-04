@@ -316,9 +316,10 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 }
 
 // groupOrganizer is who a group calendar's meeting is cancelled as: its organizer, when they are
-// a user here who may edit c and who keeps no copy of the meeting in their own calendars. Anyone
-// who can edit c can write any ORGANIZER into it, so a meeting that is someone's own elsewhere,
-// or names someone who cannot edit c, is deleted without a message rather than cancelled as them.
+// a user here who may edit c and no other calendar they own or are granted holds the meeting.
+// Anyone who can edit c can write any ORGANIZER into it, so a meeting that is the organizer's
+// elsewhere, or names someone who cannot edit c, is deleted without a message rather than
+// cancelled as them.
 func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip.Address, uid string) *store.User {
 	u, err := s.store.Users().CalendarUser(ctx, org.Email())
 	if err != nil {
@@ -332,8 +333,18 @@ func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip
 	if err != nil {
 		return nil
 	}
+	ids := make([]string, 0, len(own)+len(grants))
 	for _, oc := range own {
-		if _, err := s.store.Calendars().GetObjectByUID(ctx, oc.ID, uid); !errors.Is(err, store.ErrNotFound) {
+		ids = append(ids, oc.ID)
+	}
+	for _, g := range grants {
+		ids = append(ids, g.CalendarID)
+	}
+	for _, id := range ids {
+		if id == c.ID {
+			continue
+		}
+		if _, err := s.store.Calendars().GetObjectByUID(ctx, id, uid); !errors.Is(err, store.ErrNotFound) {
 			return nil
 		}
 	}

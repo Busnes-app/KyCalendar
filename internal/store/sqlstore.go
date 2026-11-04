@@ -672,8 +672,8 @@ func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName strin
 	return tx.Commit()
 }
 
-// operatorReset runs update (hash, flag, time, id), turns TOTP off and revokes the user's grants
-// in one transaction.
+// operatorReset runs update (hash, flag, time, id) and revokes the user's grants in one
+// transaction.
 func (u *userStore) operatorReset(ctx context.Context, actor Actor, update, userID, newHash string) error {
 	var keys []string
 	if !actor.system {
@@ -698,10 +698,6 @@ func (u *userStore) operatorReset(ctx context.Context, actor Actor, update, user
 	}
 	if n != 1 {
 		return ErrNotFound
-	}
-	// A reset is also the way back from a lost authenticator, so it clears TOTP too.
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET totp_enabled = ?, totp_secret_enc = '', recovery_codes_hash = '[]' WHERE id = ?`), false, userID); err != nil {
-		return err
 	}
 	if err := u.revokePasswordGrants(ctx, tx, userID, "operator reset; sessions revoked", "", now); err != nil {
 		return err

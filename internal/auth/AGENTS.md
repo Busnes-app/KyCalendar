@@ -4,7 +4,7 @@
 Manages user authentication, password policies, session token lifecycle, and anti-abuse CAPTCHA (Proof-of-Work default).
 
 ## Ownership
-Owns session issuance and verification and client-side PoW verification. There is no local MFA: a second factor is KyIdentity's. The users table keeps its TOTP and recovery-code columns, unread.
+Owns session issuance and verification and client-side PoW verification. There is no local MFA: a second factor is KyIdentity's. The users table keeps its TOTP and recovery-code columns and data, no longer acted on.
 
 ## Local Contracts
 - Sessions for `must_change_password` users authenticate only GET `/api/auth/me` and POST `/api/auth/change-password` or `/api/auth/logout`; private settings and product actions fail closed. Session issuance is bound to the verified password hash and serialized with replacement.

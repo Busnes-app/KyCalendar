@@ -71,6 +71,7 @@ type Server struct {
 	attempts     map[string]attemptWindow
 	accounts     map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
 	davFails     davFailures
+	unknownAudit unknownAuthAudit // dav_auth.go
 	powSpent     auth.PoWSpent
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this

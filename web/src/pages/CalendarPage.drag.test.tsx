@@ -192,6 +192,23 @@ describe('drag', () => {
     expect(puts).toHaveLength(0);
   });
 
+  // An occurrence moved earlier (11:00 in a 09:00 series) still shifts the series by the drag.
+  it('moves a series by dragging an occurrence that was moved before', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const ev: EventInfo = { ...series, zone: 'Europe/Berlin', start: '2026-10-14T09:00:00Z', end: '2026-10-14T10:00:00Z', series_start: '2026-10-07T07:00:00Z', series_end: '2026-10-07T08:00:00Z' };
+    fire('eventDrop', {
+      event: { start: new Date(Date.UTC(2026, 9, 14, 10)), end: new Date(Date.UTC(2026, 9, 14, 11)), allDay: false, extendedProps: { info: ev } },
+      oldEvent: { start: new Date(ev.start), end: new Date(ev.end), allDay: false },
+      delta: dayDelta(0, 3600_000),
+      revert: vi.fn(),
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body.start).toBe('2026-10-07T08:00:00.000Z');
+  });
+
   it('shifts an all-day series by whole days without an off-by-one', async () => {
     const puts = setup();
     render(<CalendarPage />);

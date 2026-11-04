@@ -25,8 +25,8 @@ func payloadConfig(t *testing.T) (*config.Config, []byte) {
 	return cfg, cfg.Security.EncryptionKey
 }
 
-// The encryption key must ride in the capsule: users.totp_secret_enc is AES-GCM under it, so
-// a restore without it hands the operator a database whose MFA secrets are gone for good.
+// The encryption key must ride in the capsule: the sealed secrets (sign-in client secret,
+// KyRecovery token) are AES-GCM under it, so a restore without it loses them for good.
 func TestCollectCarriesTheEncryptionKey(t *testing.T) {
 	cfg, key := payloadConfig(t)
 	payload, err := backup.Collect(context.Background(), cfg, "1.0.0")

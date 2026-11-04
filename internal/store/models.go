@@ -21,7 +21,7 @@ type User struct {
 	// creation only: UpdateUser never writes it.
 	SSOIssuer          string     `json:"-"`
 	TOTPSecretEnc      string     `json:"-"` // AES-256-GCM encrypted
-	TOTPEnabled        bool       `json:"totp_enabled"`
+	TOTPEnabled        bool       `json:"-"`
 	TOTPLastCounter    int64      `json:"-"` // last RFC 6238 counter accepted; refuses replay inside the skew window
 	RecoveryCodesHash  string     `json:"-"` // JSON array of sha256 hashes
 	PushDeviceID       string     `json:"push_device_id,omitempty"`

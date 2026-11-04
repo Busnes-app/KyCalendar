@@ -251,7 +251,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 - `init-admin [-username <name>]` makes the named local account a break-glass admin (created if absent, promoted and reactivated if present) and resets its password; password from stdin, never argv (a `-password` flag is refused).
 - `create-user` makes a local everyday account (password from stdin, forced change at first sign-in); it refuses an existing name.
-- `rename-user -username <name> -to <new>` renames a local account (exact name; SSO accounts, taken names and case twins refused), keeping password, role, MFA and sessions; audited `user.renamed`. Use it when an IdP username collides with a local one.
+- `rename-user -username <name> -to <new>` renames a local account (exact name; SSO accounts, taken names and case twins refused), keeping password, role and sessions; audited `user.renamed`. Use it when an IdP username collides with a local one.
 - `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
 
 - Deployment defaults: the image runs as UID/GID 10001 and sets `KY_HOST=0.0.0.0`; `docker-compose.yml` runs it `read_only` (tmpfs `/tmp`), `cap_drop: [ALL]`, `no-new-privileges`, and publishes `${KY_BIND_ADDRESS:-127.0.0.1}:8080`. The image embeds the committed `web/dist` (no frontend build stage) and pins base images by digest. `TestComposeAndImageAreHardenedByDefault` pins these. Host bind mounts `./data` and `./backups` must be owned by 10001 (README).

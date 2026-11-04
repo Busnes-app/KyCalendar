@@ -548,6 +548,54 @@ func TestDeletingAGroupCalendarCancelsOnlyItsOrganizersMeetings(t *testing.T) {
 	}
 }
 
+// The same forgery of a meeting alice organizes from another group calendar: deleting the
+// calendar mallory wrote it into still cancels nothing of alice's.
+func TestDeletingAGroupCalendarSparesAMeetingOfAnotherGroupCalendar(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	webUser(t, srv, st, "mallory")
+	home, doomed := groupCalendar(t, st, "Home"), groupCalendar(t, st, "Doomed")
+	grantRole(t, st, home, "editor", "usr_alice")
+	grantRole(t, st, doomed, "editor", "usr_alice")
+	if err := st.Groups().AddGroupMember(ctx, "grp_editor_"+doomed.ID, "usr_mallory"); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+home.ID+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(ctx)
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:" + made.UID + "\r\nDTSTAMP:20301101T000000Z\r\n" +
+		"DTSTART:20301110T090000Z\r\nDTEND:20301110T100000Z\r\nSEQUENCE:9\r\nSUMMARY:Sync\r\nORGANIZER:mailto:alice@example.com\r\n" +
+		"ATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(doomed.ID, "forged.ics", cal, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Calendars().PutObject(ctx, o, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+doomed.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
+	if !strings.Contains(w.Body.String(), made.UID) || strings.Contains(w.Body.String(), `"cancelled":true`) {
+		t.Fatalf("bob's copy of alice's group meeting after the forged copy's calendar went: %s", w.Body.String())
+	}
+}
+
 // A subscription's mirrored meetings are someone else's: deleting the subscription sends nothing
 // and still works with scheduling on.
 func TestDeletingASubscriptionWithMeetings(t *testing.T) {

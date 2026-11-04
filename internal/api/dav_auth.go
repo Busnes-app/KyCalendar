@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +19,32 @@ const (
 	davFailsPerUser = 50
 	davFailKeysCap  = 10000
 )
+
+// unknownAuthAudit bounds the audit rows anyone can write with no credential at all: a failed
+// app-password sign-in naming no real token ID. Rows are kept a year, and the SQLite database
+// travels as one capsule member capped at 64 MiB, so an unbounded flood of guesses from many
+// addresses would stop every backup. 200 a day is at most a few MiB a year; the rest are logged.
+type unknownAuthAudit struct {
+	mu  sync.Mutex
+	day int64
+	n   int
+}
+
+const unknownAuthAuditsPerDay = 200
+
+// admit reports whether one more such row may be written today.
+func (a *unknownAuthAudit) admit(now time.Time) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if day := now.Unix() / 86400; day != a.day {
+		a.day, a.n = day, 0
+	}
+	a.n++
+	if a.n == unknownAuthAuditsPerDay+1 {
+		log.Printf("[AUTH] more than %d failed app-password sign-ins without a known token today; no more are audited until 00:00 UTC", unknownAuthAuditsPerDay)
+	}
+	return a.n <= unknownAuthAuditsPerDay
+}
 
 // davFailures counts failed DAV logins per key; successes never count, so syncing phones are not throttled.
 type davFailures struct {
@@ -120,7 +147,7 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 				s.davFails.fail("user:"+user.ID, now)
 			}
 			// Not shaped like an app password (an account password, a probe): no row to flood with.
-			if parsed {
+			if parsed && (user != nil || s.unknownAudit.admit(now)) {
 				_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: resource, IPAddress: s.requestIP(r)})
 			}
 			davChallenge(w)

@@ -97,7 +97,7 @@ type UserStore interface {
 	// makes it an administrator.
 	ResetAdminPassword(ctx context.Context, userID, newHash string) error
 	// ResetPassword is the operator reset for any local account: new hash, forced change,
-	// TOTP off, grants revoked. Role and status are untouched. Not local or missing: ErrNotFound.
+	// grants revoked. Role and status are untouched. Not local or missing: ErrNotFound.
 	// An actor no longer an active administrator with a live session: ErrActorRevoked.
 	ResetPassword(ctx context.Context, actor Actor, userID, newHash string) error
 	// RenameUser changes only a local account's username and audits it as actor in one
