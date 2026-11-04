@@ -177,12 +177,12 @@ Restored 4 files from capsule cap-kycalendar-1788605720094118543
 
 Then it resets the restored database in one transaction, with no further input: sessions,
 MFA challenges and app passwords are deleted, invitations still queued in the backup are
-dropped (they describe the calendar as it was), a new sync epoch is written and
-`system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
+dropped (they describe the calendar as it was), scheduled backups are turned off, a new sync
+epoch is written and `system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
 deals with them. It ends with:
 
 ```
-✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
+✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written; scheduled backups turned off. Every user creates new app passwords; CalDAV clients resync. Turn the backup schedule back on once this server is the one in service.
 ```
 
 If the reset fails, the files are in place but the credentials are still the backup's. The
@@ -329,7 +329,9 @@ reset-password -username <name>`), and only then start.
 2. Open Backup & recovery. If the backup had a key, the recovery key shows as pinned with the
    same key ID as before; compare it with the ceremony card. If the backup was paired, the
    sealed token came across in the database, so the restored server can deposit again
-   without re-pairing: click Back up now to prove it. If the screen says the key is missing,
+   without re-pairing. Scheduled backups are off after a restore, so a drill copy never deposits
+   its old state as the newest capsule: once this server is the one in service, click Back up
+   now to prove it and turn the schedule back on. If the screen says the key is missing,
    `data/recovery.pub` did not come across; re-pair, which is refused unless KyRecovery hands
    back the same key.
 3. Check the audit log: the last events before the restore are there, followed by your

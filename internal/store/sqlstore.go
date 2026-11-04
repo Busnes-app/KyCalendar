@@ -84,6 +84,13 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM scheduling_outbox"); err != nil {
 		return err
 	}
+	// A restored server does not deposit on its own: a drill copy still holding the pairing would
+	// otherwise put its old state at KyRecovery as the newest capsule. The admin turns the schedule
+	// back on once this server is the one in service. The key is recoveryclient's schedule setting.
+	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO server_settings (key, value, updated_at) VALUES ('backup_interval_sec', '0', ?)
+ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`), time.Now().UTC()); err != nil {
+		return err
+	}
 	epoch := crypto.RandomHex(8)
 	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_meta SET value = ? WHERE key = 'sync_epoch'`), epoch)
 	if err != nil {
@@ -97,7 +104,7 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; scheduled backups off; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()

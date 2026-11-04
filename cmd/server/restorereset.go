@@ -47,7 +47,7 @@ func resetRestored(ctx context.Context, dataDir string) error {
 	return st.ResetAfterRestore(ctx)
 }
 
-const resetDone = "✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written. Every user creates new app passwords; CalDAV clients resync."
+const resetDone = "✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written; scheduled backups turned off. Every user creates new app passwords; CalDAV clients resync. Turn the backup schedule back on once this server is the one in service."
 
 func runRestoreReset(args []string) {
 	fs := flag.NewFlagSet("restore-reset", flag.ExitOnError)

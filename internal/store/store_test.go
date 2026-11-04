@@ -378,6 +378,9 @@ func TestResetAfterRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	addAppPassword(t, st, u.ID)
+	if err := st.Settings().SetSetting(ctx, "backup_interval_sec", "86400"); err != nil {
+		t.Fatal(err)
+	}
 
 	before, err := st.Calendars().SyncEpoch(ctx)
 	if err != nil {
@@ -403,6 +406,10 @@ func TestResetAfterRestore(t *testing.T) {
 		t.Fatal("device pairing survived", err)
 	}
 	checkAppPasswordsRevoked(t, st, u.ID)
+	// A restored server does not deposit on its own, whatever the backup's schedule was.
+	if v, err := st.Settings().GetSetting(ctx, "backup_interval_sec"); err != nil || v != "0" {
+		t.Fatalf("backup schedule after reset: %q %v, want off", v, err)
+	}
 	// A forced change proves nothing: whoever knows a leaked restored password can satisfy it.
 	if got, err := st.Users().GetUserByID(ctx, u.ID); err != nil || got.MustChangePassword || got.PasswordHash != "h" {
 		t.Fatalf("local account after reset: %+v %v", got, err)
