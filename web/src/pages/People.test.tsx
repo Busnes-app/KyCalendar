@@ -261,3 +261,21 @@ describe("People", () => {
     expect(screen.queryByText(/^Showing/)).toBeNull();
   });
 });
+
+it("enables a disabled live-bound KyIdentity person, keeping SCIM and old bindings managed", async () => {
+  let enabled = false;
+  mockFetch({
+    "GET /api/admin/users": () => users(
+      person({ source: "kysignon", bound_to: "kyidentity https://b.example", status: enabled ? "active" : "inactive" }),
+      person({ id: "u2", username: "scim", source: "scim", bound_to: "kyidentity https://b.example", status: "inactive" }),
+      person({ id: "u3", username: "old", source: "kysignon", bound_to: "kyidentity https://a.example", status: "inactive", needs_reattach: true }),
+    ),
+    "POST /api/admin/users/u1/enable": () => { enabled = true; return person({ status: "active" }); },
+  });
+  render(<People me="root" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Enable ann" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Enable ann" })).toBeNull());
+  expect(enabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Enable scim" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Enable old" })).toBeNull();
+});

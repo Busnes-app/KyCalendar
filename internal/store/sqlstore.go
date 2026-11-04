@@ -1057,6 +1057,39 @@ func (u *userStore) SetRole(ctx context.Context, actor Actor, userID, role strin
 	return u.changeAccess(ctx, actor, userID, func(_, status string) (string, string) { return role, status })
 }
 
+// EnableKyIdentityUser restores only a KyIdentity account on the binding the admin verified.
+// The binding owner holds signinMu while calling; SCIM and installer authority stay managed.
+func (u *userStore) EnableKyIdentityUser(ctx context.Context, actor Actor, userID, binding string) error {
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := u.checkActor(ctx, tx, actor); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET status = 'active', updated_at = ?
+ WHERE id = ? AND sso_provider = 'kysignon' AND sso_issuer = ? AND status <> 'active'
+ AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)`), time.Now().UTC(), userID, binding)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	if err := u.revokeGrants(ctx, tx, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, 'admin.user_enable', ?, ?, '', ?)`), actor.userID, userID, "binding="+binding, time.Now().UTC()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (u *userStore) SetStatus(ctx context.Context, actor Actor, userID, status string) error {
 	return u.changeAccess(ctx, actor, userID, func(role, _ string) (string, string) { return role, status })
 }

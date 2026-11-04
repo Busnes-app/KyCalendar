@@ -146,7 +146,7 @@ func (c *calendarStore) ReplaceSubscriptionObjects(ctx context.Context, calendar
 	}
 	defer tx.Rollback()
 	// The same lock order as PutObject: instance, owner, then the calendar row in bump.
-	if lim.MaxTotalBytes > 0 {
+	{
 		if err := c.store.lockKey(ctx, tx, "calendar-total"); err != nil {
 			return err
 		}
@@ -166,10 +166,7 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 
 	if lim.MaxObjects > 0 || lim.MaxBytes > 0 {
 		// The owner's other calendars plus the new content; this calendar's current objects do not count.
-		var n int
-		var used int64
-		err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*), COALESCE(SUM(LENGTH(o.data)), 0) FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id
-WHERE c.owner_kind = ? AND c.owner_id = ? AND o.calendar_id <> ?`), ownerKind, ownerID, calendarID).Scan(&n, &used)
+		n, used, err := c.ownerUsage(ctx, tx, ownerKind, ownerID, calendarID, "")
 		if err != nil {
 			return err
 		}
@@ -216,10 +213,10 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND o.calendar_id <> ?`), ownerKind, o
 		if err := c.bump(ctx, tx, calendarID, o.Name, false); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
-			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
+			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, "", "", "")
 		if err != nil {
 			return err
 		}

@@ -37,22 +37,32 @@ type Scheduler struct {
 // always fits; the limit bounds how fast one account can fill other people's calendars.
 const InviteLimit = 1000
 
+// InviteBytesLimit bounds internal REQUEST copies per sender per hour, including updates.
+const InviteBytesLimit int64 = 64 << 20
+
 type inviteWindow struct {
 	start time.Time
 	n     int
+	bytes int64
 }
 
 // InviteLimitError refuses a write that would invite more people than InviteLimit this hour.
-type InviteLimitError struct{ Until time.Time }
+type InviteLimitError struct {
+	Until time.Time
+	Bytes bool
+}
 
 func (e InviteLimitError) Error() string {
+	if e.Bytes {
+		return fmt.Sprintf("You have reached the %d MiB hourly invitation byte budget. You can send invitations again at %s UTC.", InviteBytesLimit>>20, e.Until.UTC().Format("15:04"))
+	}
 	return fmt.Sprintf("You have invited more than %d people in the last hour. You can send new invitations again at %s UTC.",
 		InviteLimit, e.Until.UTC().Format("15:04"))
 }
 
 // admitInvites counts n new invitees for sender against InviteLimit.
-func (s *Scheduler) admitInvites(sender string, n int) error {
-	if n == 0 {
+func (s *Scheduler) admitInvites(sender string, n int, bytes int64) error {
+	if n == 0 && bytes == 0 {
 		return nil
 	}
 	s.invitesMu.Lock()
@@ -74,6 +84,10 @@ func (s *Scheduler) admitInvites(sender string, n int) error {
 	if w.n+n > InviteLimit {
 		return InviteLimitError{Until: w.start.Add(time.Hour)}
 	}
+	if w.bytes+bytes > InviteBytesLimit {
+		return InviteLimitError{Until: w.start.Add(time.Hour), Bytes: true}
+	}
+	w.bytes += bytes
 	w.n += n
 	return nil
 }
@@ -180,6 +194,24 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 	if !ok {
 		return nil
 	}
+	internal := map[itip.Address]bool{}
+	if newCal != nil {
+		for _, ev := range newCal.Children {
+			if ev.Name != ical.CompEvent {
+				continue
+			}
+			for _, a := range itip.AttendeesOf(ev) {
+				if _, seen := internal[a.Address]; seen {
+					continue
+				}
+				_, err := s.Store.Users().CalendarUser(ctx, a.Address.Email())
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					return func([]byte) ([]byte, []*store.OutboxMessage, error) { return nil, nil, err }
+				}
+				internal[a.Address] = err == nil && a.Address != self
+			}
+		}
+	}
 	return func(previous []byte) ([]byte, []*store.OutboxMessage, error) {
 		var oldCal *ical.Calendar
 		if previous != nil {
@@ -200,20 +232,24 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 			// client's sync over something it cannot fix.
 			return data, nil, nil
 		}
-		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
-			return nil, nil, err
-		}
 		var rows []*store.OutboxMessage
+		var deliveryBytes int64
 		for _, m := range msgs {
 			body, err := encodeCal(m.Calendar)
 			if err != nil {
 				return nil, nil, err
 			}
 			for _, to := range m.Recipients {
+				if m.Method == itip.MethodRequest && internal[to] {
+					deliveryBytes += int64(len(body))
+				}
 				sum := sha256.Sum256([]byte(writer.ID + "\x00" + m.Method + "\x00" + string(to) + "\x00" + string(body)))
 				rows = append(rows, &store.OutboxMessage{ID: "obx_" + uuid.NewString(), DedupeKey: hex.EncodeToString(sum[:]),
 					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body})
 			}
+		}
+		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs), deliveryBytes); err != nil {
+			return nil, nil, err
 		}
 		return data, rows, nil
 	}
@@ -311,9 +347,9 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	}
 	switch method {
 	case itip.MethodRequest, itip.MethodCancel:
-		return s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg)
+		return s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg, m.ID)
 	default: // REPLY
-		return s.deliverReply(ctx, recipient, to, uid, from, msg)
+		return s.deliverReply(ctx, recipient, to, uid, from, msg, m.ID)
 	}
 }
 
@@ -412,6 +448,10 @@ func (s *Scheduler) organizerEdits(ctx context.Context, org itip.Address, c *sto
 }
 
 func (s *Scheduler) put(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, ifMatch string, create bool) error {
+	return s.putDelivery(ctx, c, name, cal, ifMatch, create, "", "")
+}
+
+func (s *Scheduler) putDelivery(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, ifMatch string, create bool, deliveryID, recipientID string) error {
 	raw, err := encodeCal(cal)
 	if err != nil {
 		return err
@@ -420,13 +460,14 @@ func (s *Scheduler) put(ctx context.Context, c *store.Calendar, name string, cal
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
+	o.DeliveryID, o.DeliveryRecipient = deliveryID, recipientID
 	_, err = s.Store.Calendars().PutObject(ctx, o, ifMatch, create, s.Limits)
 	return err
 }
 
 // deliverToAttendee writes the organizer's REQUEST or CANCEL into an internal attendee's
 // calendar: their existing copy when they have one, else (REQUEST only) their default calendar.
-func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, org itip.Address, uid, method string, msg *ical.Calendar) error {
+func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, org itip.Address, uid, method string, msg *ical.Calendar, deliveryID string) error {
 	if org == self {
 		return nil // the organizer's own address on the attendee list
 	}
@@ -446,11 +487,11 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		}
 		stamp(first)
 		sum := sha256.Sum256([]byte(uid))
-		return s.put(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true)
+		return s.putDelivery(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true, deliveryID, u.ID)
 	case err != nil:
 		return err
 	}
-	return s.deliverInto(ctx, c, o, existing, self, method, msg)
+	return s.deliverInto(ctx, c, o, existing, self, method, msg, deliveryID, u.ID)
 }
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first
@@ -487,7 +528,7 @@ func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.C
 }
 
 // deliverReply records an internal attendee's answer on the organizer's object.
-func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, self itip.Address, uid string, from itip.Address, msg *ical.Calendar) error {
+func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, self itip.Address, uid string, from itip.Address, msg *ical.Calendar, deliveryID string) error {
 	c, o, stored, err := s.find(ctx, organizer, uid, self)
 	if errors.Is(err, store.ErrNotFound) {
 		return errPermanent{"no_event"}
@@ -502,7 +543,7 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil || !changed {
 		return err
 	}
-	return s.put(ctx, c, o.Name, next, o.ETag, false)
+	return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, organizer.ID)
 }
 
 // maxNewOverrides caps the overrides one message may add to a stored series: each is a copy of the

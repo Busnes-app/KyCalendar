@@ -154,12 +154,16 @@ type Subscription struct {
 }
 
 type CalendarObject struct {
-	CalendarID, Name, UID, ETag string
-	Component                   string // VEVENT or VTODO
-	Data                        []byte
-	FirstStart                  int64
-	LastEnd                     *int64
-	ModifiedAt                  time.Time
+	// DeliveryID is an internal pending outbox row consumed atomically with this write.
+	DeliveryID, DeliveryRecipient string
+	// InvitationSender/Attendee are server-owned sponsorship, retained until an answer.
+	InvitationSender, InvitationAttendee, InvitationRecipient string
+	CalendarID, Name, UID, ETag                               string
+	Component                                                 string // VEVENT or VTODO
+	Data                                                      []byte
+	FirstStart                                                int64
+	LastEnd                                                   *int64
+	ModifiedAt                                                time.Time
 }
 
 // UserField names a user column a list may filter on.

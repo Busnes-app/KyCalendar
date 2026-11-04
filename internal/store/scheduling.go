@@ -58,29 +58,6 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 	if len(rows) == 0 {
 		return nil
 	}
-	var adding int64
-	for _, m := range rows {
-		adding += int64(len(m.Body))
-	}
-	if lim.MaxBytes > 0 {
-		var pending int64
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending' AND sender_id = ?`),
-			rows[0].SenderID).Scan(&pending); err != nil {
-			return err
-		}
-		if pending+adding > lim.MaxBytes {
-			return ErrQuotaExceeded
-		}
-	}
-	if lim.MaxTotalBytes > 0 {
-		var used int64
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes)).Scan(&used); err != nil {
-			return err
-		}
-		if used+adding > lim.MaxTotalBytes {
-			return ErrQuotaExceeded
-		}
-	}
 	now := time.Now().UTC()
 	for _, m := range rows {
 		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
@@ -91,6 +68,25 @@ VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, '', ?) ON CONFLICT (dedupe_key) DO NO
 			return err
 		}
 	}
+	if lim.MaxBytes > 0 {
+		_, used, err := c.ownerUsage(ctx, tx, "user", rows[0].SenderID, "", "")
+		if err != nil {
+			return err
+		}
+		if used > lim.MaxBytes {
+			return ErrQuotaExceeded
+		}
+	}
+	if lim.MaxTotalBytes > 0 {
+		var used int64
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes)).Scan(&used); err != nil {
+			return err
+		}
+		if used > lim.MaxTotalBytes {
+			return ErrQuotaExceeded
+		}
+	}
+
 	return nil
 }
 

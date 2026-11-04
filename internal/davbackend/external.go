@@ -107,7 +107,7 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		}
 		return "", err
 	}
-	if err := s.deliverInto(ctx, c, o, existing, self, method, msg); err != nil {
+	if err := s.deliverInto(ctx, c, o, existing, self, method, msg, "", ""); err != nil {
 		var perm errPermanent
 		if errors.As(err, &perm) { // nothing here it applies to, or an object that cannot be stored
 			return InboundIgnored, nil
@@ -119,7 +119,7 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 
 // deliverInto writes an organizer's REQUEST or CANCEL over an attendee's existing copy. A message
 // about occurrences that names none of the copy's series is errPermanent{"no_occurrence"}.
-func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store.CalendarObject, existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) error {
+func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store.CalendarObject, existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, deliveryID, recipientID string) error {
 	if stale(existing, msg) {
 		return errPermanent{"stale"} // a retry or replay older than what the copy already took
 	}
@@ -132,7 +132,7 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 			if err != nil {
 				return err
 			}
-			return s.put(ctx, c, o.Name, next, o.ETag, false)
+			return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
 		}
 	}
 	if method == itip.MethodCancel {
@@ -151,14 +151,14 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 				setOrganizerSequence(ev, seq)
 			}
 		}
-		return s.put(ctx, c, o.Name, existing, o.ETag, false)
+		return s.putDelivery(ctx, c, o.Name, existing, o.ETag, false, deliveryID, recipientID)
 	}
 	next, err := itip.AttendeeCopy(msg, existing, self)
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
 	stamp(next)
-	return s.put(ctx, c, o.Name, next, o.ETag, false)
+	return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
 }
 
 // organizerSequence is kept on each VEVENT of a delivered copy: the organizer's SEQUENCE it last
@@ -438,7 +438,7 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 	}
 	c, o, cal, err := s.find(ctx, u, uid, org)
 	if errors.Is(err, store.ErrNotFound) {
-		if err := s.deliverToAttendee(ctx, u, self, org, uid, method, invite); err != nil {
+		if err := s.deliverToAttendee(ctx, u, self, org, uid, method, invite, ""); err != nil {
 			return err
 		}
 		c, o, cal, err = s.find(ctx, u, uid, org)

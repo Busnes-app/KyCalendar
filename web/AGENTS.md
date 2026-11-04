@@ -50,6 +50,8 @@ Owns user interface components, service worker caching, PWA installation manifes
 
 - Sign-in responses are validated at the HTTP boundary. A `managed` response disables configuration, Test and Save, explains KyQuickStart ownership and leaves callback Copy available. Source `installer` is distinct from environment and saved settings.
 
+- People offers Enable for a disabled `kysignon` person only when `bound_to` equals the list's live `kyidentity` binding and the person is not the caller. SCIM and old bindings retain their existing management/reattach workflow; the API enforces step-up and ownership.
+
 ## Verification
 - The calendar list is one mounted `CalendarSidebar` in the app sidebar slot at every width: in the sidebar after the navigation above 720px, behind the header's Calendars disclosure at 720px or less. Keep every calendar control available in both presentations, and keep drafts across the breakpoint (`CalendarPage.test.tsx`, `browser/resize.spec.mjs`).
 - Browser setup: build the frontend, run `go build -o .browser/server ./cmd/server` at the repo root, then `cd web && npx playwright install chromium && npm run test:browser`. CI also installs browser OS dependencies.

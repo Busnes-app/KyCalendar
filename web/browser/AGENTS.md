@@ -11,6 +11,7 @@ This directory owns test setup, disposable server launch and UI assertions. The 
 ## Local Contracts
 
 - Never reuse a development or production server. Launch the compiled `.browser/server` with a minimal environment and an owned temporary data directory; remove that directory on exit.
+- Disposable server environments set `PUSH_RELAY_URL` and `APNS_RELAY_URL` to empty strings.
 - Use loopback only, with `KY_APP_URL` matching the test origin. Bootstrap credentials are disposable test values, not deployment defaults. Specs find the sign-in fields by their labels (`Username`, `Password`).
 - Test light/dark at 390px and 1280px, using real authentication and API state. Do not disable service workers, relax CSP/CSRF, or substitute mocked responses.
 - `server.mjs` runs `init-admin` (the server bootstraps its admin only into an empty database) and then `create-user` for the everyday user `walter`, both before the server starts; `setup.mjs` replaces both bootstrap passwords, each in its own cookie jar.

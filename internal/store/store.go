@@ -113,6 +113,7 @@ type UserStore interface {
 	// ErrActorRevoked, checked in the same transaction before the write.
 	SetRole(ctx context.Context, actor Actor, userID, role string) error
 	SetStatus(ctx context.Context, actor Actor, userID, status string) error
+	EnableKyIdentityUser(ctx context.Context, actor Actor, userID, binding string) error
 	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
 	// back a status it read before a concurrent deactivation, and in the same transaction (row
 	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,

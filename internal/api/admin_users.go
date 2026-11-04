@@ -359,13 +359,38 @@ func (s *Server) handleDisableUser(w http.ResponseWriter, r *http.Request) {
 	s.setUserStatus(w, r, "inactive", "admin.user_disable")
 }
 
-// handleEnableUser reactivates a local person; it can restore an administrator, so it is a
-// step-up action like disable.
+// handleEnableUser restores local people and live-bound KyIdentity people after step-up.
 func (s *Server) handleEnableUser(w http.ResponseWriter, r *http.Request) {
 	if !s.requireStepUp(w, r, "enable a person") {
 		return
 	}
-	s.setUserStatus(w, r, "active", "admin.user_enable")
+	r = r.WithContext(context.WithoutCancel(r.Context()))
+	s.signinMu.RLock()
+	defer s.signinMu.RUnlock()
+	u := s.adminUser(w, r, false)
+	if u == nil {
+		return
+	}
+	if u.SSOProvider == "local" {
+		s.setUserStatus(w, r, "active", "admin.user_enable")
+		return
+	}
+	p := s.signin.Load()
+	if s.config.InstallerSSO != nil || u.SSOProvider != "kysignon" || p == nil || p.Kind != sso.KindKyIdentity || u.SSOIssuer != p.Binding {
+		s.writeManaged(w, "person")
+		return
+	}
+	if u.ID == sessionUser(r.Context()).ID {
+		s.writeSelf(w, "enable or disable")
+		return
+	}
+	if u.Status != "active" {
+		if err := s.store.Users().EnableKyIdentityUser(r.Context(), actorOf(r.Context()), u.ID, p.Binding); err != nil {
+			s.writeAccessError(w, err)
+			return
+		}
+	}
+	s.writeUser(w, r, u.ID)
 }
 
 func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, action string) {
@@ -392,17 +417,21 @@ func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request, status, a
 // 200 when active; 409 managed_externally when inactive, since their IdP disabled and restores them.
 func (s *Server) answerBound(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if u.Status != "active" {
-		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Your identity provider disabled this person; restore them there", "code": "managed_externally"})
+		message := "Your identity provider disabled this person; restore them there"
+		if u.SSOProvider == "kysignon" {
+			message = "This person is disabled; use Enable in People to restore access"
+		}
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": message, "code": "managed_externally"})
 		return
 	}
 	s.writeUser(w, r, u.ID)
 }
 
 // handleReattachUser binds an SSO person bound to another issuer to the live sign-in and
-// reactivates them, revoking every grant so they sign in fresh: the one admin write on an identity
+// reactivates them, revoking every grant so they sign in fresh: an admin write on an identity
 // provider's account. The admin vouches it is the same person and names the binding they
 // confirmed; the role is re-proven at the next sign-in. A person disabled under the live binding
-// was disabled by the IdP, which restores them.
+// needs Enable (KyIdentity) or restoration through SCIM.
 func (s *Server) handleReattachUser(w http.ResponseWriter, r *http.Request) {
 	if s.config.InstallerSSO != nil {
 		s.writeJSON(w, 409, map[string]string{"error": "Installer-owned identities cannot be reattached", "code": "managed_externally"})

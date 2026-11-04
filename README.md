@@ -36,3 +36,9 @@ kycalendar is released under the [MIT License](LICENSE.txt).
 - [Verifying releases](docs/VERIFYING-RELEASES.md) — Check a release image's signature and source commit, and rebuild its binary.
 - [Assurance case](docs/ASSURANCE-CASE.md) — Threat model, trust boundaries, and why the security requirements are met.
 - [Contributing](CONTRIBUTING.md) — How to report issues and send changes, test policy and coding standard.
+
+### Invitation storage and reactivation
+
+An administrator can Enable a disabled KyIdentity person after a fresh sign-in when the account is bound to the live KyIdentity provider. SCIM accounts remain managed by SCIM; changing an issuer still uses Reattach. Enable keeps the person's identity, role and calendars, revokes old credentials and records an audit entry.
+
+Internal invitation copies are charged to the sender until the attendee answers, then to the attendee (including a copy in a group calendar). Quota refusal leaves the copy and charge unchanged. Sender storage includes pending messages and delivered unanswered copies together. Existing copies without delivery metadata acquire it on their next organizer REQUEST; migration does not guess trusted delivery from editable ICS. In addition to 1000 new invitees per sender per hour, internal REQUEST recipient bodies, including updates, have a 64 MiB hourly byte budget per sender. Both process-local limits reset on restart and refusals say when sending can resume in UTC.

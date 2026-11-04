@@ -51,6 +51,9 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 - `QueryFreeBusy` answers `CALDAV:free-busy-query` (fork patch 12) on any calendar the user can read, readers included: busy times only (`calendar.BusyTimes`), floating times and dates read as UTC. Bounded like `GET /api/events`: at most 400 days, 5000 instances and 2 s of expansion, else 403. A calendar without VEVENT answers an empty VFREEBUSY.
 - DELETE `If-Match` reaches the backend through `WithIfMatch`. Any `If-Match` (including `*`) on a missing object is 412 for PUT and DELETE; `*` is passed to the store, which checks it inside the write transaction.
 
+- Internal REQUEST deliveries attach the pending outbox ID and stable recipient ID to the store write. Unanswered copies spend the sender's object/byte quota; any answer transfers the whole copy to the attendee, including copies in group calendars. Normal web, CalDAV, MCP and delivery rewrites inherit the store's charge. The store exchanges the queue reservation atomically with the copy.
+- Alongside `InviteLimit` (1000 new invitees/hour), `InviteBytesLimit` is 64 MiB of internal REQUEST recipient bodies/hour/sender, including updates to already invited people. The process-local window and 429 `invite_limit` refusal name when sending can resume in UTC. Recipient lookup is before the planner, never a nested store query inside its transaction. External copies and ordinary events do not spend this internal-copy byte budget.
+
 ## Verification
 - `go test ./internal/davbackend/`
 - `go test ./internal/api/ -run 'CalDAV|DAV|GroupCalendar|MembershipRemoval|GroupSegment'`

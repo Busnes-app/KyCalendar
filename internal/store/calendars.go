@@ -200,12 +200,12 @@ name = COALESCE(?, name), description = COALESCE(?, description), color = COALES
 	return nil
 }
 
-const objectCols = `calendar_id, name, component, uid, etag, data, first_start, last_end, modified_at`
+const objectCols = `calendar_id, name, component, uid, etag, data, first_start, last_end, modified_at, invitation_sender, invitation_attendee, invitation_recipient`
 
 func scanObject(row interface{ Scan(...any) error }) (*CalendarObject, error) {
 	var o CalendarObject
 	var last sql.NullInt64
-	err := row.Scan(&o.CalendarID, &o.Name, &o.Component, &o.UID, &o.ETag, &o.Data, &o.FirstStart, &last, &o.ModifiedAt)
+	err := row.Scan(&o.CalendarID, &o.Name, &o.Component, &o.UID, &o.ETag, &o.Data, &o.FirstStart, &last, &o.ModifiedAt, &o.InvitationSender, &o.InvitationAttendee, &o.InvitationRecipient)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -293,8 +293,9 @@ func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject,
 	}
 	defer tx.Rollback()
 
-	if lim.MaxTotalBytes > 0 {
-		// Instance lock before any owner lock: one order for every writer that takes both.
+	{
+		// ponytail: calendar_usage already serializes object writes; take that lock first
+		// so sponsorship transfers and every quota check see one committed state.
 		if err := c.store.lockKey(ctx, tx, "calendar-total"); err != nil {
 			return false, err
 		}
@@ -342,19 +343,26 @@ func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject,
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
+	if err := c.invitationCharge(ctx, tx, o, exists); err != nil {
+		return false, err
+	}
 	if limited {
-		// Usage of every other object the owner has; the one being replaced does not count.
-		var n int
-		var used int64
-		err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*), COALESCE(SUM(LENGTH(o.data)), 0) FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id
-WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name = ?)`), ownerKind, ownerID, o.CalendarID, o.Name).Scan(&n, &used)
+		kind, id := ownerKind, ownerID
+		if o.InvitationRecipient != "" {
+			kind, id = "user", o.InvitationRecipient
+		}
+		if o.InvitationSender != "" {
+			kind, id = "user", o.InvitationSender
+		}
+		n, used, err := c.ownerUsage(ctx, tx, kind, id, o.CalendarID, o.Name)
 		if err != nil {
 			return false, err
 		}
-		if (lim.MaxObjects > 0 && !exists && n >= lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data)) > lim.MaxBytes) {
+		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data)) > lim.MaxBytes) {
 			return false, ErrQuotaExceeded
 		}
 	}
+
 	if lim.MaxTotalBytes > 0 {
 		// calendar_usage is kept by triggers in each writing transaction (migration 12). Pending
 		// outbox bodies share the cap: they sit in the same database and the same capsule.
@@ -369,10 +377,10 @@ WHERE c.owner_kind = ? AND c.owner_id = ? AND NOT (o.calendar_id = ? AND o.name 
 		}
 	}
 
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
-first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
-		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt)
+first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at, invitation_sender = excluded.invitation_sender, invitation_attendee = excluded.invitation_attendee, invitation_recipient = excluded.invitation_recipient`),
+		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return false, ErrUIDConflict
@@ -390,7 +398,7 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 }
 
 func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner) error {
-	tx, err := c.store.db.BeginTx(ctx, nil)
+	tx, err := c.store.lockedTx(ctx, "calendar-total")
 	if err != nil {
 		return err
 	}

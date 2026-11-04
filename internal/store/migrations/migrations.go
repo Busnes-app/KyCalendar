@@ -590,7 +590,12 @@ CREATE TABLE sso_logouts (
 		SQLite:   sessionUnproven,
 		Postgres: sessionUnproven,
 	},
+	{Version: 23, Name: "invitation_sponsorship", SQLite: invitationSponsorship, Postgres: invitationSponsorship},
 }
+
+const invitationSponsorship = `ALTER TABLE calendar_objects ADD COLUMN invitation_sender TEXT NOT NULL DEFAULT '';
+ALTER TABLE calendar_objects ADD COLUMN invitation_attendee TEXT NOT NULL DEFAULT '';
+ALTER TABLE calendar_objects ADD COLUMN invitation_recipient TEXT NOT NULL DEFAULT '';`
 
 const sessionUnproven = `ALTER TABLE sessions ADD COLUMN unproven BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE sessions SET unproven = TRUE WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');`

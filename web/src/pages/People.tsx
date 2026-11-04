@@ -204,6 +204,9 @@ export default function People({ me }: { me: string }) {
                           Reattach
                         </button>
                       )}
+                      {p.id !== me && p.source === "kysignon" && p.status !== "active" && binding.startsWith("kyidentity ") && p.bound_to === binding && (
+                        <button type="button" className="btn-secondary btn-sm" aria-label={`Enable ${p.username}`} onClick={() => toggleStatus(p)}>Enable</button>
+                      )}
                       {p.source === "local" && (
                         <>
                           <button type="button" className="btn-secondary btn-sm" aria-label={`Edit ${p.username}`} onClick={() => setEditing(p)}>
