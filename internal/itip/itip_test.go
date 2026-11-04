@@ -150,6 +150,42 @@ func TestNotTheOrganizerOrAnAttendee(t *testing.T) {
 	}
 }
 
+// Deleting one occurrence of an invitation declines that occurrence: a new EXDATE on the
+// master, or an override gone from a copy with no master.
+func TestAttendeeDeletingAnOccurrenceDeclinesIt(t *testing.T) {
+	series := ics(t, "SEQUENCE:2", "RRULE:FREQ=WEEKLY", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")
+	excluded := ics(t, "SEQUENCE:2", "RRULE:FREQ=WEEKLY", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com", "EXDATE:20261117T090000Z")
+	msgs, err := Outgoing(bob, series, excluded, now)
+	if got := summary(msgs, err); got != "REPLY alice@example.com" {
+		t.Fatalf("exclude: %s", got)
+	}
+	out := encode(t, msgs[0].Calendar)
+	for _, want := range []string{"RECURRENCE-ID:20261117T090000Z", "ATTENDEE;PARTSTAT=DECLINED:mailto:bob@example.com", "SEQUENCE:2", "UID:m1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "BEGIN:VEVENT") != 1 {
+		t.Errorf("the reply names more than the deleted occurrence:\n%s", out)
+	}
+
+	two := func(keep int) *ical.Calendar {
+		cal := ics(t, "RECURRENCE-ID:20261110T090000Z", "ATTENDEE:mailto:bob@example.com")
+		if keep == 2 {
+			cal = withOverride(cal, "mailto:alice@example.com")
+			cal.Children[1].Props.Add(&ical.Prop{Name: ical.PropAttendee, Value: "mailto:bob@example.com", Params: ical.Params{}})
+		}
+		return cal
+	}
+	msgs, err = Outgoing(bob, two(2), two(1), now)
+	if got := summary(msgs, err); got != "REPLY alice@example.com" {
+		t.Fatalf("an override deleted from a copy with no master: %s", got)
+	}
+	if out := encode(t, msgs[0].Calendar); !strings.Contains(out, "RECURRENCE-ID:20261108T090000Z") || !strings.Contains(out, "PARTSTAT=DECLINED") {
+		t.Errorf("deleted override not declined:\n%s", out)
+	}
+}
+
 func TestAttendeeReply(t *testing.T) {
 	invited := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com", "ATTENDEE:mailto:carol@example.net")
 	accepted := ics(t, "SEQUENCE:2", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com", "ATTENDEE:mailto:carol@example.net")
@@ -282,7 +318,9 @@ func TestValidate(t *testing.T) {
 func withOverride(cal *ical.Calendar, organizer string) *ical.Calendar {
 	e := ical.NewComponent(ical.CompEvent)
 	e.Props.SetText(ical.PropUID, cal.Children[0].Props.Get(ical.PropUID).Value)
-	e.Props.SetText(ical.PropRecurrenceID, "20261108T090000Z")
+	rid := ical.NewProp(ical.PropRecurrenceID)
+	rid.Value = "20261108T090000Z"
+	e.Props.Set(rid)
 	o := ical.NewProp(ical.PropOrganizer)
 	o.Value = organizer
 	e.Props.Set(o)

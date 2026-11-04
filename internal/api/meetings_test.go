@@ -241,6 +241,57 @@ func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 	}
 }
 
+// Bob deletes one occurrence of alice's weekly meeting from his calendar: alice hears he declined
+// that occurrence (RFC 6638), and the others keep his answer.
+func TestAttendeeDeletingOneOccurrenceDeclinesIt(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	body := `{"title":"Weekly","start":"2026-11-10T09:00:00+01:00","end":"2026-11-10T10:00:00+01:00","zone":"Europe/Berlin","repeat":{"freq":"weekly"},"attendees":["bob@example.com"]}`
+	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice); w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	type occ struct {
+		meetingJSON
+		RecurrenceID string `json:"recurrence_id"`
+	}
+	occurrences := func(c *http.Cookie) []occ {
+		t.Helper()
+		w := call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", c)
+		var evs []occ
+		if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil {
+			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		return evs
+	}
+	second := occurrences(bob)[1]
+	path := "/api/events/" + second.CalendarID + "/" + second.UID + "?scope=this&recurrence_id=" + second.RecurrenceID
+	if r := withIfMatch(t, srv, "DELETE", path, "", second.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("deleting one occurrence: %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	if n := len(occurrences(bob)); n != 2 {
+		t.Fatalf("bob has %d occurrences, want 2", n)
+	}
+	evs := occurrences(alice)
+	if len(evs) != 3 {
+		t.Fatalf("alice has %d occurrences, want 3", len(evs))
+	}
+	for i, e := range evs {
+		status := ""
+		for _, a := range e.Attendees {
+			if a.Email == "bob@example.com" {
+				status = a.Status
+			}
+		}
+		if want := map[bool]string{true: "DECLINED", false: "NEEDS-ACTION"}[i == 1]; status != want {
+			t.Errorf("alice's occurrence %d: bob %q, want %q", i, status, want)
+		}
+	}
+}
+
 // Guests are one list for the series (Q1): a "this event" edit that names attendees is refused
 // and changes nothing, so nobody is invited to, or cancelled from, the whole series by surprise.
 func TestOccurrenceEditCannotChangeGuests(t *testing.T) {
