@@ -285,13 +285,21 @@ func (c *calendarStore) PutObject(ctx context.Context, o *CalendarObject, ifMatc
 }
 
 func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits, plan Planner) (bool, error) {
+	return c.putObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan, nil)
+}
+
+func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits, plan Planner, tx *sql.Tx) (bool, error) {
 	o.ModifiedAt = time.Now().UTC()
 
-	tx, err := c.store.beginTx(ctx)
-	if err != nil {
-		return false, err
+	ownTx := tx == nil
+	if ownTx {
+		var err error
+		tx, err = c.store.beginTx(ctx)
+		if err != nil {
+			return false, err
+		}
+		defer tx.Rollback()
 	}
-	defer tx.Rollback()
 
 	{
 		// ponytail: calendar_usage already serializes object writes; take that lock first
@@ -420,7 +428,10 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 	if err := c.queue(ctx, tx, rows, lim); err != nil {
 		return false, err
 	}
-	return !exists, tx.Commit()
+	if ownTx {
+		return !exists, tx.Commit()
+	}
+	return !exists, nil
 }
 
 func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMatch string) error {
@@ -428,11 +439,19 @@ func (c *calendarStore) DeleteObject(ctx context.Context, calendarID, name, ifMa
 }
 
 func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner) error {
-	tx, err := c.store.lockedTx(ctx, "calendar-total")
-	if err != nil {
-		return err
+	return c.deleteObjectPlanned(ctx, calendarID, name, ifMatch, lim, plan, nil)
+}
+
+func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, name, ifMatch string, lim OwnerLimits, plan Planner, tx *sql.Tx) error {
+	ownTx := tx == nil
+	if ownTx {
+		var err error
+		tx, err = c.store.lockedTx(ctx, "calendar-total")
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
 	}
-	defer tx.Rollback()
 	if err := c.bump(ctx, tx, calendarID, name, true); err != nil {
 		return err
 	}
@@ -465,7 +484,10 @@ func (c *calendarStore) DeleteObjectPlanned(ctx context.Context, calendarID, nam
 	if err := c.queue(ctx, tx, rows, lim); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if ownTx {
+		return tx.Commit()
+	}
+	return nil
 }
 
 func (c *calendarStore) ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error) {

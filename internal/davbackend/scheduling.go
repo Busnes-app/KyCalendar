@@ -456,6 +456,9 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 	if org == self {
 		return nil // the organizer's own address on the attendee list
 	}
+	if method == itip.MethodCancel && deliveryID != "" {
+		return s.deliverInternalCancellation(ctx, u, self, org, uid, msg, deliveryID)
+	}
 	c, o, existing, err := s.find(ctx, u, uid, org)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -477,6 +480,73 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		return err
 	}
 	return s.deliverInto(ctx, c, o, existing, self, method, msg, deliveryID, u.ID)
+}
+
+// deliverInternalCancellation reclaims trusted sponsorship independently of current grants.
+// Normal paid/legacy lookup still needs its ordinary permissions. All copy changes and the
+// pending body exchange commit together, so partial cancellations retain their quota capacity.
+func (s *Scheduler) deliverInternalCancellation(ctx context.Context, u *store.User, self, org itip.Address, uid string, msg *ical.Calendar, deliveryID string) error {
+	copies, err := s.Store.Calendars().SponsoredCancellationCopies(ctx, deliveryID, u.ID, uid)
+	if err != nil {
+		return err
+	}
+	var changes []store.CancellationChange
+	seen := map[[2]string]bool{}
+	prepare := func(o *store.CalendarObject, existing *ical.Calendar) error {
+		next, err := cancellationCopy(o, existing, self, msg)
+		if errors.Is(err, errDeleteCopy) {
+			next, err = nil, nil
+		}
+		if err != nil {
+			return err
+		}
+		var replacement *store.CalendarObject
+		if next != nil {
+			raw, err := encodeCal(next)
+			if err != nil {
+				return err
+			}
+			replacement, err = Prepare(o.CalendarID, o.Name, next, raw)
+			if err != nil {
+				return err
+			}
+		}
+		changes = append(changes, store.CancellationChange{Previous: o, Next: replacement})
+		seen[[2]string{o.CalendarID, o.Name}] = true
+		return nil
+	}
+	for _, o := range copies {
+		existing, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+		if err != nil {
+			return err
+		}
+		if got, ok := itip.Organizer(existing); !ok || got != org {
+			continue
+		}
+		if err := prepare(o, existing); err != nil {
+			var perm errPermanent
+			if errors.As(err, &perm) {
+				continue
+			}
+			return err
+		}
+	}
+	_, o, existing, err := s.find(ctx, u, uid, org)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		var perm errPermanent
+		if len(changes) == 0 || !errors.As(err, &perm) {
+			return err
+		}
+	}
+	if err == nil && !seen[[2]string{o.CalendarID, o.Name}] {
+		// A sponsored copy belonging to another delivery is not ordinary mutable content.
+		if o.InvitationSender == "" {
+			if err := prepare(o, existing); err != nil {
+				return err
+			}
+		}
+	}
+	return s.Store.Calendars().ApplyInternalCancellation(ctx, deliveryID, u.ID, changes, s.Limits)
 }
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first

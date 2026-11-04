@@ -303,6 +303,13 @@ type CalendarStore interface {
 	GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error)
 	GetObjectByUID(ctx context.Context, calendarID, uid string) (*CalendarObject, error)
 	ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error)
+	// SponsoredCancellationCopies finds trusted sender-funded copies for an already validated
+	// pending internal CANCEL, independently of current grants.
+	SponsoredCancellationCopies(ctx context.Context, deliveryID, recipientID, uid string) ([]*CalendarObject, error)
+	// ApplyInternalCancellation exchanges the pending CANCEL body and all prepared copy
+	// mutations atomically. Sender-funded snapshots require the trusted delivery tuple;
+	// paid/legacy snapshots are supplied only through normal permission-checked lookup.
+	ApplyInternalCancellation(ctx context.Context, deliveryID, recipientID string, changes []CancellationChange, lim OwnerLimits) error
 	ListObjectsInRange(ctx context.Context, calendarID, component string, start, end int64) ([]*CalendarObject, error)
 	// PutObject enforces lim across every calendar of the target calendar's owner, atomically with the write.
 	PutObject(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits) (created bool, err error)
