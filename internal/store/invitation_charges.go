@@ -154,8 +154,9 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 	return nil
 }
 
-// Component order and the attendee's ordinary SEQUENCE do not change the server's delivery
-// binding. Compare only its marker, matched by UID and semantic occurrence identity.
+// Compare delivery markers by UID and semantic occurrence identity, allowing distinct
+// events to reorder and ignoring the attendee's ordinary SEQUENCE.
+// Preserve relative order for duplicate identities: stale delivery uses their last marker.
 type deliveryEventID struct{ uid, recurrence, zone, valueType string }
 
 func deliveryBindings(cal *ical.Calendar) map[deliveryEventID][]string {
@@ -180,9 +181,6 @@ func deliveryBindings(cal *ical.Calendar) map[deliveryEventID][]string {
 			binding = "present:" + p.Value
 		}
 		bindings[id] = append(bindings[id], binding)
-	}
-	for _, values := range bindings {
-		slices.Sort(values)
 	}
 	return bindings
 }
