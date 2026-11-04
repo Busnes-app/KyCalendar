@@ -45,13 +45,14 @@ func NewSessionManager(st store.Store, cfg config.SecurityConfig) *SessionManage
 // IssueSession creates an active session for credentials verified just now and writes the
 // HttpOnly cookie + CSRF token.
 func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User) (*store.Session, string, error) {
-	return sm.IssueSSOSession(ctx, w, r, user, "", time.Now())
+	return sm.IssueSSOSession(ctx, w, r, user, "", time.Now(), false)
 }
 
 // IssueSSOSession is IssueSession for an SSO login the provider names by sid, dated by the ID
-// token's issuedAt, so a back-channel logout for that sid or subject ends it. It fails with
+// token's issuedAt, so a back-channel logout for that sid or subject ends it. unproven marks a
+// date that is not when credentials were given (see store.Session). It fails with
 // store.ErrSSOSessionEnded when the provider already ended that login.
-func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, sid string, issuedAt time.Time) (*store.Session, string, error) {
+func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, sid string, issuedAt time.Time, unproven bool) (*store.Session, string, error) {
 	authenticatedAt := issuedAt.UTC()
 	rawToken := crypto.RandomHex(32)
 	tokenHash := crypto.SHA256Hex([]byte(rawToken))
@@ -69,6 +70,7 @@ func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWr
 		CreatedAt: authenticatedAt,
 		ExpiresAt: time.Now().UTC().Add(ttl),
 		SSOSID:    sid,
+		Unproven:  unproven,
 	}
 
 	if err := sm.store.Sessions().CreateSession(ctx, sess, user.Credentials()); err != nil {

@@ -18,7 +18,7 @@ func (s *Server) requireStepUp(w http.ResponseWriter, r *http.Request, what stri
 		s.writeError(w, http.StatusUnauthorized, "Authentication required")
 		return false
 	}
-	if time.Since(sess.CreatedAt) > stepUpWindow {
+	if sess.Unproven || time.Since(sess.CreatedAt) > stepUpWindow {
 		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in again to " + what, "code": "reauth_required"})
 		return false
 	}

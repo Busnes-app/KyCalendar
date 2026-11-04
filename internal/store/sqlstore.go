@@ -642,7 +642,7 @@ func (s *SQLStore) withLockedUser(ctx context.Context, where string, args []any,
 // whose sid, or whose subject's earlier logins, are fenced is deleted again: ErrSSOSessionEnded.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expected Credentials) error {
 	err := s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at, sso_sid) VALUES (?, ?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt, sess.SSOSID); err != nil {
+		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at, sso_sid, unproven) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt, sess.SSOSID, sess.Unproven); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), time.Now().UTC(), sess.UserID)
@@ -1230,13 +1230,13 @@ func (u *userStore) changeAccess(ctx context.Context, actor Actor, userID string
 
 func (s *sessionStore) GetSession(ctx context.Context, tokenHash string) (*Session, error) {
 	q := s.store.rebind(`
-SELECT token_hash, user_id, user_agent, ip_address, created_at, expires_at
+SELECT token_hash, user_id, user_agent, ip_address, created_at, expires_at, unproven
 FROM sessions WHERE token_hash = ?
 `)
 	var sess Session
 	err := s.store.db.QueryRowContext(ctx, q, tokenHash).Scan(
 		&sess.TokenHash, &sess.UserID, &sess.UserAgent, &sess.IPAddress,
-		&sess.CreatedAt, &sess.ExpiresAt,
+		&sess.CreatedAt, &sess.ExpiresAt, &sess.Unproven,
 	)
 	if err != nil {
 		if errorsIs(err, sql.ErrNoRows) {

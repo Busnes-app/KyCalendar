@@ -55,6 +55,9 @@ func TestSSOStepUpNeedsAFreshAuthTime(t *testing.T) {
 	if steppedUp(callback(false, hourAgo)) {
 		t.Fatal("a silent sign-in on an hour-old provider session passed step-up")
 	}
+	if steppedUp(callback(false, time.Time{})) {
+		t.Fatal("a plain sign-in without auth_time passed step-up")
+	}
 	for name, at := range map[string]time.Time{"old auth_time": hourAgo, "no auth_time": {}} {
 		if w := callback(true, at); w.Code != http.StatusUnauthorized || ssoSession(w) != nil {
 			t.Fatalf("step-up with %s: %d %s", name, w.Code, w.Body.String())

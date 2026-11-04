@@ -581,7 +581,17 @@ CREATE TABLE sso_logouts (
 		SQLite:   clearOIDCEmails,
 		Postgres: clearOIDCEmails,
 	},
+	{
+		// An SSO session whose ID token had no auth_time: the provider never said when the
+		// person last gave their credentials, so it never counts for a step-up.
+		Version:  22,
+		Name:     "session_unproven",
+		SQLite:   sessionUnproven,
+		Postgres: sessionUnproven,
+	},
 }
+
+const sessionUnproven = `ALTER TABLE sessions ADD COLUMN unproven BOOLEAN NOT NULL DEFAULT FALSE;`
 
 const clearOIDCEmails = `UPDATE users SET email = '' WHERE sso_provider = 'oidc' AND email <> '';`
 

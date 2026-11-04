@@ -257,7 +257,9 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 
 	// The session is dated from when the user last gave the provider their credentials, so a
 	// silent sign-in on a live provider session is not a step-up. A step-up must have an
-	// auth_time from after it started (a minute's leeway for the provider's clock).
+	// auth_time from after it started (a minute's leeway for the provider's clock). Without an
+	// auth_time the session is dated from iat, for the logout fences, and marked unproven: no
+	// step-up.
 	verified := claims.IssuedAt
 	if !claims.AuthTime.IsZero() {
 		verified = claims.AuthTime
@@ -270,7 +272,7 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified)
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
 	if errors.Is(err, store.ErrSSOSessionEnded) {
 		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
 		return
