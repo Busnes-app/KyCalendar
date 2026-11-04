@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-ical"
 
@@ -270,10 +271,11 @@ func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// deleteMeetings deletes c's meetings one by one through the scheduled delete path, before the
-// calendar goes, so their guests get the cancellations (or the organizer an attendee's answer)
-// that deleting each event would send. as plans the deletes: the calendar's owner, or nil in a
-// group calendar, where each meeting is planned for its organizer when they are a user here.
+// deleteMeetings deletes c's upcoming meetings one by one through the scheduled delete path,
+// before the calendar goes, so their guests get the cancellations (or the organizer an
+// attendee's answer) that deleting each event would send. Meetings that ended more than a day
+// ago are left for the calendar delete: nobody is told a past meeting was called off. as plans
+// the deletes: the calendar's owner, or nil in a group calendar (see groupOrganizer).
 func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *store.User) *apiError {
 	if s.sched == nil || c.Subscribed {
 		return nil // a subscription mirrors someone else's meetings: nothing is sent for them
@@ -282,7 +284,11 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 	if err != nil {
 		return &apiError{status: http.StatusInternalServerError, msg: "Failed to load the calendar's events"}
 	}
+	past := time.Now().Add(-24 * time.Hour).Unix() // a day's margin for floating times
 	for _, o := range objs {
+		if o.LastEnd != nil && *o.LastEnd < past {
+			continue
+		}
 		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
 		if err != nil {
 			continue
@@ -293,8 +299,8 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 		}
 		writer := as
 		if writer == nil {
-			if writer, err = s.store.Users().CalendarUser(ctx, org.Email()); err != nil {
-				continue // an organizer outside this instance: nothing is sent from here
+			if writer = s.groupOrganizer(ctx, c, org, o.UID); writer == nil {
+				continue
 			}
 		}
 		err = davbackend.Delete(ctx, s.store, c, o.Name, o.ETag, s.objectLimits(), s.sched.Plan(ctx, writer, nil))
@@ -307,4 +313,29 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 		}
 	}
 	return nil
+}
+
+// groupOrganizer is who a group calendar's meeting is cancelled as: its organizer, when they are
+// a user here who may edit c and who keeps no copy of the meeting in their own calendars. Anyone
+// who can edit c can write any ORGANIZER into it, so a meeting that is someone's own elsewhere,
+// or names someone who cannot edit c, is deleted without a message rather than cancelled as them.
+func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip.Address, uid string) *store.User {
+	u, err := s.store.Users().CalendarUser(ctx, org.Email())
+	if err != nil {
+		return nil // an organizer outside this instance: nothing is sent from here
+	}
+	grants, err := s.store.Calendars().UserGrants(ctx, u.ID)
+	if err != nil || !access.CanEditEvents(c, access.Resolve(u, c, grants)) {
+		return nil
+	}
+	own, err := s.store.Calendars().ListCalendarsByOwner(ctx, "user", u.ID)
+	if err != nil {
+		return nil
+	}
+	for _, oc := range own {
+		if _, err := s.store.Calendars().GetObjectByUID(ctx, oc.ID, uid); !errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+	}
+	return u
 }

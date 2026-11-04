@@ -369,14 +369,24 @@ func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	alice, aliceCal := webUser(t, srv, st, "alice")
 	bob, _ := webUser(t, srv, st, "bob")
-	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meetingBody, alice)
+	// Far ahead: only upcoming meetings are cancelled.
+	future := strings.ReplaceAll(meetingBody, "2026-", "2030-")
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", future, alice)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create %d %s", w.Code, w.Body.String())
 	}
 	var made struct{ UID string }
 	_ = json.Unmarshal(w.Body.Bytes(), &made)
 	srv.DeliverScheduled(context.Background())
-	got := meetingsOf(t, srv, bob)[made.UID]
+	var got meetingJSON
+	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
+	var evs []meetingJSON
+	_ = json.Unmarshal(w.Body.Bytes(), &evs)
+	for _, e := range evs {
+		if e.UID == made.UID {
+			got = e
+		}
+	}
 	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"ACCEPTED"}`, got.ETag, bob); r.Code != http.StatusOK {
 		t.Fatalf("rsvp %d %s", r.Code, r.Body.String())
 	}
@@ -385,9 +395,105 @@ func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
 		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
 	}
 	srv.DeliverScheduled(context.Background())
-	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
+	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
 	if !strings.Contains(w.Body.String(), `"cancelled":true`) {
 		t.Fatalf("bob's copy after alice deleted the calendar: %s", w.Body.String())
+	}
+}
+
+// A calendar's past meetings go with it silently: nobody is told a meeting two years ago was
+// called off, and the organizer hears no late "declined".
+func TestDeletingACalendarLeavesPastMeetingsUnsent(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	webUser(t, srv, st, "bob")
+	past := `{"title":"Retro","start":"2024-03-05T09:00:00Z","end":"2024-03-05T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", past, alice); w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	if w := call(t, srv, "DELETE", "/api/calendars/"+aliceCal, "", alice); w.Code != http.StatusNoContent {
+		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
+	}
+	if due, _ := st.Calendars().DueOutbox(context.Background(), time.Now().Add(time.Hour), 10); len(due) != 0 {
+		t.Fatalf("deleting a calendar of past meetings queued %d messages", len(due))
+	}
+}
+
+// Deleting a group calendar cancels a meeting as its organizer only when it can be theirs: an
+// editor who copies alice's private meeting into the group calendar cannot have it cancelled as
+// alice when an administrator deletes the calendar. Alice's own group meeting still is.
+func TestDeletingAGroupCalendarCancelsOnlyItsOrganizersMeetings(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	webUser(t, srv, st, "mallory")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_alice")
+	if err := st.Groups().AddGroupMember(ctx, "grp_editor_"+group.ID, "usr_mallory"); err != nil {
+		t.Fatal(err)
+	}
+
+	private := `{"title":"1:1","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", private, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	shared := `{"title":"Team sync","start":"2030-11-11T09:00:00Z","end":"2030-11-11T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w = call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", shared, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create in the group calendar %d %s", w.Code, w.Body.String())
+	}
+	var team struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &team)
+	srv.DeliverScheduled(ctx)
+
+	// Mallory's forged copy, as a CalDAV client would store it: alice's UID and ORGANIZER.
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:" + made.UID + "\r\nDTSTAMP:20301101T000000Z\r\n" +
+		"DTSTART:20301110T090000Z\r\nDTEND:20301110T100000Z\r\nSEQUENCE:9\r\nSUMMARY:1:1\r\nORGANIZER:mailto:alice@example.com\r\n" +
+		"ATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(group.ID, "forged.ics", cal, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Calendars().PutObject(ctx, o, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+group.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
+	var evs []struct {
+		UID       string
+		Cancelled bool
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	seen := map[string]bool{}
+	for _, e := range evs {
+		seen[e.UID] = true
+		if e.UID == made.UID && e.Cancelled {
+			t.Fatal("alice's private meeting was cancelled through mallory's copy")
+		}
+	}
+	if !seen[made.UID] {
+		t.Fatalf("bob lost alice's private meeting: %s", w.Body.String())
+	}
+	if seen[team.UID] {
+		t.Fatalf("alice's group meeting was not cancelled for bob (he never answered): %s", w.Body.String())
 	}
 }
 
