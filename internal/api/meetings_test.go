@@ -463,6 +463,21 @@ func TestDeletingACalendarLeavesPastMeetingsUnsent(t *testing.T) {
 	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", past, alice); w.Code != http.StatusCreated {
 		t.Fatalf("create %d %s", w.Code, w.Body.String())
 	}
+	// A floating weekly series that ended in 2024: the index leaves it without a last end.
+	floating := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:old-weekly\r\nDTSTAMP:20240101T000000Z\r\n" +
+		"DTSTART:20240105T090000\r\nDTEND:20240105T100000\r\nRRULE:FREQ=WEEKLY;UNTIL=20240301T090000\r\nSUMMARY:Standup\r\n" +
+		"ORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(floating)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(aliceCal, "old-weekly.ics", cal, []byte(floating))
+	if err != nil || o.LastEnd != nil {
+		t.Fatalf("the floating series is indexed with a last end (%v): the test no longer covers it", err)
+	}
+	if _, err := st.Calendars().PutObject(context.Background(), o, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
 	srv.DeliverScheduled(context.Background())
 	if w := call(t, srv, "DELETE", "/api/calendars/"+aliceCal, "", alice); w.Code != http.StatusNoContent {
 		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
@@ -545,6 +560,34 @@ func TestDeletingAGroupCalendarCancelsOnlyItsOrganizersMeetings(t *testing.T) {
 	}
 	if seen[team.UID] {
 		t.Fatalf("alice's group meeting was not cancelled for bob (he never answered): %s", w.Body.String())
+	}
+}
+
+// Alice's own group meeting is still cancelled when she has left the group before an
+// administrator deletes the calendar.
+func TestDeletingAGroupCalendarCancelsAFormerMembersMeeting(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_alice")
+	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	if w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", body, alice); w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	if err := st.Groups().RemoveGroupMember(ctx, "grp_editor_"+group.ID, "usr_alice"); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+group.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	if w := call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob); strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("bob kept the meeting of a deleted group calendar: %s", w.Body.String())
 	}
 }
 

@@ -169,6 +169,26 @@ func TestAttendeeDeletingAnOccurrenceDeclinesIt(t *testing.T) {
 		t.Errorf("the reply names more than the deleted occurrence:\n%s", out)
 	}
 
+	// The deleted occurrence had an override the organizer sent later (SEQUENCE 9): the decline
+	// carries 9, or the organizer would drop it as older than what it holds.
+	override := func(c *ical.Calendar) *ical.Calendar {
+		e := ical.NewComponent(ical.CompEvent)
+		for _, l := range [][2]string{{ical.PropUID, "m1"}, {ical.PropRecurrenceID, "20261117T090000Z"}, {ical.PropSequence, "9"}, {ical.PropOrganizer, "mailto:alice@example.com"}, {ical.PropAttendee, "mailto:bob@example.com"}} {
+			p := ical.NewProp(l[0])
+			p.Value = l[1]
+			e.Props.Set(p)
+		}
+		c.Children = append(c.Children, e)
+		return c
+	}
+	msgs, err = Outgoing(bob, override(ics(t, "SEQUENCE:2", "RRULE:FREQ=WEEKLY", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")), excluded, now)
+	if got := summary(msgs, err); got != "REPLY alice@example.com" {
+		t.Fatalf("exclude an override: %s", got)
+	}
+	if out := encode(t, msgs[0].Calendar); !strings.Contains(out, "SEQUENCE:9") || !strings.Contains(out, "PARTSTAT=DECLINED") {
+		t.Errorf("a deleted override is declined with its own SEQUENCE:\n%s", out)
+	}
+
 	two := func(keep int) *ical.Calendar {
 		cal := ics(t, "RECURRENCE-ID:20261110T090000Z", "ATTENDEE:mailto:bob@example.com")
 		if keep == 2 {

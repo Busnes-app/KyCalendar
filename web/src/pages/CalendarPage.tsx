@@ -277,18 +277,21 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
       // Apply FullCalendar's calendar deltas to the series' wall-clock times (DST-safe).
       const [ds, de] = 'delta' in arg ? [arg.delta, arg.delta] : [arg.startDelta, arg.endDelta];
       const seriesStart = parseLocal(base.start);
+      const seriesEnd = allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end);
       start = shiftBy(seriesStart, ds);
-      end = shiftBy(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), de);
+      end = shiftBy(seriesEnd, de);
       const z = !allDay && ev.recurring && ev.zone ? intlZone(ev.zone) : null;
       if (z) {
         // shiftBy keeps the browser's clock; the series keeps its zone's. Where the two zones
         // change the clock on different dates, the dragged occurrence would not land where it
-        // was dropped: the drop must move it by what the series start moves, on that zone's clock.
+        // was dropped: the drop must move its start and end by what the series' start and end
+        // move, on that zone's clock.
         const clock = (d: Date) => {
           const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: z, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d).split(':').map(Number);
           return dayNumber(d, z) * 1440 + h * 60 + m;
         };
-        if (clock(newStart) - clock(arg.oldEvent.start!) !== clock(start) - clock(seriesStart)) {
+        const oldEnd = arg.oldEvent.end ?? arg.oldEvent.start!;
+        if (clock(newStart) - clock(arg.oldEvent.start!) !== clock(start) - clock(seriesStart) || clock(newEnd) - clock(oldEnd) !== clock(end) - clock(seriesEnd)) {
           fail('Move this repeating event in the event form: its time zone changes the clock on another date than yours.');
           return;
         }

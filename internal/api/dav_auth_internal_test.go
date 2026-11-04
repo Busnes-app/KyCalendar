@@ -128,7 +128,7 @@ func TestDAVFailuresEvictsExpiredFirst(t *testing.T) {
 
 // Guesses naming no real token ID cost an audit row each, kept a year; spread over many
 // addresses they pass every per-address limit. They are audited 200 a day, so a flood cannot
-// grow the database past the capsule's 64 MiB member and stop backups.
+// grow the database past what a capsule can carry and stop backups.
 func TestDAVUnknownTokenAuditIsBoundedPerDay(t *testing.T) {
 	s, h := davInternalServer(t)
 	for i := range unknownAuthAuditsPerDay + 5 {

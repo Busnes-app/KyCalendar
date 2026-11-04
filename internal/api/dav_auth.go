@@ -22,8 +22,8 @@ const (
 
 // unknownAuthAudit bounds the audit rows anyone can write with no credential at all: a failed
 // app-password sign-in naming no real token ID. Rows are kept a year, and the SQLite database
-// travels as one capsule member capped at 64 MiB, so an unbounded flood of guesses from many
-// addresses would stop every backup. 200 a day is at most a few MiB a year; the rest are logged.
+// must fit one capsule, so an unbounded flood of guesses from many addresses would stop every
+// backup and fill the disk. 200 a day is at most a few MiB a year; the rest are logged.
 type unknownAuthAudit struct {
 	mu  sync.Mutex
 	day int64

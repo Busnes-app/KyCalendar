@@ -519,11 +519,9 @@ func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string
 	return s.withLockedUser(ctx, "id = ? AND password_hash = ? AND status = 'active'", []any{userID, expectedHash}, apply)
 }
 
-// withCredentials is withPassword that also holds the TOTP state c was read with, so a sign-in
-// checked before TOTP was turned on or off cannot land after it.
+// withCredentials is withPassword for the credentials c a sign-in checked.
 func (s *SQLStore) withCredentials(ctx context.Context, userID string, c Credentials, apply func(*sql.Tx) error) error {
-	return s.withLockedUser(ctx, "id = ? AND password_hash = ? AND status = 'active' AND totp_enabled = ? AND (totp_enabled = ? OR totp_secret_enc = ?)",
-		[]any{userID, c.PasswordHash, c.TOTPEnabled, false, c.TOTPSecretEnc}, apply)
+	return s.withPassword(ctx, userID, c.PasswordHash, apply)
 }
 
 // withLockedUser runs apply in a transaction that first write-locks the one user row where

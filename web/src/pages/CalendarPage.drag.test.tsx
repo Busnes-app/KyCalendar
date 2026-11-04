@@ -192,6 +192,26 @@ describe('drag', () => {
     expect(puts).toHaveLength(0);
   });
 
+  // The end counts too: a New York 17:00-01:00 series dragged a day across Berlin's change ends at
+  // 06:00 Berlin, not the 07:00 dropped.
+  it('refuses an All events drag whose end the series zone would land elsewhere', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const ev: EventInfo = { ...series, zone: 'America/New_York', repeat: { freq: 'daily' }, start: '2026-10-23T21:00:00Z', end: '2026-10-24T05:00:00Z', series_start: '2026-10-19T21:00:00Z', series_end: '2026-10-20T05:00:00Z' };
+    const revert = vi.fn();
+    fire('eventDrop', {
+      event: { start: new Date(2026, 9, 24, 23), end: new Date(2026, 9, 25, 7), allDay: false, extendedProps: { info: ev } },
+      oldEvent: { start: new Date(ev.start), end: new Date(ev.end), allDay: false },
+      delta: dayDelta(1),
+      revert,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/^Move this repeating event in the event form/);
+    expect(revert).toHaveBeenCalled();
+    expect(puts).toHaveLength(0);
+  });
+
   // An occurrence moved earlier (11:00 in a 09:00 series) still shifts the series by the drag.
   it('moves a series by dragging an occurrence that was moved before', async () => {
     const puts = setup();

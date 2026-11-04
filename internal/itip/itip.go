@@ -406,7 +406,11 @@ func deletedOccurrences(self Address, oldCal, newCal *ical.Calendar) []*ical.Com
 					rid.Params.Set(param, pv)
 				}
 			}
-			out = append(out, instance(newMaster, rid))
+			src := newMaster // a deleted override answers with its own, possibly newer, SEQUENCE
+			if o := before[v]; o != nil && sequence(o) > sequence(newMaster) {
+				src = o
+			}
+			out = append(out, instance(src, rid))
 		}
 	}
 	return out

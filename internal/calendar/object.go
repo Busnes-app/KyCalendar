@@ -43,6 +43,30 @@ const maxIndexOccurrences = 100000
 const maxRecurringComponents = 10
 
 // fastFreq reports an RRULE with FREQ=SECONDLY or MINUTELY, which is never expanded.
+// EndedBefore reports whether every VEVENT of cal starts before t and repeats, if at all, only
+// by rules whose UNTIL is before t. It answers false when unsure (COUNT, RDATE, an unreadable
+// value), so callers use it for objects Inspect left without a last end, with their own margin.
+func EndedBefore(cal *ical.Calendar, t time.Time) bool {
+	seen := false
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		seen = true
+		start, err := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
+		if err != nil || start.IsZero() || !start.Before(t) || len(c.Props[ical.PropRecurrenceDates]) > 0 {
+			return false
+		}
+		for _, p := range c.Props[ical.PropRecurrenceRule] {
+			opt, err := rrule.StrToROption(p.Value)
+			if err != nil || opt.Until.IsZero() || !opt.Until.Before(t) {
+				return false
+			}
+		}
+	}
+	return seen
+}
+
 func fastFreq(comp *ical.Component) bool {
 	for _, p := range comp.Props[ical.PropRecurrenceRule] {
 		for _, part := range strings.Split(strings.ToUpper(p.Value), ";") {

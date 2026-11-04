@@ -284,14 +284,17 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 	if err != nil {
 		return &apiError{status: http.StatusInternalServerError, msg: "Failed to load the calendar's events"}
 	}
-	past := time.Now().Add(-24 * time.Hour).Unix() // a day's margin for floating times
+	past := time.Now().Add(-24 * time.Hour) // a day's margin for floating times
 	for _, o := range objs {
-		if o.LastEnd != nil && *o.LastEnd < past {
+		if o.LastEnd != nil && *o.LastEnd < past.Unix() {
 			continue
 		}
 		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
 		if err != nil {
 			continue
+		}
+		if o.LastEnd == nil && calendar.EndedBefore(cal, past) {
+			continue // a finite series the index could not bound, such as a floating one
 		}
 		org, ok := itip.Organizer(cal)
 		if !ok {
@@ -316,17 +319,17 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 }
 
 // groupOrganizer is who a group calendar's meeting is cancelled as: its organizer, when they are
-// a user here who may edit c and no other calendar they own or are granted holds the meeting.
-// Anyone who can edit c can write any ORGANIZER into it, so a meeting that is the organizer's
-// elsewhere, or names someone who cannot edit c, is deleted without a message rather than
-// cancelled as them.
+// a user here and no other calendar they own or are granted holds the meeting. Anyone who can
+// edit c can write any ORGANIZER into it, so a copy of a meeting the organizer keeps elsewhere
+// is deleted without a message rather than cancelled as them. A copy naming a meeting nobody
+// holds cancels nothing: delivery finds no attendee copy of that UID from that organizer.
 func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip.Address, uid string) *store.User {
 	u, err := s.store.Users().CalendarUser(ctx, org.Email())
 	if err != nil {
 		return nil // an organizer outside this instance: nothing is sent from here
 	}
 	grants, err := s.store.Calendars().UserGrants(ctx, u.ID)
-	if err != nil || !access.CanEditEvents(c, access.Resolve(u, c, grants)) {
+	if err != nil {
 		return nil
 	}
 	own, err := s.store.Calendars().ListCalendarsByOwner(ctx, "user", u.ID)

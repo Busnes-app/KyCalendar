@@ -472,3 +472,22 @@ func TestInspectZonedUntilMatchesExpand(t *testing.T) {
 		}
 	}
 }
+
+// EndedBefore says yes only when it can prove the series is over.
+func TestEndedBefore(t *testing.T) {
+	cut := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for body, want := range map[string]bool{
+		"DTSTART:20240105T090000\nDTEND:20240105T100000":                    true,
+		"DTSTART:20240105T090000\nRRULE:FREQ=WEEKLY;UNTIL=20240301T090000":  true,
+		"DTSTART;VALUE=DATE:20240105\nRRULE:FREQ=DAILY;UNTIL=20240110":      true,
+		"DTSTART:20240105T090000\nRRULE:FREQ=WEEKLY":                        false,
+		"DTSTART:20240105T090000\nRRULE:FREQ=WEEKLY;COUNT=3":                false,
+		"DTSTART:20240105T090000\nRRULE:FREQ=WEEKLY;UNTIL=20270101T000000Z": false,
+		"DTSTART:20240105T090000\nRDATE:20240106T090000":                    false,
+		"DTSTART:20270105T090000":                                           false,
+	} {
+		if got := EndedBefore(parse(t, calendarOf(event("UID:e\n"+body))), cut); got != want {
+			t.Errorf("%q: %v, want %v", body, got, want)
+		}
+	}
+}
