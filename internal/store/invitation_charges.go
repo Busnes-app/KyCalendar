@@ -39,8 +39,10 @@ func (c *calendarStore) ownerUsage(ctx context.Context, tx *sql.Tx, kind, id, ex
 // whole copy once, including an answer to one occurrence. Erasing an answer cannot charge back.
 func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *CalendarObject, exists bool) error {
 	o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient = "", "", ""
+	var previous []byte
+	var previousUID string
 	if exists {
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT invitation_sender, invitation_attendee, invitation_recipient FROM calendar_objects WHERE calendar_id = ? AND name = ?`), o.CalendarID, o.Name).Scan(&o.InvitationSender, &o.InvitationAttendee, &o.InvitationRecipient); err != nil {
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT invitation_sender, invitation_attendee, invitation_recipient, data, uid FROM calendar_objects WHERE calendar_id = ? AND name = ?`), o.CalendarID, o.Name).Scan(&o.InvitationSender, &o.InvitationAttendee, &o.InvitationRecipient, &previous, &previousUID); err != nil {
 			return err
 		}
 	}
@@ -70,8 +72,42 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 	if o.InvitationSender == "" || o.DeliveryID != "" || o.WriterID == "" {
 		return nil
 	}
+	before, err := ical.NewDecoder(bytes.NewReader(previous)).Decode()
+	if err != nil {
+		return fmt.Errorf("stored invitation: %w", err)
+	}
+	next, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	if err != nil {
+		return fmt.Errorf("invitation charge: %w", err)
+	}
+
+	beforeOrganizer, beforeOK := itip.Organizer(before)
+	nextOrganizer, nextOK := itip.Organizer(next)
+	identityChanged := o.UID != previousUID || beforeOK != nextOK || beforeOrganizer != nextOrganizer
+	for _, ev := range next.Children {
+		if ev.Name != ical.CompEvent {
+			continue
+		}
+		p := ev.Props.Get(ical.PropOrganizer)
+		if p == nil {
+			identityChanged = true
+			continue
+		}
+		org, ok := itip.ParseAddress(p.Value)
+		if !ok || org != beforeOrganizer {
+			identityChanged = true
+		}
+	}
+	// A client may keep the delivered copy at the sender's cost, not enlarge or replace it.
+	// Such content belongs to its authenticated writer and must fit that writer's quota.
+	if len(o.Data) > len(previous) || identityChanged {
+		o.InvitationSender = ""
+		o.InvitationRecipient = o.WriterID
+		o.InvitationAttendee = ""
+		return nil
+	}
 	var email string
-	err := tx.QueryRowContext(ctx, c.q(`SELECT email FROM users u WHERE id = ? AND status = 'active' AND role = 'user'
+	err = tx.QueryRowContext(ctx, c.q(`SELECT email FROM users u WHERE id = ? AND status = 'active' AND role = 'user'
  AND (SELECT COUNT(*) FROM users v WHERE LOWER(v.email) = LOWER(u.email) AND v.status = 'active' AND v.role = 'user') = 1`), o.WriterID).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -82,18 +118,6 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 	self, ok := itip.ParseAddress("mailto:" + email)
 	if !ok {
 		return nil
-	}
-	var previous []byte
-	if err := tx.QueryRowContext(ctx, c.q(`SELECT data FROM calendar_objects WHERE calendar_id = ? AND name = ?`), o.CalendarID, o.Name).Scan(&previous); err != nil {
-		return err
-	}
-	before, err := ical.NewDecoder(bytes.NewReader(previous)).Decode()
-	if err != nil {
-		return fmt.Errorf("stored invitation: %w", err)
-	}
-	next, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
-	if err != nil {
-		return fmt.Errorf("invitation charge: %w", err)
 	}
 	// The existing pure scheduling rule proves whose own answer changed, including occurrences.
 	replies, err := itip.Outgoing(self, before, next, time.Now())
