@@ -38,31 +38,24 @@ type Scheduler struct {
 const InviteLimit = 1000
 
 // InviteBytesLimit bounds internal REQUEST copies per sender per hour, including updates.
-const InviteBytesLimit int64 = 64 << 20
+const InviteBytesLimit = store.InviteBytesLimit
 
 type inviteWindow struct {
 	start time.Time
 	n     int
-	bytes int64
 }
 
 // InviteLimitError refuses a write that would invite more people than InviteLimit this hour.
-type InviteLimitError struct {
-	Until time.Time
-	Bytes bool
-}
+type InviteLimitError struct{ Until time.Time }
 
 func (e InviteLimitError) Error() string {
-	if e.Bytes {
-		return fmt.Sprintf("You have reached the %d MiB hourly invitation byte budget. You can send invitations again at %s UTC.", InviteBytesLimit>>20, e.Until.UTC().Format("15:04"))
-	}
 	return fmt.Sprintf("You have invited more than %d people in the last hour. You can send new invitations again at %s UTC.",
 		InviteLimit, e.Until.UTC().Format("15:04"))
 }
 
 // admitInvites counts n new invitees for sender against InviteLimit.
-func (s *Scheduler) admitInvites(sender string, n int, bytes int64) error {
-	if n == 0 && bytes == 0 {
+func (s *Scheduler) admitInvites(sender string, n int) error {
+	if n == 0 {
 		return nil
 	}
 	s.invitesMu.Lock()
@@ -84,10 +77,6 @@ func (s *Scheduler) admitInvites(sender string, n int, bytes int64) error {
 	if w.n+n > InviteLimit {
 		return InviteLimitError{Until: w.start.Add(time.Hour)}
 	}
-	if w.bytes+bytes > InviteBytesLimit {
-		return InviteLimitError{Until: w.start.Add(time.Hour), Bytes: true}
-	}
-	w.bytes += bytes
 	w.n += n
 	return nil
 }
@@ -233,22 +222,18 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 			return data, nil, nil
 		}
 		var rows []*store.OutboxMessage
-		var deliveryBytes int64
 		for _, m := range msgs {
 			body, err := encodeCal(m.Calendar)
 			if err != nil {
 				return nil, nil, err
 			}
 			for _, to := range m.Recipients {
-				if m.Method == itip.MethodRequest && internal[to] {
-					deliveryBytes += int64(len(body))
-				}
 				sum := sha256.Sum256([]byte(writer.ID + "\x00" + m.Method + "\x00" + string(to) + "\x00" + string(body)))
 				rows = append(rows, &store.OutboxMessage{ID: "obx_" + uuid.NewString(), DedupeKey: hex.EncodeToString(sum[:]),
-					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body})
+					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body, CountInviteBytes: m.Method == itip.MethodRequest && internal[to]})
 			}
 		}
-		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs), deliveryBytes); err != nil {
+		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
 			return nil, nil, err
 		}
 		return data, rows, nil

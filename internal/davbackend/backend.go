@@ -419,7 +419,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 	}
 	ifNoneMatch := opts.IfNoneMatch.IsSet() && opts.IfNoneMatch.IsWildcard()
 	// A group calendar is its own owner, so the per-owner limits apply to each group calendar.
-	o, err := Write(ctx, b.Store, c, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits(), b.Sched.Plan(ctx, b.User, cal))
+	o, err := Write(ctx, b.Store, c, name, cal, opts.Raw, ifMatch, ifNoneMatch, b.limits(), b.Sched.Plan(ctx, b.User, cal), b.User.ID)
 	switch {
 	case errors.Is(err, ErrTooLarge):
 		return nil, caldav.NewPreconditionError(caldav.PreconditionMaxResourceSize)
@@ -431,7 +431,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 		return nil, caldav.NewPreconditionError(caldav.PreconditionValidCalendarData)
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, errQuota
-	case errors.As(err, new(InviteLimitError)):
+	case errors.As(err, new(InviteLimitError)), errors.As(err, new(store.InviteByteLimitError)):
 		return nil, webdav.NewHTTPError(http.StatusTooManyRequests, err)
 	case errors.Is(err, store.ErrReadOnly):
 		return nil, errReadOnly

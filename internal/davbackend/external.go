@@ -125,7 +125,7 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 	}
 	if occurrencesOnly(msg) {
 		if _, err := calendar.Master(existing); err == nil || occurrencesOnly(existing) {
-			next, err := deliverOccurrences(existing, self, method, msg)
+			next, err := deliverOccurrences(existing, self, method, msg, c.OwnerKind == "group")
 			if errors.Is(err, errDeleteCopy) {
 				return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
 			}
@@ -153,7 +153,11 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 		}
 		return s.putDelivery(ctx, c, o.Name, existing, o.ETag, false, deliveryID, recipientID)
 	}
-	next, err := itip.AttendeeCopy(msg, existing, self)
+	copyRequest := itip.AttendeeCopy
+	if c.OwnerKind == "group" {
+		copyRequest = itip.SharedAttendeeCopy
+	}
+	next, err := copyRequest(msg, existing, self)
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
@@ -297,7 +301,7 @@ func sameOccurrence(c, o *ical.Component) {
 // of the series: a REQUEST replaces or adds those overrides, a CANCEL marks those occurrences
 // cancelled. The master and every other override stay as they are. A copy with no master (an
 // invitation to some occurrences only) takes any occurrence the REQUEST names.
-func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) (*ical.Calendar, error) {
+func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, shared bool) (*ical.Calendar, error) {
 	_, err := calendar.Master(existing)
 	masterless := err != nil
 	have := overridesOf(existing)
@@ -375,7 +379,11 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 	if len(before.Children) == 0 && !masterless {
 		return nil, errPermanent{"no_occurrence"}
 	}
-	next, err := itip.AttendeeCopy(msg, before, self)
+	copyRequest := itip.AttendeeCopy
+	if shared {
+		copyRequest = itip.SharedAttendeeCopy
+	}
+	next, err := copyRequest(msg, before, self)
 	if err != nil {
 		return nil, errPermanent{"invalid_object"}
 	}
@@ -464,7 +472,7 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
-	_, err = Write(ctx, s.Store, c, o.Name, cal, raw, o.ETag, false, s.Limits, s.Plan(ctx, u, cal))
+	_, err = Write(ctx, s.Store, c, o.Name, cal, raw, o.ETag, false, s.Limits, s.Plan(ctx, u, cal), u.ID)
 	return err
 }
 

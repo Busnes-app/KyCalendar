@@ -222,7 +222,7 @@ func TestSchedulingAgentCannotChangeMeetings(t *testing.T) {
 		"meet":  meeting("meet", "alice", "ATTENDEE:mailto:bob@example.com"),
 		"alone": strings.Replace(meeting("alone", "alice"), "ORGANIZER:mailto:alice@example.com\r\n", "", 1),
 	} {
-		if _, err := davbackend.Write(context.Background(), w.st, c, uid+".ics", decode(t, body), []byte(body), "", true, store.OwnerLimits{}, nil); err != nil {
+		if _, err := davbackend.Write(context.Background(), w.st, c, uid+".ics", decode(t, body), []byte(body), "", true, store.OwnerLimits{}, nil, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -289,7 +289,7 @@ func TestSchedulingAgentCannotDropAMeetingOverride(t *testing.T) {
 		"BEGIN:VEVENT\r\nUID:series\r\nDTSTAMP:20261001T000000Z\r\nRECURRENCE-ID:20261103T090000Z\r\nDTSTART:20261103T090000Z\r\n" +
 		"DTEND:20261103T100000Z\r\nSUMMARY:Standup with Bob\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\n" +
 		"END:VEVENT\r\nEND:VCALENDAR\r\n"
-	if _, err := davbackend.Write(ctx, w.st, c, "series.ics", decode(t, series), []byte(series), "", true, store.OwnerLimits{}, nil); err != nil {
+	if _, err := davbackend.Write(ctx, w.st, c, "series.ics", decode(t, series), []byte(series), "", true, store.OwnerLimits{}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	before, err := w.st.Calendars().GetObjectByUID(ctx, w.personal, "series")

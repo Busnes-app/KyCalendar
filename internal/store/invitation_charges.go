@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/emersion/go-ical"
@@ -64,35 +65,55 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 			return err
 		}
 	}
-	if o.InvitationSender == "" {
+
+	// Delivery can establish sponsorship but can never prove an attendee's response.
+	if o.InvitationSender == "" || o.DeliveryID != "" || o.WriterID == "" {
 		return nil
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	var email string
+	err := tx.QueryRowContext(ctx, c.q(`SELECT email FROM users u WHERE id = ? AND status = 'active' AND role = 'user'
+ AND (SELECT COUNT(*) FROM users v WHERE LOWER(v.email) = LOWER(u.email) AND v.status = 'active' AND v.role = 'user') = 1`), o.WriterID).Scan(&email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	self, ok := itip.ParseAddress("mailto:" + email)
+	if !ok {
+		return nil
+	}
+	var previous []byte
+	if err := tx.QueryRowContext(ctx, c.q(`SELECT data FROM calendar_objects WHERE calendar_id = ? AND name = ?`), o.CalendarID, o.Name).Scan(&previous); err != nil {
+		return err
+	}
+	before, err := ical.NewDecoder(bytes.NewReader(previous)).Decode()
+	if err != nil {
+		return fmt.Errorf("stored invitation: %w", err)
+	}
+	next, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
 	if err != nil {
 		return fmt.Errorf("invitation charge: %w", err)
 	}
-	self, ok := itip.ParseAddress(o.InvitationAttendee)
-	if !ok {
-		return errors.New("invalid stored invitation attendee")
+	// The existing pure scheduling rule proves whose own answer changed, including occurrences.
+	replies, err := itip.Outgoing(self, before, next, time.Now())
+	if err != nil {
+		return err
 	}
-	found := false
-	for _, ev := range cal.Children {
-		if ev.Name != ical.CompEvent {
+	for _, reply := range replies {
+		if reply.Method != itip.MethodReply {
 			continue
 		}
-		for _, a := range itip.AttendeesOf(ev) {
-			if a.Address == self {
-				found = true
-				if a.Status != "NEEDS-ACTION" {
+		for _, ev := range reply.Calendar.Children {
+			for _, a := range itip.AttendeesOf(ev) {
+				if a.Address == self && a.Status != "NEEDS-ACTION" {
 					o.InvitationSender = ""
+					o.InvitationRecipient = o.WriterID
+					o.InvitationAttendee = string(self)
 					return nil
 				}
 			}
 		}
-	}
-	// A user replacing their invitation with an ordinary object pays for that object.
-	if !found {
-		o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient = "", "", ""
 	}
 	return nil
 }

@@ -597,16 +597,34 @@ func firstUID(cal *ical.Calendar) (string, bool) {
 // object, with self's own VALARMs kept from existing (nil for a first delivery) and self's
 // PARTSTAT kept unless the change is significant, which asks them again.
 func AttendeeCopy(request, existing *ical.Calendar, self Address) (*ical.Calendar, error) {
+	return attendeeCopy(request, existing, self, false)
+}
+
+// SharedAttendeeCopy preserves each attendee's own answer in one shared physical copy.
+// A delivery to another guest must never introduce an organizer-supplied answer as consent.
+func SharedAttendeeCopy(request, existing *ical.Calendar, self Address) (*ical.Calendar, error) {
+	return attendeeCopy(request, existing, self, true)
+}
+
+func attendeeCopy(request, existing *ical.Calendar, self Address, shared bool) (*ical.Calendar, error) {
 	out, err := clone(request)
 	if err != nil {
 		return nil, err
 	}
 	out.Props.Del(ical.PropMethod)
 	keep := map[string]string{}
+	allKeep := map[Address]map[string]string{}
 	alarms := map[string][]*ical.Component{}
 	if existing != nil {
 		if !Significant(existing, request) {
 			keep = partstatOf(existing, self)
+			if shared {
+				for _, ev := range events(existing) {
+					for _, a := range AttendeesOf(ev) {
+						allKeep[a.Address] = partstatOf(existing, a.Address)
+					}
+				}
+			}
 		}
 		for _, c := range events(existing) {
 			for _, child := range c.Children {
@@ -621,8 +639,12 @@ func AttendeeCopy(request, existing *ical.Calendar, self Address) (*ical.Calenda
 		c.Children = append(c.Children, alarms[key]...)
 		atts := c.Props[ical.PropAttendee]
 		for i := range atts {
-			if a, ok := ParseAddress(atts[i].Value); ok && a == self {
-				atts[i].Params.Set(ical.ParamParticipationStatus, cmpOr(keep[key], "NEEDS-ACTION"))
+			if a, ok := ParseAddress(atts[i].Value); ok && (a == self || shared) {
+				status := keep[key]
+				if shared {
+					status = allKeep[a][key]
+				}
+				atts[i].Params.Set(ical.ParamParticipationStatus, cmpOr(status, "NEEDS-ACTION"))
 			}
 		}
 	}

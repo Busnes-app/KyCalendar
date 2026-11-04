@@ -10,7 +10,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-const unansweredCopy = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:invite\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+const unansweredCopy = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:invite\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nDTEND:20261110T100000Z\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
 
 func TestInvitationChargeTransferIsAtomic(t *testing.T) {
 	ctx := context.Background()
@@ -50,6 +50,7 @@ func TestInvitationChargeTransferIsAtomic(t *testing.T) {
 	// A failed answer must leave the old bytes, ETag, sync sequence and charge untouched.
 	before, _ := st.Calendars().GetCalendarByID(ctx, copy.CalendarID)
 	answer := obj(copy.CalendarID, copy.Name, copy.UID, strings.Replace(unansweredCopy, "NEEDS-ACTION", "ACCEPTED", 1), 0, nil)
+	answer.WriterID = "usr_bob"
 	if _, err := st.Calendars().PutObject(ctx, answer, stored.ETag, false, lim); !errors.Is(err, store.ErrQuotaExceeded) {
 		t.Fatalf("answer over recipient quota: %v", err)
 	}
@@ -61,6 +62,7 @@ func TestInvitationChargeTransferIsAtomic(t *testing.T) {
 	if err := st.Calendars().DeleteObject(ctx, recipient.CalendarID, recipient.Name, recipient.ETag); err != nil {
 		t.Fatal(err)
 	}
+	answer.WriterID = "usr_bob"
 	if _, err := st.Calendars().PutObject(ctx, answer, stored.ETag, false, lim); err != nil {
 		t.Fatalf("answer after freeing recipient space: %v", err)
 	}
@@ -160,12 +162,14 @@ func TestAnsweredGroupCalendarInvitationIsChargedToAttendee(t *testing.T) {
 		t.Fatal(err)
 	}
 	answer := obj(group.ID, copy.Name, copy.UID, strings.Replace(unansweredCopy, "NEEDS-ACTION", "TENTATIVE", 1), 0, nil)
+	answer.WriterID = "usr_bob"
 	if _, err := st.Calendars().PutObject(ctx, answer, delivered.ETag, false, lim); !errors.Is(err, store.ErrQuotaExceeded) {
 		t.Fatalf("answer charged the group instead of the full attendee: %v", err)
 	}
 	if err := st.Calendars().DeleteObject(ctx, bob.CalendarID, bob.Name, bob.ETag); err != nil {
 		t.Fatal(err)
 	}
+	answer.WriterID = "usr_bob"
 	if _, err := st.Calendars().PutObject(ctx, answer, delivered.ETag, false, lim); err != nil {
 		t.Fatal(err)
 	}

@@ -54,6 +54,8 @@ Delivery, queues, credentials and storage belong to their callers; nothing here 
   self's VALARMs from `existing`, and self's PARTSTAT unless the change is significant, which
   resets it to NEEDS-ACTION.
 
+- `SharedAttendeeCopy` applies the same copy/VALARM rules while preserving every attendee's stored PARTSTAT (or resetting to NEEDS-ACTION on a significant change). A REQUEST for a different guest cannot inject an answer into a shared physical copy. Transport/storage callers still prove the identity of a responding writer before changing quota ownership.
+
 ## Verification
 - `go test -race ./internal/itip/`
 - `go test ./internal/itip/ -run '^$' -fuzz FuzzInbound -fuzztime 60s` (3.6M inputs clean with Outgoing and AttendeeCopy in the target, 2026-10-19)

@@ -154,6 +154,8 @@ type Subscription struct {
 }
 
 type CalendarObject struct {
+	// WriterID is the authenticated writer, never read from calendar content.
+	WriterID string
 	// DeliveryID is an internal pending outbox row consumed atomically with this write.
 	DeliveryID, DeliveryRecipient string
 	// InvitationSender/Attendee are server-owned sponsorship, retained until an answer.

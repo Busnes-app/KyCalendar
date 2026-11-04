@@ -12,7 +12,7 @@ import (
 func outboxObject(t *testing.T, st store.Store, name string) *store.CalendarObject {
 	t.Helper()
 	ctx := context.Background()
-	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_" + name, Username: name, Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_" + name, Username: name, Email: name + "@example.com", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
 		t.Fatal(err)
 	}
 	c := &store.Calendar{ID: "cal_" + name, OwnerKind: "user", OwnerID: "usr_" + name, Slug: "default", Name: "C"}

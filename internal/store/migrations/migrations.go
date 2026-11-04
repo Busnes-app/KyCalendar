@@ -595,7 +595,8 @@ CREATE TABLE sso_logouts (
 
 const invitationSponsorship = `ALTER TABLE calendar_objects ADD COLUMN invitation_sender TEXT NOT NULL DEFAULT '';
 ALTER TABLE calendar_objects ADD COLUMN invitation_attendee TEXT NOT NULL DEFAULT '';
-ALTER TABLE calendar_objects ADD COLUMN invitation_recipient TEXT NOT NULL DEFAULT '';`
+ALTER TABLE calendar_objects ADD COLUMN invitation_recipient TEXT NOT NULL DEFAULT '';
+CREATE TABLE invitation_byte_budget (sender_id TEXT PRIMARY KEY, window_start BIGINT NOT NULL, bytes BIGINT NOT NULL);`
 
 const sessionUnproven = `ALTER TABLE sessions ADD COLUMN unproven BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE sessions SET unproven = TRUE WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');`

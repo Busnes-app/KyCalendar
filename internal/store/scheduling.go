@@ -8,17 +8,19 @@ import (
 
 // OutboxMessage is one queued iTIP message for one recipient.
 type OutboxMessage struct {
-	ID          string
-	DedupeKey   string // unique: queueing the same message again is a no-op
-	SenderID    string // the user the message speaks for
-	Method      string
-	Recipient   string // calendar user address; internal or external is decided at delivery
-	Body        []byte
-	Status      string // pending, delivered or failed
-	Attempts    int
-	NextAttempt time.Time
-	LastError   string
-	CreatedAt   time.Time
+	// CountInviteBytes is a transient planner input for internal REQUEST copies.
+	CountInviteBytes bool
+	ID               string
+	DedupeKey        string // unique: queueing the same message again is a no-op
+	SenderID         string // the user the message speaks for
+	Method           string
+	Recipient        string // calendar user address; internal or external is decided at delivery
+	Body             []byte
+	Status           string // pending, delivered or failed
+	Attempts         int
+	NextAttempt      time.Time
+	LastError        string
+	CreatedAt        time.Time
 }
 
 // pendingOutboxBytes is a scalar subquery: the bytes of every pending message. Every instance-cap
@@ -59,14 +61,25 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 		return nil
 	}
 	now := time.Now().UTC()
+	var inviteBytes int64
 	for _, m := range rows {
-		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
+		res, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
 (id, dedupe_key, sender_id, method, recipient, body, status, attempts, next_attempt_at, last_error, created_at)
 VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, '', ?) ON CONFLICT (dedupe_key) DO NOTHING`),
 			m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now)
 		if err != nil {
 			return err
 		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 1 && m.CountInviteBytes {
+			inviteBytes += int64(len(m.Body))
+		}
+	}
+	if err := c.admitInviteBytes(ctx, tx, rows[0].SenderID, inviteBytes, now); err != nil {
+		return err
 	}
 	if lim.MaxBytes > 0 {
 		_, used, err := c.ownerUsage(ctx, tx, "user", rows[0].SenderID, "", "")

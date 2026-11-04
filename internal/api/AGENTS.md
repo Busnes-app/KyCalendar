@@ -115,6 +115,8 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 
 - Enable additionally reaches a `kysignon` row only under the live `kyidentity` binding, holding `signinMu` through the store write. SCIM (`scim`), generic OIDC, other/empty bindings, no live provider and installer-owned identities remain managed. The store rechecks the actor, changes only status, revokes grants and writes `admin.user_enable` atomically. Same-binding Reattach still refuses an inactive row and points KyIdentity users to Enable.
 
+- Event saves pass the authenticated writer ID to the common object write. Only their own changed iTIP answer can transfer an unanswered copy's charge. Transactional byte-budget refusal shares the existing 429 `invite_limit` response and retry time; a failed save spends no byte allowance.
+
 ## Verification
 - `go test -v ./internal/api/...` (`authz_matrix_test.go` is the route-complete authorization matrix; `authz_test.go` pins the per-role exposure of every privileged route; `backup_test.go` the backup routes, on SQLite only because a run snapshots the database)
 - `scripts/smoke-test.sh` asserts the same boundaries against a running binary
