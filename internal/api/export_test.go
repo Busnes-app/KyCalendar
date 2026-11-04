@@ -91,9 +91,11 @@ func SetKyPostClientForTest(s *Server, c *kypost.Client) { s.sched.KyPost = c }
 
 // SetKyPostTimingForTest shortens the KyIdentity lookup's waits and returns the restore func.
 func SetKyPostTimingForTest(firstWait, refresh, retry, minGap time.Duration) func() {
-	old := []time.Duration{kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap}
-	kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap = firstWait, refresh, retry, minGap
-	return func() { kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap = old[0], old[1], old[2], old[3] }
+	old := []time.Duration{kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap, kypostStartupWait}
+	kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap, kypostStartupWait = firstWait, refresh, retry, minGap, firstWait
+	return func() {
+		kypostFirstWait, kypostRefresh, kypostRetry, kypostMinGap, kypostStartupWait = old[0], old[1], old[2], old[3], old[4]
+	}
 }
 
 // KyPostLinkForTest is the server's KyPost link.

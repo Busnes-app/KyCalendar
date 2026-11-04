@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,10 +9,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/emersion/go-ical"
+
 	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
+	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/store"
 	"github.com/google/uuid"
 )
@@ -254,10 +258,53 @@ func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
+	if apiErr := s.deleteMeetings(ctx, c, sessionUser(r.Context())); apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
 	if err := s.store.Calendars().DeleteCalendar(ctx, c.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to delete the calendar")
 		return
 	}
 	s.auditAction(ctx, r, "calendar.delete", c.ID, "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteMeetings deletes c's meetings one by one through the scheduled delete path, before the
+// calendar goes, so their guests get the cancellations (or the organizer an attendee's answer)
+// that deleting each event would send. as plans the deletes: the calendar's owner, or nil in a
+// group calendar, where each meeting is planned for its organizer when they are a user here.
+func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *store.User) *apiError {
+	if s.sched == nil {
+		return nil
+	}
+	objs, err := s.store.Calendars().ListObjects(ctx, c.ID)
+	if err != nil {
+		return &apiError{status: http.StatusInternalServerError, msg: "Failed to load the calendar's events"}
+	}
+	for _, o := range objs {
+		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+		if err != nil {
+			continue
+		}
+		org, ok := itip.Organizer(cal)
+		if !ok {
+			continue
+		}
+		writer := as
+		if writer == nil {
+			if writer, err = s.store.Users().CalendarUser(ctx, org.Email()); err != nil {
+				continue // an organizer outside this instance: nothing is sent from here
+			}
+		}
+		err = davbackend.Delete(ctx, s.store, c, o.Name, o.ETag, s.objectLimits(), s.sched.Plan(ctx, writer, nil))
+		switch {
+		case err == nil, errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrPreconditionFailed):
+		case errors.Is(err, store.ErrQuotaExceeded):
+			return &apiError{status: http.StatusInsufficientStorage, msg: "Too many cancellations are waiting to be sent; try again later", code: "quota"}
+		default:
+			return &apiError{status: http.StatusInternalServerError, msg: "Failed to cancel the calendar's meetings"}
+		}
+	}
+	return nil
 }

@@ -31,6 +31,10 @@ const privateRecoveryHint = " (set KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY=true
 // upload budget plus room for sealing. The listener's WriteTimeout is sized for JSON replies.
 const depositWriteBudget = 16 * time.Minute
 
+// pairWriteBudget covers a KyRecovery claim (its client allows 30 s) and the pin: the code is
+// spent once the claim succeeds, so the admin must get the answer.
+const pairWriteBudget = time.Minute
+
 // AuditDetails flattens the lib's details map into the bounded audit column. Locally
 // derived fields go first so a long remote error cannot displace the useful facts.
 func AuditDetails(m map[string]any) string {
@@ -201,6 +205,7 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 	if !s.requireStepUp(w, r, "pair with KyRecovery") {
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(pairWriteBudget))
 	var req RemotePairRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid request body")

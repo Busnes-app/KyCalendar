@@ -42,6 +42,19 @@ var (
 
 var partstats = map[string]bool{"NEEDS-ACTION": true, "ACCEPTED": true, "DECLINED": true, "TENTATIVE": true, "DELEGATED": true}
 
+// ReplyAnswer is sender's PARTSTAT on one REPLY component as ApplyReply reads it: upper case,
+// "" when absent or not a PARTSTAT ApplyReply records.
+func ReplyAnswer(c *ical.Component, sender Address) string {
+	for _, p := range c.Props[ical.PropAttendee] {
+		if a, ok := ParseAddress(p.Value); ok && a == sender {
+			if ps := strings.ToUpper(p.Params.Get(ical.ParamParticipationStatus)); partstats[ps] {
+				return ps
+			}
+		}
+	}
+	return ""
+}
+
 // ParseAddress accepts "mailto:<addr-spec>" (scheme in any case) and returns it normalised.
 func ParseAddress(v string) (Address, bool) {
 	v = strings.TrimSpace(v)

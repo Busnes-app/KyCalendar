@@ -404,3 +404,18 @@ func TestKyPostLinkKeepsThePrivateAddressRule(t *testing.T) {
 		})
 	}
 }
+
+// KyIdentity starting beside KyCalendar answers late: automatic scheduling still comes on, since
+// startup keeps asking an unreachable KyIdentity for a while before it decides.
+func TestAutomaticSchedulingWaitsForASlowKyIdentity(t *testing.T) {
+	f, _ := kyIdentityServer(t)
+	f.set(500, "", nil)
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		f.set(0, "https://mail.example", pairSecret('a'))
+	}()
+	srv, st, _ := startLinked(t)
+	if v, _ := kypostStatusOf(t, srv, loginAs(t, srv, st, "root", "admin")); !v.Connected || !v.Scheduling {
+		t.Fatalf("status after a slow start: %+v", v)
+	}
+}

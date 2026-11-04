@@ -53,6 +53,12 @@ export function dayNumber(d: Date, zone?: string): number {
   return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)) / 86_400_000;
 }
 
+// minuteOfDay is d's clock time in zone (browser-local when undefined), in minutes after midnight.
+export function minuteOfDay(d: Date, zone?: string): number {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(d).map((x) => [x.type, x.value]));
+  return Number(p.hour) * 60 + Number(p.minute);
+}
+
 export const HIDDEN_KEY = 'kycalendar.hiddenCalendars';
 
 export function loadHidden(): Set<string> {
@@ -289,6 +295,13 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
         const r = unknown || shifts.some((s) => s !== shifts[0]) ? null : shiftRepeat(base, shifts[0] || null);
         if (!r) {
           fail('Change the days of a repeating event in the event form.');
+          return;
+        }
+        // The shift keeps browser-local clock times. In a series zone with other DST dates it would
+        // move the series' own clock time too, so that is left to the form.
+        const z = !allDay && ev.zone ? intlZone(ev.zone) : null;
+        if (z && (minuteOfDay(start, z) - minuteOfDay(seriesStart, z) - minuteOfDay(start) + minuteOfDay(seriesStart)) % 1440 !== 0) {
+          fail('Change the time of a repeating event in another time zone in the event form.');
           return;
         }
         repeat = r;

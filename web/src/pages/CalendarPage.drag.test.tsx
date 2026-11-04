@@ -319,6 +319,19 @@ describe('drag', () => {
     expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T05:00:00.000Z' }); // Tue 01:00 New York
   });
 
+  // New York's DST starts 8 March, Berlin's 29 March: shifting the 7 March 09:00 EST start a day
+  // in Berlin time would make the series 10:00 EDT, so the drag is left to the form.
+  it('refuses to shift a series whose zone changes DST on other dates than the browser', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const ny: EventInfo = { ...nyMondays, repeat: { freq: 'daily' }, recurrence_id: '20260314T130000Z', start: '2026-03-14T13:00:00Z', end: '2026-03-14T14:00:00Z', series_start: '2026-03-07T14:00:00Z', series_end: '2026-03-07T15:00:00Z' };
+    const revert = await dragTo(ny, new Date(2026, 2, 15, 14), dayDelta(1));
+    await waitFor(() => expect(revert).toHaveBeenCalled());
+    expect(puts).toHaveLength(0);
+    expect(screen.getByText(/another time zone/)).toBeTruthy();
+  });
+
   // Without a TZID the series is UTC or floating; a move counts only when both readings agree.
   const noZone: EventInfo = { ...nyMondays, zone: undefined, start: '2026-10-12T12:00:00Z', end: '2026-10-12T13:00:00Z', series_start: '2026-10-05T12:00:00Z', series_end: '2026-10-05T13:00:00Z' };
 

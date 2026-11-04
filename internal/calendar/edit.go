@@ -243,9 +243,16 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	}
 	ds := m.Props.Get(ical.PropDateTimeStart)
 	moved := !sameStart(ds, old, in) || (in.Repeat.Freq != "custom" && !RepeatOf(m).equal(in.Repeat))
+	lastDay, hasLastDay := untilDay(cal, m, old)
 	applyText(m, in)
 	setRepeat(m, in.Repeat)
 	if moved {
+		if hasLastDay && in.Repeat.Freq == "custom" {
+			// The kept rule ended on an occurrence's day: it now ends at the close of that day in
+			// the new start's zone, so a later time, another zone or the rule's own clock parts
+			// cannot drop that last occurrence.
+			setUntil(m, time.Date(lastDay.Year(), lastDay.Month(), lastDay.Day(), 23, 59, 59, 0, in.Zone).UTC())
+		}
 		setTimes(cal, m, in)
 		m.Props.Del(ical.PropExceptionDates)
 		m.Props.Del(ical.PropRecurrenceDates)
@@ -265,6 +272,54 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	}
 	touch(m, now)
 	return nil
+}
+
+// untilDay is the day (in the start's zone) of the master's UTC UNTIL when the series has an
+// occurrence that day: a timed series whose rule ends on its last occurrence's day.
+func untilDay(cal *ical.Calendar, m *ical.Component, s span) (time.Time, bool) {
+	until, ok := ruleUntil(m)
+	if !ok || s.allDay || s.floating {
+		return time.Time{}, false
+	}
+	d := until.In(s.start.Location())
+	day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
+	instances, err := Expand(cal, day, day.AddDate(0, 0, 1), time.UTC, 1000)
+	if err != nil {
+		return time.Time{}, false
+	}
+	for _, in := range instances {
+		if !in.Start.After(until) && !in.Start.Before(day) && in.Start.In(d.Location()).YearDay() == day.YearDay() {
+			return day, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// ruleUntil is the RRULE's UNTIL when it is a UTC date-time.
+func ruleUntil(m *ical.Component) (time.Time, bool) {
+	p := m.Props.Get(ical.PropRecurrenceRule)
+	if p == nil {
+		return time.Time{}, false
+	}
+	for _, part := range strings.Split(p.Value, ";") {
+		if k, v, _ := strings.Cut(part, "="); strings.EqualFold(k, "UNTIL") {
+			t, err := time.Parse("20060102T150405Z", v)
+			return t, err == nil
+		}
+	}
+	return time.Time{}, false
+}
+
+// setUntil writes until as the RRULE's UNTIL, the rest of the rule as it was.
+func setUntil(m *ical.Component, until time.Time) {
+	p := m.Props.Get(ical.PropRecurrenceRule)
+	parts := strings.Split(p.Value, ";")
+	for i, part := range parts {
+		if k, _, _ := strings.Cut(part, "="); strings.EqualFold(k, "UNTIL") {
+			parts[i] = k + "=" + until.Format("20060102T150405Z")
+		}
+	}
+	setRaw(m, ical.PropRecurrenceRule, strings.Join(parts, ";"))
 }
 
 // occurrenceProp names an occurrence (RECURRENCE-ID or EXDATE) in the form of the master's
@@ -399,6 +454,15 @@ func EditOne(cal *ical.Calendar, recurrenceID string, in EventInput, now time.Ti
 // overrideOf is the override for one occurrence, created as a copy of the master without its
 // recurrence when there is none yet.
 func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error) {
+	if _, err := Master(cal); err != nil {
+		// Only some occurrences (an invitation to those alone): the override is there or nowhere.
+		for _, c := range cal.Children {
+			if key, ok := OccurrenceKey(cal, c.Props.Get(ical.PropRecurrenceID)); c.Name == ical.CompEvent && ok && key == recurrenceID {
+				return c, nil
+			}
+		}
+		return nil, ErrNoSuchOccurrence
+	}
 	m, rid, o, err := seriesOf(cal, ical.PropRecurrenceID, recurrenceID)
 	if err != nil {
 		return nil, err
@@ -429,10 +493,14 @@ func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error
 
 // OccurrenceKey is the occurrence rid (a RECURRENCE-ID) names in cal's series, as a key in the
 // master's form, which AddOverride, EditOne and Expand take, whatever form rid is written in.
+// With no master (only some occurrences) the key is in rid's own form, as Expand keys them.
 func OccurrenceKey(cal *ical.Calendar, rid *ical.Prop) (string, bool) {
-	m, err := Master(cal)
-	if err != nil || rid == nil {
+	if rid == nil {
 		return "", false
+	}
+	m, err := Master(cal)
+	if err != nil {
+		return overrideKey(rid, time.UTC, nil)
 	}
 	form, err := spanOf(m, time.UTC)
 	if err != nil {

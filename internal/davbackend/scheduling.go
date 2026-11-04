@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -443,6 +444,7 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		if err != nil {
 			return errPermanent{"invalid_object"}
 		}
+		stamp(first)
 		sum := sha256.Sum256([]byte(uid))
 		return s.put(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true)
 	case err != nil:
@@ -452,13 +454,15 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 }
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first
-// personal event calendar when they deleted it or it holds no events.
+// personal event calendar when they deleted it or it holds no events. With neither (only
+// subscriptions or task lists left) the default calendar is made again.
 func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.Calendar, error) {
 	def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
 	if err == nil && !def.Subscribed && def.Holds(ical.CompEvent) {
 		return def, nil
 	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	missing := errors.Is(err, store.ErrNotFound)
+	if err != nil && !missing {
 		return nil, err
 	}
 	cals, err := s.writable(ctx, u)
@@ -470,7 +474,14 @@ func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.C
 			return c, nil
 		}
 	}
-	return nil, errPermanent{"no_calendar"}
+	if !missing {
+		return nil, errPermanent{"no_calendar"}
+	}
+	c := &store.Calendar{ID: "cal_" + uuid.NewString(), OwnerKind: ownerUser, OwnerID: u.ID, Slug: defaultSlug, Name: "Calendar"}
+	if err := s.Store.Calendars().CreateCalendar(ctx, c, 0); err != nil {
+		return nil, err // retried: a slug taken meanwhile is found next time
+	}
+	return s.Store.Calendars().GetCalendarByID(ctx, c.ID)
 }
 
 // deliverReply records an internal attendee's answer on the organizer's object.
@@ -482,18 +493,90 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil {
 		return err
 	}
-	changed, err := itip.ApplyReply(stored, msg, from)
+	next, changed, err := applyReply(stored, msg, from)
 	if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) || errors.Is(err, itip.ErrInvalid) {
 		return errPermanent{"not_attendee"}
 	}
 	if err != nil || !changed {
 		return err
 	}
-	return s.put(ctx, c, o.Name, stored, o.ETag, false)
+	return s.put(ctx, c, o.Name, next, o.ETag, false)
 }
 
-// maxNewOverrides caps the overrides one organizer message may add to an attendee's copy: each is a
-// copy of the master. A message that would add more is refused whole, so it is never half applied.
+// maxNewOverrides caps the overrides one message may add to a stored series: each is a copy of the
+// master. A message that would add more is refused whole, so it is never half applied.
 const maxNewOverrides = 20
 
 var errTooManyOccurrences = errPermanent{"too_many_occurrences"}
+
+func sequenceOf(c *ical.Component) int {
+	n := 0
+	if p := c.Props.Get(ical.PropSequence); p != nil {
+		n, _ = p.Int()
+	}
+	return n
+}
+
+// applyReply records from's answer (itip.ApplyReply) on a copy of stored, with the overrides it
+// needs (addOverrides), and returns the copy. Only a copy the answer changed is worth storing, so
+// a reply that records nothing leaves no override behind.
+func applyReply(stored, msg *ical.Calendar, from itip.Address) (*ical.Calendar, bool, error) {
+	raw, err := encodeCal(stored)
+	if err != nil {
+		return nil, false, err
+	}
+	work, err := ical.NewDecoder(bytes.NewReader(raw)).Decode()
+	if err != nil {
+		return nil, false, err
+	}
+	if err := addOverrides(work, msg, from); err != nil {
+		return nil, false, err
+	}
+	changed, err := itip.ApplyReply(work, msg, from)
+	return work, changed, err
+}
+
+// addOverrides readies stored, an organizer's series, for sender's reply. A reply component naming
+// an occurrence gets its RECURRENCE-ID written as the object's override for that occurrence has it.
+// When the object holds that occurrence only through its master, and sender (an attendee of the
+// series) answers it, as of the series' current SEQUENCE, differently from the series, the
+// override is added first (RFC 5546 3.2.3). ApplyReply then records the answer there. More than
+// maxNewOverrides to add is errTooManyOccurrences, and nothing is added.
+func addOverrides(stored, reply *ical.Calendar, sender itip.Address) error {
+	m, err := calendar.Master(stored)
+	if err != nil {
+		return nil
+	}
+	series := ""
+	for _, a := range itip.AttendeesOf(m) {
+		if a.Address == sender {
+			series = a.Status
+		}
+	}
+	have := overridesOf(stored)
+	missing := map[string]*ical.Component{}
+	for _, c := range reply.Children {
+		rid := c.Props.Get(ical.PropRecurrenceID)
+		if c.Name != ical.CompEvent || rid == nil {
+			continue
+		}
+		key, ok := calendar.OccurrenceKey(stored, rid)
+		if !ok {
+			continue
+		}
+		if o := have[key]; o != nil {
+			sameOccurrence(c, o)
+		} else if ps := itip.ReplyAnswer(c, sender); series != "" && ps != "" && ps != series && sequenceOf(c) >= sequenceOf(m) {
+			missing[key] = c
+		}
+	}
+	if len(missing) > maxNewOverrides {
+		return errTooManyOccurrences
+	}
+	for key, c := range missing {
+		if o, err := calendar.AddOverride(stored, key); err == nil {
+			sameOccurrence(c, o)
+		}
+	}
+	return nil
+}

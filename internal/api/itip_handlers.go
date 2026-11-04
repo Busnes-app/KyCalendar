@@ -11,6 +11,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/syncauth"
 	"github.com/emersion/go-ical"
 
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -179,7 +180,9 @@ func (s *Server) handleITIPRespond(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "No such invitation", "code": "no_event"})
 	case errors.Is(err, itip.ErrBadPartstat):
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Answer with ACCEPTED, TENTATIVE or DECLINED", "code": "bad_partstat"})
-	case errors.Is(err, itip.ErrInvalid), errors.Is(err, itip.ErrNotInvited):
+	case errors.Is(err, itip.ErrInvalid), errors.Is(err, itip.ErrNotInvited),
+		errors.Is(err, calendar.ErrNoSuchOccurrence), errors.Is(err, calendar.ErrNotRecurring):
+		// A retry cannot fix any of these, an occurrence the invitation does not have included.
 		s.writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Not an invitation to this user", "code": "not_invited"})
 	case errors.Is(err, store.ErrPreconditionFailed):
 		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "The event changed; try again", "code": "conflict"})

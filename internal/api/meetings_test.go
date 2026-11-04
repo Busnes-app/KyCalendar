@@ -191,7 +191,8 @@ func TestWebFreeBusyNeedsScheduling(t *testing.T) {
 }
 
 // Bob answers one occurrence of alice's weekly meeting in Berlin time from the web: his answer is
-// recorded on that occurrence, and every other occurrence keeps the series' answer.
+// recorded on that occurrence in his calendar and in alice's, and every other occurrence keeps
+// the series' answer.
 func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	srv, st, _ := setupTestServer(t)
@@ -222,7 +223,7 @@ func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 		t.Fatalf("answering one occurrence: %d %s", r.Code, r.Body.String())
 	}
 	srv.DeliverScheduled(context.Background())
-	for who, c := range map[string]*http.Cookie{"bob": bob} {
+	for who, c := range map[string]*http.Cookie{"bob": bob, "alice": alice} {
 		for i, e := range occurrences(c) {
 			status := ""
 			for _, a := range e.Attendees {
@@ -355,5 +356,34 @@ func TestSharedEmailHasNoSchedulingAddress(t *testing.T) {
 		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"code":"no_address"`) {
 			t.Fatalf("%s with a shared email: %d %s", who, w.Code, w.Body.String())
 		}
+	}
+}
+
+// Deleting a calendar cancels the meetings in it, as deleting each would: the guests do not keep
+// a live meeting nobody can cancel any more.
+func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meetingBody, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(context.Background())
+	got := meetingsOf(t, srv, bob)[made.UID]
+	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"ACCEPTED"}`, got.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("rsvp %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	if w := call(t, srv, "DELETE", "/api/calendars/"+aliceCal, "", alice); w.Code != http.StatusNoContent {
+		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
+	if !strings.Contains(w.Body.String(), `"cancelled":true`) {
+		t.Fatalf("bob's copy after alice deleted the calendar: %s", w.Body.String())
 	}
 }

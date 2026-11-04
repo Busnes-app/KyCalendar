@@ -260,6 +260,29 @@ describe('CalendarSidebar', () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
+  it('keeps a new calendar when the import may have finished (no answer or a 5xx)', async () => {
+    for (const fail of [() => Promise.reject(new TypeError('Failed to fetch')), () => Promise.resolve(new Response('Bad gateway', { status: 502 }))]) {
+      const calls: string[] = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (i, init) => {
+        const call = `${init?.method ?? 'GET'} ${String(i).split('?')[0]}`;
+        calls.push(call);
+        if (call === 'POST /api/calendars') return new Response(JSON.stringify({ ...cals[0], id: 'cal_new', name: 'Work trips' }), { status: 201 });
+        return fail();
+      });
+      const onChanged = vi.fn();
+      render(<CalendarSidebar calendars={cals} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
+      openImport();
+      fireEvent.change(screen.getByLabelText('File'), { target: { files: [csv()] } });
+      fireEvent.change(screen.getByLabelText('Add to'), { target: { value: 'new' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+      expect((await screen.findByRole('alert')).textContent).toMatch(/may have finished.*Work trips/);
+      expect(calls).toEqual(['POST /api/calendars', 'POST /api/calendars/cal_new/import']);
+      expect(onChanged).toHaveBeenCalled();
+      cleanup();
+      vi.restoreAllMocks();
+    }
+  });
+
   it('reads the date order from the locale', () => {
     expect(browserDateOrder('en-US')).toBe('mdy');
     expect(browserDateOrder('en-GB')).toBe('dmy');

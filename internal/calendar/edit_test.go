@@ -513,3 +513,105 @@ func TestNewOverrideKeepsItsOccurrenceTimes(t *testing.T) {
 		})
 	}
 }
+
+
+// A kept rule's UTC UNTIL moves with the series: moving four weekly meetings an hour later keeps
+// all four.
+func TestEditAllMoveKeepsTheLastOccurrenceBeforeUntil(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261005T090000\nDTEND;TZID=Europe/Berlin:20261005T100000\nRRULE:FREQ=WEEKLY;UNTIL=20261026T080000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	from, to := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)
+	if got := starts(t, cal, from, to); strings.Count(got, ",") != 3 {
+		t.Fatalf("fixture: %s", got)
+	}
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 10, 5, 10, 0, 0, 0, berlin), End: time.Date(2026, 10, 5, 11, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, _ := roundTrip(t, cal)
+	if got := starts(t, back, from, to); strings.Count(got, ",") != 3 {
+		t.Fatalf("after moving an hour later: %s\n%s", got, encode(t, cal))
+	}
+}
+
+// Moving a series to an earlier date across a DST change keeps the same end date and every
+// occurrence up to it.
+func TestEditAllMoveAcrossDSTKeepsTheEndDate(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261026T090000\nDTEND;TZID=Europe/Berlin:20261026T100000\nRRULE:FREQ=WEEKLY;UNTIL=20261116T080000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 10, 19, 10, 0, 0, 0, berlin), End: time.Date(2026, 10, 19, 11, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, _ := roundTrip(t, cal)
+	got := starts(t, back, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
+	if want := "2026-10-19T10:00,2026-10-26T10:00,2026-11-02T10:00,2026-11-09T10:00,2026-11-16T10:00"; got != want {
+		t.Fatalf("got %s, want %s\n%s", got, want, encode(t, cal))
+	}
+}
+
+// Moving a UTC series to the same wall time in another zone recomputes UNTIL there: every
+// occurrence is kept.
+func TestEditAllZoneChangeKeepsTheLastOccurrence(t *testing.T) {
+	ny := zone(t, "America/New_York")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART:20261102T140000Z\nDTEND:20261102T150000Z\nRRULE:FREQ=WEEKLY;UNTIL=20261123T140000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 11, 2, 14, 0, 0, 0, ny), End: time.Date(2026, 11, 2, 15, 0, 0, 0, ny), Zone: ny, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, _ := roundTrip(t, cal)
+	if got := starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)); strings.Count(got, ",") != 3 {
+		t.Fatalf("after moving to New York: %s\n%s", got, encode(t, cal))
+	}
+}
+
+// A kept rule that sets its own clock (BYHOUR) keeps its occurrences: its last day stays whole,
+// and nothing is added after it.
+func TestEditAllKeepsUntilOfAClockRule(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261110T100000\nDTEND;TZID=Europe/Berlin:20261110T103000\nRRULE:FREQ=DAILY;BYHOUR=9,10;UNTIL=20261112T090000Z\nSUMMARY:Twice\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Twice", Start: time.Date(2026, 11, 10, 9, 0, 0, 0, berlin), End: time.Date(2026, 11, 10, 9, 30, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, raw := roundTrip(t, cal)
+	got := starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC))
+	if !strings.Contains(got, "2026-11-12T10:00") || strings.Contains(got, "2026-11-13") {
+		t.Fatalf("the rule's own last day changed: %s\n%s", got, raw)
+	}
+}
+
+// A rule with only its own minute (BYMINUTE) moved an hour later keeps its last occurrence too.
+func TestEditAllKeepsTheLastOccurrenceOfAMinuteRule(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261102T091500\nDTEND;TZID=Europe/Berlin:20261102T094500\nRRULE:FREQ=WEEKLY;BYMINUTE=15;UNTIL=20261123T081500Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 11, 2, 10, 15, 0, 0, berlin), End: time.Date(2026, 11, 2, 10, 45, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, raw := roundTrip(t, cal)
+	if got := starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)); strings.Count(got, ",") != 3 {
+		t.Fatalf("after moving an hour later: %s\n%s", got, raw)
+	}
+}
+
+// An UNTIL that already ended before its day's occurrence (some apps write midnight UTC for "the
+// day before") is left alone: the move adds no occurrence.
+func TestEditAllLeavesAnUntilBeforeItsDaysOccurrence(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261102T090000\nDTEND;TZID=Europe/Berlin:20261102T100000\nRRULE:FREQ=WEEKLY;UNTIL=20261123T000000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 11, 2, 10, 0, 0, 0, berlin), End: time.Date(2026, 11, 2, 11, 0, 0, 0, berlin), Zone: berlin, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+	back, raw := roundTrip(t, cal)
+	if got := starts(t, back, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)); strings.Count(got, ",") != 2 || !strings.Contains(raw, "UNTIL=20261123T000000Z") {
+		t.Fatalf("an UNTIL before its day's occurrence moved: %s\n%s", got, raw)
+	}
+}
