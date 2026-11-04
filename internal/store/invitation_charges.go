@@ -29,7 +29,11 @@ func (c *calendarStore) ownerUsage(ctx context.Context, tx *sql.Tx, kind, id, ex
 		if err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending' AND sender_id = ?`), id).Scan(&pending); err != nil {
 			return 0, 0, err
 		}
-		used += pending
+		reserved, err := c.reservedBytes(ctx, tx, id, excludeCalendar, excludeName)
+		if err != nil {
+			return 0, 0, err
+		}
+		used += pending + reserved
 	}
 	return n, used, nil
 }

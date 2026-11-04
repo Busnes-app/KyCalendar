@@ -311,6 +311,8 @@ func TestCancelledMeetingIsMarkedOrRemoved(t *testing.T) {
 // One sender may newly invite at most davbackend.InviteLimit people an hour; the refusal says
 // when they can send again, and sending a meeting again to its own guests is not counted.
 func TestInviteLimitPerHour(t *testing.T) {
+	// Isolate the invite-count gate from reserved full-CANCEL capacity for these large meetings.
+	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", "16777216")
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	srv, st, _ := setupTestServer(t)
 	alice, aliceCal := webUser(t, srv, st, "alice")

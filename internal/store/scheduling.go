@@ -100,7 +100,7 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 	}
 	if lim.MaxTotalBytes > 0 {
 		var used int64
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes)).Scan(&used); err != nil {
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes+` + `+cancellationReserveBytes)).Scan(&used); err != nil {
 			return err
 		}
 		if used+adding > lim.MaxTotalBytes {

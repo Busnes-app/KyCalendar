@@ -346,19 +346,41 @@ func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject,
 	if err := c.invitationCharge(ctx, tx, o, exists); err != nil {
 		return false, err
 	}
+	reserve, err := c.cancellationReserve(ctx, tx, o, rows)
+	if err != nil {
+		return false, err
+	}
+	kind, id := ownerKind, ownerID
+	if o.InvitationRecipient != "" {
+		kind, id = "user", o.InvitationRecipient
+	}
+	if o.InvitationSender != "" {
+		kind, id = "user", o.InvitationSender
+	}
+	var reserved int64
+	if reserve != nil {
+		reserved = reserve.bytes
+	}
 	if limited {
-		kind, id := ownerKind, ownerID
-		if o.InvitationRecipient != "" {
-			kind, id = "user", o.InvitationRecipient
-		}
-		if o.InvitationSender != "" {
-			kind, id = "user", o.InvitationSender
+		var ownerReserve int64
+		if reserve != nil && kind == "user" && id == reserve.sender {
+			ownerReserve = reserved
 		}
 		n, used, err := c.ownerUsage(ctx, tx, kind, id, o.CalendarID, o.Name)
 		if err != nil {
 			return false, err
 		}
-		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data)) > lim.MaxBytes) {
+		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data))+ownerReserve > lim.MaxBytes) {
+			return false, ErrQuotaExceeded
+		}
+	}
+
+	if reserve != nil && lim.MaxBytes > 0 && (kind != "user" || id != reserve.sender) {
+		_, used, err := c.ownerUsage(ctx, tx, "user", reserve.sender, o.CalendarID, o.Name)
+		if err != nil {
+			return false, err
+		}
+		if used+reserved > lim.MaxBytes {
 			return false, ErrQuotaExceeded
 		}
 	}
@@ -372,7 +394,12 @@ func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject,
 		if err != nil {
 			return false, err
 		}
-		if used+int64(len(o.Data)) > lim.MaxTotalBytes {
+
+		var othersReserved int64
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(bytes),0) FROM cancellation_reservations WHERE NOT(calendar_id=? AND name=?)`), o.CalendarID, o.Name).Scan(&othersReserved); err != nil {
+			return false, err
+		}
+		if used+int64(len(o.Data))+othersReserved+reserved > lim.MaxTotalBytes {
 			return false, ErrQuotaExceeded
 		}
 	}
@@ -385,6 +412,9 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 		if isUniqueViolation(err) {
 			return false, ErrUIDConflict
 		}
+		return false, err
+	}
+	if err := c.writeCancellationReserve(ctx, tx, o, reserve); err != nil {
 		return false, err
 	}
 	if err := c.queue(ctx, tx, rows, lim); err != nil {

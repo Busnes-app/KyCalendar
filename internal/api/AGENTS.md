@@ -117,6 +117,8 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 
 - Event saves pass the authenticated writer ID to the common object write. Only their own changed iTIP answer can transfer an unanswered copy's charge. Transactional byte-budget refusal shares the existing 429 `invite_limit` response and retry time; a failed save spends no byte allowance.
 
+- Sender and instance byte admission include bounded future cancellation capacity for admitted organizer meetings. Ordinary writes cannot spend it; cancelling converts it into the existing asynchronous queue, including at full ordinary usable capacity. The existing 507 `quota` response covers insufficient admission; no route, setting or response field is added.
+
 ## Verification
 - `go test -v ./internal/api/...` (`authz_matrix_test.go` is the route-complete authorization matrix; `authz_test.go` pins the per-role exposure of every privileged route; `backup_test.go` the backup routes, on SQLite only because a run snapshots the database)
 - `scripts/smoke-test.sh` asserts the same boundaries against a running binary

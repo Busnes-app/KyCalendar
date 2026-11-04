@@ -205,7 +205,7 @@ func (s SCIMScope) Contains(u *User) bool {
 }
 
 // OwnerLimits caps one owner's calendar objects, and MaxTotalBytes every owner's together;
-// zero means no limit.
+// MaxBytes includes pending messages and reserved cancellation capacity; zero means no limit.
 type OwnerLimits struct {
 	MaxObjects    int
 	MaxBytes      int64

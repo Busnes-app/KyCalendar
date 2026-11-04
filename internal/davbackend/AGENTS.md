@@ -56,6 +56,8 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 
 - `Write` takes the authenticated writer ID as an explicit internal argument. Shared-copy REQUEST delivery uses `itip.SharedAttendeeCopy`, protecting all stored attendee answers; organizer-supplied PARTSTAT for a different recipient never creates billable consent. Client growth or UID/organizer replacement pays from the authenticated writer's quota (507 if full). Delivery never transfers sponsorship; the store uses the authenticated writer's pure iTIP REPLY rule to recognize a genuine series or occurrence response.
 
+- Scheduled organizer admission also reserves sender/instance bytes for its full future CANCEL recipient bodies (owner Q12 A). This reduces ordinary usable capacity. Source updates recompute the reservation; source deletion/attendee removal converts it to the normal queued CANCEL messages. Wire content and asynchronous delivery are unchanged. Existing untracked legacy sources remain Q11's migration question.
+
 ## Verification
 - `go test ./internal/davbackend/`
 - `go test ./internal/api/ -run 'CalDAV|DAV|GroupCalendar|MembershipRemoval|GroupSegment'`
