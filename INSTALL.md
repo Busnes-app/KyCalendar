@@ -45,8 +45,7 @@ docker compose up -d
 docker compose exec app cat /app/data/initial-admin-password
 ```
 
-For a same-host trial open `http://localhost:8080`, sign in as `admin`, replace the password
-and store recovery codes. The bootstrap file contains a secret; remove it after password
+For a same-host trial open `http://localhost:8080`, sign in as `admin` and replace the password. The bootstrap file contains a secret; remove it after password
 replacement. Administrators manage the service; create an everyday account in **People**
 to use calendars. Create local groups for shared calendars if needed.
 

@@ -2,7 +2,6 @@ import { PageHeader } from '../components/ui';
 import { Appearance } from './Appearance';
 import AppPasswords from './AppPasswords';
 import { PasswordForm } from './ChangePassword';
-import TwoFactor from './TwoFactor';
 
 const SECTIONS = [
   { id: 'account', label: 'Account' },
@@ -17,16 +16,16 @@ export const settingsSections = (user: any) => SECTIONS.filter((s) => !s.everyda
 const ROLE: Record<string, string> = { admin: 'Administrator' };
 
 /** Settings: the page head, one tab per section, then the open section. */
-export function PersonalSettings({ section, user, onUserChange, onPasswordChanged }: { section: string; user: any; onUserChange: (user: any) => void; onPasswordChanged: () => void }) {
+export function PersonalSettings({ section, user, onPasswordChanged }: { section: string; user: any; onPasswordChanged: () => void }) {
   const sections = settingsSections(user);
   const open = sections.find((s) => s.id === section) ?? sections[0];
-  // Two-step verification guards the local password; an SSO account's belongs to its provider.
+  // A local account's password is its own; an SSO account's belongs to its provider.
   const local = user.sso_provider === 'local';
   const role = ROLE[user.role] ?? 'Everyday account';
   // Each section opens with its own description, so the tabs stay put when switching.
   const intro = {
     account: local
-      ? 'Who you are signed in as. Two-step verification asks for a code from an authenticator app as well as your password.'
+      ? 'Who you are signed in as, and your password.'
       : 'Who you are signed in as. Your sign-in provider looks after your password and two-step verification.',
     devices: 'Each device or AI agent gets its own app password. Revoke one and only that one stops working.',
     appearance: 'Pick a palette and how it handles light and dark. Match system switches with your device’s setting; Light or Dark keeps one. Your choice applies straight away and is saved in this browser only.',
@@ -59,7 +58,6 @@ export function PersonalSettings({ section, user, onUserChange, onPasswordChange
                 <PasswordForm inSettings onComplete={onPasswordChanged} />
               </div>
             )}
-            {local && <TwoFactor enabled={user.totp_enabled === true} onChange={(on) => onUserChange({ ...user, totp_enabled: on })} />}
           </>
         )}
         {open.id === 'devices' && <AppPasswords username={user.username} />}

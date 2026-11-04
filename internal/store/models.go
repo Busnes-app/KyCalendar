@@ -61,12 +61,6 @@ type Session struct {
 	Unproven bool `json:"-"`
 }
 
-type MFAChallenge struct {
-	TokenHash string
-	UserID    string
-	ExpiresAt time.Time
-}
-
 // DevicePairing represents a 90-second ephemeral session to link mobile/PWA wrappers.
 type DevicePairing struct {
 	// No route serves pairings (R27); the table stays for existing migrations. Secret and

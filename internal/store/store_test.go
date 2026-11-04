@@ -256,31 +256,6 @@ func TestAuditAndSettings(t *testing.T) {
 	}
 }
 
-func TestSpendTOTPCounterRefusesReplay(t *testing.T) {
-	st := newTestStore(t)
-	ctx := context.Background()
-	u := &store.User{ID: "usr_t", Username: "t", Role: "user", Status: "active", SSOProvider: "local"}
-	if err := st.Users().CreateUser(ctx, u); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Users().SpendTOTPCounter(ctx, u.ID, 100); err != nil {
-		t.Fatalf("first spend: %v", err)
-	}
-	if err := st.Users().SpendTOTPCounter(ctx, u.ID, 100); !errors.Is(err, store.ErrAlreadyExists) {
-		t.Fatalf("replay: got %v, want ErrAlreadyExists", err)
-	}
-	if err := st.Users().SpendTOTPCounter(ctx, u.ID, 99); !errors.Is(err, store.ErrAlreadyExists) {
-		t.Fatalf("older counter: got %v, want ErrAlreadyExists", err)
-	}
-	if err := st.Users().SpendTOTPCounter(ctx, u.ID, 101); err != nil {
-		t.Fatalf("next counter: %v", err)
-	}
-	got, _ := st.Users().GetUserByID(ctx, u.ID)
-	if got.TOTPLastCounter != 101 {
-		t.Fatalf("stored counter %d, want 101", got.TOTPLastCounter)
-	}
-}
-
 func TestDeleteSettingIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
@@ -370,10 +345,6 @@ func TestResetAfterRestore(t *testing.T) {
 	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "h"}); err != nil {
 		t.Fatal(err)
 	}
-	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
-	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "h"); err != nil {
-		t.Fatal(err)
-	}
 	if err := st.Devices().CreatePairing(ctx, &store.DevicePairing{Secret: "pair", UserID: u.ID, Status: "pending", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
@@ -398,9 +369,6 @@ func TestResetAfterRestore(t *testing.T) {
 	}
 	if _, err := st.Sessions().GetSession(ctx, sess.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("session survived", err)
-	}
-	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("challenge survived", err)
 	}
 	if _, err := st.Devices().GetPairingBySecret(ctx, "pair"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("device pairing survived", err)

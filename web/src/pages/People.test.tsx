@@ -20,7 +20,7 @@ function mockFetch(handlers: Record<string, (init?: RequestInit) => unknown>) {
 
 const person = (over: Record<string, unknown>) => ({
   id: "u1", username: "ann", display_name: "Ann", email: "", role: "user", status: "active", source: "local",
-  mfa: false, must_change_password: false, last_login_at: null, ...over,
+  must_change_password: false, last_login_at: null, ...over,
 });
 const users = (...list: unknown[]) => ({ users: list, total: list.length, signin_binding: "kyidentity https://b.example" });
 

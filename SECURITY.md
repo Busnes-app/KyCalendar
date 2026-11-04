@@ -18,7 +18,7 @@ and disclosure.
 
 ## Deployment requirements
 
-- Follow [Key strength and TLS](docs/STRONG-CRYPTO.md) for imported signing/TOTP
+- Follow [Key strength and TLS](docs/STRONG-CRYPTO.md) for imported signing
   key floors, the optional Go TLS profile, the independent HTTPS edge and a
   migration that retains stored data, keys and recovery custody.
 - Run behind HTTPS; never add a default that downgrades to cleartext.

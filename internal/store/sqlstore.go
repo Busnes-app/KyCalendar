@@ -369,92 +369,6 @@ WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'i
 	return nil
 }
 
-func (u *userStore) UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error {
-	q := u.store.rebind("UPDATE users SET recovery_codes_hash = ?, updated_at = ? WHERE id = ? AND recovery_codes_hash = ?")
-	res, err := u.store.db.ExecContext(ctx, q, newHashes, time.Now().UTC(), userID, oldHashes)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		return ErrAlreadyExists
-	}
-	return nil
-}
-
-func (u *userStore) SpendTOTPCounter(ctx context.Context, userID string, counter int64) error {
-	q := u.store.rebind("UPDATE users SET totp_last_counter = ?, updated_at = ? WHERE id = ? AND totp_last_counter < ?")
-	res, err := u.store.db.ExecContext(ctx, q, counter, time.Now().UTC(), userID, counter)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		return ErrAlreadyExists
-	}
-	return nil
-}
-
-func (u *userStore) SetPendingTOTP(ctx context.Context, userID, oldEnc, newEnc string) error {
-	q := u.store.rebind("UPDATE users SET totp_secret_enc = ?, updated_at = ? WHERE id = ? AND totp_secret_enc = ? AND totp_enabled = ? AND sso_provider = 'local'")
-	res, err := u.store.db.ExecContext(ctx, q, newEnc, time.Now().UTC(), userID, oldEnc, false)
-	if err != nil {
-		return err
-	}
-	if rows, err := res.RowsAffected(); err != nil {
-		return err
-	} else if rows != 1 {
-		return ErrAlreadyExists
-	}
-	return nil
-}
-
-func (u *userStore) EnableTOTP(ctx context.Context, userID, passwordHash, secretEnc, recoveryHashes, keepSession, ip string) error {
-	return u.totpTransition(ctx, userID, passwordHash, keepSession, ip, "auth.mfa_enabled",
-		"UPDATE users SET totp_enabled = ?, recovery_codes_hash = ?, updated_at = ? WHERE id = ? AND totp_enabled = ? AND totp_secret_enc = ? AND totp_secret_enc <> ''",
-		true, recoveryHashes, time.Now().UTC(), userID, false, secretEnc)
-}
-
-func (u *userStore) DisableTOTP(ctx context.Context, userID, passwordHash, secretEnc, keepSession, ip string) error {
-	return u.totpTransition(ctx, userID, passwordHash, keepSession, ip, "auth.mfa_disabled",
-		"UPDATE users SET totp_enabled = ?, totp_secret_enc = '', recovery_codes_hash = '[]', updated_at = ? WHERE id = ? AND totp_enabled = ? AND totp_secret_enc = ?",
-		false, time.Now().UTC(), userID, true, secretEnc)
-}
-
-// totpTransition applies update (one row or ErrAlreadyExists) under withPassword, then revokes
-// every grant of userID but the caller's session, as a password change does, and audits action.
-func (u *userStore) totpTransition(ctx context.Context, userID, passwordHash, keepSession, ip, action, update string, args ...any) error {
-	return u.store.withPassword(ctx, userID, passwordHash, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, u.store.rebind(update), args...)
-		if err != nil {
-			return err
-		}
-		if rows, err := res.RowsAffected(); err != nil {
-			return err
-		} else if rows != 1 {
-			return ErrAlreadyExists
-		}
-		for _, table := range grantTables {
-			q, qargs := "DELETE FROM "+table+" WHERE user_id = ?", []any{userID}
-			if table == "sessions" {
-				q, qargs = q+" AND token_hash <> ?", append(qargs, keepSession)
-			}
-			if _, err := tx.ExecContext(ctx, u.store.rebind(q), qargs...); err != nil {
-				return err
-			}
-		}
-		_, err = tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-			userID, action, "user", "other sessions, device pairings and app passwords revoked", ip, time.Now().UTC())
-		return err
-	})
-}
-
 // DeleteUser also deletes the user's calendars (objects and changes cascade): calendars.owner_id
 // has no foreign key, and orphaned bytes would count against the instance cap forever.
 func (u *userStore) DeleteUser(ctx context.Context, id string) error {
@@ -1267,46 +1181,6 @@ func (s *sessionStore) CleanExpiredSessions(ctx context.Context) error {
 	q := s.store.rebind("DELETE FROM sessions WHERE expires_at < ?")
 	_, err := s.store.db.ExecContext(ctx, q, time.Now().UTC())
 	return err
-}
-
-func (s *sessionStore) CreateMFAChallenge(ctx context.Context, challenge *MFAChallenge, expectedPasswordHash string) error {
-	return s.store.withPassword(ctx, challenge.UserID, expectedPasswordHash, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, s.store.rebind("INSERT INTO mfa_challenges (token_hash, user_id, expires_at, password_hash) VALUES (?, ?, ?, ?)"), challenge.TokenHash, challenge.UserID, challenge.ExpiresAt, expectedPasswordHash)
-		return err
-	})
-}
-
-func (s *sessionStore) ConsumeMFAChallenge(ctx context.Context, tokenHash string) (string, string, error) {
-	tx, err := s.store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", "", err
-	}
-	defer tx.Rollback()
-	q := s.store.rebind("SELECT user_id, expires_at, password_hash FROM mfa_challenges WHERE token_hash = ?")
-	var userID, passwordHash string
-	var expiresAt time.Time
-	if err := tx.QueryRowContext(ctx, q, tokenHash).Scan(&userID, &expiresAt, &passwordHash); err != nil {
-		if errorsIs(err, sql.ErrNoRows) {
-			return "", "", ErrNotFound
-		}
-		return "", "", err
-	}
-	if !time.Now().UTC().Before(expiresAt) {
-		return "", "", ErrSessionExpired
-	}
-	deleteQ := s.store.rebind("DELETE FROM mfa_challenges WHERE token_hash = ?")
-	res, err := tx.ExecContext(ctx, deleteQ, tokenHash)
-	if err != nil {
-		return "", "", err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil || rows != 1 {
-		return "", "", ErrNotFound
-	}
-	if err := tx.Commit(); err != nil {
-		return "", "", err
-	}
-	return userID, passwordHash, nil
 }
 
 // ---------------------------------------------------------------------

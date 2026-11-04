@@ -12,7 +12,7 @@ export function secureFetch(input: RequestInfo | URL, init: RequestInit = {}): P
 }
 
 /**
- * Sign-in and MFA posts need a CSRF token before any session exists: GET /api/auth/me hands a
+ * Sign-in posts need a CSRF token before any session exists: GET /api/auth/me hands a
  * signed-out browser one, bound to its pre-session cookie. Fetch it when the cookie is gone.
  */
 export async function ensureCSRF(): Promise<void> {

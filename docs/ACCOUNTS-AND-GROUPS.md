@@ -46,21 +46,11 @@ by name. CalDAV clients of a renamed everyday account must sign in with the new 
 
 ## Two-step verification
 
-Local accounts, the administrator included, can add a code from an authenticator app to their
-sign-in. Open **Settings** (the gear beside Sign out) → **Account**, enter your password under
-**Two-step verification** and choose **Set up**. Open the setup link on your phone, or type the
-key into the app, then enter the code the app shows and
-choose **Turn on**. A wrong code leaves it off. Save the ten recovery codes it then shows: each
-signs you in once instead of a code, and they are not shown again. Turning it on or off signs
-you out everywhere else and revokes your app passwords; create new ones afterwards.
-
-From then on, sign-in asks for the code after the password. To change phones, choose
-**Turn off** with your password and a current code or a recovery code, then set it up again;
-it cannot be set up again while it is on. App passwords you create afterwards are separate
-credentials: two-step verification guards the web sign-in only. If you lose both the phone and
-the recovery codes, ask an administrator to reset your password (for the administrator,
-`kycalendar init-admin`): a reset turns two-step verification off. SSO accounts use their
-identity provider's second factor instead.
+KyCalendar has no two-step verification of its own: a second factor is KyIdentity's. Connect
+KyIdentity under [Sign-in](#sign-in) and turn it on there. Earlier releases let local accounts
+add an authenticator app; this release no longer asks for those codes, so a local account signs
+in with its password alone. The stored secrets and recovery codes are kept, unused. Keep the
+local administrator's password long and unique, and give everyday people KyIdentity accounts.
 
 ## Administrators and group calendars
 

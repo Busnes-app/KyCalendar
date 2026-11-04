@@ -20,10 +20,6 @@ func TestPasswordReplacementIsAtomicAndSingleUse(t *testing.T) {
 	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "old"}); err != nil {
 		t.Fatal(err)
 	}
-	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
-	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); err != nil {
-		t.Fatal(err)
-	}
 	addAppPassword(t, st, u.ID)
 	results := make(chan error, 2)
 	var wg sync.WaitGroup
@@ -50,15 +46,9 @@ func TestPasswordReplacementIsAtomicAndSingleUse(t *testing.T) {
 	if _, err := st.Sessions().GetSession(ctx, sess.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("session survived", err)
 	}
-	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("challenge survived", err)
-	}
 	checkAppPasswordsRevoked(t, st, u.ID)
 	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "old"}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("stale session creation", err)
-	}
-	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("stale MFA creation", err)
 	}
 	audits, n, err := st.Audit().ListAuditRecords(ctx, 0, 10)
 	if err != nil || n != 1 || audits[0].Action != "auth.password_changed" {
@@ -75,10 +65,6 @@ func TestAdminPasswordResetRevokesGrants(t *testing.T) {
 	}
 	sess := &store.Session{TokenHash: "session", UserID: u.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
 	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "old"}); err != nil {
-		t.Fatal(err)
-	}
-	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
-	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Devices().CreatePairing(ctx, &store.DevicePairing{Secret: "pair", UserID: u.ID, Status: "pending", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
@@ -106,15 +92,9 @@ func TestAdminPasswordResetRevokesGrants(t *testing.T) {
 	if _, err := st.Sessions().GetSession(ctx, sess.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("session survived", err)
 	}
-	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("challenge survived", err)
-	}
 	checkAppPasswordsRevoked(t, st, u.ID)
 	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "old"}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("stale session creation", err)
-	}
-	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("stale MFA creation", err)
 	}
 	audits, n, err := st.Audit().ListAuditRecords(ctx, 0, 10)
 	if err != nil || n != 1 || audits[0].Action != "auth.password_changed" {
@@ -148,10 +128,6 @@ func TestResetPasswordKeepsRoleAndStatus(t *testing.T) {
 	if err := st.Sessions().CreateSession(ctx, sess, store.Credentials{PasswordHash: "old"}); err != nil {
 		t.Fatal(err)
 	}
-	challenge := &store.MFAChallenge{TokenHash: "challenge", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
-	if err := st.Sessions().CreateMFAChallenge(ctx, challenge, "old"); err != nil {
-		t.Fatal(err)
-	}
 	addAppPassword(t, st, u.ID)
 	u.Status = "disabled" // ResetAdminPassword would reactivate it
 	if err := st.Users().UpdateUser(ctx, u); err != nil {
@@ -170,9 +146,6 @@ func TestResetPasswordKeepsRoleAndStatus(t *testing.T) {
 	}
 	if _, err := st.Sessions().GetSession(ctx, sess.TokenHash); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("session survived", err)
-	}
-	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, challenge.TokenHash); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("challenge survived", err)
 	}
 	checkAppPasswordsRevoked(t, st, u.ID)
 	audits, n, err := st.Audit().ListAuditRecords(ctx, 0, 10)

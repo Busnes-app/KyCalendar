@@ -61,7 +61,7 @@ var (
 )
 
 // public routes authenticate (or not) by design; they have no authorization to test here.
-// Each has its own tests: login, MFA and password limits, SSO, settings tiering, the SPA.
+// Each has its own tests: login and password limits, SSO, settings tiering, the SPA.
 // Session-tiered public routes (/api/auth/me, /api/settings) are pinned by TestSessionTieredPublicRoutes.
 var public = expect(nil)
 
@@ -179,8 +179,6 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/installer/directory":             {want: public},
 		"/api/auth/pow-challenge":                   {want: public},
 		"/api/auth/login":                           {want: public},
-		"/api/auth/mfa/totp":                        {want: public},
-		"/api/auth/mfa/recovery-code":               {want: public},
 		"/api/auth/logout":                          {want: public},
 		"/api/auth/me":                              {want: public},
 		"/api/sso/kysignon/login":                   {want: public},
@@ -261,10 +259,6 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/calendars/{id}/refresh": {method: "POST", path: "/api/calendars/" + w.sub.ID + "/refresh", want: ownerOnly},
 		"POST /api/calendars/{id}/import": {method: "POST", path: "/api/calendars/" + w.group.ID + "/import?tz=UTC",
 			body: "Subject,Start Date\nMatrix,10/07/2026\n", want: groupWrite},
-		// Empty bodies: no password (400), no pending enrolment or TOTP off (409); nothing changes.
-		"POST /api/auth/mfa/enroll":         {method: "POST", path: "/api/auth/mfa/enroll", body: "{}", want: anySession},
-		"POST /api/auth/mfa/enroll/confirm": {method: "POST", path: "/api/auth/mfa/enroll/confirm", body: "{}", want: anySession},
-		"POST /api/auth/mfa/disable":        {method: "POST", path: "/api/auth/mfa/disable", body: "{}", want: anySession},
 	}
 }
 

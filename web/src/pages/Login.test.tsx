@@ -38,19 +38,16 @@ describe('Login', () => {
         document.cookie = 'ky_csrf=pre-session-token';
         return new Response(JSON.stringify({ authenticated: false }), { status: 200 });
       }
-      return new Response(JSON.stringify({ mfa_required: true, mfa_token: 'm' }), { status: 200 });
+      return new Response(JSON.stringify({ authenticated: true, user: {} }), { status: 200 });
     }));
     render(<Login appName="Cal" onSuccess={() => {}} />);
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'alice' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
     fireEvent.submit(screen.getByLabelText('Username').closest('form')!);
-    fireEvent.change(await screen.findByLabelText('Authenticator code'), { target: { value: '123456' } });
-    fireEvent.submit(screen.getByLabelText('Authenticator code').closest('form')!);
-    await waitFor(() => expect(sent).toHaveLength(3));
+    await waitFor(() => expect(sent).toHaveLength(2));
     expect(sent).toEqual([
       ['/api/auth/me', null],
       ['/api/auth/login', 'pre-session-token'],
-      ['/api/auth/mfa/totp', 'pre-session-token'],
     ]);
   });
 });

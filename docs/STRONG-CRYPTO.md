@@ -15,8 +15,7 @@ network choices. An incompatible endpoint is a reason to repair its keys, never
 to regenerate the application's data key or replace the recovery pin.
 
 The shared primitives dependency is pinned to merged source `bae5c14dba4c`
-(`v0.10.2-0.20261026050236-bae5c14dba4c`), which enforces the TOTP floor. This
-also brings merged capsule tar-budget, Shamir sampling and setup-refusal repairs;
+(`v0.10.2-0.20261026050236-bae5c14dba4c`), which brings merged capsule tar-budget, Shamir sampling and setup-refusal repairs;
 key/share/container formats are unchanged. Existing encrypted data and historical
 capsules keep their original keys and custody procedure. Test a known restore
 before upgrading an installation.
@@ -27,9 +26,8 @@ before upgrading an installation.
 | --- | --- |
 | Session/PoW/CSRF signing | Supplied `KY_SESSION_SECRET` must have at least 16 literal bytes. Production still needs an explicit durable value; development generates 32 random bytes encoded as hex. Prefer a private, independent `openssl rand -hex 32` value. Length alone is not entropy. |
 | Directory webhook | Nonempty `KY_KYSIGNON_HMAC_SECRET` must have at least 16 literal bytes, checked at startup and before webhook use. Empty leaves it unconfigured. Installer-owned directory credentials already require this floor. Coordinate a replacement with the sender; do not log it. |
-| Data and derived keys | `KY_ENCRYPTION_KEY` or the retained keyfile must contain exactly 32 decoded bytes. AES-256-GCM uses purpose-specific derived keys and fresh nonces. Secret references, TOTP records and subscription URLs retain their purpose binding. |
+| Data and derived keys | `KY_ENCRYPTION_KEY` or the retained keyfile must contain exactly 32 decoded bytes. AES-256-GCM uses purpose-specific derived keys and fresh nonces. Secret references, stored TOTP records (no longer used) and subscription URLs retain their purpose binding. |
 | OIDC | Every RSA JWKS member needs at least 2048 actual modulus bits. The guard matches the verifier's envelope and case-sensitive JWK member parsing, bounds input and refuses redirects. Both provider kinds keep upstream signature/issuer/audience/expiry/nonce checks and cache/rotation behavior. EC/Ed25519 sizes and supported signing algorithms remain the maintained OIDC/JOSE libraries' responsibility. |
-| TOTP | Generate 20 random decoded bytes. Authentication requires at least 16 decoded bytes through the shared RFC 4226/6238 implementation. Old sealed records remain readable and unchanged, but a short secret cannot authenticate. Use an enrolled recovery method or a deliberate administrator reset to re-enroll; keep other credentials. |
 | Invitations | The KyPost shared secret file must contain at least 32 bytes; the signed exchange uses `ky-primitives/syncauth`. HTTPS-only endpoints and the existing address/redirect guards remain required when this optional integration is enabled. |
 | Other credentials | Sessions and app-password secrets use random 256-bit values and SHA-256 storage. SCIM requires its existing explicit 32-character bearer token. OAuth client secrets and bearer tokens are credentials, separate from raw signing/cipher keys. Password hashing remains Argon2id in the shared library. |
 | Recovery | Seal `kycap/3` to the pinned fixed-suite recovery public key. The service never opens product capsules; offline restore uses the recorded digest and custodian shares. |
@@ -45,8 +43,8 @@ the process's in-memory OIDC cache with the repaired verifier.
 Use the toolchain selected by `go.mod` and the pinned Docker builder. Set
 `GODEBUG=fips140=on` before starting every server or remote Go CLI process.
 Preserve other required GODEBUG entries with `fips140` set to `on`, then restart.
-Use `on`, not the diagnostic `only` mode: Argon2id, HMAC-SHA1 TOTP and the suite's
-fixed recovery format remain available.
+Use `on`, not the diagnostic `only` mode: Argon2id and the suite's fixed recovery
+format remain available.
 
 The profile requires direct HTTPS issuer/authorization/token/JWKS URLs with no
 URL credentials and refuses OIDC discovery/token redirects. Admin-entered
@@ -99,11 +97,10 @@ Run full ordinary/configured race suites against SQLite and PostgreSQL, the
 vendored DAV module tests, frontend build/tests and browser regressions, the
 Compose checker, reproducible builds, vulnerability scans, Docker health/version
 and existing authentication/recovery smoke. Regressions cover real signed tokens,
-JWK casing/order, key lengths, unchanged sealed legacy TOTP and trusted TLS roots
+JWK casing/order, key lengths and trusted TLS roots
 with a strong-leaf control. They do not establish successful real-device use.
 
-Then check the deployed edge, normal/administrator sign-in, existing TOTP and
-recovery access, directory revocation, subscribed-calendar refresh, applicable
+Then check the deployed edge, normal/administrator sign-in, directory revocation, subscribed-calendar refresh, applicable
 invitation delivery, backup receipts and a custody-correct offline restore.
 
 References: [RFC 4226](https://www.rfc-editor.org/rfc/rfc4226#section-4),

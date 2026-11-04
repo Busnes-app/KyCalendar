@@ -17,7 +17,7 @@ const (
 	CSRFCookieName    = "ky_csrf"
 	HeaderCSRF        = "X-CSRF-Token"
 	// PreSessionCookieName carries the random value a signed-out browser's CSRF token is bound
-	// to, so sign-in and MFA are protected before a session exists.
+	// to, so sign-in is protected before a session exists.
 	PreSessionCookieName = "ky_presession"
 )
 
@@ -122,7 +122,7 @@ func (sm *SessionManager) ValidateCSRF(r *http.Request) bool {
 	return sm.validCSRF(r, SessionCookieName, csrfSession)
 }
 
-// ValidatePreSessionCSRF is ValidateCSRF for sign-in and MFA: the header must be the token of
+// ValidatePreSessionCSRF is ValidateCSRF for sign-in: the header must be the token of
 // the presented pre-session cookie or, for a browser that still holds a session, of that session.
 func (sm *SessionManager) ValidatePreSessionCSRF(r *http.Request) bool {
 	return sm.validCSRF(r, PreSessionCookieName, csrfPreSession) || sm.validCSRF(r, SessionCookieName, csrfSession)

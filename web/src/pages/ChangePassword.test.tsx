@@ -50,10 +50,10 @@ it('offers a local account a password change in Account settings, and only a loc
   const { PersonalSettings } = await import('./PersonalSettings');
   const changed = vi.fn();
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
-  const { unmount } = render(<PersonalSettings section="account" user={{ username: 'eve', role: 'user', sso_provider: 'oidc' }} onUserChange={vi.fn()} onPasswordChanged={changed} />);
+  const { unmount } = render(<PersonalSettings section="account" user={{ username: 'eve', role: 'user', sso_provider: 'oidc' }} onPasswordChanged={changed} />);
   expect(screen.queryByRole('heading', { name: 'Change password' })).toBeNull();
   unmount();
-  render(<PersonalSettings section="account" user={{ username: 'eve', role: 'user', sso_provider: 'local' }} onUserChange={vi.fn()} onPasswordChanged={changed} />);
+  render(<PersonalSettings section="account" user={{ username: 'eve', role: 'user', sso_provider: 'local' }} onPasswordChanged={changed} />);
   expect(screen.getByRole('heading', { name: 'Change password' })).toBeTruthy();
   for (const [label, value] of [['Current password', 'CurrentPassword123!'], ['New password', 'ReplacementPassword456!'], ['Confirm new password', 'ReplacementPassword456!']]) {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
