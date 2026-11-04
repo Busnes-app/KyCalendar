@@ -125,7 +125,7 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 	}
 	if occurrencesOnly(msg) {
 		if _, err := calendar.Master(existing); err == nil || occurrencesOnly(existing) {
-			next, err := deliverOccurrences(existing, self, method, msg, c.OwnerKind == "group")
+			next, err := deliverOccurrences(existing, self, method, msg, c.OwnerKind == "group", o.InvitationRecipient != "" && o.InvitationSender != "")
 			if errors.Is(err, errDeleteCopy) {
 				return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
 			}
@@ -136,9 +136,13 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 		}
 	}
 	if method == itip.MethodCancel {
-		if !answered(existing, self) {
-			// Never answered: nothing of theirs to keep, and the copy stops counting against
-			// their storage.
+		keep := answered(existing, self)
+		if o.InvitationRecipient != "" {
+			// Tracked copies retain only an authenticated response or writer-paid content.
+			// Client-controlled PARTSTAT cannot strand the sender's quota.
+			keep = o.InvitationSender == ""
+		}
+		if !keep {
 			return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
 		}
 		seq := 0
@@ -300,8 +304,9 @@ func sameOccurrence(c, o *ical.Component) {
 // deliverOccurrences applies an organizer's message about single occurrences to the attendee's copy
 // of the series: a REQUEST replaces or adds those overrides, a CANCEL marks those occurrences
 // cancelled. The master and every other override stay as they are. A copy with no master (an
-// invitation to some occurrences only) takes any occurrence the REQUEST names.
-func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, shared bool) (*ical.Calendar, error) {
+// invitation to some occurrences only) takes any occurrence the REQUEST names. Tracked sender-funded
+// copies have no billable answer; paid and legacy copies keep their per-occurrence answer rules.
+func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, shared, senderFunded bool) (*ical.Calendar, error) {
 	_, err := calendar.Master(existing)
 	masterless := err != nil
 	have := overridesOf(existing)
@@ -341,7 +346,7 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 				continue // a VTIMEZONE
 			}
 			// An occurrence the attendee never answered goes, as a whole unanswered copy does.
-			if key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID)); ok && !answeredOccurrence(existing, have[key], self) {
+			if key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID)); ok && (senderFunded || !answeredOccurrence(existing, have[key], self)) {
 				err := calendar.DeleteOne(existing, key, time.Now())
 				if errors.Is(err, calendar.ErrLastOccurrence) {
 					return nil, errDeleteCopy

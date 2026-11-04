@@ -162,13 +162,14 @@ func TestSchedulingInternalRoundTrip(t *testing.T) {
 		t.Fatalf("bob's copy after the move:\n%s", got)
 	}
 
-	// Alice deletes it. Bob has not answered the moved meeting, so his copy goes (Q7).
+	// Alice deletes it. Bob's authenticated response made this his paid copy; the move
+	// resetting PARTSTAT does not erase that trusted ownership, so cancellation retains it.
 	if r := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/m1.ics", "alice", w.tokens["alice"], "", nil); r.StatusCode != 204 {
 		t.Fatalf("delete %d", r.StatusCode)
 	}
 	w.deliver()
-	if got, obj := w.copyOf("bob", "m1"); obj != nil {
-		t.Fatalf("bob's unanswered copy after the cancel:\n%s", got)
+	if got, obj := w.copyOf("bob", "m1"); obj == nil || !strings.Contains(got, "STATUS:CANCELLED") || obj.InvitationSender != "" || obj.InvitationRecipient != "usr_bob" {
+		t.Fatalf("bob's previously answered paid copy after the cancel:\n%s", got)
 	}
 }
 

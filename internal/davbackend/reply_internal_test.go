@@ -113,7 +113,7 @@ func TestDeliverOccurrencesIsBounded(t *testing.T) {
 	}
 	b.WriteString("END:VCALENDAR\n")
 	existing := decodeICS(t, copyICS)
-	if _, err := deliverOccurrences(existing, "mailto:bob@example.com", itip.MethodCancel, decodeICS(t, b.String()), false); err != errTooManyOccurrences || overrideCount(existing) != 0 {
+	if _, err := deliverOccurrences(existing, "mailto:bob@example.com", itip.MethodCancel, decodeICS(t, b.String()), false, false); err != errTooManyOccurrences || overrideCount(existing) != 0 {
 		t.Fatalf("err %v, %d overrides", err, overrideCount(existing))
 	}
 }
