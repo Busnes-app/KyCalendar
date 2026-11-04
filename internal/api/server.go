@@ -204,12 +204,20 @@ func (s *Server) allowAttempt(key string, limit int, window time.Duration) bool 
 	return entry.count <= limit
 }
 
-// allowAccountAttempt counts a per-account window. Keys are built only from real user IDs, so
-// the map is bounded by the user count and never evicts.
+// allowAccountAttempt counts a per-account window. Keys are a real user ID plus the client
+// address, so a new key past attemptsCap first drops the expired windows; a live one is never
+// dropped, or flooding the map would reset someone's lockout.
 func (s *Server) allowAccountAttempt(key string, limit int, window time.Duration) bool {
 	now := time.Now()
 	s.attemptsMu.Lock()
 	defer s.attemptsMu.Unlock()
+	if _, known := s.accounts[key]; !known && len(s.accounts) >= attemptsCap {
+		for k, w := range s.accounts {
+			if now.After(w.reset) {
+				delete(s.accounts, k)
+			}
+		}
+	}
 	entry := bumpWindow(s.accounts[key], now, window)
 	s.accounts[key] = entry
 	return entry.count <= limit
