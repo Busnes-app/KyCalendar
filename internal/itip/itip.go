@@ -502,6 +502,7 @@ func Validate(cal *ical.Calendar) (method, uid string, err error) {
 		return "", "", ErrInvalid
 	}
 	total := 0
+	var org Address
 	for _, c := range cal.Children {
 		switch c.Name {
 		case ical.CompTimezone:
@@ -515,9 +516,13 @@ func Validate(cal *ical.Calendar) (method, uid string, err error) {
 			return "", "", ErrInvalid
 		}
 		uid = u
-		if _, ok := propAddress(c.Props.Get(ical.PropOrganizer)); !ok {
+		// One organizer for every VEVENT: the sender is checked against the first, so an override
+		// naming someone else would show that occurrence as theirs.
+		o, ok := propAddress(c.Props.Get(ical.PropOrganizer))
+		if !ok || (org != "" && o != org) {
 			return "", "", ErrInvalid
 		}
+		org = o
 		atts := c.Props[ical.PropAttendee]
 		if len(atts) > maxAttendeesPerComponent {
 			return "", "", ErrInvalid
