@@ -165,6 +165,42 @@ func TestAuthAndSessionEndpoints(t *testing.T) {
 	}
 }
 
+// Local MFA is gone: an account that had enrolled signs in with its password alone, the old
+// MFA routes are not served, and neither sign-in nor an operator reset touches the stored data.
+func TestEnrolledTOTPAccountSignsInWithItsPassword(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	hash, _ := password.Hash("SuperSecretPass123!")
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_t", Username: "tess", PasswordHash: hash, Role: "user", Status: "active", SSOProvider: "local",
+		TOTPEnabled: true, TOTPSecretEnc: "sealed", RecoveryCodesHash: `["c"]`}); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]string{"username": "tess", "password": "SuperSecretPass123!"})
+	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"authenticated":true`) || strings.Contains(w.Body.String(), "mfa") || strings.Contains(w.Body.String(), "totp") {
+		t.Fatalf("sign-in of an enrolled account: %d %s", w.Code, w.Body.String())
+	}
+	for _, path := range []string{"/api/auth/mfa/totp", "/api/auth/mfa/recovery-code", "/api/auth/mfa/enroll", "/api/auth/mfa/enroll/confirm", "/api/auth/mfa/disable"} {
+		r := httptest.NewRequest("POST", path, strings.NewReader(`{}`))
+		r.Header.Set("Content-Type", "application/json")
+		rw := httptest.NewRecorder()
+		srv.ServeHTTP(rw, r)
+		// Only the SPA catch-all (which answers any method with the page) may answer.
+		if strings.Contains(rw.Header().Get("Content-Type"), "json") || strings.Contains(rw.Body.String(), "authenticated") {
+			t.Errorf("%s still answers: %d %s", path, rw.Code, rw.Body.String())
+		}
+	}
+	if err := st.Users().ResetPassword(ctx, store.System, "usr_t", "reset-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if u, err := st.Users().GetUserByID(ctx, "usr_t"); err != nil || !u.TOTPEnabled || u.TOTPSecretEnc != "sealed" || u.RecoveryCodesHash != `["c"]` {
+		t.Fatalf("stored MFA data after sign-in and reset: %+v %v", u, err)
+	}
+}
+
 func TestLoginRejectsUnparseableStoredHash(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	_ = st.Users().CreateUser(context.Background(), &store.User{
@@ -373,8 +409,9 @@ func TestExportCapsuleRefusesAMismatchedRecoveryKey(t *testing.T) {
 	}
 }
 
-// A database that has outgrown the capsule's per-member cap must say so: an operator whose
-// backups have silently stopped working needs the limit, not a bare 500.
+// A database that has outgrown what a capsule can carry must say so: an operator whose backups
+// have silently stopped working needs the limit, not a bare 500. (Past one member's cap it is
+// split into parts; past the capsule's total it cannot travel.)
 func TestExportCapsuleRejectsAnOversizedPayload(t *testing.T) {
 	srv, st, cfg := setupSQLiteServer(t)
 	ctx := context.Background()
@@ -388,13 +425,13 @@ func TestExportCapsuleRejectsAnOversizedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The live database one blob past the per-member cap: the collector snapshots it with
+	// The live database one blob past the capsule's total: the collector snapshots it with
 	// VACUUM INTO, and zeroblob makes a large one instantly.
 	db, err := sql.Open("sqlite", cfg.Database.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("CREATE TABLE big(b BLOB); INSERT INTO big VALUES (zeroblob(%d))", recoveryclient.MaxCapsuleFileBytes+1)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("CREATE TABLE big(b BLOB); INSERT INTO big VALUES (zeroblob(%d))", recoveryclient.MaxCapsuleTotalBytes+1)); err != nil {
 		t.Fatal(err)
 	}
 	_ = db.Close()
@@ -404,7 +441,7 @@ func TestExportCapsuleRejectsAnOversizedPayload(t *testing.T) {
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized export: got %d, want 413: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "64 MiB per file") {
+	if !strings.Contains(w.Body.String(), "256 MiB total") {
 		t.Errorf("body does not name the limit: %s", w.Body.String())
 	}
 }

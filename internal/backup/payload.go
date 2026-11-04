@@ -56,9 +56,8 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	if err != nil {
 		return recoveryclient.Payload{}, err
 	}
-	dbPath := DatabaseMember
-	files := []recoveryclient.File{{Path: dbPath, Data: dbBytes, Mode: 0600}}
-	sqlitePaths := []string{dbPath}
+	files, parts := databaseFiles(dbBytes)
+	sqlitePaths := []string{DatabaseMember}
 
 	cfgJSON, _ := json.MarshalIndent(map[string]any{
 		"server":   cfg.Server,
@@ -92,6 +91,11 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 		raw, _ := json.Marshal(paths)
 		files = append(files, recoveryclient.File{Path: "installer/credential-paths.json", Data: raw, Mode: 0600})
 	}
+	warnNearLimit(files)
+	required := requiredFiles(files)
+	if parts != nil {
+		required = append(required, DatabaseMember) // joined from the parts before any check
+	}
 	payload := recoveryclient.Payload{
 		ServiceName: ServiceName,
 		AppVersion:  appVersion,
@@ -105,10 +109,13 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 			"sqlite_paths":           sqlitePaths,
 			"calendar_count":         counts.Calendars,
 			"object_count":           counts.Objects,
-			"required_files":         requiredFiles(files),
+			"required_files":         required,
 			"expected_env":           []string{"KY_PORT", "KY_DB_DRIVER"},
 			"expected_ports":         []int{cfg.Server.Port},
 		},
+	}
+	if parts != nil {
+		payload.VerificationRecipe["database_parts"] = parts
 	}
 	return payload, nil
 }

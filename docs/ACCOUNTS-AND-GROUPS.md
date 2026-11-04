@@ -134,8 +134,9 @@ positive or startup fails.
 | `KYCALENDAR_KYPOST_SECRET_FILE` | empty | A file holding the secret KyCalendar and KyPost share, at least 32 bytes (`openssl rand -hex 32`), mode 600. In Compose, put it in `./data` and name it `/app/data/kypost.secret`. |
 | `KYCALENDAR_KYPOST_ALLOW_PRIVATE` | `false` | Let KyPost be on your own network (a private address). Loopback stays refused; `https://` is always required. |
 
-The instance cap exists because a capsule carries the SQLite database as one file and refuses a
-file over 64 MiB: past it, every backup fails for everyone. Raising it on SQLite trades that
+The instance cap exists because a capsule carries at most 256 MiB (the SQLite database travels in
+64 MiB parts) and past that every backup fails for everyone; the log warns at 80%. The database
+is several times the stored event bytes (indexes, change history, the audit log). Raising the cap on SQLite trades that
 guarantee away. Postgres deployments make no capsules, so the cap is off there. The cap is
 shared: once it is full, every user's writes get 507 until data is removed, which is visible,
 where a backup that silently stopped is not. Keep the per-user cap well below it; deleting a user

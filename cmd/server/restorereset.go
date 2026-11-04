@@ -34,6 +34,10 @@ func resetRestored(ctx context.Context, dataDir string) error {
 	if err := checkRestorePath(dataDir); err != nil {
 		return err
 	}
+	// A database too large for one capsule member was restored in parts: join them first.
+	if err := backup.JoinRestoredDatabase(dataDir); err != nil {
+		return err
+	}
 	path := filepath.Join(dataDir, filepath.Base(backup.DatabaseMember))
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("no restored database at %s: %w", path, err)

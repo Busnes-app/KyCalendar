@@ -115,6 +115,51 @@ func TestRestoreExtractsWithTwoShares(t *testing.T) {
 	}
 }
 
+// A capsule whose database travels in parts restores to the whole database, reset as usual.
+func TestRestoreJoinsADatabaseInParts(t *testing.T) {
+	db, _ := restorableDB(t)
+	priv, err := recoverykey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shares, err := recoverykey.Split(priv, 2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	half := len(db) / 2
+	payload := recoveryclient.Payload{ServiceName: backup.ServiceName, AppVersion: "1.0.0", Files: []recoveryclient.File{
+		{Path: backup.DatabaseMember + ".part-0001", Data: db[:half], Mode: 0600},
+		{Path: backup.DatabaseMember + ".part-0002", Data: db[half:], Mode: 0600},
+	}}
+	raw, _, err := recoveryclient.Seal(payload, recoveryclient.RecoveryKey{Public: priv.Public(), Threshold: 2, TotalShares: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "x.kycap")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir()
+	if err := restore(path, target, backup.ServiceName, []string{shares[0].String(), shares[2].String()}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(target, "data", "*.part-*")); len(left) != 0 {
+		t.Fatalf("parts left after the restore: %v", left)
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, config.DatabaseConfig{Driver: "sqlite", DSN: config.SQLiteDSN(filepath.Join(target, backup.DatabaseMember))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Users().GetUserByID(ctx, "usr_alice"); err != nil {
+		t.Fatal("restored data missing", err)
+	}
+	if _, err := st.Sessions().GetSession(ctx, "s"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("session survived the restore", err)
+	}
+}
+
 func TestResetRestoredNamesTheMissingDatabase(t *testing.T) {
 	dir := t.TempDir()
 	err := resetRestored(context.Background(), dir)

@@ -224,7 +224,8 @@ func LoadFromEnv() (*Config, error) {
 			return nil, err
 		}
 	}
-	// The SQLite snapshot is one capsule member, capped at 64 MiB; leave room for everything else.
+	// The SQLite snapshot must fit one capsule (256 MiB, in 64 MiB parts), and the database is
+	// several times the event bytes it stores; leave room for everything else.
 	defaultTotal := 0
 	if driver != "postgres" {
 		defaultTotal = 40 << 20

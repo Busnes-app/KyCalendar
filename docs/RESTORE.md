@@ -175,7 +175,10 @@ Restored 4 files from capsule cap-kycalendar-1788605720094118543
   payload hash: 8a053985...
 ```
 
-Then it resets the restored database in one transaction, with no further input: sessions,
+A database larger than 64 MiB travels in the capsule as ordered parts
+(`data/kycalendar.db.part-0001`, `-0002`, ...); the restore joins them into
+`data/kycalendar.db` first, and refuses if one is missing. Then it resets the restored
+database in one transaction, with no further input: sessions,
 MFA challenges and app passwords are deleted, invitations still queued in the backup are
 dropped (they describe the calendar as it was), scheduled backups are turned off, a new sync
 epoch is written and `system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3

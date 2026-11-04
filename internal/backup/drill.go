@@ -72,6 +72,28 @@ func Checks(dir string, opened capsule.Manifest) []recoveryclient.Check {
 			return recipeFailure("required_files omits a capsule member")
 		}
 	}
+	// A database larger than one member travels in ordered parts: join them first, so every
+	// check below reads the database a restore would.
+	if v, split := recipe["database_parts"]; split {
+		parts, err := recipeStrings(v)
+		if err != nil || len(parts) < 2 || members[DatabaseMember] {
+			return recipeFailure("database_parts must name two or more parts of a database not carried whole")
+		}
+		for i, name := range parts {
+			if name != fmt.Sprintf("%s%04d", partPrefix, i+1) || !members[name] {
+				return recipeFailure("database_parts must name the capsule's parts in order")
+			}
+		}
+		for name := range members {
+			if isPart(name) && !slices.Contains(parts, name) {
+				return recipeFailure("database_parts omits a part")
+			}
+		}
+		if _, err := joinDatabase(dir); err != nil {
+			return []recoveryclient.Check{{Name: "Database Parts", Message: recoveryclient.AuditSafe(err.Error())}}
+		}
+		members[DatabaseMember] = true
+	}
 	for _, paths := range [][]string{required, sqlitePaths} {
 		for _, name := range paths {
 			if _, safe := drillPath(dir, name); !safe || !members[name] {
