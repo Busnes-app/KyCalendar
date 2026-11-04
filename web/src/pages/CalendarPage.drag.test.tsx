@@ -159,7 +159,7 @@ describe('drag', () => {
     const puts = setup();
     render(<CalendarPage />);
     await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
-    const ev: EventInfo = { ...series, start: '2026-10-24T07:00:00Z', end: '2026-10-24T08:00:00Z', series_start: '2026-10-03T07:00:00Z', series_end: '2026-10-03T08:00:00Z' };
+    const ev: EventInfo = { ...series, zone: 'Europe/Berlin', start: '2026-10-24T07:00:00Z', end: '2026-10-24T08:00:00Z', series_start: '2026-10-03T07:00:00Z', series_end: '2026-10-03T08:00:00Z' };
     fire('eventDrop', {
       event: { start: new Date(2026, 9, 25, 9), end: new Date(2026, 9, 25, 10), allDay: false, extendedProps: { info: ev } },
       oldEvent: { start: new Date(2026, 9, 24, 9), end: new Date(2026, 9, 24, 10), allDay: false },
@@ -169,6 +169,27 @@ describe('drag', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0].body.start).toBe('2026-10-04T07:00:00.000Z'); // still 09:00 CEST
+  });
+
+  // F38: New York leaves summer time a week after Berlin. A daily 09:00 New York series dragged
+  // from Saturday 24 October 15:00 to Sunday 15:00 Berlin would keep 09:00 New York, an hour
+  // after the drop, so the drag is refused.
+  it('refuses an All events drag the series zone would land elsewhere', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const ev: EventInfo = { ...series, zone: 'America/New_York', repeat: { freq: 'daily' }, start: '2026-10-24T13:00:00Z', end: '2026-10-24T14:00:00Z', series_start: '2026-10-19T13:00:00Z', series_end: '2026-10-19T14:00:00Z' };
+    const revert = vi.fn();
+    fire('eventDrop', {
+      event: { start: new Date(2026, 9, 25, 15), end: new Date(2026, 9, 25, 16), allDay: false, extendedProps: { info: ev } },
+      oldEvent: { start: new Date(ev.start), end: new Date(ev.end), allDay: false },
+      delta: dayDelta(1),
+      revert,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Move this repeating event in the event form: its time zone changes the clock on another date than yours.');
+    expect(revert).toHaveBeenCalled();
+    expect(puts).toHaveLength(0);
   });
 
   it('shifts an all-day series by whole days without an off-by-one', async () => {

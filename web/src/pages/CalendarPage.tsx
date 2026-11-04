@@ -279,6 +279,18 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
       const seriesStart = parseLocal(base.start);
       start = shiftBy(seriesStart, ds);
       end = shiftBy(allDay ? addDays(parseLocal(base.end), 1) : parseLocal(base.end), de);
+      const z = !allDay && ev.recurring && ev.zone ? intlZone(ev.zone) : null;
+      if (z) {
+        // shiftBy keeps the browser's clock; the series keeps its zone's. Where the two zones
+        // change the clock on different dates, the dragged occurrence would not land where it
+        // was dropped: it must have the new series start's time and day distance in that zone.
+        const wall = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: z, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+        const from = arg.oldEvent.start!;
+        if (wall(newStart) !== wall(start) || dayNumber(newStart, z) - dayNumber(start, z) !== dayNumber(from, z) - dayNumber(seriesStart, z)) {
+          fail('Move this repeating event in the event form: its time zone changes the clock on another date than yours.');
+          return;
+        }
+      }
       if (ev.recurring) {
         // The server reads DTSTART and BYDAY in the series' zone; all-day dates are local. Without
         // a TZID the series is UTC or floating (browser-local) and the API can't say which, so
