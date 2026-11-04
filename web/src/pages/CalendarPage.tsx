@@ -261,7 +261,8 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
 
   async function saveMove(arg: MoveArg, scope: 'this' | 'all') {
     const ev = arg.event.extendedProps.info as EventInfo;
-    const zone = validZone(ev.zone) ? ev.zone! : browserZone();
+    // A timed event with no TZID that is not floating is UTC: it stays UTC, not the browser's zone.
+    const zone = validZone(ev.zone) ? ev.zone! : !ev.zone && !ev.all_day && !ev.floating ? 'UTC' : browserZone();
     const allDay = arg.event.allDay;
     const fail = (msg: string) => {
       arg.revert();

@@ -572,7 +572,18 @@ CREATE TABLE sso_logouts (
 		SQLite:   dropUnreachableSSOSessions,
 		Postgres: dropUnreachableSSOSessions,
 	},
+	{
+		// A generic OIDC account's email was stored without checking email_verified. It is
+		// who the person invites and answers as, so it goes; the next sign-in stores it again
+		// when the provider says it is verified.
+		Version:  21,
+		Name:     "clear_unverified_oidc_emails",
+		SQLite:   clearOIDCEmails,
+		Postgres: clearOIDCEmails,
+	},
 }
+
+const clearOIDCEmails = `UPDATE users SET email = '' WHERE sso_provider = 'oidc' AND email <> '';`
 
 const dropUnreachableSSOSessions = `DELETE FROM sessions WHERE sso_sid = '' AND user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');
 DELETE FROM mfa_challenges WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');`

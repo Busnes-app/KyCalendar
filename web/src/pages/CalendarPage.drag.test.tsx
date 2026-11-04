@@ -336,7 +336,7 @@ describe('drag', () => {
     const puts = setup();
     render(<CalendarPage />);
     await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
-    const utc: EventInfo = { ...nyMondays, zone: undefined, floating: false, repeat: { freq: 'daily' }, recurrence_id: '20260328T080000Z', start: '2026-03-28T08:00:00Z', end: '2026-03-28T09:00:00Z', series_start: '2026-03-28T08:00:00Z', series_end: '2026-03-28T09:00:00Z' };
+    const utc: EventInfo = { ...nyMondays, zone: undefined, repeat: { freq: 'daily' }, recurrence_id: '20260328T080000Z', start: '2026-03-28T08:00:00Z', end: '2026-03-28T09:00:00Z', series_start: '2026-03-28T08:00:00Z', series_end: '2026-03-28T09:00:00Z' };
     const revert = await dragTo(utc, new Date(2026, 2, 29, 9), dayDelta(1));
     await waitFor(() => expect(revert).toHaveBeenCalled());
     expect(puts).toHaveLength(0);
@@ -351,7 +351,7 @@ describe('drag', () => {
     await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
     await dragTo(noZone, new Date(2026, 9, 13, 14), dayDelta(1, 0)); // Mon 14:00 to Tue 14:00 Berlin
     await waitFor(() => expect(puts).toHaveLength(1));
-    expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T12:00:00.000Z' });
+    expect(puts[0].body).toMatchObject({ repeat: { freq: 'weekly', weekdays: ['TU'] }, start: '2026-10-06T12:00:00.000Z', zone: 'UTC' }); // a UTC series stays UTC
   });
 
   it('refuses a series without a zone when UTC and local dates disagree', async () => {
