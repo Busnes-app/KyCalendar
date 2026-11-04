@@ -629,3 +629,122 @@ func TestSponsoredCopyAdmissionReservesPendingCancellationGrowth(t *testing.T) {
 	}
 	fillCancellationUsableQuota(t, w, cap)
 }
+
+func TestSponsoredOverlappingCancellationGrowth(t *testing.T) {
+	for _, order := range []string{"forward", "reverse"} {
+		t.Run(order, func(t *testing.T) {
+			const cap int64 = 200000
+			const count = 24
+			w, db := cancellationWorld(t, cap, cap)
+			ctx := context.Background()
+			original := decode(t, meeting("overlap", "alice", "RRULE:FREQ=DAILY;COUNT=60", "LAST-MODIFIED:20261101T000000Z", "SEQUENCE:100", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com"))
+			override, err := calendar.AddOverride(original, "20261111T090000Z")
+			if err != nil {
+				t.Fatal(err)
+			}
+			override.Props.SetText(ical.PropSequence, "100")
+			var encoded bytes.Buffer
+			if err := ical.NewEncoder(&encoded).Encode(original); err != nil {
+				t.Fatal(err)
+			}
+			body := encoded.String()
+			var teams []*store.Calendar
+			for i := 0; i < 16; i++ {
+				team := seedSponsoredGroup(t, w, body)
+				teams = append(teams, team)
+				next := strings.Replace(body, "SUMMARY:Planning", fmt.Sprintf("SUMMARY:Round %d", i), 1)
+				etag := ""
+				if i > 0 {
+					_, _, etag = w.get("alice", "source.ics")
+				}
+				if code, _ := w.put("alice", "source.ics", next, etag); code != 201 && code != 204 {
+					t.Fatalf("source %d: %d", i, code)
+				}
+				w.deliver()
+				if err := w.st.Calendars().DeleteGrant(ctx, team.ID, "grp_editor_"+team.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var paths []string
+			for i := 0; i < count; i++ {
+				pair := ical.NewCalendar()
+				pair.Props.SetText(ical.PropVersion, "2.0")
+				pair.Props.SetText(ical.PropProductID, "-//Busnes.app//Overlap test//EN")
+				for _, day := range []time.Time{time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 12+i, 0, 0, 0, 0, time.UTC)} {
+					raw := meeting("overlap", "alice", "RECURRENCE-ID:"+day.Format("20060102")+"T090000Z", "LAST-MODIFIED:20261101T000000Z", "SEQUENCE:100", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+					raw = strings.ReplaceAll(raw, "20261110T", day.Format("20060102")+"T")
+					pair.Children = append(pair.Children, decode(t, raw).Children...)
+				}
+				encoded.Reset()
+				if err := ical.NewEncoder(&encoded).Encode(pair); err != nil {
+					t.Fatal(err)
+				}
+				slug := fmt.Sprintf("notices-%02d", i)
+				cal := &store.Calendar{ID: slug, OwnerKind: "user", OwnerID: "usr_alice", Slug: slug, Name: slug}
+				if err := w.st.Calendars().CreateCalendar(ctx, cal, 50); err != nil {
+					t.Fatal(err)
+				}
+				path := "/dav/usr_alice/calendars/" + slug + "/notice.ics"
+				paths = append(paths, path)
+				res := rawDAV(t, w.ts, "PUT", path, "alice", w.tokens["alice"], encoded.String(), map[string]string{"Content-Type": "text/calendar"})
+				if res.StatusCode != 201 {
+					t.Fatalf("overlap source %d: %d %s", i, res.StatusCode, readAll(res))
+				}
+				w.deliver()
+			}
+			// All future liabilities must already fit before deletion, with ordinary space full.
+			fillCancellationUsableQuota(t, w, cap)
+			for n := range paths {
+				i := n
+				if order == "reverse" {
+					i = len(paths) - 1 - n
+				}
+				res := rawDAV(t, w.ts, "DELETE", paths[i], "alice", w.tokens["alice"], "", nil)
+				if res.StatusCode != 204 {
+					t.Fatalf("admitted cancellation %d: %d %s", i, res.StatusCode, readAll(res))
+				}
+			}
+			fillCancellationUsableQuota(t, w, cap)
+			before, _, _ := reservationUsage(t, db)
+			t.Logf("%d physical copies / %d distinct overlapping notices; full usable quota, physical+body+source=%d", len(teams), count, before)
+			// Each bounded delivery batch must make progress at the admitted full boundary.
+			for batch := 0; batch < count; batch++ {
+				due, err := w.st.Calendars().DueOutbox(ctx, time.Now().Add(48*time.Hour), 100)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(due) == 0 {
+					break
+				}
+				w.srv.DeliverScheduled(ctx)
+				remaining, err := w.st.Calendars().DueOutbox(ctx, time.Now().Add(48*time.Hour), 100)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(remaining) >= len(due) {
+					t.Fatalf("overlap cancellation stalled: before=%d after=%d reason=%s", len(due), len(remaining), remaining[0].LastError)
+				}
+			}
+			w.deliver()
+			for _, team := range teams {
+				got, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+				if err != nil {
+					t.Fatal(err)
+				}
+				text := string(got.Data)
+				if strings.Contains(text, "RECURRENCE-ID:20261111T090000Z") || !strings.Contains(text, "EXDATE:20261111T090000Z") || strings.Contains(text, "STATUS:CANCELLED") || got.InvitationSender != "usr_alice" {
+					t.Fatal("overlapping cleanup changed unrelated series or retained shared override")
+				}
+				for i := 0; i < count; i++ {
+					day := time.Date(2026, 11, 12+i, 0, 0, 0, 0, time.UTC)
+					if !strings.Contains(text, "EXDATE:"+day.Format("20060102")+"T090000Z") {
+						t.Fatalf("missing cancellation %d", i)
+					}
+				}
+			}
+			if used, _, _ := reservationUsage(t, db); used > cap {
+				t.Fatalf("storage exceeded hard cap: %d", used)
+			}
+		})
+	}
+}

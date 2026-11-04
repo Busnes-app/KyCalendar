@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
@@ -159,8 +160,9 @@ func (c *calendarStore) cancellationGrowth(ctx context.Context, tx *sql.Tx, excl
 
 // A whole sponsored cancellation deletes its copy. Partial cancellation can normalize raw
 // client bytes, add EXDATEs and touch the master. Simulate that same pure calendar operation.
-// Count each possible notice independently: overlapping/repeated notices may reserve excess,
-// but cannot under-reserve. Recipient/stale checks can only reduce this conservative bound.
+// Preserve removable components and old touch fields FOR SIZING ONLY: different notices must
+// never reuse the same shrink credit. Reserve new touch fields in full, plus positive encoding
+// expansion and EXDATE additions. Recipient/stale checks only reduce this conservative bound.
 func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
 	for _, ev := range msg.Children {
 		if ev.Name == ical.CompEvent && ev.Props.Get(ical.PropRecurrenceID) == nil {
@@ -175,6 +177,18 @@ func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
 	other, otherOK := itip.Organizer(msg)
 	if !ok || !otherOK || org != other {
 		return 0, nil
+	}
+	var canonical bytes.Buffer
+	if err := ical.NewEncoder(&canonical).Encode(cal); err != nil {
+		return 0, err
+	}
+	children := slices.Clone(cal.Children)
+	master, _ := calendar.Master(cal)
+	oldTouch := ical.Props{}
+	if master != nil {
+		for _, name := range []string{ical.PropDateTimeStamp, ical.PropLastModified, ical.PropSequence} {
+			oldTouch[name] = slices.Clone(master.Props[name])
+		}
 	}
 	changed := false
 	for _, ev := range msg.Children {
@@ -196,6 +210,21 @@ func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
 	if !changed {
 		return 0, nil
 	}
+	// Undo shrinkage in the sizing copy, never in the actual cancellation mutation.
+	cal.Children = children
+	var touchBytes int64
+	if master != nil {
+		for name, props := range oldTouch {
+			if len(props) == 0 {
+				delete(master.Props, name)
+			} else {
+				master.Props[name] = props
+			}
+		}
+		// touch writes two UTC timestamps and a sequence bounded by a signed 64-bit int,
+		// with no parameters. Charge the complete fields, never subtract their old sizes.
+		touchBytes = int64(len("DTSTAMP:20060102T150405Z\r\nLAST-MODIFIED:20060102T150405Z\r\nSEQUENCE:-9223372036854775808\r\n"))
+	}
 	var encoded bytes.Buffer
 	if err := ical.NewEncoder(&encoded).Encode(cal); err != nil {
 		return 0, err
@@ -203,8 +232,7 @@ func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
 	if encoded.Len() > calendar.MaxObjectSize {
 		return 0, ErrQuotaExceeded
 	}
-	// Extra digits bound cumulative SEQUENCE growth across separately pending notices.
-	return max(0, int64(encoded.Len()-len(raw))) + 10, nil
+	return max(0, int64(canonical.Len()-len(raw))) + max(0, int64(encoded.Len()-canonical.Len())) + touchBytes, nil
 }
 
 func sumGrowth(growth map[string]int64) int64 {
