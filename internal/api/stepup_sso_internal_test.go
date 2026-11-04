@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +62,26 @@ func TestSSOStepUpNeedsAFreshAuthTime(t *testing.T) {
 	}
 	if !steppedUp(callback(true, time.Now())) {
 		t.Fatal("a step-up with fresh credentials did not pass")
+	}
+
+	// The start time rides in the browser's cookie: back-dating it there, to let an hour-old
+	// auth_time through, is refused.
+	req := startLoginAt(t, s, context.Background(), "/api/sso/kysignon/login?step_up=1")
+	forged := httptest.NewRequest(http.MethodGet, req.URL.String(), nil)
+	for _, c := range req.Cookies() {
+		if strings.HasPrefix(c.Name, "ky_nonce_") {
+			parts := strings.Split(c.Value, ".") // id, nonce, start, mac
+			idp.nonce = parts[1]
+			parts[2] = strconv.FormatInt(hourAgo.Add(-time.Minute).Unix(), 10)
+			c.Value = strings.Join(parts, ".")
+		}
+		forged.AddCookie(c)
+	}
+	idp.authTime = hourAgo
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, forged)
+	if w.Code != http.StatusBadRequest || ssoSession(w) != nil {
+		t.Fatalf("step-up with a back-dated start: %d %s", w.Code, w.Body.String())
 	}
 }
 

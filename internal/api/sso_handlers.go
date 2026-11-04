@@ -26,6 +26,14 @@ var (
 	errOtherIssuer   = errors.New("account belongs to another sign-in provider")
 )
 
+// nonceCookieKey MACs the nonce cookie, so a browser cannot back-date a step-up's start. It lives
+// as long as the process; so does a provider's ID, which the cookie already has to match.
+var nonceCookieKey = crypto.RandomHex(32)
+
+func nonceCookieMAC(state, value string) string {
+	return crypto.ComputeHMACSHA256([]byte(state+"|"+value), nonceCookieKey)
+}
+
 // upsertSSOUser maps a verified login through the provider bound as binding onto a local user,
 // which must carry that binding (new rows are stamped with it). A KyIdentity login's admin grant
 // follows the token's `roles` claim on every login; any other provider's users are everyday. A
@@ -159,14 +167,14 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 	// The nonce cookie carries the provider's ID: a callback after a provider swap fails. A
-	// step-up adds when it started.
+	// step-up adds when it started. A MAC over the state and value ends it.
 	value := p.ID + "." + nonce
 	if stepUp {
 		value += "." + strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ky_nonce_" + state,
-		Value:    value,
+		Value:    value + "." + nonceCookieMAC(state, value),
 		Path:     "/api/sso/kysignon/callback",
 		MaxAge:   300,
 		HttpOnly: true,
@@ -193,8 +201,16 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	value, mac := nonceCookie.Value, ""
+	if i := strings.LastIndexByte(value, '.'); i >= 0 {
+		value, mac = value[:i], value[i+1:]
+	}
+	if !crypto.VerifyHMACSHA256([]byte(state+"|"+value), nonceCookieKey, mac) {
+		s.writeError(w, http.StatusBadRequest, "Invalid or expired SSO nonce")
+		return
+	}
 	p := s.signin.Load()
-	providerID, rest, _ := strings.Cut(nonceCookie.Value, ".")
+	providerID, rest, _ := strings.Cut(value, ".")
 	nonce, started, stepUp := strings.Cut(rest, ".")
 	if p == nil || providerID != p.ID || nonce == "" {
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
