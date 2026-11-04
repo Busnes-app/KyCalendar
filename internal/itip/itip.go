@@ -314,11 +314,7 @@ func attendeeReply(self, org Address, oldCal, newCal *ical.Calendar, now time.Ti
 		}
 		src = newCal
 	}
-	var gone []*ical.Component // occurrences the attendee deleted from their copy: DECLINED
-	if newCal != nil {
-		gone = deletedOccurrences(self, oldCal, newCal)
-	}
-	if len(changed) == 0 && len(gone) == 0 {
+	if len(changed) == 0 {
 		return nil
 	}
 	reply := ical.NewCalendar()
@@ -343,85 +339,12 @@ func attendeeReply(self, org Address, oldCal, newCal *ical.Calendar, now time.Ti
 		ev.Props.Set(att)
 		reply.Children = append(reply.Children, ev)
 	}
-	for _, ev := range gone {
-		ev.Props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
-		att := ical.NewProp(ical.PropAttendee)
-		att.Value = string(self)
-		att.Params.Set(ical.ParamParticipationStatus, "DECLINED")
-		ev.Props.Set(att)
-		reply.Children = append(reply.Children, ev)
-	}
 	for _, c := range src.Children {
 		if c.Name == ical.CompTimezone {
 			reply.Children = append(reply.Children, c)
 		}
 	}
 	return &Message{Method: MethodReply, Recipients: []Address{org}, Calendar: reply}
-}
-
-// deletedOccurrences is a reply VEVENT (UID, RECURRENCE-ID, SEQUENCE, ORGANIZER) for each
-// occurrence self was invited to that newCal deletes: an EXDATE new on the master, or, with no
-// master, an override that is gone. RFC 6638 treats such a delete as declining that occurrence.
-func deletedOccurrences(self Address, oldCal, newCal *ical.Calendar) []*ical.Component {
-	before, after := byRecurrence(oldCal), byRecurrence(newCal)
-	invited := partstatOf(oldCal, self)
-	instance := func(src *ical.Component, rid *ical.Prop) *ical.Component {
-		ev := ical.NewComponent(ical.CompEvent)
-		for _, name := range []string{ical.PropUID, ical.PropSequence, ical.PropOrganizer} {
-			if p := src.Props.Get(name); p != nil {
-				ev.Props.Set(clonedProp(*p))
-			}
-		}
-		ev.Props.Set(rid)
-		return ev
-	}
-	var out []*ical.Component
-	oldMaster, newMaster := before[""], after[""]
-	if oldMaster == nil || newMaster == nil {
-		for k, c := range before {
-			if _, ok := invited[k]; ok && k != "" && after[k] == nil && newMaster == nil {
-				out = append(out, instance(c, clonedProp(*c.Props.Get(ical.PropRecurrenceID))))
-			}
-		}
-		return out
-	}
-	if _, ok := invited[""]; !ok {
-		return nil
-	}
-	overridden := map[string]*ical.Component{} // old overrides by occurrence, whatever their form
-	for k, c := range before {
-		if key, ok := calendar.OccurrenceKey(oldCal, c.Props.Get(ical.PropRecurrenceID)); ok && k != "" {
-			overridden[key] = c
-		}
-	}
-	had := map[string]bool{}
-	for _, p := range oldMaster.Props[ical.PropExceptionDates] {
-		for _, v := range strings.Split(p.Value, ",") {
-			had[p.Params.Get("TZID")+"|"+v] = true
-		}
-	}
-	for _, p := range newMaster.Props[ical.PropExceptionDates] {
-		for _, v := range strings.Split(p.Value, ",") {
-			if had[p.Params.Get("TZID")+"|"+v] {
-				continue
-			}
-			rid := ical.NewProp(ical.PropRecurrenceID)
-			rid.Value = v
-			for _, param := range []string{"TZID", ical.ParamValue} {
-				if pv := p.Params.Get(param); pv != "" {
-					rid.Params.Set(param, pv)
-				}
-			}
-			src := newMaster // a deleted override answers with its own, possibly newer, SEQUENCE
-			if key, ok := calendar.OccurrenceKey(newCal, rid); ok {
-				if o := overridden[key]; o != nil && sequence(o) > sequence(newMaster) {
-					src = o
-				}
-			}
-			out = append(out, instance(src, rid))
-		}
-	}
-	return out
 }
 
 func clonedProp(p ical.Prop) *ical.Prop {

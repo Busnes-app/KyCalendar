@@ -22,9 +22,7 @@ Delivery, queues, credentials and storage belong to their callers; nothing here 
     An answer recorded on the organizer's copy (PARTSTAT only) sends nothing.
   - **Attendee:** a REPLY to the organizer only when self's own PARTSTAT changed and ORGANIZER is
     unchanged since the previous version (so a rewritten ORGANIZER cannot aim a reply at any
-    address); a delete is a DECLINED REPLY, and so is deleting one occurrence they were invited
-    to (an EXDATE new on the master, or an override gone from a copy with no master; RFC 6638),
-    for that RECURRENCE-ID; an attendee's first write and their other edits send
+    address); a delete is a DECLINED REPLY; an attendee's first write and their other edits send
     nothing.
   - **Anyone else, or no ORGANIZER:** nothing.
   - **Never scheduled by the server:** attendees with `SCHEDULE-AGENT` other than SERVER.

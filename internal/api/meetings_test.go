@@ -241,57 +241,6 @@ func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 	}
 }
 
-// Bob deletes one occurrence of alice's weekly meeting from his calendar: alice hears he declined
-// that occurrence (RFC 6638), and the others keep his answer.
-func TestAttendeeDeletingOneOccurrenceDeclinesIt(t *testing.T) {
-	t.Setenv("KYCALENDAR_SCHEDULING", "true")
-	srv, st, _ := setupTestServer(t)
-	alice, aliceCal := webUser(t, srv, st, "alice")
-	bob, _ := webUser(t, srv, st, "bob")
-	body := `{"title":"Weekly","start":"2026-11-10T09:00:00+01:00","end":"2026-11-10T10:00:00+01:00","zone":"Europe/Berlin","repeat":{"freq":"weekly"},"attendees":["bob@example.com"]}`
-	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice); w.Code != http.StatusCreated {
-		t.Fatalf("create %d %s", w.Code, w.Body.String())
-	}
-	srv.DeliverScheduled(context.Background())
-	type occ struct {
-		meetingJSON
-		RecurrenceID string `json:"recurrence_id"`
-	}
-	occurrences := func(c *http.Cookie) []occ {
-		t.Helper()
-		w := call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", c)
-		var evs []occ
-		if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil {
-			t.Fatalf("%d %s", w.Code, w.Body.String())
-		}
-		return evs
-	}
-	second := occurrences(bob)[1]
-	path := "/api/events/" + second.CalendarID + "/" + second.UID + "?scope=this&recurrence_id=" + second.RecurrenceID
-	if r := withIfMatch(t, srv, "DELETE", path, "", second.ETag, bob); r.Code != http.StatusOK {
-		t.Fatalf("deleting one occurrence: %d %s", r.Code, r.Body.String())
-	}
-	srv.DeliverScheduled(context.Background())
-	if n := len(occurrences(bob)); n != 2 {
-		t.Fatalf("bob has %d occurrences, want 2", n)
-	}
-	evs := occurrences(alice)
-	if len(evs) != 3 {
-		t.Fatalf("alice has %d occurrences, want 3", len(evs))
-	}
-	for i, e := range evs {
-		status := ""
-		for _, a := range e.Attendees {
-			if a.Email == "bob@example.com" {
-				status = a.Status
-			}
-		}
-		if want := map[bool]string{true: "DECLINED", false: "NEEDS-ACTION"}[i == 1]; status != want {
-			t.Errorf("alice's occurrence %d: bob %q, want %q", i, status, want)
-		}
-	}
-}
-
 // Guests are one list for the series (Q1): a "this event" edit that names attendees is refused
 // and changes nothing, so nobody is invited to, or cancelled from, the whole series by surprise.
 func TestOccurrenceEditCannotChangeGuests(t *testing.T) {
@@ -420,24 +369,14 @@ func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	alice, aliceCal := webUser(t, srv, st, "alice")
 	bob, _ := webUser(t, srv, st, "bob")
-	// Far ahead: only upcoming meetings are cancelled.
-	future := strings.ReplaceAll(meetingBody, "2026-", "2030-")
-	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", future, alice)
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meetingBody, alice)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create %d %s", w.Code, w.Body.String())
 	}
 	var made struct{ UID string }
 	_ = json.Unmarshal(w.Body.Bytes(), &made)
 	srv.DeliverScheduled(context.Background())
-	var got meetingJSON
-	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
-	var evs []meetingJSON
-	_ = json.Unmarshal(w.Body.Bytes(), &evs)
-	for _, e := range evs {
-		if e.UID == made.UID {
-			got = e
-		}
-	}
+	got := meetingsOf(t, srv, bob)[made.UID]
 	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"ACCEPTED"}`, got.ETag, bob); r.Code != http.StatusOK {
 		t.Fatalf("rsvp %d %s", r.Code, r.Body.String())
 	}
@@ -446,44 +385,9 @@ func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
 		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
 	}
 	srv.DeliverScheduled(context.Background())
-	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
+	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
 	if !strings.Contains(w.Body.String(), `"cancelled":true`) {
 		t.Fatalf("bob's copy after alice deleted the calendar: %s", w.Body.String())
-	}
-}
-
-// A calendar's past meetings go with it silently: nobody is told a meeting two years ago was
-// called off, and the organizer hears no late "declined".
-func TestDeletingACalendarLeavesPastMeetingsUnsent(t *testing.T) {
-	t.Setenv("KYCALENDAR_SCHEDULING", "true")
-	srv, st, _ := setupTestServer(t)
-	alice, aliceCal := webUser(t, srv, st, "alice")
-	webUser(t, srv, st, "bob")
-	past := `{"title":"Retro","start":"2024-03-05T09:00:00Z","end":"2024-03-05T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
-	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", past, alice); w.Code != http.StatusCreated {
-		t.Fatalf("create %d %s", w.Code, w.Body.String())
-	}
-	// A floating weekly series that ended in 2024: the index leaves it without a last end.
-	floating := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:old-weekly\r\nDTSTAMP:20240101T000000Z\r\n" +
-		"DTSTART:20240105T090000\r\nDTEND:20240105T100000\r\nRRULE:FREQ=WEEKLY;UNTIL=20240301T090000\r\nSUMMARY:Standup\r\n" +
-		"ORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	cal, err := ical.NewDecoder(strings.NewReader(floating)).Decode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	o, err := davbackend.Prepare(aliceCal, "old-weekly.ics", cal, []byte(floating))
-	if err != nil || o.LastEnd != nil {
-		t.Fatalf("the floating series is indexed with a last end (%v): the test no longer covers it", err)
-	}
-	if _, err := st.Calendars().PutObject(context.Background(), o, "", true, store.OwnerLimits{}); err != nil {
-		t.Fatal(err)
-	}
-	srv.DeliverScheduled(context.Background())
-	if w := call(t, srv, "DELETE", "/api/calendars/"+aliceCal, "", alice); w.Code != http.StatusNoContent {
-		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
-	}
-	if due, _ := st.Calendars().DueOutbox(context.Background(), time.Now().Add(time.Hour), 10); len(due) != 0 {
-		t.Fatalf("deleting a calendar of past meetings queued %d messages", len(due))
 	}
 }
 

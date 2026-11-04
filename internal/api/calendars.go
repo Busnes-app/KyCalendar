@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/emersion/go-ical"
 
@@ -271,11 +270,10 @@ func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// deleteMeetings deletes c's upcoming meetings one by one through the scheduled delete path,
-// before the calendar goes, so their guests get the cancellations (or the organizer an
-// attendee's answer) that deleting each event would send. Meetings that ended more than a day
-// ago are left for the calendar delete: nobody is told a past meeting was called off. as plans
-// the deletes: the calendar's owner, or nil in a group calendar (see groupOrganizer).
+// deleteMeetings deletes c's meetings one by one through the scheduled delete path, before the
+// calendar goes, so their guests get the cancellations (or the organizer an attendee's answer)
+// that deleting each event would send. as plans the deletes: the calendar's owner, or nil in a
+// group calendar (see groupOrganizer).
 func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *store.User) *apiError {
 	if s.sched == nil || c.Subscribed {
 		return nil // a subscription mirrors someone else's meetings: nothing is sent for them
@@ -284,17 +282,10 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 	if err != nil {
 		return &apiError{status: http.StatusInternalServerError, msg: "Failed to load the calendar's events"}
 	}
-	past := time.Now().Add(-24 * time.Hour) // a day's margin for floating times
 	for _, o := range objs {
-		if o.LastEnd != nil && *o.LastEnd < past.Unix() {
-			continue
-		}
 		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
 		if err != nil {
 			continue
-		}
-		if o.LastEnd == nil && calendar.EndedBefore(cal, past) {
-			continue // a finite series the index could not bound, such as a floating one
 		}
 		org, ok := itip.Organizer(cal)
 		if !ok {
