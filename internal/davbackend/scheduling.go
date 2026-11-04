@@ -455,7 +455,7 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first
 // personal event calendar when they deleted it or it holds no events. With neither (only
-// subscriptions or task lists left) the default calendar is made again.
+// subscriptions or task lists left) an event calendar is made: "default" again when it is free.
 func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.Calendar, error) {
 	def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
 	if err == nil && !def.Subscribed && def.Holds(ical.CompEvent) {
@@ -474,10 +474,12 @@ func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.C
 			return c, nil
 		}
 	}
+	id := uuid.NewString()
+	slug := defaultSlug
 	if !missing {
-		return nil, errPermanent{"no_calendar"}
+		slug = "calendar-" + id[:8] // "default" is taken by a subscription or a task list
 	}
-	c := &store.Calendar{ID: "cal_" + uuid.NewString(), OwnerKind: ownerUser, OwnerID: u.ID, Slug: defaultSlug, Name: "Calendar"}
+	c := &store.Calendar{ID: "cal_" + id, OwnerKind: ownerUser, OwnerID: u.ID, Slug: slug, Name: "Calendar"}
 	if err := s.Store.Calendars().CreateCalendar(ctx, c, 0); err != nil {
 		return nil, err // retried: a slug taken meanwhile is found next time
 	}

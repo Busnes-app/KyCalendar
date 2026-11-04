@@ -556,13 +556,8 @@ func ApplyReply(stored, reply *ical.Calendar, sender Address) (bool, error) {
 	targets := byRecurrence(stored)
 	changed, matched := false, false
 	for _, c := range events(reply) {
-		ps := ""
-		for _, p := range c.Props[ical.PropAttendee] {
-			if a, ok := ParseAddress(p.Value); ok && a == sender {
-				ps = strings.ToUpper(p.Params.Get(ical.ParamParticipationStatus))
-			}
-		}
-		if !partstats[ps] {
+		ps := ReplyAnswer(c, sender)
+		if ps == "" {
 			continue
 		}
 		t, ok := targets[recurrenceKey(c)]

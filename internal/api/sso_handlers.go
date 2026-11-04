@@ -96,6 +96,14 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	if user.SSOIssuer == "" || user.SSOIssuer != binding {
 		return nil, errOtherIssuer
 	}
+	// A generic OIDC account's email follows the token at every sign-in: verified, or none. An
+	// account made before verification was checked loses an unverified email here.
+	if claims.Provider == "oidc" && user.Email != claims.Email {
+		if err := s.store.Users().SetOIDCEmail(ctx, user.ID, claims.Email); err != nil {
+			return nil, err
+		}
+		user.Email = claims.Email
+	}
 	if user.Role == role {
 		return user, nil
 	}

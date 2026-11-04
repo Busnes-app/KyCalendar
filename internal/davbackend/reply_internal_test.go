@@ -87,6 +87,12 @@ func TestApplyReplyLeavesNoUnansweredOverride(t *testing.T) {
 	if err != nil || !changed || overrideCount(next) != 1 || overrideCount(stored) != 0 {
 		t.Fatalf("changed %v, err %v: %d overrides stored, want 1 (and none on the original)", changed, err, overrideCount(next))
 	}
+	// Two ATTENDEE lines for bob, a valid answer first: both readers take the same one.
+	next, changed, err = applyReply(stored, reply(occ("06", "ATTENDEE;PARTSTAT=TENTATIVE:mailto:bob@example.com\nATTENDEE;PARTSTAT=X-MAYBE:mailto:bob@example.com"),
+		occ("03", "ATTENDEE;PARTSTAT=DECLINED:mailto:bob@example.com")), bob)
+	if err != nil || !changed || overrideCount(next) != 2 || !strings.Contains(encodeICS(t, next), "PARTSTAT=TENTATIVE") {
+		t.Fatalf("duplicate attendee lines: changed %v, err %v, %d overrides\n%s", changed, err, overrideCount(next), encodeICS(t, next))
+	}
 	// The series' own answer: nothing to record, so no override (ApplyReply then finds no target).
 	_, changed, err = applyReply(stored, reply(occ("05", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")), bob)
 	if changed || overrideCount(stored) != 0 {
@@ -110,4 +116,13 @@ func TestDeliverOccurrencesIsBounded(t *testing.T) {
 	if _, err := deliverOccurrences(existing, "mailto:bob@example.com", itip.MethodCancel, decodeICS(t, b.String())); err != errTooManyOccurrences || overrideCount(existing) != 0 {
 		t.Fatalf("err %v, %d overrides", err, overrideCount(existing))
 	}
+}
+
+func encodeICS(t *testing.T, cal *ical.Calendar) string {
+	t.Helper()
+	b, err := encodeCal(cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

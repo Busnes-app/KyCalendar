@@ -939,6 +939,17 @@ func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (i
 	return n, err
 }
 
+func (u *userStore) SetOIDCEmail(ctx context.Context, userID, email string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'oidc'`), email, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
 	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), displayName, email, time.Now().UTC(), userID)
 	if err != nil {

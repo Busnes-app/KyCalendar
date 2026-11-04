@@ -297,9 +297,9 @@ export function CalendarPage({ scheduling = false, me = '', sidebarSlot = null }
           fail('Change the days of a repeating event in the event form.');
           return;
         }
-        // The shift keeps browser-local clock times. In a series zone with other DST dates it would
-        // move the series' own clock time too, so that is left to the form.
-        const z = !allDay && ev.zone ? intlZone(ev.zone) : null;
+        // The shift keeps browser-local clock times. In a series zone with other DST dates (UTC has
+        // none) it would move the series' own clock time too, so that is left to the form.
+        const z = allDay ? null : ev.zone ? intlZone(ev.zone) : ev.floating ? null : 'UTC'; // no TZID and not floating: UTC
         if (z && (minuteOfDay(start, z) - minuteOfDay(seriesStart, z) - minuteOfDay(start) + minuteOfDay(seriesStart)) % 1440 !== 0) {
           fail('Change the time of a repeating event in another time zone in the event form.');
           return;

@@ -417,6 +417,39 @@ func TestSchedulingInviteWithOnlyATaskList(t *testing.T) {
 	}
 }
 
+// Bob's "default" is a task list and he has no event calendar: the invitation lands in a new one.
+func TestSchedulingInviteWhenDefaultHoldsTasks(t *testing.T) {
+	w := newSchedWorld(t, true)
+	ctx := context.Background()
+	if code, _ := w.put("bob", "seed.ics", meeting("seed", "bob"), ""); code != 201 {
+		t.Fatalf("seed PUT %d", code)
+	}
+	def, err := w.st.Calendars().GetCalendarBySlug(ctx, "user", "usr_bob", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.st.Calendars().DeleteCalendar(ctx, def.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_bob_td", OwnerKind: "user", OwnerID: "usr_bob", Slug: "default", Name: "Tasks", Components: []string{"VTODO"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := w.put("alice", "m-td.ics", meeting("m-td", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
+		t.Fatalf("invite PUT %d", code)
+	}
+	w.deliver()
+	cals, err := w.st.Calendars().ListCalendarsByOwner(ctx, "user", "usr_bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cals {
+		if _, err := w.st.Calendars().GetObjectByUID(ctx, c.ID, "m-td"); err == nil && c.Holds("VEVENT") {
+			return
+		}
+	}
+	t.Fatal("bob's invitation landed nowhere")
+}
+
 // Alice's meeting lives in a group calendar bob can also edit. Bob's copy is his own: delivering to
 // him never rewrites or cancels alice's object in the shared calendar.
 func TestSchedulingLeavesAGroupCalendarMeetingAlone(t *testing.T) {

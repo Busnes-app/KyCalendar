@@ -30,6 +30,7 @@ type signingIdP struct {
 	sub, nonce, sid string
 	iat             time.Time
 	authTime        time.Time // zero: no auth_time claim
+	extra           map[string]any
 	onToken         func()
 	roles           []string
 	discoveries     atomic.Int32
@@ -71,6 +72,9 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 			}
 			if !idp.authTime.IsZero() {
 				claims["auth_time"] = idp.authTime.Unix()
+			}
+			for k, v := range idp.extra {
+				claims[k] = v
 			}
 			idToken := idp.sign(t, "JWT", claims)
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer", "id_token": idToken})

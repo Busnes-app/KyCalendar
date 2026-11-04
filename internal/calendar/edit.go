@@ -247,7 +247,7 @@ func EditAll(cal *ical.Calendar, in EventInput, now time.Time) error {
 	applyText(m, in)
 	setRepeat(m, in.Repeat)
 	if moved {
-		if hasLastDay && in.Repeat.Freq == "custom" {
+		if hasLastDay && in.Repeat.Freq == "custom" && !in.AllDay && in.Zone != nil {
 			// The kept rule ended on an occurrence's day: it now ends at the close of that day in
 			// the new start's zone, so a later time, another zone or the rule's own clock parts
 			// cannot drop that last occurrence.
@@ -483,12 +483,29 @@ func overrideOf(cal *ical.Calendar, recurrenceID string) (*ical.Component, error
 		}
 		o.Props.Set(rid)
 		o.Props.Set(ds)
+		end := occurrenceEnd(form, at)
 		if de := m.Props.Get(ical.PropDateTimeEnd); de != nil {
-			o.Props.Set(formProp(de, ical.PropDateTimeEnd, form.endAt(at), time.UTC))
+			o.Props.Set(formProp(de, ical.PropDateTimeEnd, end, time.UTC))
+		} else if !form.allDay && !end.Equal(at.Add(form.dur)) { // an RDATE PERIOD of another length than DURATION
+			o.Props.Del(ical.PropDuration)
+			o.Props.Set(formProp(m.Props.Get(ical.PropDateTimeStart), ical.PropDateTimeEnd, end, time.UTC))
 		}
 		cal.Children = append(cal.Children, o)
 	}
 	return o, nil
+}
+
+// occurrenceEnd is the end of the occurrence at, read as occurrenceProp returns it (wall digits
+// as UTC for a zoned master): an RDATE PERIOD's own length, else the master's.
+func occurrenceEnd(form span, at time.Time) time.Time {
+	instant := at
+	if loc := form.start.Location(); loc != time.UTC {
+		instant = time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), at.Minute(), at.Second(), 0, loc)
+	}
+	if d, ok := form.periods[instant.Unix()]; ok {
+		return at.Add(d)
+	}
+	return form.endAt(at)
 }
 
 // OccurrenceKey is the occurrence rid (a RECURRENCE-ID) names in cal's series, as a key in the

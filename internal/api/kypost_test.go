@@ -430,11 +430,18 @@ func TestKyPostInvitationToSingleOccurrences(t *testing.T) {
 	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-o2", in); !strings.Contains(w.Body.String(), "applied") {
 		t.Fatalf("cancelling one occurrence: %d %s", w.Code, w.Body.String())
 	}
+	// Bob never answered 26 November: it goes (Q7); 19 November, which he accepted, stays.
 	got = copyOf()
-	for _, part := range strings.Split(got, "BEGIN:VEVENT")[1:] {
-		if strings.Contains(part, "STATUS:CANCELLED") != strings.Contains(part, "RECURRENCE-ID;TZID=Europe/Berlin:20261126T090000") {
-			t.Fatalf("only 26 November is cancelled:\n%s", got)
-		}
+	if strings.Contains(got, "20261126T090000") || !strings.Contains(got, "RECURRENCE-ID;TZID=Europe/Berlin:20261119T090000") || strings.Contains(got, "STATUS:CANCELLED") {
+		t.Fatalf("after cancelling the unanswered 26 November:\n%s", got)
+	}
+	// Cancelling the answered 19 November keeps it, cancelled.
+	in.ICS = msg("CANCEL", occurrence("20261119T090000", "STATUS:CANCELLED\r\n"))
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-o3", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("cancelling the answered occurrence: %d %s", w.Code, w.Body.String())
+	}
+	if got = copyOf(); !strings.Contains(got, "STATUS:CANCELLED") || !strings.Contains(got, "RECURRENCE-ID;TZID=Europe/Berlin:20261119T090000") {
+		t.Fatalf("the answered occurrence after its CANCEL:\n%s", got)
 	}
 	// An occurrence the invitation does not have is a permanent refusal, not a retried 500.
 	resp.RecurrenceID = "20261203T090000"

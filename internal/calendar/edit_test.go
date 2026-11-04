@@ -638,3 +638,32 @@ func TestEditAndDeleteOneWithoutAMaster(t *testing.T) {
 		t.Fatalf("deleting the last occurrence: %v", err)
 	}
 }
+
+// Making a timed series with a UTC UNTIL all-day takes the all-day path: no zone is needed.
+func TestEditAllToAllDayWithUntil(t *testing.T) {
+	cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:w\nDTSTAMP:20261001T000000Z\n"+
+		"DTSTART;TZID=Europe/Berlin:20261102T090000\nDTEND;TZID=Europe/Berlin:20261102T100000\nRRULE:FREQ=WEEKLY;UNTIL=20261123T080000Z\nSUMMARY:Weekly\nEND:VEVENT\nEND:VCALENDAR\n")
+	in := EventInput{Title: "Weekly", Start: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC), AllDay: true, Repeat: Repeat{Freq: "custom"}}
+	if err := EditAll(cal, in, now); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An override made for an RDATE PERIOD occurrence keeps the period's length, for a master with
+// DURATION and for a zoned one with DTEND.
+func TestOverrideOfAPeriodKeepsItsLength(t *testing.T) {
+	for name, tc := range map[string]struct{ master, rid, wantEnd string }{
+		"duration": {"DTSTART:20261101T060000Z\nDURATION:PT1H\nRDATE;VALUE=PERIOD:20261102T090000Z/PT3H\n", "20261102T090000Z", "DTEND:20261102T120000Z"},
+		"zoned":    {"DTSTART;TZID=Europe/Berlin:20261101T070000\nDTEND;TZID=Europe/Berlin:20261101T080000\nRDATE;TZID=Europe/Berlin;VALUE=PERIOD:20261102T100000/PT3H\n", "20261102T090000Z", "DTEND;TZID=Europe/Berlin:20261102T130000"},
+	} {
+		cal := decodeString(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:p\nDTSTAMP:20261001T000000Z\n"+tc.master+"SUMMARY:P\nEND:VEVENT\nEND:VCALENDAR\n")
+		if _, err := AddOverride(cal, tc.rid); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		raw := encode(t, cal)
+		override := raw[strings.LastIndex(raw, "BEGIN:VEVENT"):]
+		if !strings.Contains(override, tc.wantEnd) || strings.Contains(override, "DURATION") {
+			t.Errorf("%s: override\n%s", name, raw)
+		}
+	}
+}

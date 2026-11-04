@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/emersion/go-ical"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
@@ -385,5 +388,62 @@ func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
 	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
 	if !strings.Contains(w.Body.String(), `"cancelled":true`) {
 		t.Fatalf("bob's copy after alice deleted the calendar: %s", w.Body.String())
+	}
+}
+
+// A subscription's mirrored meetings are someone else's: deleting the subscription sends nothing
+// and still works with scheduling on.
+func TestDeletingASubscriptionWithMeetings(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, _ := webUser(t, srv, st, "alice")
+	ctx := context.Background()
+	sub := &store.Calendar{ID: "cal_sub_alice", OwnerKind: "user", OwnerID: "usr_alice", Slug: "sub", Name: "Work"}
+	if err := st.Calendars().CreateSubscribedCalendar(ctx, sub, &store.Subscription{URLSealed: "x", URLHost: "feed.invalid", NextCheckAt: time.Now().Add(time.Hour)}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:feed-m\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nDTEND:20261110T100000Z\r\n" +
+		"SUMMARY:Board\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(sub.ID, "feed-m.ics", cal, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{o}, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/calendars/"+sub.ID, "", alice); w.Code != http.StatusNoContent {
+		t.Fatalf("delete subscription %d %s", w.Code, w.Body.String())
+	}
+	if due, _ := st.Calendars().DueOutbox(ctx, time.Now().Add(time.Hour), 10); len(due) != 0 {
+		t.Fatalf("deleting a subscription queued %d messages", len(due))
+	}
+}
+
+// Alice deletes one occurrence of a weekly meeting bob never answered: that occurrence leaves
+// bob's calendar instead of staying as a cancelled copy (Q7); the others stay.
+func TestCancelledOccurrenceBobNeverAnsweredGoes(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	body := `{"title":"Weekly","start":"2026-11-10T09:00:00Z","end":"2026-11-10T10:00:00Z","zone":"UTC","repeat":{"freq":"weekly"},"attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(context.Background())
+	if r := withIfMatch(t, srv, "DELETE", "/api/events/"+aliceCal+"/"+made.UID+"?scope=this&recurrence_id=20261117T090000Z", "", made.ETag, alice); r.Code != http.StatusOK {
+		t.Fatalf("delete one occurrence %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
+	if strings.Contains(w.Body.String(), `"cancelled":true`) || strings.Contains(w.Body.String(), "2026-11-17") || !strings.Contains(w.Body.String(), "2026-11-24") {
+		t.Fatalf("bob's calendar after alice deleted 17 November: %s", w.Body.String())
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-ical"
 
@@ -125,6 +126,9 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 	if occurrencesOnly(msg) {
 		if _, err := calendar.Master(existing); err == nil || occurrencesOnly(existing) {
 			next, err := deliverOccurrences(existing, self, method, msg)
+			if errors.Is(err, errDeleteCopy) {
+				return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
+			}
 			if err != nil {
 				return err
 			}
@@ -199,7 +203,11 @@ func stale(existing, msg *ical.Calendar) bool {
 			continue
 		}
 		if k, ok := key(c); ok {
-			if n, had := took[k]; had && sequenceOf(c) < n {
+			n, had := took[k]
+			if !had && k != "" {
+				n, had = took[""] // an occurrence the copy holds only through its series
+			}
+			if had && sequenceOf(c) < n {
 				return true
 			}
 		}
@@ -218,6 +226,28 @@ func answered(cal *ical.Calendar, self itip.Address) bool {
 			if a.Address == self && a.Status != "NEEDS-ACTION" {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// errDeleteCopy: the message removed the last occurrence of the copy, so the copy goes.
+var errDeleteCopy = errors.New("delete the copy")
+
+// answeredOccurrence reports whether self answered one occurrence of their copy: on its override
+// o, else on the series. An occurrence a copy with no master does not hold counts as answered,
+// so nothing is removed for it.
+func answeredOccurrence(cal *ical.Calendar, o *ical.Component, self itip.Address) bool {
+	if o == nil {
+		m, err := calendar.Master(cal)
+		if err != nil {
+			return true
+		}
+		o = m
+	}
+	for _, a := range itip.AttendeesOf(o) {
+		if a.Address == self && a.Status != "NEEDS-ACTION" {
+			return true
 		}
 	}
 	return false
@@ -305,6 +335,18 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 		for _, c := range msg.Children {
 			if c.Name != ical.CompEvent {
 				continue // a VTIMEZONE
+			}
+			// An occurrence the attendee never answered goes, as a whole unanswered copy does.
+			if key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID)); ok && !answeredOccurrence(existing, have[key], self) {
+				err := calendar.DeleteOne(existing, key, time.Now())
+				if errors.Is(err, calendar.ErrLastOccurrence) {
+					return nil, errDeleteCopy
+				}
+				if err == nil {
+					delete(have, key)
+					cancelled = true
+				}
+				continue
 			}
 			if o := occurrence(c); o != nil {
 				o.Props.SetText(ical.PropStatus, "CANCELLED")

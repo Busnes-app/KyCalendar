@@ -332,6 +332,16 @@ describe('drag', () => {
     expect(screen.getByText(/another time zone/)).toBeTruthy();
   });
 
+  it('refuses to shift a UTC series across a browser DST date', async () => {
+    const puts = setup();
+    render(<CalendarPage />);
+    await waitFor(() => expect(fcProps.length).toBeGreaterThan(0));
+    const utc: EventInfo = { ...nyMondays, zone: undefined, floating: false, repeat: { freq: 'daily' }, recurrence_id: '20260328T080000Z', start: '2026-03-28T08:00:00Z', end: '2026-03-28T09:00:00Z', series_start: '2026-03-28T08:00:00Z', series_end: '2026-03-28T09:00:00Z' };
+    const revert = await dragTo(utc, new Date(2026, 2, 29, 9), dayDelta(1));
+    await waitFor(() => expect(revert).toHaveBeenCalled());
+    expect(puts).toHaveLength(0);
+  });
+
   // Without a TZID the series is UTC or floating; a move counts only when both readings agree.
   const noZone: EventInfo = { ...nyMondays, zone: undefined, start: '2026-10-12T12:00:00Z', end: '2026-10-12T13:00:00Z', series_start: '2026-10-05T12:00:00Z', series_end: '2026-10-05T13:00:00Z' };
 

@@ -153,6 +153,9 @@ type UserStore interface {
 	// CountSSOAccounts counts the active accounts BindSignIn would deactivate.
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
+	// SetOIDCEmail writes the email of a generic OIDC account (sso_provider oidc); ErrNotFound
+	// for any other row.
+	SetOIDCEmail(ctx context.Context, userID, email string) error
 	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
 	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is
 	// not greater than the stored one, which is how a replayed code inside the skew window fails.
