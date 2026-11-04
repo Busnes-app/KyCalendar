@@ -27,6 +27,8 @@ export interface EventInfo {
   unknown_zone?: boolean; partial?: boolean; zone?: string; editable: boolean;
   // Meetings: status is the PARTSTAT; my_status is set only for an invited viewer who is not the organizer.
   organizer?: string; attendees?: Attendee[]; my_status?: string;
+  // cancelled: STATUS:CANCELLED, such as a meeting its organizer called off.
+  cancelled?: boolean;
 }
 export interface Attendee { email: string; status: string }
 export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';

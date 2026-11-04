@@ -112,6 +112,8 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 .kc-calendar .fc .fc-event-title { font-weight: 600; }
 .kc-calendar .fc .fc-daygrid-event .fc-event-title { text-overflow: ellipsis; }
 .kc-calendar .fc .fc-event-time { font-weight: 400; }
+.kc-calendar .fc .kc-cancelled { opacity: 0.6; }
+.kc-calendar .fc .kc-cancelled :is(.fc-event-title, .fc-list-event-title) { text-decoration: line-through; }
 .kc-calendar .fc .fc-timegrid-event .fc-event-main { padding: 2px var(--ky-space-1); line-height: 1.3; }
 .kc-calendar .fc .fc-timegrid-event .fc-event-title-container { min-width: 0; min-height: 0; }
 .kc-calendar .fc .fc-timegrid-event .fc-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

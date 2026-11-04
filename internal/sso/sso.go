@@ -17,6 +17,7 @@ type IdentityClaims struct {
 	Issuer            string `json:"-"`
 	Subject           string `json:"sub"`
 	Email             string `json:"email"`
+	EmailVerified     bool   `json:"-"` // the ID token's email_verified
 	Name              string `json:"name"`
 	PreferredUsername string `json:"preferred_username"`
 	// Roles are the token's `roles` claim: KyIdentity app roles for this client only.
@@ -26,6 +27,9 @@ type IdentityClaims struct {
 	SessionID string `json:"sid,omitempty"`
 	// IssuedAt is the ID token's iat: when the provider vouched for this login.
 	IssuedAt time.Time `json:"-"`
+	// AuthTime is the ID token's auth_time: when the user last gave the provider their
+	// credentials. Zero when the token has none.
+	AuthTime time.Time `json:"-"`
 }
 
 // SSOState represents ephemeral state held during OAuth/OIDC authorization flow.

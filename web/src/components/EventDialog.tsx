@@ -92,7 +92,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
       setError(body);
       return;
     }
-    if (organizes && (people.length !== loaded.length || people.some((p, i) => p.email !== loaded[i].email))) body.attendees = people.map((p) => p.email);
+    if (organizes && scope === 'all' && (people.length !== loaded.length || people.some((p, i) => p.email !== loaded[i].email))) body.attendees = people.map((p) => p.email);
     void act(() => (event ? updateEvent(event, body) : createEvent(form.calendarId, body)), 'Could not save the event');
   }
 
@@ -126,11 +126,11 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
       <ul className="kc-people">
         {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span></li>)}
       </ul>
-      <div className="kc-actions" role="group" aria-label="Your answer">
+      {!event!.cancelled && <div className="kc-actions" role="group" aria-label="Your answer">
         {BUTTONS.map(([value, label]) => (
           <button key={value} type="button" className="btn-secondary kc-answer" aria-pressed={event!.my_status === value} disabled={busy} onClick={() => answer(value)}>{label}</button>
         ))}
-      </div>
+      </div>}
     </>
   );
 
@@ -138,6 +138,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
     <dialog ref={dialog} aria-labelledby="kc-event-title" className="kc-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
       <h2 id="kc-event-title">{event ? (readOnly ? form.title || '(no title)' : 'Edit event') : 'New event'}</h2>
       {error && <p role="alert">{error}</p>}
+      {event?.cancelled && <p role="note"><strong>Cancelled.</strong> This event was called off.</p>}
       {readOnly ? (
         <div>
           <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
@@ -207,7 +208,8 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
             )
           )}
           {scope === 'this' && event && form.freq === 'custom' && <p className="kc-hint">Repeats: <span>Custom (edit on your device)</span></p>}
-          {organizes && (
+          {organizes && scope === 'this' && <p className="kc-hint">To change who is invited, choose All events: guests are the same for every event.</p>}
+          {organizes && scope === 'all' && (
             <>
               <label htmlFor="kc-invite">People</label>
               {people.length > 0 && (

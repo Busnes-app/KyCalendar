@@ -162,13 +162,13 @@ func TestSchedulingInternalRoundTrip(t *testing.T) {
 		t.Fatalf("bob's copy after the move:\n%s", got)
 	}
 
-	// Alice deletes it: bob's copy stays, cancelled.
+	// Alice deletes it. Bob has not answered the moved meeting, so his copy goes (Q7).
 	if r := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/m1.ics", "alice", w.tokens["alice"], "", nil); r.StatusCode != 204 {
 		t.Fatalf("delete %d", r.StatusCode)
 	}
 	w.deliver()
-	if got, _ := w.copyOf("bob", "m1"); !strings.Contains(got, "STATUS:CANCELLED") {
-		t.Fatalf("bob's copy after the cancel:\n%s", got)
+	if got, obj := w.copyOf("bob", "m1"); obj != nil {
+		t.Fatalf("bob's unanswered copy after the cancel:\n%s", got)
 	}
 }
 
@@ -334,7 +334,7 @@ func TestSchedulingOutboxCountsAgainstQuota(t *testing.T) {
 	}
 }
 
-// A cancelled copy keeps the attendee's own reminders, once each.
+// An answered copy is kept, cancelled, with the attendee's own reminders once each.
 func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
 	w := newSchedWorld(t, true)
 	if code, _ := w.put("alice", "m-alarm.ics", meeting("m-alarm", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
@@ -346,7 +346,7 @@ func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
 		t.Fatal("bob got no copy")
 	}
 	alarm := "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Planning\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT"
-	r := rawDAV(t, w.ts, "PUT", "/dav/usr_bob/calendars/default/"+bobObj.Name, "bob", w.tokens["bob"], strings.Replace(bobCopy, "END:VEVENT", alarm, 1),
+	r := rawDAV(t, w.ts, "PUT", "/dav/usr_bob/calendars/default/"+bobObj.Name, "bob", w.tokens["bob"], strings.Replace(strings.Replace(bobCopy, "END:VEVENT", alarm, 1), "PARTSTAT=NEEDS-ACTION", "PARTSTAT=ACCEPTED", 1),
 		map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + bobObj.ETag + `"`})
 	if r.StatusCode != 201 && r.StatusCode != 204 {
 		t.Fatalf("bob's alarm: %d %s", r.StatusCode, readAll(r))
@@ -417,7 +417,10 @@ func TestSchedulingLeavesAGroupCalendarMeetingAlone(t *testing.T) {
 	if stored, _ := w.st.Calendars().GetObjectByUID(context.Background(), team.ID, "m-team"); strings.Contains(string(stored.Data), "CANCELLED") {
 		t.Fatalf("removing bob cancelled the meeting for the whole team:\n%s", stored.Data)
 	}
-	if got, _ := w.copyOf("bob", "m-team"); !strings.Contains(got, "STATUS:CANCELLED") {
-		t.Fatalf("bob's own copy after he was removed:\n%s", got)
+	if got, obj := w.copyOf("bob", "m-team"); obj != nil {
+		t.Fatalf("bob's own unanswered copy after he was removed:\n%s", got)
+	}
+	if _, err := w.st.Calendars().GetObjectByUID(context.Background(), team.ID, "m-team"); err != nil {
+		t.Fatalf("removing bob deleted alice's meeting from the group calendar: %v", err)
 	}
 }

@@ -62,3 +62,18 @@ func TestProviderClientCarriesDiscoveryAndExchange(t *testing.T) {
 		t.Fatalf("requests through the provider's client: %v, want discovery and /token", rt.paths)
 	}
 }
+
+// A generic OIDC provider's email is kept only when the token says it is verified (Q3);
+// KyIdentity's is always its own.
+func TestStampKeepsOnlyVerifiedOIDCEmail(t *testing.T) {
+	for _, tc := range []struct {
+		kind     string
+		verified bool
+		want     string
+	}{{KindOIDC, false, ""}, {KindOIDC, true, "bob@example.com"}, {KindKyIdentity, false, "bob@example.com"}} {
+		got := (&Provider{Kind: tc.kind}).stamp(&IdentityClaims{Subject: "s", Email: "bob@example.com", EmailVerified: tc.verified})
+		if got.Email != tc.want {
+			t.Errorf("%s, verified %v: email %q, want %q", tc.kind, tc.verified, got.Email, tc.want)
+		}
+	}
+}

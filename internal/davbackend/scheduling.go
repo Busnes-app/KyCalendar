@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -25,6 +26,81 @@ type Scheduler struct {
 	Limits store.OwnerLimits // applied to deliveries into a recipient's calendar
 	Now    func() time.Time
 	KyPost KyPostSender // nil: nothing reaches people outside the instance (no_transport)
+
+	invitesMu sync.Mutex
+	invites   map[string]*inviteWindow // sender ID -> this hour's new invitees
+}
+
+// InviteLimit is how many people one sender may newly invite per hour. Re-sending a meeting to
+// people already on it does not count, so one meeting of the largest size (1000 attendees)
+// always fits; the limit bounds how fast one account can fill other people's calendars.
+const InviteLimit = 1000
+
+type inviteWindow struct {
+	start time.Time
+	n     int
+}
+
+// InviteLimitError refuses a write that would invite more people than InviteLimit this hour.
+type InviteLimitError struct{ Until time.Time }
+
+func (e InviteLimitError) Error() string {
+	return fmt.Sprintf("You have invited more than %d people in the last hour. You can send new invitations again at %s UTC.",
+		InviteLimit, e.Until.UTC().Format("15:04"))
+}
+
+// admitInvites counts n new invitees for sender against InviteLimit.
+func (s *Scheduler) admitInvites(sender string, n int) error {
+	if n == 0 {
+		return nil
+	}
+	s.invitesMu.Lock()
+	defer s.invitesMu.Unlock()
+	now := s.now()
+	if s.invites == nil {
+		s.invites = map[string]*inviteWindow{}
+	}
+	for id, w := range s.invites {
+		if now.Sub(w.start) >= time.Hour {
+			delete(s.invites, id)
+		}
+	}
+	w := s.invites[sender]
+	if w == nil {
+		w = &inviteWindow{start: now}
+		s.invites[sender] = w
+	}
+	if w.n+n > InviteLimit {
+		return InviteLimitError{Until: w.start.Add(time.Hour)}
+	}
+	w.n += n
+	return nil
+}
+
+// newInvitees counts the REQUEST recipients in msgs who were not attendees of oldCal.
+func newInvitees(oldCal *ical.Calendar, msgs []itip.Message) int {
+	had := map[itip.Address]bool{}
+	if oldCal != nil {
+		for _, ev := range oldCal.Children {
+			if ev.Name == ical.CompEvent {
+				for _, a := range itip.AttendeesOf(ev) {
+					had[a.Address] = true
+				}
+			}
+		}
+	}
+	seen := map[itip.Address]bool{}
+	for _, m := range msgs {
+		if m.Method != itip.MethodRequest {
+			continue
+		}
+		for _, to := range m.Recipients {
+			if !had[to] {
+				seen[to] = true
+			}
+		}
+	}
+	return len(seen)
 }
 
 // KyPostSender mails a message to people outside the instance: a *kypost.Client, or the
@@ -55,12 +131,31 @@ func (s *Scheduler) now() time.Time {
 	return time.Now()
 }
 
-// address is the user's calendar user address, or false when they have no email.
-func address(u *store.User) (itip.Address, bool) {
+// emailAddress is the address u's email spells, or false when u is not an everyday user with
+// an email. It does not say u may use it: see Address.
+func emailAddress(u *store.User) (itip.Address, bool) {
 	if u == nil || u.Email == "" || u.Role != "user" {
 		return "", false
 	}
 	return itip.ParseAddress("mailto:" + u.Email)
+}
+
+// Address is u's calendar user address: their email, when no other active everyday user holds
+// it. A shared email is nobody's, so an account that copied a colleague's email can neither
+// send nor answer as them, and the colleague does not fall back to "external" unnoticed.
+func Address(ctx context.Context, st store.Store, u *store.User) (itip.Address, bool, error) {
+	a, ok := emailAddress(u)
+	if !ok {
+		return "", false, nil
+	}
+	owner, err := st.Users().CalendarUser(ctx, a.Email())
+	if errors.Is(err, store.ErrNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return a, owner.ID == u.ID, nil
 }
 
 func encodeCal(cal *ical.Calendar) ([]byte, error) {
@@ -73,9 +168,15 @@ func encodeCal(cal *ical.Calendar) ([]byte, error) {
 
 // Plan is the store.Planner for writer writing newCal (nil for a delete). It is nil when
 // scheduling is off or the writer has no address, so the write is exactly an unscheduled one.
-func (s *Scheduler) Plan(writer *store.User, newCal *ical.Calendar) store.Planner {
-	self, ok := address(writer)
-	if s == nil || !ok {
+func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.Calendar) store.Planner {
+	if s == nil {
+		return nil
+	}
+	self, ok, err := Address(ctx, s.Store, writer)
+	if err != nil {
+		return func([]byte) ([]byte, []*store.OutboxMessage, error) { return nil, nil, err }
+	}
+	if !ok {
 		return nil
 	}
 	return func(previous []byte) ([]byte, []*store.OutboxMessage, error) {
@@ -97,6 +198,9 @@ func (s *Scheduler) Plan(writer *store.User, newCal *ical.Calendar) store.Planne
 			// The object cannot be sent as it stands. It is still stored: refusing would break the
 			// client's sync over something it cannot fix.
 			return data, nil, nil
+		}
+		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
+			return nil, nil, err
 		}
 		var rows []*store.OutboxMessage
 		for _, m := range msgs {
@@ -174,7 +278,10 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	if err != nil {
 		return err
 	}
-	from, ok := address(sender)
+	from, ok, err := Address(ctx, s.Store, sender)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return errPermanent{"sender_no_address"}
 	}
@@ -257,7 +364,7 @@ func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org iti
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	self, _ := address(u)
+	self, _ := emailAddress(u)
 	for _, c := range cals {
 		if org != self && c.OwnerKind != ownerUser {
 			shared, err := s.organizerEdits(ctx, org, c)

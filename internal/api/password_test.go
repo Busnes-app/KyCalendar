@@ -183,11 +183,11 @@ func TestRestrictedSessionCannotInheritClearedFlag(t *testing.T) {
 	}
 }
 
-func TestReplacementRefusesUnflaggedAndFederatedAccounts(t *testing.T) {
+func TestReplacementRefusesFederatedAccounts(t *testing.T) {
 	for _, tc := range []struct {
 		name, provider string
 		flag           bool
-	}{{"unflagged", "local", false}, {"federated", "kysignon", true}} {
+	}{{"flagged", "kysignon", true}, {"unflagged", "oidc", false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, st, cfg := setupTestServer(t)
 			ctx := context.Background()
@@ -208,5 +208,47 @@ func TestReplacementRefusesUnflaggedAndFederatedAccounts(t *testing.T) {
 				t.Fatal(w.Code, w.Body)
 			}
 		})
+	}
+}
+
+// A local user may change their own password at any time (Q4): the current one is checked, and
+// the change signs out every session at once.
+func TestVoluntaryPasswordChange(t *testing.T) {
+	srv, st, cfg := setupTestServer(t)
+	ctx := context.Background()
+	hash, _ := password.Hash("CurrentPassword123!")
+	u := &store.User{ID: "usr_eve", Username: "eve", PasswordHash: hash, Status: "active", Role: "user", SSOProvider: "local"}
+	if err := st.Users().CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	manager := auth.NewSessionManager(st, cfg.Security)
+	_, token, err := manager.IssueSession(ctx, httptest.NewRecorder(), httptest.NewRequest("POST", "/api/auth/login", nil), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := func(current string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/auth/change-password", strings.NewReader(`{"current_password":"`+current+`","new_password":"ReplacementPassword456!"}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		return w
+	}
+	if w := change("WrongPassword123!"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong current password: %d %s", w.Code, w.Body)
+	}
+	if w := change("CurrentPassword123!"); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"login_required":true`) {
+		t.Fatalf("voluntary change: %d %s", w.Code, w.Body)
+	}
+	got, err := st.Users().GetUserByID(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := password.Verify("ReplacementPassword456!", got.PasswordHash); !ok || got.MustChangePassword {
+		t.Fatalf("stored password not replaced (must change %v)", got.MustChangePassword)
+	}
+	req := httptest.NewRequest("GET", "/api/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	if _, _, err := manager.AuthenticateRequest(req); err == nil {
+		t.Fatal("the session that changed the password still works")
 	}
 }

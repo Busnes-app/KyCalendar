@@ -44,6 +44,8 @@ function hashTab(): string | null {
 export const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [notice, setNotice] = useState('');
+  // After signing out, the next SSO sign-in is a step-up: the provider checks the credentials again.
+  const [signedOut, setSignedOut] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   // null until a page is chosen: the landing page follows the role, so there is no flash.
   const [chosenTab, setChosenTab] = useState<string | null>(hashTab);
@@ -107,6 +109,7 @@ export const App: React.FC = () => {
 
   const handleLogout = async () => {
     await secureFetch('/api/auth/logout', { method: 'POST' });
+    setSignedOut(true);
     setUser(null);
     history.replaceState(null, '', location.pathname);
     setChosenTab(null);
@@ -125,6 +128,7 @@ export const App: React.FC = () => {
       <Login
         appName={settings?.app_name || 'KyCalendar'}
         signinName={settings?.signin_name}
+        stepUp={signedOut}
         notice={notice}
         onSuccess={(u) => {
           setNotice('');
@@ -135,11 +139,12 @@ export const App: React.FC = () => {
     );
   }
 
+  const passwordChanged = () => {
+    setUser(null);
+    setNotice('Password changed. Sign in with your new password.');
+  };
   if (user.must_change_password) {
-    return <ChangePassword onLogout={handleLogout} onComplete={() => {
-      setUser(null);
-      setNotice('Password changed. Sign in with your new password.');
-    }} />;
+    return <ChangePassword onLogout={handleLogout} onComplete={passwordChanged} />;
   }
 
   const isAdmin = user.role === 'admin';
@@ -165,7 +170,7 @@ export const App: React.FC = () => {
       <main className="ky-content">
         {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab.startsWith('settings/') && (
-          <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onUserChange={setUser} />
+          <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onUserChange={setUser} onPasswordChanged={passwordChanged} />
         )}
         {activeTab === 'dashboard' && <Dashboard settings={settings} user={user} onNavigate={go} />}
         {activeTab === 'people' && <People me={user.id} />}

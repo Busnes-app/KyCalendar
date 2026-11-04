@@ -64,6 +64,8 @@ type eventView struct {
 	Organizer string         `json:"organizer,omitempty"`
 	Attendees []attendeeView `json:"attendees,omitempty"`
 	MyStatus  string         `json:"my_status,omitempty"`
+	// Cancelled: STATUS:CANCELLED, such as an invitation the organizer called off.
+	Cancelled bool `json:"cancelled,omitempty"`
 }
 
 type attendeeView struct {
@@ -113,6 +115,9 @@ func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView,
 		if a, ok := itip.ParseAddress(p.Value); ok {
 			v.Organizer = a.Email()
 		}
+	}
+	if st, _ := in.Event.Props.Text(ical.PropStatus); strings.EqualFold(st, "CANCELLED") {
+		v.Cancelled = true
 	}
 	for _, a := range itip.AttendeesOf(in.Event) {
 		v.Attendees = append(v.Attendees, attendeeView{Email: a.Address.Email(), Status: a.Status})
@@ -421,7 +426,7 @@ func (s *Server) saveEvent(ctx context.Context, writer *store.User, c *store.Cal
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "The event cannot be encoded"}
 	}
-	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(writer, cal))
+	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(ctx, writer, cal))
 	switch {
 	case err == nil:
 		return o, nil
@@ -437,6 +442,8 @@ func (s *Server) saveEvent(ctx context.Context, writer *store.User, c *store.Cal
 		return nil, &apiError{status: http.StatusConflict, msg: "An event with this UID already exists"}
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, &apiError{status: http.StatusInsufficientStorage, msg: "Calendar storage is full", code: "quota"}
+	case errors.As(err, new(davbackend.InviteLimitError)):
+		return nil, &apiError{status: http.StatusTooManyRequests, msg: err.Error(), code: "invite_limit"}
 	case errors.Is(err, calendar.ErrUnsupportedComponent):
 		return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "This calendar holds tasks, not events", code: "tasks_only"}
 	case errors.Is(err, davbackend.ErrInvalidResource), errors.Is(err, calendar.ErrInvalidData):
@@ -551,6 +558,12 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
+	// Who is invited is one list for the whole series: the scheduler sends each person the
+	// series, so a per-occurrence change would reach every occurrence.
+	if b.Scope == "this" && b.Attendees != nil {
+		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests can only be changed for all events", code: "attendees_series_only"})
+		return
+	}
 	if apiErr := applyEdit(cal, b); apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
@@ -592,7 +605,7 @@ func (s *Server) handleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("scope") {
 	case "", "all":
-		err := davbackend.Delete(r.Context(), s.store, c, o.Name, etag, s.objectLimits(), s.sched.Plan(sessionUser(r.Context()), nil))
+		err := davbackend.Delete(r.Context(), s.store, c, o.Name, etag, s.objectLimits(), s.sched.Plan(r.Context(), sessionUser(r.Context()), nil))
 		switch {
 		case errors.Is(err, store.ErrPreconditionFailed):
 			s.writeAPIError(w, errEventChanged)

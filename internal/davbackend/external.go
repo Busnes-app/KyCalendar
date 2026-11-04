@@ -57,7 +57,10 @@ const (
 // event u organizes; a REQUEST or CANCEL changes only a copy whose organizer is the sender.
 // A new invitation is never written here; the user's own answer (Respond) writes it.
 func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Address, msg *ical.Calendar) (string, error) {
-	self, ok := address(u)
+	self, ok, err := Address(ctx, s.Store, u)
+	if err != nil {
+		return "", err
+	}
 	if !ok {
 		return "", errPermanent{"no_address"}
 	}
@@ -125,6 +128,11 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 		}
 	}
 	if method == itip.MethodCancel {
+		if !answered(existing, self) {
+			// Never answered: nothing of theirs to keep, and the copy stops counting against
+			// their storage.
+			return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
+		}
 		for _, ev := range existing.Children {
 			if ev.Name == ical.CompEvent {
 				ev.Props.SetText(ical.PropStatus, "CANCELLED")
@@ -137,6 +145,22 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 		return errPermanent{"invalid_object"}
 	}
 	return s.put(ctx, c, o.Name, next, o.ETag, false)
+}
+
+// answered reports whether self gave any answer (a PARTSTAT other than NEEDS-ACTION) on any
+// VEVENT of their copy.
+func answered(cal *ical.Calendar, self itip.Address) bool {
+	for _, ev := range cal.Children {
+		if ev.Name != ical.CompEvent {
+			continue
+		}
+		for _, a := range itip.AttendeesOf(ev) {
+			if a.Address == self && a.Status != "NEEDS-ACTION" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // occurrencesOnly reports a message whose every VEVENT has a RECURRENCE-ID: it is about some
@@ -290,7 +314,10 @@ func isOverride(cal *ical.Calendar, rid string) bool {
 // what lets a sender put an event in their calendar. The answer then goes through the scheduled
 // write path, so the organizer gets a REPLY.
 func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceID, partstat string, invite *ical.Calendar) error {
-	self, ok := address(u)
+	self, ok, err := Address(ctx, s.Store, u)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return errPermanent{"no_address"}
 	}
@@ -330,7 +357,7 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
-	_, err = Write(ctx, s.Store, c, o.Name, cal, raw, o.ETag, false, s.Limits, s.Plan(u, cal))
+	_, err = Write(ctx, s.Store, c, o.Name, cal, raw, o.ETag, false, s.Limits, s.Plan(ctx, u, cal))
 	return err
 }
 

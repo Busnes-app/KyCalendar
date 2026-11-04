@@ -64,6 +64,7 @@ describe('CalendarPage', () => {
     expect(fc).toMatchObject({ title: '<b>x</b>', allDay: false, editable: false, backgroundColor: '#123456' });
     expect(toFcEvent({ ...ev, title: '' }, '#123456').title).toBe('(no title)');
     expect(toFcEvent({ ...ev, editable: true, partial: true }, '#1').editable).toBe(false);
+    expect(toFcEvent({ ...ev, cancelled: true }, '#1')).toMatchObject({ title: 'Cancelled: <b>x</b>', classNames: ['kc-cancelled'] });
   });
 
   it('puts the calendar list only in the app sidebar slot', async () => {

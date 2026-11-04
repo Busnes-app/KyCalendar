@@ -1074,3 +1074,38 @@ func TestSSODisabledRefusesKySignOnRoutes(t *testing.T) {
 		}
 	}
 }
+
+// The per-account login window keys on the client address and answers like a wrong password
+// (Q5): it does not reveal that a local account exists, and a stranger who exhausts it cannot
+// lock the real user out from another address.
+func TestLoginAccountWindowIsPerClientAndSilent(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	hash, _ := password.Hash("SuperSecretPass123!")
+	if err := st.Users().CreateUser(context.Background(), &store.User{
+		ID: "usr_dana", Username: "dana", Email: "dana@busnes.app",
+		PasswordHash: hash, Role: "user", Status: "active", SSOProvider: "local",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	login := func(user, pass, peer string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]string{"username": user, "password": pass})
+		req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = peer
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		return w
+	}
+	for i := 0; i < 15; i++ { // over the account window, under the per-IP 20 a minute
+		attacker, unknown := login("dana", "WrongPass123!", "203.0.113.50:4000"), login("nobody", "WrongPass123!", "203.0.113.51:4000")
+		if attacker.Code != http.StatusUnauthorized || attacker.Body.String() != unknown.Body.String() {
+			t.Fatalf("attempt %d: dana answered %d %s, an unknown name %d %s", i, attacker.Code, attacker.Body, unknown.Code, unknown.Body)
+		}
+	}
+	if w := login("dana", "SuperSecretPass123!", "203.0.113.50:4000"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("the right password through an exhausted window answered %d, want 401", w.Code)
+	}
+	if w := login("dana", "SuperSecretPass123!", "198.51.100.20:4000"); w.Code != http.StatusOK {
+		t.Fatalf("dana from her own address answered %d %s: the stranger locked her out", w.Code, w.Body)
+	}
+}

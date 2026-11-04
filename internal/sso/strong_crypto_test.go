@@ -71,7 +71,7 @@ func TestOIDCStrongModeRequiresDirectHTTPS(t *testing.T) {
 			defer idp.Close()
 			issuer = idp.URL
 			p := sso.NewProvider(sso.KindOIDC, "fixture", issuer, "client", "", idp.Client())
-			_, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce")
+			_, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce", false)
 			if (err != nil) != fips140.Enabled() {
 				t.Fatalf("configured=%v, error=%v", fips140.Enabled(), err)
 			}

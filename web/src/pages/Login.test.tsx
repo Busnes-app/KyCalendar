@@ -13,6 +13,8 @@ describe('Login', () => {
     expect(screen.queryByRole('link', { name: /Continue with/ })).toBeNull();
     rerender(<Login appName="Cal" onSuccess={() => {}} signinName="Acme" />);
     expect(screen.getByRole('link', { name: 'Continue with Acme' }).getAttribute('href')).toBe('/api/sso/kysignon/login');
+    rerender(<Login appName="Cal" onSuccess={() => {}} signinName="Acme" stepUp />);
+    expect(screen.getByRole('link', { name: 'Continue with Acme' }).getAttribute('href')).toBe('/api/sso/kysignon/login?step_up=1');
   });
 
   it('renders the provider name as text, not markup', () => {

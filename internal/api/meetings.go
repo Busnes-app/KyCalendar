@@ -9,12 +9,13 @@ import (
 	"github.com/emersion/go-ical"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
+	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 )
 
 var (
 	errSchedulingOff = &apiError{status: http.StatusUnprocessableEntity, msg: "Invitations are not turned on for this calendar server", code: "scheduling_off"}
-	errNoAddress     = &apiError{status: http.StatusUnprocessableEntity, msg: "Your account has no email address, so you cannot invite or answer", code: "no_address"}
+	errNoAddress     = &apiError{status: http.StatusUnprocessableEntity, msg: "Your account has no email address of its own (none, or one another account also uses), so you cannot invite or answer", code: "no_address"}
 	errNotOrganizer  = &apiError{status: http.StatusForbidden, msg: "Only the organizer can change who is invited", code: "not_organizer"}
 	errNotInvited    = &apiError{status: http.StatusUnprocessableEntity, msg: "You are not invited to this event", code: "not_invited"}
 )
@@ -24,11 +25,10 @@ func (s *Server) selfAddress(ctx context.Context) (itip.Address, *apiError) {
 	if s.sched == nil {
 		return "", errSchedulingOff
 	}
-	u := sessionUser(ctx)
-	if u == nil || u.Email == "" {
-		return "", errNoAddress
+	a, ok, err := davbackend.Address(ctx, s.store, sessionUser(ctx))
+	if err != nil {
+		return "", &apiError{status: http.StatusInternalServerError, msg: "Failed to look up your address"}
 	}
-	a, ok := itip.ParseAddress("mailto:" + u.Email)
 	if !ok {
 		return "", errNoAddress
 	}
