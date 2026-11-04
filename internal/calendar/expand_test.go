@@ -517,3 +517,26 @@ func TestSeriesTimes(t *testing.T) {
 		t.Fatalf("all-day %v %v %v", start, end, allDay)
 	}
 }
+
+// An RDATE PERIOD occurrence keeps its own length, so free/busy and range queries see all of it.
+func TestExpandRDatePeriodKeepsItsLength(t *testing.T) {
+	cal, err := ical.NewDecoder(strings.NewReader("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:p\r\nDTSTAMP:20261001T000000Z\r\n" +
+		"DTSTART:20261101T060000Z\r\nDTEND:20261101T070000Z\r\nRDATE;VALUE=PERIOD:20261101T090000Z/PT3H,20261102T090000Z/20261102T093000Z\r\n" +
+		"END:VEVENT\r\nEND:VCALENDAR\r\n")).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Expand(cal, time.Date(2026, 11, 1, 11, 0, 0, 0, time.UTC), day(2026, 11, 3), time.UTC, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]time.Duration{"20261101T090000Z": 3 * time.Hour, "20261102T090000Z": 30 * time.Minute}
+	if len(got) != len(want) {
+		t.Fatalf("instances from 11:00: %+v", got)
+	}
+	for _, in := range got {
+		if d := in.End.Sub(in.Start); d != want[in.RecurrenceID] {
+			t.Errorf("%s lasts %v, want %v", in.RecurrenceID, d, want[in.RecurrenceID])
+		}
+	}
+}

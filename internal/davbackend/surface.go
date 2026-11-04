@@ -41,9 +41,12 @@ func (b *Backend) outbox() string { return b.home() + outboxSegment + "/" }
 // Scheduling is nil, so nothing about scheduling is advertised, while scheduling is off or the
 // user has no calendar user address.
 func (b *Backend) Scheduling(ctx context.Context) (*caldav.Scheduling, error) {
-	self, ok := address(b.User)
-	if b.Sched == nil || !ok {
+	if b.Sched == nil {
 		return nil, nil
+	}
+	self, ok, err := Address(ctx, b.Store, b.User)
+	if err != nil || !ok {
+		return nil, err
 	}
 	return &caldav.Scheduling{
 		CalendarUserAddresses: []string{string(self)},
@@ -57,8 +60,14 @@ func (b *Backend) Scheduling(ctx context.Context) (*caldav.Scheduling, error) {
 // of their personal event calendars, subscriptions excluded (they are transparent). Anyone
 // else gets 3.7. The organizer must be the caller.
 func (b *Backend) ScheduleFreeBusy(ctx context.Context, req *ical.Calendar) ([]caldav.ScheduleResponse, error) {
-	self, ok := address(b.User)
-	if b.Sched == nil || !ok {
+	if b.Sched == nil {
+		return nil, errNotOrganizer
+	}
+	self, ok, err := Address(ctx, b.Store, b.User)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, errNotOrganizer
 	}
 	var fb *ical.Component

@@ -112,8 +112,16 @@ function ImportForm({ calendars, color, onImported, onClose }: { calendars: Cale
       setResult(await importCSV(created?.id ?? target, file, browserZone(), browserDateOrder()));
       onImported();
     } catch (err) {
-      if (created) await deleteCalendar(created.id).catch(() => undefined);
-      setError(err instanceof Error && err.message ? err.message : 'Could not import the file');
+      // Only a refusal (4xx) imported nothing. With no answer, or a 5xx from a proxy, the server
+      // may have imported the file, so the new calendar stays.
+      const refused = err instanceof ApiError && err.status >= 400 && err.status < 500;
+      if (created && refused) await deleteCalendar(created.id).catch(() => undefined);
+      if (created && !refused) {
+        onImported();
+        setError(`The import may have finished. Check the calendar “${created.name}” before importing again.`);
+      } else {
+        setError(err instanceof Error && err.message ? err.message : 'Could not import the file');
+      }
     } finally {
       setBusy(false);
     }

@@ -78,7 +78,8 @@ const eventId = (ev: EventInfo) => `${ev.calendar_id}|${ev.uid}|${ev.recurrence_
 export function toFcEvent(ev: EventInfo, color: string): EventInput {
   return {
     id: eventId(ev),
-    title: ev.title || '(no title)',
+    title: (ev.cancelled ? 'Cancelled: ' : '') + (ev.title || '(no title)'),
+    classNames: ev.cancelled ? ['kc-cancelled'] : [],
     start: ev.start,
     end: ev.end,
     allDay: ev.all_day,

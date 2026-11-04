@@ -387,3 +387,119 @@ func TestKyPostInboundReachesACopyInAGroupCalendar(t *testing.T) {
 		t.Fatalf("bob's copy in the group calendar was not cancelled (%v)", err)
 	}
 }
+
+// Bob is invited to single occurrences only (no master), as Outlook invites someone added to one
+// occurrence: his answer to one is recorded, a second occurrence is added beside the first, and a
+// CANCEL of one leaves the other.
+func TestKyPostInvitationToSingleOccurrences(t *testing.T) {
+	srv, ts, token := kypostBob(t)
+	bob := kypost.User{Sub: "sub-bob", Issuer: "https://id.example"}
+	occurrence := func(rid, extra string) string {
+		return "BEGIN:VEVENT\r\nUID:dave-o\r\nDTSTAMP:20261101T000000Z\r\nRECURRENCE-ID;TZID=Europe/Berlin:" + rid + "\r\nDTSTART;TZID=Europe/Berlin:" + rid +
+			"\r\nDTEND;TZID=Europe/Berlin:" + strings.Replace(rid, "T09", "T10", 1) + "\r\n" + extra + "SUMMARY:Supplier call\r\n" +
+			"ORGANIZER:mailto:dave@example.org\r\nATTENDEE;RSVP=TRUE:mailto:bob@example.com\r\nEND:VEVENT\r\n"
+	}
+	msg := func(method, body string) string {
+		return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nMETHOD:" + method + "\r\n" + body + "END:VCALENDAR\r\n"
+	}
+	copyOf := func() string {
+		t.Helper()
+		r := rawDAV(t, ts, "REPORT", "/dav/usr_bob/calendars/default/", "bob", token,
+			`<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR"/></c:filter></c:calendar-query>`,
+			map[string]string{"Content-Type": "application/xml", "Depth": "1"})
+		return readAll(r)
+	}
+	invite := msg("REQUEST", occurrence("20261119T090000", ""))
+	// KyPost names the occurrence as the mail writes it: wall time in Berlin.
+	resp := kypost.RespondRequest{User: bob, UID: "dave-o", RecurrenceID: "20261119T090000", Partstat: "ACCEPTED", ICS: invite}
+	if w := signedPost(t, srv, "/api/itip/respond", kypost.EventRespond, "rsp-o", resp); w.Code != 200 {
+		t.Fatalf("answering one occurrence as mailed: %d %s", w.Code, w.Body.String())
+	}
+	if got := copyOf(); !strings.Contains(got, "PARTSTAT=ACCEPTED") {
+		t.Fatalf("bob's answer was not recorded:\n%s", got)
+	}
+	in := kypost.InboundRequest{User: bob, From: "dave@example.org", DKIMAligned: true, ICS: msg("REQUEST", occurrence("20261126T090000", ""))}
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-o1", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("a second occurrence: %d %s", w.Code, w.Body.String())
+	}
+	got := copyOf()
+	if !strings.Contains(got, "RECURRENCE-ID;TZID=Europe/Berlin:20261119T090000") || !strings.Contains(got, "RECURRENCE-ID;TZID=Europe/Berlin:20261126T090000") || !strings.Contains(got, "PARTSTAT=ACCEPTED") {
+		t.Fatalf("the second occurrence replaced the first:\n%s", got)
+	}
+	in.ICS = msg("CANCEL", occurrence("20261126T090000", "STATUS:CANCELLED\r\n"))
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-o2", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("cancelling one occurrence: %d %s", w.Code, w.Body.String())
+	}
+	// Bob never answered 26 November: it goes (Q7); 19 November, which he accepted, stays.
+	got = copyOf()
+	if strings.Contains(got, "20261126T090000") || !strings.Contains(got, "RECURRENCE-ID;TZID=Europe/Berlin:20261119T090000") || strings.Contains(got, "STATUS:CANCELLED") {
+		t.Fatalf("after cancelling the unanswered 26 November:\n%s", got)
+	}
+	// Cancelling the answered 19 November keeps it, cancelled.
+	in.ICS = msg("CANCEL", occurrence("20261119T090000", "STATUS:CANCELLED\r\n"))
+	if w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, "in-o3", in); !strings.Contains(w.Body.String(), "applied") {
+		t.Fatalf("cancelling the answered occurrence: %d %s", w.Code, w.Body.String())
+	}
+	if got = copyOf(); !strings.Contains(got, "STATUS:CANCELLED") || !strings.Contains(got, "RECURRENCE-ID;TZID=Europe/Berlin:20261119T090000") {
+		t.Fatalf("the answered occurrence after its CANCEL:\n%s", got)
+	}
+	// An occurrence the invitation does not have is a permanent refusal, not a retried 500.
+	resp.RecurrenceID = "20261203T090000"
+	if w := signedPost(t, srv, "/api/itip/respond", kypost.EventRespond, "rsp-o2", resp); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("answering an occurrence bob is not invited to: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A REQUEST or CANCEL older than what bob's copy last took from its organizer (a late retry or
+// replay) changes nothing; bob's own edit raising his copy's SEQUENCE does not stop the
+// organizer's next update.
+func TestKyPostStaleOrganizerMessagesAreIgnored(t *testing.T) {
+	srv, _, st, _ := kypostWorld(t)
+	bob := kypost.User{Sub: "sub-bob", Issuer: "https://id.example"}
+	ctx := context.Background()
+	msg := func(method, seq, start string) string {
+		return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nMETHOD:" + method + "\r\nBEGIN:VEVENT\r\nUID:dave-s\r\nDTSTAMP:20261101T000000Z\r\nSEQUENCE:" + seq +
+			"\r\nDTSTART:" + start + "\r\nDTEND:20261112T230000Z\r\nSUMMARY:Supplier call\r\nORGANIZER:mailto:dave@example.org\r\n" +
+			"ATTENDEE;PARTSTAT=ACCEPTED;RSVP=TRUE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	}
+	if w := signedPost(t, srv, "/api/itip/respond", kypost.EventRespond, "rsp-s", kypost.RespondRequest{User: bob, UID: "dave-s", Partstat: "ACCEPTED", ICS: msg("REQUEST", "0", "20261112T090000Z")}); w.Code != 200 {
+		t.Fatalf("respond %d %s", w.Code, w.Body.String())
+	}
+	copyOf := func() *store.CalendarObject {
+		t.Helper()
+		def, err := st.Calendars().GetCalendarBySlug(ctx, "user", "usr_bob", "default")
+		if err != nil {
+			t.Fatal(err)
+		}
+		o, err := st.Calendars().GetObjectByUID(ctx, def.ID, "dave-s")
+		if err != nil {
+			t.Fatalf("bob's copy: %v", err)
+		}
+		return o
+	}
+	in := func(id, ics string) string {
+		t.Helper()
+		w := signedPost(t, srv, "/api/itip/inbound", kypost.EventInbound, id, kypost.InboundRequest{User: bob, From: "dave@example.org", DKIMAligned: true, ICS: ics})
+		return w.Body.String()
+	}
+	if got := in("s1", msg("REQUEST", "2", "20261112T100000Z")); !strings.Contains(got, "applied") {
+		t.Fatalf("the update: %s", got)
+	}
+	for id, late := range map[string]string{"s2": msg("REQUEST", "1", "20261112T080000Z"), "s3": msg("CANCEL", "1", "20261112T080000Z")} {
+		if got := in(id, late); strings.Contains(got, "applied") {
+			t.Errorf("a late message (%s) was applied: %s", id, got)
+		}
+	}
+	if data := string(copyOf().Data); !strings.Contains(data, "DTSTART:20261112T100000Z") || strings.Contains(data, "CANCELLED") {
+		t.Fatalf("bob's copy after late messages:\n%s", data)
+	}
+	// Bob's calendar app raises his copy's SEQUENCE; the organizer's SEQUENCE 3 still applies.
+	o := copyOf()
+	o.Data = []byte(strings.Replace(string(o.Data), "SEQUENCE:2", "SEQUENCE:9", 1))
+	if _, err := st.Calendars().PutObject(ctx, o, o.ETag, false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := in("s4", msg("REQUEST", "3", "20261112T110000Z")); !strings.Contains(got, "applied") {
+		t.Fatalf("the organizer's update after bob's edit: %s", got)
+	}
+}

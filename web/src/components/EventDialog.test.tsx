@@ -220,6 +220,21 @@ describe('EventDialog', () => {
       expect(calls[0]).toMatchObject({ method: 'PUT', body: { attendees: [] } });
     });
 
+    it('changes guests only for all events of a series', async () => {
+      const calls = capture();
+      const series: EventInfo = { ...meeting, recurring: true, recurrence_id: '20261012T070000Z', repeat: { freq: 'weekly' } };
+      render(<EventDialog calendars={cals} event={series} initial={formFromEvent(series, 'this')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      expect(screen.queryByLabelText('People')).toBeNull();
+      expect(screen.getByText(/choose All events/)).toBeTruthy();
+      fireEvent.click(screen.getByLabelText('All events'));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove bob@example.com' }));
+      fireEvent.click(screen.getByLabelText('This event'));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({ scope: 'this' });
+      expect(calls[0].body).not.toHaveProperty('attendees');
+    });
+
     it('lets an invitee answer with If-Match, for the occurrence chosen', async () => {
       const calls = capture();
       const onDone = vi.fn();
@@ -233,6 +248,14 @@ describe('EventDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
       await waitFor(() => expect(onDone).toHaveBeenCalled());
       expect(calls[0]).toMatchObject({ method: 'POST', url: '/api/events/cal_p/u1/rsvp', ifMatch: '"e1"', body: { partstat: 'ACCEPTED', recurrence_id: '20261012T070000Z' } });
+    });
+
+    it('marks a cancelled invitation and offers no answer, only Delete', () => {
+      const inv = { ...meeting, organizer: 'boss@example.com', my_status: 'ACCEPTED', cancelled: true };
+      render(<EventDialog calendars={cals} event={inv} initial={formFromEvent(inv, 'this')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      expect(screen.getByRole('note').textContent).toMatch(/Cancelled/);
+      expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
     });
 
     it('shows the server message when an answer fails', async () => {

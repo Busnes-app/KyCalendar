@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/google/uuid"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -25,6 +27,81 @@ type Scheduler struct {
 	Limits store.OwnerLimits // applied to deliveries into a recipient's calendar
 	Now    func() time.Time
 	KyPost KyPostSender // nil: nothing reaches people outside the instance (no_transport)
+
+	invitesMu sync.Mutex
+	invites   map[string]*inviteWindow // sender ID -> this hour's new invitees
+}
+
+// InviteLimit is how many people one sender may newly invite per hour. Re-sending a meeting to
+// people already on it does not count, so one meeting of the largest size (1000 attendees)
+// always fits; the limit bounds how fast one account can fill other people's calendars.
+const InviteLimit = 1000
+
+type inviteWindow struct {
+	start time.Time
+	n     int
+}
+
+// InviteLimitError refuses a write that would invite more people than InviteLimit this hour.
+type InviteLimitError struct{ Until time.Time }
+
+func (e InviteLimitError) Error() string {
+	return fmt.Sprintf("You have invited more than %d people in the last hour. You can send new invitations again at %s UTC.",
+		InviteLimit, e.Until.UTC().Format("15:04"))
+}
+
+// admitInvites counts n new invitees for sender against InviteLimit.
+func (s *Scheduler) admitInvites(sender string, n int) error {
+	if n == 0 {
+		return nil
+	}
+	s.invitesMu.Lock()
+	defer s.invitesMu.Unlock()
+	now := s.now()
+	if s.invites == nil {
+		s.invites = map[string]*inviteWindow{}
+	}
+	for id, w := range s.invites {
+		if now.Sub(w.start) >= time.Hour {
+			delete(s.invites, id)
+		}
+	}
+	w := s.invites[sender]
+	if w == nil {
+		w = &inviteWindow{start: now}
+		s.invites[sender] = w
+	}
+	if w.n+n > InviteLimit {
+		return InviteLimitError{Until: w.start.Add(time.Hour)}
+	}
+	w.n += n
+	return nil
+}
+
+// newInvitees counts the REQUEST recipients in msgs who were not attendees of oldCal.
+func newInvitees(oldCal *ical.Calendar, msgs []itip.Message) int {
+	had := map[itip.Address]bool{}
+	if oldCal != nil {
+		for _, ev := range oldCal.Children {
+			if ev.Name == ical.CompEvent {
+				for _, a := range itip.AttendeesOf(ev) {
+					had[a.Address] = true
+				}
+			}
+		}
+	}
+	seen := map[itip.Address]bool{}
+	for _, m := range msgs {
+		if m.Method != itip.MethodRequest {
+			continue
+		}
+		for _, to := range m.Recipients {
+			if !had[to] {
+				seen[to] = true
+			}
+		}
+	}
+	return len(seen)
 }
 
 // KyPostSender mails a message to people outside the instance: a *kypost.Client, or the
@@ -55,12 +132,31 @@ func (s *Scheduler) now() time.Time {
 	return time.Now()
 }
 
-// address is the user's calendar user address, or false when they have no email.
-func address(u *store.User) (itip.Address, bool) {
+// emailAddress is the address u's email spells, or false when u is not an everyday user with
+// an email. It does not say u may use it: see Address.
+func emailAddress(u *store.User) (itip.Address, bool) {
 	if u == nil || u.Email == "" || u.Role != "user" {
 		return "", false
 	}
 	return itip.ParseAddress("mailto:" + u.Email)
+}
+
+// Address is u's calendar user address: their email, when no other active everyday user holds
+// it. A shared email is nobody's, so an account that copied a colleague's email can neither
+// send nor answer as them, and the colleague does not fall back to "external" unnoticed.
+func Address(ctx context.Context, st store.Store, u *store.User) (itip.Address, bool, error) {
+	a, ok := emailAddress(u)
+	if !ok {
+		return "", false, nil
+	}
+	owner, err := st.Users().CalendarUser(ctx, a.Email())
+	if errors.Is(err, store.ErrNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return a, owner.ID == u.ID, nil
 }
 
 func encodeCal(cal *ical.Calendar) ([]byte, error) {
@@ -73,9 +169,15 @@ func encodeCal(cal *ical.Calendar) ([]byte, error) {
 
 // Plan is the store.Planner for writer writing newCal (nil for a delete). It is nil when
 // scheduling is off or the writer has no address, so the write is exactly an unscheduled one.
-func (s *Scheduler) Plan(writer *store.User, newCal *ical.Calendar) store.Planner {
-	self, ok := address(writer)
-	if s == nil || !ok {
+func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.Calendar) store.Planner {
+	if s == nil {
+		return nil
+	}
+	self, ok, err := Address(ctx, s.Store, writer)
+	if err != nil {
+		return func([]byte) ([]byte, []*store.OutboxMessage, error) { return nil, nil, err }
+	}
+	if !ok {
 		return nil
 	}
 	return func(previous []byte) ([]byte, []*store.OutboxMessage, error) {
@@ -97,6 +199,9 @@ func (s *Scheduler) Plan(writer *store.User, newCal *ical.Calendar) store.Planne
 			// The object cannot be sent as it stands. It is still stored: refusing would break the
 			// client's sync over something it cannot fix.
 			return data, nil, nil
+		}
+		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
+			return nil, nil, err
 		}
 		var rows []*store.OutboxMessage
 		for _, m := range msgs {
@@ -174,7 +279,10 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	if err != nil {
 		return err
 	}
-	from, ok := address(sender)
+	from, ok, err := Address(ctx, s.Store, sender)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return errPermanent{"sender_no_address"}
 	}
@@ -257,7 +365,7 @@ func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org iti
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	self, _ := address(u)
+	self, _ := emailAddress(u)
 	for _, c := range cals {
 		if org != self && c.OwnerKind != ownerUser {
 			shared, err := s.organizerEdits(ctx, org, c)
@@ -336,6 +444,7 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		if err != nil {
 			return errPermanent{"invalid_object"}
 		}
+		stamp(first)
 		sum := sha256.Sum256([]byte(uid))
 		return s.put(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true)
 	case err != nil:
@@ -345,13 +454,15 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 }
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first
-// personal event calendar when they deleted it or it holds no events.
+// personal event calendar when they deleted it or it holds no events. With neither (only
+// subscriptions or task lists left) an event calendar is made: "default" again when it is free.
 func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.Calendar, error) {
 	def, err := s.Store.Calendars().GetCalendarBySlug(ctx, ownerUser, u.ID, defaultSlug)
 	if err == nil && !def.Subscribed && def.Holds(ical.CompEvent) {
 		return def, nil
 	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	missing := errors.Is(err, store.ErrNotFound)
+	if err != nil && !missing {
 		return nil, err
 	}
 	cals, err := s.writable(ctx, u)
@@ -363,7 +474,16 @@ func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.C
 			return c, nil
 		}
 	}
-	return nil, errPermanent{"no_calendar"}
+	id := uuid.NewString()
+	slug := defaultSlug
+	if !missing {
+		slug = "calendar-" + id[:8] // "default" is taken by a subscription or a task list
+	}
+	c := &store.Calendar{ID: "cal_" + id, OwnerKind: ownerUser, OwnerID: u.ID, Slug: slug, Name: "Calendar"}
+	if err := s.Store.Calendars().CreateCalendar(ctx, c, 0); err != nil {
+		return nil, err // retried: a slug taken meanwhile is found next time
+	}
+	return s.Store.Calendars().GetCalendarByID(ctx, c.ID)
 }
 
 // deliverReply records an internal attendee's answer on the organizer's object.
@@ -375,18 +495,90 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil {
 		return err
 	}
-	changed, err := itip.ApplyReply(stored, msg, from)
+	next, changed, err := applyReply(stored, msg, from)
 	if errors.Is(err, itip.ErrNotAttendee) || errors.Is(err, itip.ErrUIDMismatch) || errors.Is(err, itip.ErrInvalid) {
 		return errPermanent{"not_attendee"}
 	}
 	if err != nil || !changed {
 		return err
 	}
-	return s.put(ctx, c, o.Name, stored, o.ETag, false)
+	return s.put(ctx, c, o.Name, next, o.ETag, false)
 }
 
-// maxNewOverrides caps the overrides one organizer message may add to an attendee's copy: each is a
-// copy of the master. A message that would add more is refused whole, so it is never half applied.
+// maxNewOverrides caps the overrides one message may add to a stored series: each is a copy of the
+// master. A message that would add more is refused whole, so it is never half applied.
 const maxNewOverrides = 20
 
 var errTooManyOccurrences = errPermanent{"too_many_occurrences"}
+
+func sequenceOf(c *ical.Component) int {
+	n := 0
+	if p := c.Props.Get(ical.PropSequence); p != nil {
+		n, _ = p.Int()
+	}
+	return n
+}
+
+// applyReply records from's answer (itip.ApplyReply) on a copy of stored, with the overrides it
+// needs (addOverrides), and returns the copy. Only a copy the answer changed is worth storing, so
+// a reply that records nothing leaves no override behind.
+func applyReply(stored, msg *ical.Calendar, from itip.Address) (*ical.Calendar, bool, error) {
+	raw, err := encodeCal(stored)
+	if err != nil {
+		return nil, false, err
+	}
+	work, err := ical.NewDecoder(bytes.NewReader(raw)).Decode()
+	if err != nil {
+		return nil, false, err
+	}
+	if err := addOverrides(work, msg, from); err != nil {
+		return nil, false, err
+	}
+	changed, err := itip.ApplyReply(work, msg, from)
+	return work, changed, err
+}
+
+// addOverrides readies stored, an organizer's series, for sender's reply. A reply component naming
+// an occurrence gets its RECURRENCE-ID written as the object's override for that occurrence has it.
+// When the object holds that occurrence only through its master, and sender (an attendee of the
+// series) answers it, as of the series' current SEQUENCE, differently from the series, the
+// override is added first (RFC 5546 3.2.3). ApplyReply then records the answer there. More than
+// maxNewOverrides to add is errTooManyOccurrences, and nothing is added.
+func addOverrides(stored, reply *ical.Calendar, sender itip.Address) error {
+	m, err := calendar.Master(stored)
+	if err != nil {
+		return nil
+	}
+	series := ""
+	for _, a := range itip.AttendeesOf(m) {
+		if a.Address == sender {
+			series = a.Status
+		}
+	}
+	have := overridesOf(stored)
+	missing := map[string]*ical.Component{}
+	for _, c := range reply.Children {
+		rid := c.Props.Get(ical.PropRecurrenceID)
+		if c.Name != ical.CompEvent || rid == nil {
+			continue
+		}
+		key, ok := calendar.OccurrenceKey(stored, rid)
+		if !ok {
+			continue
+		}
+		if o := have[key]; o != nil {
+			sameOccurrence(c, o)
+		} else if ps := itip.ReplyAnswer(c, sender); series != "" && ps != "" && ps != series && sequenceOf(c) >= sequenceOf(m) {
+			missing[key] = c
+		}
+	}
+	if len(missing) > maxNewOverrides {
+		return errTooManyOccurrences
+	}
+	for key, c := range missing {
+		if o, err := calendar.AddOverride(stored, key); err == nil {
+			sameOccurrence(c, o)
+		}
+	}
+	return nil
+}

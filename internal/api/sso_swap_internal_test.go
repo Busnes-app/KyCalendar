@@ -29,6 +29,8 @@ type signingIdP struct {
 	key             *rsa.PrivateKey
 	sub, nonce, sid string
 	iat             time.Time
+	authTime        time.Time // zero: no auth_time claim
+	extra           map[string]any
 	onToken         func()
 	roles           []string
 	discoveries     atomic.Int32
@@ -64,10 +66,17 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 			if iat.IsZero() {
 				iat = time.Now()
 			}
-			idToken := idp.sign(t, "JWT", map[string]any{
+			claims := map[string]any{
 				"iss": idp.URL, "aud": "kc", "sub": idp.sub, "sid": idp.sid, "nonce": idp.nonce, "preferred_username": "user-" + idp.sub,
 				"roles": idp.roles, "iat": iat.Unix(), "exp": time.Now().Add(time.Minute).Unix(),
-			})
+			}
+			if !idp.authTime.IsZero() {
+				claims["auth_time"] = idp.authTime.Unix()
+			}
+			for k, v := range idp.extra {
+				claims[k] = v
+			}
+			idToken := idp.sign(t, "JWT", claims)
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "token_type": "Bearer", "id_token": idToken})
 		default:
 			idp.discoveries.Add(1)
@@ -104,7 +113,8 @@ func (idp *signingIdP) login(t *testing.T, s *Server, sub string) *http.Request 
 	req := startLogin(t, s)
 	for _, c := range req.Cookies() {
 		if strings.HasPrefix(c.Name, "ky_nonce_") {
-			_, idp.nonce, _ = strings.Cut(c.Value, ".")
+			_, rest, _ := strings.Cut(c.Value, ".")
+			idp.nonce, _, _ = strings.Cut(rest, ".") // a step-up adds its start time
 		}
 	}
 	idp.sub = sub

@@ -27,13 +27,14 @@ func NewProvider(kind, displayName, issuer, clientID, secret string, client *htt
 	return &Provider{Kind: kind, DisplayName: displayName, ID: crypto.RandomHex(8), Binding: kind + " " + issuer, flow: newOAuthFlow(issuer, clientID, secret, client)}
 }
 
-// AuthURL is the authorization request with PKCE S256 and the nonce.
-func (p *Provider) AuthURL(ctx context.Context, redirectURI, state, verifier, nonce string) (string, error) {
+// AuthURL is the authorization request with PKCE S256 and the nonce. fresh asks the provider to
+// check the user's credentials again (max_age=0, prompt=login), for a step-up.
+func (p *Provider) AuthURL(ctx context.Context, redirectURI, state, verifier, nonce string, fresh bool) (string, error) {
 	flow, err := p.currentFlow()
 	if err != nil {
 		return "", err
 	}
-	return flow.authCodeURL(ctx, redirectURI, state, verifier, nonce)
+	return flow.authCodeURL(ctx, redirectURI, state, verifier, nonce, fresh)
 }
 
 // Exchange redeems the code and returns the verified claims, labelled with the account provider.
@@ -60,11 +61,16 @@ func (p *Provider) VerifyLogout(ctx context.Context, raw string) (*LogoutClaims,
 }
 
 // stamp sets the account provider. Only KyIdentity's roles mean anything here: an oidc
-// provider's roles are dropped, so no outside IdP can make an administrator.
+// provider's roles are dropped, so no outside IdP can make an administrator. An oidc provider's
+// email is kept only when the token says it is verified: many IdPs let users type any email,
+// and the email is who they invite and answer as.
 func (p *Provider) stamp(c *IdentityClaims) *IdentityClaims {
 	c.Provider = p.accountProvider()
 	if p.Kind != KindKyIdentity {
 		c.Roles = nil
+		if !c.EmailVerified {
+			c.Email = ""
+		}
 	}
 	return c
 }

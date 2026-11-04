@@ -45,3 +45,19 @@ it('routes a restricted signed-in user to replacement instead of the dashboard',
   expect(screen.queryByText('Directory & SCIM')).toBeNull();
   expect(screen.queryByText('Overview')).toBeNull();
 });
+
+it('offers a local account a password change in Account settings, and only a local one', async () => {
+  const { PersonalSettings } = await import('./PersonalSettings');
+  const changed = vi.fn();
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+  const { unmount } = render(<PersonalSettings section="account" user={{ username: 'eve', role: 'user', sso_provider: 'oidc' }} onUserChange={vi.fn()} onPasswordChanged={changed} />);
+  expect(screen.queryByRole('heading', { name: 'Change password' })).toBeNull();
+  unmount();
+  render(<PersonalSettings section="account" user={{ username: 'eve', role: 'user', sso_provider: 'local' }} onUserChange={vi.fn()} onPasswordChanged={changed} />);
+  expect(screen.getByRole('heading', { name: 'Change password' })).toBeTruthy();
+  for (const [label, value] of [['Current password', 'CurrentPassword123!'], ['New password', 'ReplacementPassword456!'], ['Confirm new password', 'ReplacementPassword456!']]) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+  await waitFor(() => expect(changed).toHaveBeenCalledOnce());
+});

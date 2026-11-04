@@ -50,9 +50,13 @@ func startLogin(t *testing.T, s *Server) *http.Request {
 }
 
 func startLoginWithContext(t *testing.T, s *Server, ctx context.Context) *http.Request {
+	return startLoginAt(t, s, ctx, "/api/sso/kysignon/login")
+}
+
+func startLoginAt(t *testing.T, s *Server, ctx context.Context, path string) *http.Request {
 	t.Helper()
 	login := httptest.NewRecorder()
-	s.ServeHTTP(login, httptest.NewRequestWithContext(ctx, "GET", "/api/sso/kysignon/login", nil))
+	s.ServeHTTP(login, httptest.NewRequestWithContext(ctx, "GET", path, nil))
 	if login.Code != http.StatusFound {
 		t.Fatalf("login: %d %s", login.Code, login.Body.String())
 	}

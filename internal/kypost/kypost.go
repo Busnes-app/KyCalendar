@@ -54,7 +54,9 @@ type InboundRequest struct {
 }
 
 // RespondRequest is the user's answer from a KyPost RSVP card. ICS, the invitation as mailed, is
-// required: the answer is bound to its organizer.
+// required: the answer is bound to its organizer. RecurrenceID, for one occurrence, is the
+// RECURRENCE-ID value as ICS writes it (its TZID applies), or a value in the series' own zone;
+// a UTC instant (…Z) also works.
 type RespondRequest struct {
 	User
 	UID          string `json:"uid"`

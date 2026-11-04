@@ -81,10 +81,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
-	// Failures per account from any address; a correct password is refunded.
-	accountKey := "login:" + user.ID
+	// Failures per account and client address (IPv6 by /64), so a stranger cannot keep someone
+	// else locked out; a correct password is refunded. An exhausted window answers like a wrong
+	// password, so the limit does not reveal which accounts exist.
+	accountKey := "login:" + user.ID + "@" + s.limitIP(r)
 	if !s.allowAccountAttempt(accountKey, 10, 15*time.Minute) {
-		s.writeError(w, http.StatusTooManyRequests, "Too many login attempts")
+		password.DummyVerify()
+		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 	if ok, err := password.Verify(req.Password, user.PasswordHash); err != nil || !ok {

@@ -128,6 +128,7 @@ func TestLoginUnknownUserCostsAPasswordCheck(t *testing.T) {
 	}
 }
 
+// Ten failures lock the account for that client address only (Q5), with the same 401.
 func TestLoginLocksAnAccountAfterTenFailures(t *testing.T) {
 	srv, st, _ := setupTestServer(t)
 	const pass = "SuperSecretPass123!"
@@ -142,12 +143,15 @@ func TestLoginLocksAnAccountAfterTenFailures(t *testing.T) {
 		}
 	}
 	for i := range 10 {
-		if w := postLogin(srv, i+1, "victim", "WrongPass123!", ""); w.Code != http.StatusUnauthorized {
+		if w := postLogin(srv, 1, "victim", "WrongPass123!", ""); w.Code != http.StatusUnauthorized {
 			t.Fatalf("failure %d: %d", i, w.Code)
 		}
 	}
-	if w := postLogin(srv, 50, "victim", pass, ""); w.Code != http.StatusTooManyRequests {
-		t.Fatalf("after 10 failures from 10 addresses: %d, want 429", w.Code)
+	if w := postLogin(srv, 1, "victim", pass, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("after 10 failures from one address, the right password from it: %d, want 401", w.Code)
+	}
+	if w := postLogin(srv, 50, "victim", pass, ""); w.Code != http.StatusOK {
+		t.Fatalf("after 10 failures from another address: %d, want 200", w.Code)
 	}
 }
 

@@ -630,14 +630,15 @@ func (s *SQLStore) withLockedUser(ctx context.Context, where string, args []any,
 	return tx.Commit()
 }
 
-// CreateSession also records the sign-in as the user's last_login_at. A session of an SSO login
+// CreateSession also records the sign-in, now, as the user's last_login_at (CreatedAt can be
+// older: an SSO session is dated from when the provider last checked the credentials). A session of an SSO login
 // whose sid, or whose subject's earlier logins, are fenced is deleted again: ErrSSOSessionEnded.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expected Credentials) error {
 	err := s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at, sso_sid) VALUES (?, ?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt, sess.SSOSID); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), sess.CreatedAt, sess.UserID)
+		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), time.Now().UTC(), sess.UserID)
 		return err
 	})
 	if err != nil {
@@ -692,7 +693,7 @@ ON CONFLICT (issuer, subject) DO UPDATE SET cutoff = excluded.cutoff, expires_at
 func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error {
 	return u.store.withPassword(ctx, userID, oldHash, func(tx *sql.Tx) error {
 		now := time.Now().UTC()
-		result, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND must_change_password = ? AND sso_provider = 'local'`), newHash, false, now, userID, true)
+		result, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ? AND sso_provider = 'local'`), newHash, false, now, userID)
 		if err != nil {
 			return err
 		}
@@ -703,7 +704,7 @@ func (u *userStore) CompletePasswordChange(ctx context.Context, userID, oldHash,
 		if n != 1 {
 			return ErrNotFound
 		}
-		return u.revokePasswordGrants(ctx, tx, userID, "forced replacement; sessions revoked", ip, now)
+		return u.revokePasswordGrants(ctx, tx, userID, "password changed; sessions revoked", ip, now)
 	})
 }
 
@@ -937,6 +938,17 @@ func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (i
 	var n int
 	err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users WHERE status = 'active' AND sso_provider <> 'local' AND sso_provider IN ("+in+")"), args...).Scan(&n)
 	return n, err
+}
+
+func (u *userStore) SetOIDCEmail(ctx context.Context, userID, email string) error {
+	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'oidc'`), email, time.Now().UTC(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {

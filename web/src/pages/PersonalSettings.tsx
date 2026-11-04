@@ -1,6 +1,7 @@
 import { PageHeader } from '../components/ui';
 import { Appearance } from './Appearance';
 import AppPasswords from './AppPasswords';
+import { PasswordForm } from './ChangePassword';
 import TwoFactor from './TwoFactor';
 
 const SECTIONS = [
@@ -16,7 +17,7 @@ export const settingsSections = (user: any) => SECTIONS.filter((s) => !s.everyda
 const ROLE: Record<string, string> = { admin: 'Administrator' };
 
 /** Settings: the page head, one tab per section, then the open section. */
-export function PersonalSettings({ section, user, onUserChange }: { section: string; user: any; onUserChange: (user: any) => void }) {
+export function PersonalSettings({ section, user, onUserChange, onPasswordChanged }: { section: string; user: any; onUserChange: (user: any) => void; onPasswordChanged: () => void }) {
   const sections = settingsSections(user);
   const open = sections.find((s) => s.id === section) ?? sections[0];
   // Two-step verification guards the local password; an SSO account's belongs to its provider.
@@ -52,6 +53,12 @@ export function PersonalSettings({ section, user, onUserChange }: { section: str
                 <dt>Role</dt><dd>{role}</dd>
               </dl>
             </div>
+            {local && (
+              <div className="card">
+                <h2 className="section-title">Change password</h2>
+                <PasswordForm inSettings onComplete={onPasswordChanged} />
+              </div>
+            )}
             {local && <TwoFactor enabled={user.totp_enabled === true} onChange={(on) => onUserChange({ ...user, totp_enabled: on })} />}
           </>
         )}

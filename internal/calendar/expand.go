@@ -34,6 +34,7 @@ type span struct {
 	dur                       time.Duration
 	days                      int // all-day length in calendar days
 	allDay, floating, unknown bool
+	periods                   map[int64]time.Duration // RDATE PERIOD starts (Unix) and their lengths
 }
 
 // zoneOf resolves a date-time property: UTC for a Z value, the viewer's zone for dates and
@@ -77,12 +78,29 @@ func spanOf(comp *ical.Component, viewer *time.Location) (span, error) {
 	if s.allDay {
 		s.days = max(1, int(math.Round(s.dur.Hours()/24)))
 	}
+	// An RDATE PERIOD gives its occurrence its own length (RFC 5545 3.8.5.2).
+	for _, p := range comp.Props[ical.PropRecurrenceDates] {
+		ploc, _, _ := zoneOf(&p, viewer)
+		for _, v := range strings.Split(p.Value, ",") {
+			if v = strings.TrimSpace(v); strings.Contains(v, "/") && !s.allDay {
+				if ps, pe, _, err := parseRDate(v, ploc, 0, s.dur); err == nil && !pe.Before(ps) {
+					if s.periods == nil {
+						s.periods = map[int64]time.Duration{}
+					}
+					s.periods[ps.Unix()] = pe.Sub(ps)
+				}
+			}
+		}
+	}
 	return s, nil
 }
 
 func (s span) endAt(occ time.Time) time.Time {
 	if s.allDay {
 		return occ.AddDate(0, 0, s.days)
+	}
+	if d, ok := s.periods[occ.Unix()]; ok {
+		return occ.Add(d)
 	}
 	return occ.Add(s.dur)
 }

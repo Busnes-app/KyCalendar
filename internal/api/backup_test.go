@@ -870,3 +870,39 @@ func TestDetachedTrackingCoversADepositInFlight(t *testing.T) {
 		t.Error("the wait returned but no receipt was recorded: it did not cover the write it exists for")
 	}
 }
+
+type slowPairer struct{ fakePairer }
+
+func (s slowPairer) ClaimPairing(ctx context.Context, serverURL, code, service, app string) (recoveryclient.PairingResult, error) {
+	time.Sleep(700 * time.Millisecond)
+	return s.fakePairer.ClaimPairing(ctx, serverURL, code, service, app)
+}
+
+// A claim slower than the listener's WriteTimeout still gets its answer: the pairing code is
+// spent and the pairing stored either way.
+func TestPairingReplyOutlivesTheWriteTimeout(t *testing.T) {
+	srv, st, _ := setupSQLiteServer(t)
+	priv, _ := recoverykey.Generate()
+	api.SetRecoveryClientForTest(srv, slowPairer{fakePairer{result: recoveryclient.PairingResult{
+		APIToken: "kyrec_live_t",
+		Key:      recoveryclient.RecoveryKey{Public: priv.Public(), Threshold: 2, TotalShares: 3},
+	}}})
+	session := loginAs(t, srv, st, "alice", "admin")
+	ts := httptest.NewUnstartedServer(srv)
+	ts.Config.WriteTimeout = 300 * time.Millisecond
+	ts.Start()
+	t.Cleanup(ts.Close)
+	body, _ := json.Marshal(map[string]string{"recovery_url": "https://recovery.busnes.app", "pairing_code": "123456"})
+	req, _ := http.NewRequest("POST", ts.URL+"/api/backup/pair-remote", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(session)
+	addCSRF(req, session)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("the reply was lost: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pair: %d", resp.StatusCode)
+	}
+}

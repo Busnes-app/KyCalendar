@@ -3,9 +3,13 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/emersion/go-ical"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
@@ -190,7 +194,8 @@ func TestWebFreeBusyNeedsScheduling(t *testing.T) {
 }
 
 // Bob answers one occurrence of alice's weekly meeting in Berlin time from the web: his answer is
-// recorded on that occurrence, and every other occurrence keeps the series' answer.
+// recorded on that occurrence in his calendar and in alice's, and every other occurrence keeps
+// the series' answer.
 func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	srv, st, _ := setupTestServer(t)
@@ -221,7 +226,7 @@ func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 		t.Fatalf("answering one occurrence: %d %s", r.Code, r.Body.String())
 	}
 	srv.DeliverScheduled(context.Background())
-	for who, c := range map[string]*http.Cookie{"bob": bob} {
+	for who, c := range map[string]*http.Cookie{"bob": bob, "alice": alice} {
 		for i, e := range occurrences(c) {
 			status := ""
 			for _, a := range e.Attendees {
@@ -233,5 +238,212 @@ func TestWebAnswerOneOccurrenceOfAZonedSeries(t *testing.T) {
 				t.Errorf("%s, occurrence %d (%s): bob %q, want %q", who, i, e.Start, status, want)
 			}
 		}
+	}
+}
+
+// Guests are one list for the series (Q1): a "this event" edit that names attendees is refused
+// and changes nothing, so nobody is invited to, or cancelled from, the whole series by surprise.
+func TestOccurrenceEditCannotChangeGuests(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	body := `{"title":"Weekly","start":"2026-11-10T09:00:00Z","end":"2026-11-10T10:00:00Z","zone":"UTC","repeat":{"freq":"weekly"},"attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	path := "/api/events/" + aliceCal + "/" + made.UID
+	edit := `{"title":"Weekly","start":"2026-11-17T09:00:00Z","end":"2026-11-17T10:00:00Z","zone":"UTC","scope":"this","recurrence_id":"20261117T090000Z","attendees":["carol@example.com"]}`
+	r := withIfMatch(t, srv, "PUT", path, edit, made.ETag, alice)
+	if r.Code != http.StatusBadRequest || !strings.Contains(r.Body.String(), `"code":"attendees_series_only"`) {
+		t.Fatalf("occurrence guest change: %d %s", r.Code, r.Body.String())
+	}
+	if r := withIfMatch(t, srv, "PUT", path, strings.Replace(edit, `,"attendees":["carol@example.com"]`, "", 1), made.ETag, alice); r.Code != http.StatusOK {
+		t.Fatalf("occurrence edit without guests: %d %s", r.Code, r.Body.String())
+	}
+}
+
+// A meeting called off stays in an attendee's calendar only when they had answered it, and their
+// event view says it is cancelled (Q2, Q7); an unanswered copy is removed.
+func TestCancelledMeetingIsMarkedOrRemoved(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	carol, _ := webUser(t, srv, st, "carol")
+	body := strings.Replace(meetingBody, `["bob@example.com"]`, `["bob@example.com","carol@example.com"]`, 1)
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(context.Background())
+	got := meetingsOf(t, srv, bob)[made.UID]
+	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"ACCEPTED"}`, got.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("rsvp %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	mine := meetingsOf(t, srv, alice)[made.UID]
+	if r := withIfMatch(t, srv, "DELETE", "/api/events/"+aliceCal+"/"+made.UID+"?scope=all", "", mine.ETag, alice); r.Code != http.StatusNoContent {
+		t.Fatalf("delete %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
+	if !strings.Contains(w.Body.String(), `"cancelled":true`) {
+		t.Fatalf("bob's answered copy after the cancel: %s", w.Body.String())
+	}
+	if _, ok := meetingsOf(t, srv, carol)[made.UID]; ok {
+		t.Fatal("carol never answered, but her cancelled copy stayed")
+	}
+}
+
+// One sender may newly invite at most davbackend.InviteLimit people an hour; the refusal says
+// when they can send again, and sending a meeting again to its own guests is not counted.
+func TestInviteLimitPerHour(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	meeting := func(from int) string {
+		var to []string
+		for i := from; i < from+100; i++ {
+			to = append(to, fmt.Sprintf(`"guest%d@example.net"`, i))
+		}
+		return `{"title":"Big","start":"2026-11-10T09:00:00Z","end":"2026-11-10T10:00:00Z","zone":"UTC","attendees":[` + strings.Join(to, ",") + `]}`
+	}
+	var last struct{ UID, ETag string }
+	for i := 0; i < davbackend.InviteLimit/100; i++ {
+		w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meeting(i*100), alice)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("meeting %d: %d %s", i, w.Code, w.Body.String())
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &last)
+		srv.DeliverScheduled(context.Background()) // no KyPost: they fail at once, freeing the outbox
+	}
+	// Renaming the last meeting re-sends it to its 100 guests: not new invitations.
+	renamed := strings.Replace(meeting(davbackend.InviteLimit-100), `"Big"`, `"Bigger"`, 1)
+	if r := withIfMatch(t, srv, "PUT", "/api/events/"+aliceCal+"/"+last.UID, renamed, last.ETag, alice); r.Code != http.StatusOK {
+		t.Fatalf("re-sending to the same guests: %d %s", r.Code, r.Body.String())
+	}
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", strings.Replace(meetingBody, "bob@", "one-more@", 1), alice)
+	if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), `"code":"invite_limit"`) || !strings.Contains(w.Body.String(), "again at") {
+		t.Fatalf("over the limit: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", `{"title":"Solo","start":"2026-11-11T09:00:00Z","end":"2026-11-11T10:00:00Z","zone":"UTC"}`, alice); w.Code != http.StatusCreated {
+		t.Fatalf("an event with no guests is not an invitation: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// An email two active accounts share is neither's scheduling address (Q3): the account that
+// copied a colleague's email cannot invite as them.
+func TestSharedEmailHasNoSchedulingAddress(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	bob, bobCal := webUser(t, srv, st, "bob")
+	if w := call(t, srv, "POST", "/api/calendars/"+bobCal+"/events", strings.Replace(meetingBody, "bob@", "carol@", 1), bob); w.Code != http.StatusCreated {
+		t.Fatalf("bob alone: %d %s", w.Code, w.Body.String())
+	}
+	mallory, malloryCal := webUser(t, srv, st, "mallory")
+	u, err := st.Users().GetUserByID(context.Background(), "usr_mallory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Email = "Bob@example.com"
+	if err := st.Users().UpdateUser(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	for who, c := range map[string][2]any{"mallory": {mallory, malloryCal}, "bob": {bob, bobCal}} {
+		w := call(t, srv, "POST", "/api/calendars/"+c[1].(string)+"/events", strings.Replace(meetingBody, "bob@", "carol@", 1), c[0].(*http.Cookie))
+		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"code":"no_address"`) {
+			t.Fatalf("%s with a shared email: %d %s", who, w.Code, w.Body.String())
+		}
+	}
+}
+
+// Deleting a calendar cancels the meetings in it, as deleting each would: the guests do not keep
+// a live meeting nobody can cancel any more.
+func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meetingBody, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(context.Background())
+	got := meetingsOf(t, srv, bob)[made.UID]
+	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"ACCEPTED"}`, got.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("rsvp %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	if w := call(t, srv, "DELETE", "/api/calendars/"+aliceCal, "", alice); w.Code != http.StatusNoContent {
+		t.Fatalf("delete calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
+	if !strings.Contains(w.Body.String(), `"cancelled":true`) {
+		t.Fatalf("bob's copy after alice deleted the calendar: %s", w.Body.String())
+	}
+}
+
+// A subscription's mirrored meetings are someone else's: deleting the subscription sends nothing
+// and still works with scheduling on.
+func TestDeletingASubscriptionWithMeetings(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, _ := webUser(t, srv, st, "alice")
+	ctx := context.Background()
+	sub := &store.Calendar{ID: "cal_sub_alice", OwnerKind: "user", OwnerID: "usr_alice", Slug: "sub", Name: "Work"}
+	if err := st.Calendars().CreateSubscribedCalendar(ctx, sub, &store.Subscription{URLSealed: "x", URLHost: "feed.invalid", NextCheckAt: time.Now().Add(time.Hour)}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:feed-m\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nDTEND:20261110T100000Z\r\n" +
+		"SUMMARY:Board\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(sub.ID, "feed-m.ics", cal, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{o}, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/calendars/"+sub.ID, "", alice); w.Code != http.StatusNoContent {
+		t.Fatalf("delete subscription %d %s", w.Code, w.Body.String())
+	}
+	if due, _ := st.Calendars().DueOutbox(ctx, time.Now().Add(time.Hour), 10); len(due) != 0 {
+		t.Fatalf("deleting a subscription queued %d messages", len(due))
+	}
+}
+
+// Alice deletes one occurrence of a weekly meeting bob never answered: that occurrence leaves
+// bob's calendar instead of staying as a cancelled copy (Q7); the others stay.
+func TestCancelledOccurrenceBobNeverAnsweredGoes(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	body := `{"title":"Weekly","start":"2026-11-10T09:00:00Z","end":"2026-11-10T10:00:00Z","zone":"UTC","repeat":{"freq":"weekly"},"attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID, ETag string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(context.Background())
+	if r := withIfMatch(t, srv, "DELETE", "/api/events/"+aliceCal+"/"+made.UID+"?scope=this&recurrence_id=20261117T090000Z", "", made.ETag, alice); r.Code != http.StatusOK {
+		t.Fatalf("delete one occurrence %d %s", r.Code, r.Body.String())
+	}
+	srv.DeliverScheduled(context.Background())
+	w = call(t, srv, "GET", "/api/events?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=UTC", "", bob)
+	if strings.Contains(w.Body.String(), `"cancelled":true`) || strings.Contains(w.Body.String(), "2026-11-17") || !strings.Contains(w.Body.String(), "2026-11-24") {
+		t.Fatalf("bob's calendar after alice deleted 17 November: %s", w.Body.String())
 	}
 }

@@ -138,6 +138,10 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusInternalServerError, "Failed to load the calendar")
 		return
 	}
+	if apiErr := s.deleteMeetings(ctx, c, nil); apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
 	if err := s.store.Calendars().DeleteCalendar(ctx, id); err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to delete the calendar")
 		return

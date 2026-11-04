@@ -11,8 +11,9 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// handleChangePassword completes a mandatory local-password replacement. All sessions
-// are revoked atomically with the password update; the user signs in again afterward.
+// handleChangePassword changes a local account's password, a forced replacement or the user's
+// own choice, after checking the current one. All sessions and app passwords are revoked
+// atomically with the password update; the user signs in again afterward.
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -23,8 +24,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	if !user.MustChangePassword || user.SSOProvider != "local" {
-		s.writeError(w, http.StatusConflict, "No local password replacement is required")
+	if user.SSOProvider != "local" {
+		s.writeError(w, http.StatusConflict, "Your sign-in provider looks after your password")
 		return
 	}
 	if !s.allowAttempt("password-change:"+s.limitIP(r), 10, time.Minute) || !s.allowAccountAttempt("password-change:"+user.ID, 5, time.Minute) {

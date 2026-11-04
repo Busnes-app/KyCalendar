@@ -9,6 +9,8 @@ interface LoginProps {
   appName: string;
   /** The configured provider's button label; no button without one. */
   signinName?: string;
+  /** The SSO link asks the provider to check the credentials again (after signing out). */
+  stepUp?: boolean;
   /** A message from the previous screen, such as a completed password change. */
   notice?: string;
 }
@@ -17,7 +19,7 @@ interface MFAChallenge {
   mfa_token: string;
 }
 
-export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, notice }) => {
+export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, stepUp = false, notice }) => {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
@@ -195,7 +197,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, appName, signinName, no
               {signinName && (
                 <>
                   <hr className="ky-auth-divider" />
-                  <a href="/api/sso/kysignon/login" className="ky-auth-sso">
+                  <a href={stepUp ? '/api/sso/kysignon/login?step_up=1' : '/api/sso/kysignon/login'} className="ky-auth-sso">
                     <Key aria-hidden="true" />
                     Continue with {signinName}
                   </a>

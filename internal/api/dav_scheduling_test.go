@@ -162,13 +162,13 @@ func TestSchedulingInternalRoundTrip(t *testing.T) {
 		t.Fatalf("bob's copy after the move:\n%s", got)
 	}
 
-	// Alice deletes it: bob's copy stays, cancelled.
+	// Alice deletes it. Bob has not answered the moved meeting, so his copy goes (Q7).
 	if r := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/m1.ics", "alice", w.tokens["alice"], "", nil); r.StatusCode != 204 {
 		t.Fatalf("delete %d", r.StatusCode)
 	}
 	w.deliver()
-	if got, _ := w.copyOf("bob", "m1"); !strings.Contains(got, "STATUS:CANCELLED") {
-		t.Fatalf("bob's copy after the cancel:\n%s", got)
+	if got, obj := w.copyOf("bob", "m1"); obj != nil {
+		t.Fatalf("bob's unanswered copy after the cancel:\n%s", got)
 	}
 }
 
@@ -334,7 +334,7 @@ func TestSchedulingOutboxCountsAgainstQuota(t *testing.T) {
 	}
 }
 
-// A cancelled copy keeps the attendee's own reminders, once each.
+// An answered copy is kept, cancelled, with the attendee's own reminders once each.
 func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
 	w := newSchedWorld(t, true)
 	if code, _ := w.put("alice", "m-alarm.ics", meeting("m-alarm", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
@@ -346,7 +346,7 @@ func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
 		t.Fatal("bob got no copy")
 	}
 	alarm := "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Planning\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT"
-	r := rawDAV(t, w.ts, "PUT", "/dav/usr_bob/calendars/default/"+bobObj.Name, "bob", w.tokens["bob"], strings.Replace(bobCopy, "END:VEVENT", alarm, 1),
+	r := rawDAV(t, w.ts, "PUT", "/dav/usr_bob/calendars/default/"+bobObj.Name, "bob", w.tokens["bob"], strings.Replace(strings.Replace(bobCopy, "END:VEVENT", alarm, 1), "PARTSTAT=NEEDS-ACTION", "PARTSTAT=ACCEPTED", 1),
 		map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + bobObj.ETag + `"`})
 	if r.StatusCode != 201 && r.StatusCode != 204 {
 		t.Fatalf("bob's alarm: %d %s", r.StatusCode, readAll(r))
@@ -389,6 +389,67 @@ func TestSchedulingInviteWithoutADefaultCalendar(t *testing.T) {
 	}
 }
 
+// Bob deleted his default calendar and kept only a task list: the invitation still reaches him,
+// in a default calendar made again, instead of failing for good.
+func TestSchedulingInviteWithOnlyATaskList(t *testing.T) {
+	w := newSchedWorld(t, true)
+	ctx := context.Background()
+	if code, _ := w.put("bob", "seed.ics", meeting("seed", "bob"), ""); code != 201 {
+		t.Fatalf("seed PUT %d", code)
+	}
+	def, err := w.st.Calendars().GetCalendarBySlug(ctx, "user", "usr_bob", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := &store.Calendar{ID: "cal_bob_tasks", OwnerKind: "user", OwnerID: "usr_bob", Slug: "tasks", Name: "Tasks", Components: []string{"VTODO"}}
+	if err := w.st.Calendars().CreateCalendar(ctx, tasks, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.st.Calendars().DeleteCalendar(ctx, def.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := w.put("alice", "m-tasks.ics", meeting("m-tasks", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
+		t.Fatalf("invite PUT %d", code)
+	}
+	w.deliver()
+	if got, obj := w.copyOf("bob", "m-tasks"); obj == nil {
+		t.Fatalf("bob's invitation did not land in a new default calendar: %q", got)
+	}
+}
+
+// Bob's "default" is a task list and he has no event calendar: the invitation lands in a new one.
+func TestSchedulingInviteWhenDefaultHoldsTasks(t *testing.T) {
+	w := newSchedWorld(t, true)
+	ctx := context.Background()
+	if code, _ := w.put("bob", "seed.ics", meeting("seed", "bob"), ""); code != 201 {
+		t.Fatalf("seed PUT %d", code)
+	}
+	def, err := w.st.Calendars().GetCalendarBySlug(ctx, "user", "usr_bob", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.st.Calendars().DeleteCalendar(ctx, def.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_bob_td", OwnerKind: "user", OwnerID: "usr_bob", Slug: "default", Name: "Tasks", Components: []string{"VTODO"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := w.put("alice", "m-td.ics", meeting("m-td", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
+		t.Fatalf("invite PUT %d", code)
+	}
+	w.deliver()
+	cals, err := w.st.Calendars().ListCalendarsByOwner(ctx, "user", "usr_bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cals {
+		if _, err := w.st.Calendars().GetObjectByUID(ctx, c.ID, "m-td"); err == nil && c.Holds("VEVENT") {
+			return
+		}
+	}
+	t.Fatal("bob's invitation landed nowhere")
+}
+
 // Alice's meeting lives in a group calendar bob can also edit. Bob's copy is his own: delivering to
 // him never rewrites or cancels alice's object in the shared calendar.
 func TestSchedulingLeavesAGroupCalendarMeetingAlone(t *testing.T) {
@@ -417,7 +478,53 @@ func TestSchedulingLeavesAGroupCalendarMeetingAlone(t *testing.T) {
 	if stored, _ := w.st.Calendars().GetObjectByUID(context.Background(), team.ID, "m-team"); strings.Contains(string(stored.Data), "CANCELLED") {
 		t.Fatalf("removing bob cancelled the meeting for the whole team:\n%s", stored.Data)
 	}
-	if got, _ := w.copyOf("bob", "m-team"); !strings.Contains(got, "STATUS:CANCELLED") {
-		t.Fatalf("bob's own copy after he was removed:\n%s", got)
+	if got, obj := w.copyOf("bob", "m-team"); obj != nil {
+		t.Fatalf("bob's own unanswered copy after he was removed:\n%s", got)
+	}
+	if _, err := w.st.Calendars().GetObjectByUID(context.Background(), team.ID, "m-team"); err != nil {
+		t.Fatalf("removing bob deleted alice's meeting from the group calendar: %v", err)
+	}
+}
+
+// Bob answers one occurrence of a weekly meeting alice stores as a master alone: alice's copy
+// gains that occurrence's override with his answer, and the series keeps its own.
+func TestSchedulingReplyToOneOccurrenceOfAPlainSeries(t *testing.T) {
+	w := newSchedWorld(t, true)
+	invite := meeting("m-occ", "alice", "SEQUENCE:0", "RRULE:FREQ=WEEKLY;COUNT=4",
+		"ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com", "ATTENDEE;RSVP=TRUE:mailto:bob@example.com")
+	if code, _ := w.put("alice", "m-occ.ics", invite, ""); code != 201 {
+		t.Fatalf("invite PUT %d", code)
+	}
+	w.deliver()
+	bobCopy, bobObj := w.copyOf("bob", "m-occ")
+	if bobObj == nil {
+		t.Fatal("bob got no copy")
+	}
+	override := "BEGIN:VEVENT\r\nUID:m-occ\r\nDTSTAMP:20261001T000000Z\r\nRECURRENCE-ID:20261117T090000Z\r\n" +
+		"DTSTART:20261117T090000Z\r\nDTEND:20261117T100000Z\r\nSUMMARY:Planning\r\nSEQUENCE:0\r\n" +
+		"ORGANIZER:mailto:alice@example.com\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com\r\n" +
+		"ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com\r\nEND:VEVENT\r\n"
+	answered := strings.Replace(bobCopy, "END:VCALENDAR", override+"END:VCALENDAR", 1)
+	r := rawDAV(t, w.ts, "PUT", "/dav/usr_bob/calendars/default/"+bobObj.Name, "bob", w.tokens["bob"], answered,
+		map[string]string{"Content-Type": "text/calendar", "If-Match": `"` + bobObj.ETag + `"`})
+	if r.StatusCode != 201 && r.StatusCode != 204 {
+		t.Fatalf("bob's answer: %d %s", r.StatusCode, readAll(r))
+	}
+	w.deliver()
+	_, alices, _ := w.get("alice", "m-occ.ics")
+	parts := strings.Split(alices, "BEGIN:VEVENT")
+	if len(parts) != 3 {
+		t.Fatalf("alice's object should hold the series and one override:\n%s", alices)
+	}
+	series, occ := parts[1], parts[2]
+	if strings.Contains(series, "RECURRENCE-ID") {
+		series, occ = occ, series
+	}
+	if !strings.Contains(occ, "RECURRENCE-ID:20261117T090000Z") || !strings.Contains(occ, "DTSTART:20261117T090000Z") ||
+		!strings.Contains(occ, "PARTSTAT=ACCEPTED;RSVP=TRUE:mailto:bob@example.com") {
+		t.Fatalf("the override must sit on its own date with bob's answer:\n%s", alices)
+	}
+	if !strings.Contains(series, "RRULE:FREQ=WEEKLY;COUNT=4") || !strings.Contains(series, "ATTENDEE;RSVP=TRUE:mailto:bob@example.com") {
+		t.Fatalf("the series must keep bob's own answer:\n%s", alices)
 	}
 }

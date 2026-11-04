@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { secureFetch } from '../api';
 
 interface ChangePasswordProps {
@@ -7,7 +7,8 @@ interface ChangePasswordProps {
   onLogout: () => void;
 }
 
-export function ChangePassword({ onComplete, onLogout }: ChangePasswordProps) {
+/** The change-password form, for the forced replacement page and for Account settings. */
+export function PasswordForm({ onComplete, inSettings = false, children }: { onComplete: () => void; inSettings?: boolean; children?: ReactNode }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -37,6 +38,35 @@ export function ChangePassword({ onComplete, onLogout }: ChangePasswordProps) {
     } finally { setBusy(false); }
   }
 
+  const field = inSettings ? 'field' : 'ky-auth-field';
+  return (
+    <form onSubmit={submit} className={inSettings ? 'form' : 'ky-auth-card'}>
+      <p className={inSettings ? 'section-lede' : 'card-meta'}>Use at least 12 characters. You will sign in again afterward{inSettings ? ', and your other sessions and app passwords stop working' : ''}.</p>
+      <div className={field}>
+        <label htmlFor="current-password">Current password</label>
+        <input id="current-password" type="password" autoComplete="current-password" required maxLength={1024}
+          value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+      </div>
+      <div className={field}>
+        <label htmlFor="new-password">New password</label>
+        <input id="new-password" type="password" autoComplete="new-password" required minLength={12} maxLength={1024}
+          value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+      </div>
+      <div className={field}>
+        <label htmlFor="confirm-password">Confirm new password</label>
+        <input id="confirm-password" type="password" autoComplete="new-password" required minLength={12} maxLength={1024}
+          value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+      </div>
+      {error && <p role="alert">{error}</p>}
+      {inSettings
+        ? <div className="form-actions"><button type="submit" disabled={busy}>{busy ? 'Changing password…' : 'Change password'}</button></div>
+        : <button type="submit" className="ky-auth-submit" disabled={busy}>{busy ? 'Changing password…' : 'Change password'}</button>}
+      {children}
+    </form>
+  );
+}
+
+export function ChangePassword({ onComplete, onLogout }: ChangePasswordProps) {
   return (
     <main className="ky-auth">
       <div />
@@ -46,27 +76,9 @@ export function ChangePassword({ onComplete, onLogout }: ChangePasswordProps) {
           <h1>Change your password</h1>
           <p>Replace your temporary password to continue.</p>
         </div>
-        <form onSubmit={submit} className="ky-auth-card">
-          <p className="card-meta">Use at least 12 characters. You will sign in again afterward.</p>
-          <div className="ky-auth-field">
-            <label htmlFor="current-password">Current password</label>
-            <input id="current-password" type="password" autoComplete="current-password" required maxLength={1024}
-              value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-          </div>
-          <div className="ky-auth-field">
-            <label htmlFor="new-password">New password</label>
-            <input id="new-password" type="password" autoComplete="new-password" required minLength={12} maxLength={1024}
-              value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-          </div>
-          <div className="ky-auth-field">
-            <label htmlFor="confirm-password">Confirm new password</label>
-            <input id="confirm-password" type="password" autoComplete="new-password" required minLength={12} maxLength={1024}
-              value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
-          </div>
-          {error && <p role="alert">{error}</p>}
-          <button type="submit" className="ky-auth-submit" disabled={busy}>{busy ? 'Changing password…' : 'Change password'}</button>
-          <button type="button" className="ky-auth-link" disabled={busy} onClick={onLogout}>Sign out</button>
-        </form>
+        <PasswordForm onComplete={onComplete}>
+          <button type="button" className="ky-auth-link" onClick={onLogout}>Sign out</button>
+        </PasswordForm>
       </div>
     </main>
   );

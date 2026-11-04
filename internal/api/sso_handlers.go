@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,6 +96,14 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	if user.SSOIssuer == "" || user.SSOIssuer != binding {
 		return nil, errOtherIssuer
 	}
+	// A generic OIDC account's email follows the token at every sign-in: verified, or none. An
+	// account made before verification was checked loses an unverified email here.
+	if claims.Provider == "oidc" && user.Email != claims.Email {
+		if err := s.store.Users().SetOIDCEmail(ctx, user.ID, claims.Email); err != nil {
+			return nil, err
+		}
+		user.Email = claims.Email
+	}
 	if user.Role == role {
 		return user, nil
 	}
@@ -129,7 +138,10 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 	verifier := oauth2.GenerateVerifier()
 
 	redirectURI := fmt.Sprintf("%s/api/sso/kysignon/callback", s.config.Server.AppURL)
-	authURL, err := p.AuthURL(r.Context(), redirectURI, state, verifier, nonce)
+	// A step-up (?step_up=1, the sign-in after signing out) asks the provider to check the
+	// credentials again; the callback then needs an auth_time from after this request.
+	stepUp := r.URL.Query().Get("step_up") == "1"
+	authURL, err := p.AuthURL(r.Context(), redirectURI, state, verifier, nonce, stepUp)
 	if err != nil {
 		log.Printf("sso: %s authorization URL failed: %v", p.Kind, err)
 		s.writeError(w, http.StatusBadGateway, "The sign-in provider could not be reached")
@@ -146,10 +158,15 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   s.config.Security.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
-	// The nonce cookie carries the provider's ID: a callback after a provider swap fails.
+	// The nonce cookie carries the provider's ID: a callback after a provider swap fails. A
+	// step-up adds when it started.
+	value := p.ID + "." + nonce
+	if stepUp {
+		value += "." + strconv.FormatInt(time.Now().Unix(), 10)
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ky_nonce_" + state,
-		Value:    p.ID + "." + nonce,
+		Value:    value,
 		Path:     "/api/sso/kysignon/callback",
 		MaxAge:   300,
 		HttpOnly: true,
@@ -177,7 +194,8 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	p := s.signin.Load()
-	providerID, nonce, _ := strings.Cut(nonceCookie.Value, ".")
+	providerID, rest, _ := strings.Cut(nonceCookie.Value, ".")
+	nonce, started, stepUp := strings.Cut(rest, ".")
 	if p == nil || providerID != p.ID || nonce == "" {
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
 		return
@@ -221,7 +239,22 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), claims.IssuedAt)
+	// The session is dated from when the user last gave the provider their credentials, so a
+	// silent sign-in on a live provider session is not a step-up. A step-up must have an
+	// auth_time from after it started (a minute's leeway for the provider's clock).
+	verified := claims.IssuedAt
+	if !claims.AuthTime.IsZero() {
+		verified = claims.AuthTime
+	}
+	if stepUp {
+		start, err := strconv.ParseInt(started, 10, 64)
+		if err != nil || claims.AuthTime.IsZero() || claims.AuthTime.Before(time.Unix(start, 0).Add(-time.Minute)) {
+			log.Printf("sso: step-up for subject %s refused: the provider did not report a fresh sign-in (auth_time %v)", claims.Subject, claims.AuthTime)
+			s.writeError(w, http.StatusUnauthorized, "Your sign-in provider did not ask for your password again, so this sign-in cannot confirm it is you")
+			return
+		}
+	}
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified)
 	if errors.Is(err, store.ErrSSOSessionEnded) {
 		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
 		return

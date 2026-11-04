@@ -29,6 +29,77 @@ func overrideCount(cal *ical.Calendar) int {
 	return n
 }
 
+// A reply adds overrides only for an attendee of the series answering an occurrence differently,
+// as of the series' SEQUENCE; one needing more than maxNewOverrides adds none and is refused.
+func TestAddOverridesIsBounded(t *testing.T) {
+	series := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:x\nBEGIN:VEVENT\nUID:m\nDTSTAMP:20261001T000000Z\nSEQUENCE:2\n" +
+		"DTSTART;TZID=Europe/Berlin:20261102T090000\nDTEND;TZID=Europe/Berlin:20261102T100000\nRRULE:FREQ=DAILY;COUNT=60\n" +
+		"ORGANIZER:mailto:alice@example.com\nATTENDEE:mailto:bob@example.com\nEND:VEVENT\nEND:VCALENDAR\n"
+	reply := func(who, ps string, days, seq int) *ical.Calendar {
+		var b strings.Builder
+		b.WriteString("BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:x\nMETHOD:REPLY\n")
+		for d := 3; d < 3+days; d++ {
+			fmt.Fprintf(&b, "BEGIN:VEVENT\nUID:m\nDTSTAMP:20261001T000000Z\nSEQUENCE:%d\nORGANIZER:mailto:alice@example.com\n", seq)
+			fmt.Fprintf(&b, "RECURRENCE-ID;TZID=Europe/Berlin:202611%02dT090000\n", d)
+			b.WriteString("ATTENDEE;PARTSTAT=" + ps + ":mailto:" + who + "@example.com\nEND:VEVENT\n")
+		}
+		b.WriteString("END:VCALENDAR\n")
+		return decodeICS(t, b.String())
+	}
+	for _, tc := range []struct {
+		who, ps   string
+		days, seq int
+		want      int
+		refused   bool
+	}{
+		{"mallory", "ACCEPTED", 5, 2, 0, false},
+		{"bob", "NEEDS-ACTION", 5, 2, 0, false},
+		{"bob", "ACCEPTED", 5, 1, 0, false},
+		{"bob", "ACCEPTED", 5, 2, 5, false},
+		{"bob", "ACCEPTED", maxNewOverrides + 5, 2, 0, true},
+		{"bob", "X-MAYBE", 5, 2, 0, false},
+	} {
+		stored := decodeICS(t, series)
+		err := addOverrides(stored, reply(tc.who, tc.ps, tc.days, tc.seq), itip.Address("mailto:"+tc.who+"@example.com"))
+		if got := overrideCount(stored); got != tc.want || (err != nil) != tc.refused {
+			t.Errorf("%s %s x%d seq %d: %d overrides, err %v; want %d", tc.who, tc.ps, tc.days, tc.seq, got, err, tc.want)
+		}
+	}
+}
+
+// A reply whose answer for one occurrence ApplyReply cannot record (no PARTSTAT, or one it does
+// not know) leaves no override for it, even when another occurrence's answer is recorded; and a
+// reply recording nothing changes nothing.
+func TestApplyReplyLeavesNoUnansweredOverride(t *testing.T) {
+	series := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:x\nBEGIN:VEVENT\nUID:m\nDTSTAMP:20261001T000000Z\nSEQUENCE:0\n" +
+		"DTSTART:20261102T090000Z\nDTEND:20261102T100000Z\nRRULE:FREQ=DAILY;COUNT=10\n" +
+		"ORGANIZER:mailto:alice@example.com\nATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com\nEND:VEVENT\nEND:VCALENDAR\n"
+	occ := func(day, attendee string) string {
+		return "BEGIN:VEVENT\nUID:m\nDTSTAMP:20261001T000000Z\nSEQUENCE:0\nORGANIZER:mailto:alice@example.com\nRECURRENCE-ID:202611" + day +
+			"T090000Z\n" + attendee + "\nEND:VEVENT\n"
+	}
+	reply := func(parts ...string) *ical.Calendar {
+		return decodeICS(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:x\nMETHOD:REPLY\n"+strings.Join(parts, "")+"END:VCALENDAR\n")
+	}
+	bob := itip.Address("mailto:bob@example.com")
+	stored := decodeICS(t, series)
+	next, changed, err := applyReply(stored, reply(occ("03", "ATTENDEE;PARTSTAT=DECLINED:mailto:bob@example.com"), occ("04", "ATTENDEE:mailto:bob@example.com")), bob)
+	if err != nil || !changed || overrideCount(next) != 1 || overrideCount(stored) != 0 {
+		t.Fatalf("changed %v, err %v: %d overrides stored, want 1 (and none on the original)", changed, err, overrideCount(next))
+	}
+	// Two ATTENDEE lines for bob, a valid answer first: both readers take the same one.
+	next, changed, err = applyReply(stored, reply(occ("06", "ATTENDEE;PARTSTAT=TENTATIVE:mailto:bob@example.com\nATTENDEE;PARTSTAT=X-MAYBE:mailto:bob@example.com"),
+		occ("03", "ATTENDEE;PARTSTAT=DECLINED:mailto:bob@example.com")), bob)
+	if err != nil || !changed || overrideCount(next) != 2 || !strings.Contains(encodeICS(t, next), "PARTSTAT=TENTATIVE") {
+		t.Fatalf("duplicate attendee lines: changed %v, err %v, %d overrides\n%s", changed, err, overrideCount(next), encodeICS(t, next))
+	}
+	// The series' own answer: nothing to record, so no override (ApplyReply then finds no target).
+	_, changed, err = applyReply(stored, reply(occ("05", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")), bob)
+	if changed || overrideCount(stored) != 0 {
+		t.Fatalf("an answer the same as the series: changed %v, err %v, %d overrides", changed, err, overrideCount(stored))
+	}
+}
+
 // A CANCEL naming more occurrences than maxNewOverrides is refused whole, before any copy of the
 // master is made.
 func TestDeliverOccurrencesIsBounded(t *testing.T) {
@@ -45,4 +116,13 @@ func TestDeliverOccurrencesIsBounded(t *testing.T) {
 	if _, err := deliverOccurrences(existing, "mailto:bob@example.com", itip.MethodCancel, decodeICS(t, b.String())); err != errTooManyOccurrences || overrideCount(existing) != 0 {
 		t.Fatalf("err %v, %d overrides", err, overrideCount(existing))
 	}
+}
+
+func encodeICS(t *testing.T, cal *ical.Calendar) string {
+	t.Helper()
+	b, err := encodeCal(cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

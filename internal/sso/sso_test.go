@@ -33,7 +33,7 @@ func TestOAuthAuthorizationURLUsesDiscoveryAndPKCE(t *testing.T) {
 	issuer = idp.URL
 
 	p := sso.NewProvider(sso.KindKyIdentity, "KyIdentity", issuer, "client", "", idp.Client())
-	authURL, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce")
+	authURL, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +44,17 @@ func TestOAuthAuthorizationURLUsesDiscoveryAndPKCE(t *testing.T) {
 	query := parsed.Query()
 	if parsed.Path != "/authorize" || query.Get("state") != "state" || query.Get("nonce") != "nonce" || query.Get("code_challenge_method") != "S256" || query.Get("code_challenge") == "" {
 		t.Fatalf("unexpected authorization URL: %s", authURL)
+	}
+	if query.Has("max_age") || query.Has("prompt") {
+		t.Fatalf("a plain sign-in asks for fresh credentials: %s", authURL)
+	}
+	// A step-up asks the provider to check the credentials again (Q6).
+	fresh, err := p.AuthURL(context.Background(), "https://app.example/callback", "state", "verifier", "nonce", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed, _ := url.Parse(fresh); parsed.Query().Get("max_age") != "0" || parsed.Query().Get("prompt") != "login" {
+		t.Fatalf("step-up authorization URL: %s", fresh)
 	}
 }
 

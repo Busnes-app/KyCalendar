@@ -20,9 +20,12 @@ import (
 // Timing of the KyIdentity lookup. Variables so tests can shorten them.
 var (
 	kypostFirstWait = 5 * time.Second // startup waits this long for the first answer
-	kypostRefresh   = time.Hour       // a working link is fetched again this often
-	kypostRetry     = time.Minute     // first retry after a failure, doubling up to kypostRefresh
-	kypostMinGap    = time.Minute     // a kick (a refused signature) waits this long after the last lookup
+	// kypostStartupWait: in automatic mode, startup keeps asking an unreachable KyIdentity this
+	// long, since it decides scheduling for the whole run and KyIdentity often starts beside it.
+	kypostStartupWait = time.Minute
+	kypostRefresh     = time.Hour   // a working link is fetched again this often
+	kypostRetry       = time.Minute // first retry after a failure, doubling up to kypostRefresh
+	kypostMinGap      = time.Minute // a kick (a refused signature) waits this long after the last lookup
 )
 
 // Why there is no KyPost link (kypostView.Reason).
@@ -88,8 +91,9 @@ func (s *Server) startScheduling() {
 }
 
 // StartKyPost links KyPost through KyIdentity when the environment names none and scheduling
-// may use it: it waits up to kypostFirstWait for the first lookup, turns automatic scheduling
-// on if that linked, then keeps the link fresh until ctx ends. Scheduling is decided here,
+// may use it: it waits up to kypostFirstWait for the first lookup (in automatic mode asking an
+// unreachable KyIdentity again for up to kypostStartupWait), turns automatic scheduling on if
+// that linked, then keeps the link fresh until ctx ends. Scheduling is decided here,
 // once: a link that appears later is used for mail but turns scheduling on only at the next
 // start. cmd/server calls it after LoadSignIn and before serving.
 func (s *Server) StartKyPost(ctx context.Context) {
@@ -97,9 +101,23 @@ func (s *Server) StartKyPost(ctx context.Context) {
 	if cal.KyPostURL != "" || cal.Scheduling == config.SchedulingOff {
 		return
 	}
-	first, cancel := context.WithTimeout(ctx, kypostFirstWait)
-	ok := s.resolveKyPost(first)
-	cancel()
+	ask := func() bool {
+		first, cancel := context.WithTimeout(ctx, kypostFirstWait)
+		defer cancel()
+		return s.resolveKyPost(first)
+	}
+	ok := ask()
+	for deadline := time.Now().Add(kypostStartupWait); !ok && cal.Scheduling == config.SchedulingAuto && time.Now().Before(deadline); {
+		if reason, _, _ := s.kypostState.get(); reason != kypostUnreachable {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(min(kypostRetry, 2*time.Second)):
+		}
+		ok = ask()
+	}
 	select {
 	case <-s.kypostKick: // LoadSignIn's: that provider was just looked up
 	default:
