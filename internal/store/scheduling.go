@@ -60,24 +60,32 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 	if len(rows) == 0 {
 		return nil
 	}
+
 	now := time.Now().UTC()
-	var inviteBytes int64
+	var inviteBytes, adding int64
+	var fresh []*OutboxMessage
+	seen := map[string]bool{}
+	// calendar-total serializes every producer. Resolve dedupe and reserve quotas before
+	// inserting bodies: a refused large fan-out must not allocate its bytes in SQL/WAL.
 	for _, m := range rows {
-		res, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
-(id, dedupe_key, sender_id, method, recipient, body, status, attempts, next_attempt_at, last_error, created_at)
-VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, '', ?) ON CONFLICT (dedupe_key) DO NOTHING`),
-			m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now)
-		if err != nil {
+		if seen[m.DedupeKey] {
+			continue
+		}
+		seen[m.DedupeKey] = true
+		var exists int
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*) FROM scheduling_outbox WHERE dedupe_key = ?`), m.DedupeKey).Scan(&exists); err != nil {
 			return err
 		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
+		if exists != 0 {
+			continue
 		}
-		if n == 1 && m.CountInviteBytes {
+		fresh = append(fresh, m)
+		adding += int64(len(m.Body))
+		if m.CountInviteBytes {
 			inviteBytes += int64(len(m.Body))
 		}
 	}
+
 	if err := c.admitInviteBytes(ctx, tx, rows[0].SenderID, inviteBytes, now); err != nil {
 		return err
 	}
@@ -86,7 +94,7 @@ VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, '', ?) ON CONFLICT (dedupe_key) DO NO
 		if err != nil {
 			return err
 		}
-		if used > lim.MaxBytes {
+		if used+adding > lim.MaxBytes {
 			return ErrQuotaExceeded
 		}
 	}
@@ -95,8 +103,16 @@ VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, '', ?) ON CONFLICT (dedupe_key) DO NO
 		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes)).Scan(&used); err != nil {
 			return err
 		}
-		if used > lim.MaxTotalBytes {
+		if used+adding > lim.MaxTotalBytes {
 			return ErrQuotaExceeded
+		}
+	}
+
+	for _, m := range fresh {
+		if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
+ (id,dedupe_key,sender_id,method,recipient,body,status,attempts,next_attempt_at,last_error,created_at)
+ VALUES (?,?,?,?,?,?,'pending',0,?,'',?) ON CONFLICT (dedupe_key) DO NOTHING`), m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now); err != nil {
+			return err
 		}
 	}
 
