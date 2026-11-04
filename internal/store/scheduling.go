@@ -58,7 +58,7 @@ func (c *calendarStore) runPlan(ctx context.Context, tx *sql.Tx, o *CalendarObje
 // the whole write is refused (ErrQuotaExceeded).
 func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMessage, lim OwnerLimits) error {
 	if len(rows) == 0 {
-		return nil
+		return c.checkCancellationGrowth(ctx, tx, lim, nil)
 	}
 
 	now := time.Now().UTC()
@@ -106,6 +106,10 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 		if used+adding > lim.MaxTotalBytes {
 			return ErrQuotaExceeded
 		}
+	}
+
+	if err := c.checkCancellationGrowth(ctx, tx, lim, fresh); err != nil {
+		return err
 	}
 
 	for _, m := range fresh {

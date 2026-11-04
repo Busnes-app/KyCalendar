@@ -407,7 +407,11 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		if err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(bytes),0) FROM cancellation_reservations WHERE NOT(calendar_id=? AND name=?)`), o.CalendarID, o.Name).Scan(&othersReserved); err != nil {
 			return false, err
 		}
-		if used+int64(len(o.Data))+othersReserved+reserved > lim.MaxTotalBytes {
+		growth, err := c.cancellationGrowth(ctx, tx, o.CalendarID, o.Name, nil)
+		if err != nil {
+			return false, err
+		}
+		if used+int64(len(o.Data))+othersReserved+reserved+sumGrowth(growth) > lim.MaxTotalBytes {
 			return false, ErrQuotaExceeded
 		}
 	}

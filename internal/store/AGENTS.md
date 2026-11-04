@@ -71,6 +71,8 @@ Owns data models, store interfaces (`UserStore`, `SessionStore`, `DeviceStore`, 
 
 - `SponsoredCancellationCopies` reaches only trusted sender-funded rows for a validated pending internal CANCEL and its resolved recipient/UID, independent of current calendar grants. `ApplyInternalCancellation` rechecks receipt, ETag, UID and stored payer under `calendar-total` (including answer/restore ABA), clears the pending body and applies all prepared copy deletions/updates in one transaction. Paid/legacy changes enter only through the normal permission-checked lookup. Deletions precede updates, each ordinary quota check sees the single released body, and any failure restores all copies, charges, changes and the receipt. No historical attribution or new grant is inferred.
 
+- Q12 copy-growth capacity is computed inside the write transaction from every trusted sender-funded physical copy, live trusted source reservation and pending CANCEL. It sums conservative partial-cancellation growth (canonical encoding, EXDATE/touch and cumulative sequence digits), independently of grants or recipient-address changes. Source removal exchanges future liability for pending liability without a gap; acknowledgement and copy mutation consume it together. Paid/untracked content contributes no inferred liability. Copy/source admission and updates, queue insertion and ordinary/subscription writes include this capacity under hard sender/instance bounds; failure rolls back source, attribution, reservations and queue. Repeated notices may reserve excess while pending, reclaimed when their durable liability ends. No new table, migration, setting, wire or timing is introduced.
+
 ## Verification
 - `go test -v ./internal/store/...`
 

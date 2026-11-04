@@ -542,7 +542,10 @@ func (s *Scheduler) deliverInternalCancellation(ctx context.Context, u *store.Us
 		// A sponsored copy belonging to another delivery is not ordinary mutable content.
 		if o.InvitationSender == "" {
 			if err := prepare(o, existing); err != nil {
-				return err
+				var perm errPermanent
+				if len(changes) == 0 || !errors.As(err, &perm) || (perm.reason != "stale" && perm.reason != "no_occurrence") {
+					return err
+				}
 			}
 		}
 	}

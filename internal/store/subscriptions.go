@@ -181,7 +181,11 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 		if err != nil {
 			return err
 		}
-		if used+newBytes > lim.MaxTotalBytes {
+		growth, err := c.cancellationGrowth(ctx, tx, calendarID, "", nil)
+		if err != nil {
+			return err
+		}
+		if used+newBytes+sumGrowth(growth) > lim.MaxTotalBytes {
 			return ErrQuotaExceeded
 		}
 	}

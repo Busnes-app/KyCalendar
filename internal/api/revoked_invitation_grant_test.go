@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
+	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/store"
 	"github.com/emersion/go-ical"
 )
@@ -245,19 +247,10 @@ func TestRevokedSponsoredPartialCancellationBudgetAndRollback(t *testing.T) {
 	if cancel.StatusCode != 204 {
 		t.Fatalf("queue occurrence-only CANCEL: %d %s", cancel.StatusCode, readAll(cancel))
 	}
-	used, _, _ := reservationUsage(t, db)
-	base := meeting("fill", "alice")
-	padding := int(cap-used) - len(base) - len("DESCRIPTION:\r\n")
-	if padding < 0 {
-		t.Fatalf("no ordinary budget: %d", used)
-	}
-	filler := strings.Replace(base, "END:VEVENT", "DESCRIPTION:"+strings.Repeat("f", padding)+"\r\nEND:VEVENT", 1)
-	if code, _ := w.put("alice", "fill.ics", filler, ""); code != 201 {
-		t.Fatalf("fill usable quota: %d", code)
-	}
+	fillCancellationUsableQuota(t, w, cap)
 	before, reserved, count := reservationUsage(t, db)
-	if before != cap {
-		t.Fatalf("ordinary budget not full: %d", before)
+	if before >= cap {
+		t.Fatalf("copy growth was not reserved: used=%d", before)
 	}
 	due, err := w.st.Calendars().DueOutbox(ctx, time.Now().Add(time.Minute), 100)
 	if err != nil || len(due) != 1 {
@@ -323,4 +316,316 @@ func TestRevokedSponsoredPartialCancellationBudgetAndRollback(t *testing.T) {
 	if used, reserved, count := reservationUsage(t, db); used > cap || reserved != 0 || count != 0 {
 		t.Fatalf("cancellation exceeded bound or retained source reservation: %d %d %d", used, reserved, count)
 	}
+}
+
+func TestSponsoredCancellationIgnoresNonapplicablePaidFallback(t *testing.T) {
+	for _, kind := range []string{"stale", "no_occurrence"} {
+		t.Run(kind, func(t *testing.T) {
+			w, db := cancellationWorld(t, 12000, 50000)
+			ctx := context.Background()
+			body := meeting("paid-fallback", "alice", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+			if kind == "no_occurrence" {
+				body = meeting("paid-fallback", "alice", "RECURRENCE-ID:20261111T090000Z", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+				body = strings.ReplaceAll(body, "20261110T", "20261111T")
+			}
+			team := seedSponsoredGroup(t, w, body)
+			if code, _ := w.put("alice", "source.ics", body, ""); code != 201 {
+				t.Fatalf("source: %d", code)
+			}
+			w.deliver()
+			if err := w.st.Calendars().DeleteGrant(ctx, team.ID, "grp_editor_"+team.ID); err != nil {
+				t.Fatal(err)
+			}
+			_, _, etag := w.get("alice", "source.ics")
+			body = strings.Replace(body, "SUMMARY:Planning", "SUMMARY:Updated", 1)
+			if code, _ := w.put("alice", "source.ics", body, etag); code != 201 && code != 204 {
+				t.Fatalf("update: %d", code)
+			}
+			w.deliver()
+			_, personal := w.copyOf("bob", "paid-fallback")
+			if personal == nil {
+				t.Fatal("no personal copy after REQUEST")
+			}
+			rewritten := strings.ReplaceAll(string(personal.Data), "X-KYCALENDAR-ORGANIZER-SEQUENCE:0", "X-KYCALENDAR-ORGANIZER-SEQUENCE:9")
+			if kind == "no_occurrence" {
+				rewritten = strings.ReplaceAll(string(personal.Data), "20261111T", "20261112T")
+			}
+			if rewritten == string(personal.Data) {
+				t.Fatal("fixture did not replace binding")
+			}
+			if code, _ := w.put("bob", personal.Name, rewritten, `"`+personal.ETag+`"`); code != 201 && code != 204 {
+				t.Fatalf("paid replacement: %d", code)
+			}
+			_, paid := w.copyOf("bob", "paid-fallback")
+			if paid.InvitationSender != "" || paid.InvitationRecipient != "usr_bob" {
+				t.Fatal("replacement not charged to writer")
+			}
+			res := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/source.ics", "alice", w.tokens["alice"], "", nil)
+			if res.StatusCode != 204 {
+				t.Fatalf("cancel source: %d", res.StatusCode)
+			}
+			w.deliver()
+			if _, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics"); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("paid fallback vetoed sponsored cleanup: %v", err)
+			}
+			_, got := w.copyOf("bob", "paid-fallback")
+			if !bytes.Equal(got.Data, paid.Data) || got.ETag != paid.ETag || got.InvitationSender != "" || got.InvitationRecipient != "usr_bob" {
+				t.Fatal("nonapplicable paid copy changed")
+			}
+			var objects int
+			var used int64
+			if err := db.QueryRow(`SELECT COUNT(*),COALESCE(SUM(LENGTH(data)),0) FROM calendar_objects WHERE invitation_sender='usr_alice'`).Scan(&objects, &used); err != nil {
+				t.Fatal(err)
+			}
+			if objects != 0 || used != 0 {
+				t.Fatalf("sender charge stranded: %d objects/%d bytes", objects, used)
+			}
+			var failed int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM scheduling_outbox WHERE method='CANCEL' AND status<>'delivered'`).Scan(&failed); err != nil {
+				t.Fatal(err)
+			}
+			if failed != 0 {
+				t.Fatalf("CANCEL discarded instead of applying valid cleanup: %d", failed)
+			}
+		})
+	}
+}
+
+func TestRevokedSponsoredAggregatePartialCancellationCapacity(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cap    int64
+		copies int
+		fanout bool
+	}{
+		{"64_copies_one_recipient", 60000, 64, false},
+		{"three_recipients", 12000, 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cap := tc.cap
+			w, db := cancellationWorld(t, cap, cap)
+			ctx := context.Background()
+			original := meeting("aggregate-partial", "alice", "RRULE:FREQ=DAILY;COUNT=3", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+			if tc.fanout {
+				original = strings.Replace(original, "END:VEVENT", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:dan@example.com\r\nEND:VEVENT", 1)
+			}
+			var teams []*store.Calendar
+			for i := 0; i < tc.copies; i++ {
+				team := seedSponsoredGroup(t, w, original)
+				teams = append(teams, team)
+				body := strings.Replace(original, "SUMMARY:Planning", fmt.Sprintf("SUMMARY:Round %d", i), 1)
+				etag := ""
+				if i > 0 {
+					_, _, etag = w.get("alice", "source.ics")
+				}
+				if code, _ := w.put("alice", "source.ics", body, etag); code != 201 && code != 204 {
+					t.Fatalf("source admission %d: %d", i, code)
+				}
+				w.deliver()
+				copy, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+				if err != nil || copy.InvitationSender != "usr_alice" {
+					t.Fatalf("copy %d not trusted: %v", i, err)
+				}
+				if err := w.st.Calendars().DeleteGrant(ctx, team.ID, "grp_editor_"+team.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, _, etag := w.get("alice", "source.ics")
+			single := meeting("aggregate-partial", "alice", "RECURRENCE-ID:20261111T090000Z", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+			single = strings.ReplaceAll(single, "20261110T", "20261111T")
+			if tc.fanout {
+				single = strings.Replace(single, "END:VEVENT", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:dan@example.com\r\nEND:VEVENT", 1)
+			}
+			// At the old ordinary limit the new multi-copy growth must refuse admission atomically.
+			fillCancellationUsableQuota(t, w, cap)
+			_, oldReserved, oldCount := reservationUsage(t, db)
+			if code, _ := w.put("alice", "source.ics", single, etag); code != 507 {
+				t.Fatalf("growth liability not admitted atomically: %d", code)
+			}
+			_, _, sameETag := w.get("alice", "source.ics")
+			if sameETag != etag {
+				t.Fatal("refused growth update changed source")
+			}
+			if _, r, n := reservationUsage(t, db); r != oldReserved || n != oldCount {
+				t.Fatal("refused growth update changed source reservation")
+			}
+			res := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/fill.ics", "alice", w.tokens["alice"], "", nil)
+			if res.StatusCode != 204 {
+				t.Fatalf("free ordinary data: %d", res.StatusCode)
+			}
+			if code, _ := w.put("alice", "source.ics", single, etag); code != 201 && code != 204 {
+				t.Fatalf("occurrence source: %d", code)
+			}
+			w.deliver()
+			fillCancellationUsableQuota(t, w, cap)
+			used, reserved, _ := reservationUsage(t, db)
+			if used >= cap {
+				t.Fatalf("copy growth capacity missing: %d", used)
+			}
+			t.Logf("admitted %d trusted inaccessible series; ordinary quota full before source deletion; reserved=%d", len(teams), reserved)
+			res = rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/source.ics", "alice", w.tokens["alice"], "", nil)
+			if res.StatusCode != 204 {
+				t.Fatalf("admitted source cannot cancel: %d %s", res.StatusCode, readAll(res))
+			}
+			// Source removal must keep each pending copy's growth protected from ordinary writes.
+			fillCancellationUsableQuota(t, w, cap)
+			w.srv.DeliverScheduled(ctx)
+			pending, err := w.st.Calendars().DueOutbox(ctx, time.Now().Add(48*time.Hour), 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(pending) != 0 {
+				used, reserved, count := reservationUsage(t, db)
+				t.Fatalf("admitted partial cancellation stranded: pending=%d reason=%s used=%d reserved=%d count=%d", len(pending), pending[0].LastError, used, reserved, count)
+			}
+			for _, team := range teams {
+				got, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+				if err != nil || !strings.Contains(string(got.Data), "EXDATE:20261111T090000Z") || strings.Contains(string(got.Data), "STATUS:CANCELLED") || got.InvitationSender != "usr_alice" {
+					t.Fatalf("partial cleanup did not preserve unrelated series: %v", err)
+				}
+			}
+			if used, reserved, count := reservationUsage(t, db); used > cap || reserved != 0 || count != 0 {
+				t.Fatalf("post-cancellation bounds/reservation: %d %d %d", used, reserved, count)
+			}
+		})
+	}
+}
+
+// Fill through the public quota boundary: physical bytes alone exclude reserved growth.
+func fillCancellationUsableQuota(t *testing.T, w *schedWorld, cap int64) {
+	t.Helper()
+	base := meeting("fill", "alice")
+	low, high := 0, int(cap)
+	for low < high {
+		padding := (low + high + 1) / 2
+		body := strings.Replace(base, "END:VEVENT", "DESCRIPTION:"+strings.Repeat("f", padding)+"\r\nEND:VEVENT", 1)
+		code, _ := w.put("alice", "fill.ics", body, "")
+		switch code {
+		case 201, 204:
+			low = padding
+		case 507:
+			high = padding - 1
+		default:
+			t.Fatalf("fill ordinary quota: %d", code)
+		}
+	}
+	body := strings.Replace(base, "END:VEVENT", "DESCRIPTION:"+strings.Repeat("f", low)+"\r\nEND:VEVENT", 1)
+	if code, _ := w.put("alice", "fill.ics", body, ""); code != 201 && code != 204 {
+		t.Fatalf("ordinary boundary changed: %d", code)
+	}
+	body = strings.Replace(body, "DESCRIPTION:", "DESCRIPTION:f", 1)
+	if code, _ := w.put("alice", "fill.ics", body, ""); code != 507 {
+		t.Fatalf("ordinary write spent cancellation capacity: %d", code)
+	}
+}
+
+func TestSponsoredCopyAdmissionReservesPendingCancellationGrowth(t *testing.T) {
+	const cap int64 = 12000
+	w, db := cancellationWorld(t, cap, cap)
+	ctx := context.Background()
+	series := meeting("copy-admission", "alice", "RRULE:FREQ=DAILY;COUNT=3", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+	oldTeam := seedSponsoredGroup(t, w, series)
+	if code, _ := w.put("alice", "source.ics", series, ""); code != 201 {
+		t.Fatalf("source: %d", code)
+	}
+	w.deliver()
+	if err := w.st.Calendars().DeleteGrant(ctx, oldTeam.ID, "grp_editor_"+oldTeam.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, etag := w.get("alice", "source.ics")
+	occurrence := meeting("copy-admission", "alice", "RECURRENCE-ID:20261111T090000Z", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+	occurrence = strings.ReplaceAll(occurrence, "20261110T", "20261111T")
+	if code, _ := w.put("alice", "source.ics", occurrence, etag); code != 201 && code != 204 {
+		t.Fatalf("partial source: %d", code)
+	}
+	w.deliver()
+	res := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/source.ics", "alice", w.tokens["alice"], "", nil)
+	if res.StatusCode != 204 {
+		t.Fatalf("pending partial cancel: %d", res.StatusCode)
+	}
+	if code, _ := w.put("alice", "next.ics", strings.Replace(series, "SUMMARY:Planning", "SUMMARY:New planning", 1), ""); code != 201 {
+		t.Fatalf("next source: %d", code)
+	}
+	due, err := w.st.Calendars().DueOutbox(ctx, time.Now().Add(time.Minute), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request *store.OutboxMessage
+	for _, m := range due {
+		if m.Method == itip.MethodRequest {
+			request = m
+		}
+	}
+	if request == nil {
+		t.Fatal("no pending REQUEST")
+	}
+	team := groupCalendar(t, w.st, "Pending growth admission")
+	msg, err := itip.Decode(request.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cal, err := itip.AttendeeCopy(msg, nil, itip.Address("mailto:bob@example.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range cal.Children {
+		if ev.Name == ical.CompEvent {
+			ev.Props.SetText("X-KYCALENDAR-ORGANIZER-SEQUENCE", "0")
+		}
+	}
+	var encoded bytes.Buffer
+	if err := ical.NewEncoder(&encoded).Encode(cal); err != nil {
+		t.Fatal(err)
+	}
+	incoming, err := davbackend.Prepare(team.ID, "incoming.ics", cal, encoded.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming.DeliveryID, incoming.DeliveryRecipient = request.ID, "usr_bob"
+	fillCancellationUsableQuota(t, w, cap)
+	before, reserved, count := reservationUsage(t, db)
+	_, err = w.st.Calendars().PutObject(ctx, incoming, "", true, store.OwnerLimits{MaxBytes: cap, MaxTotalBytes: cap})
+	if !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("copy admitted without its pending growth: %v", err)
+	}
+	if _, err := w.st.Calendars().GetObject(ctx, team.ID, "incoming.ics"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("refused copy persisted: %v", err)
+	}
+	if after, r, n := reservationUsage(t, db); after != before || r != reserved || n != count {
+		t.Fatal("refused copy consumed pending body or source reservation")
+	}
+	res = rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/fill.ics", "alice", w.tokens["alice"], "", nil)
+	if res.StatusCode != 204 {
+		t.Fatalf("free ordinary capacity: %d", res.StatusCode)
+	}
+	if _, err := w.st.Calendars().PutObject(ctx, incoming, "", true, store.OwnerLimits{MaxBytes: cap, MaxTotalBytes: cap}); err != nil {
+		t.Fatalf("copy with its liability: %v", err)
+	}
+	stored, err := w.st.Calendars().GetObject(ctx, team.ID, "incoming.ics")
+	if err != nil || stored.InvitationSender != "usr_alice" {
+		t.Fatalf("trusted copy missing: %v", err)
+	}
+	fillCancellationUsableQuota(t, w, cap)
+	// The pending occurrence CANCEL reaches the newly admitted series too, without a grant.
+	w.deliver()
+	got, err := w.st.Calendars().GetObject(ctx, team.ID, "incoming.ics")
+	if err != nil || !strings.Contains(string(got.Data), "EXDATE:20261111T090000Z") {
+		t.Fatalf("new copy lacked cancellation capacity: %v", err)
+	}
+	stable := got.ETag
+	w.deliver()
+	got, err = w.st.Calendars().GetObject(ctx, team.ID, "incoming.ics")
+	if err != nil || got.ETag != stable {
+		t.Fatal("repeat delivery changed the copy or consumed capacity twice")
+	}
+	// Physical deletion releases both charged data and any still-live copy liability.
+	before, _, _ = reservationUsage(t, db)
+	if err := w.st.Calendars().DeleteObject(ctx, team.ID, "incoming.ics", stable); err != nil {
+		t.Fatal(err)
+	}
+	after, _, _ := reservationUsage(t, db)
+	if before-after != int64(len(got.Data)) {
+		t.Fatal("copy deletion did not reclaim charged bytes")
+	}
+	fillCancellationUsableQuota(t, w, cap)
 }

@@ -36,7 +36,11 @@ func (c *calendarStore) ownerUsage(ctx context.Context, tx *sql.Tx, kind, id, ex
 		if err != nil {
 			return 0, 0, err
 		}
-		used += pending + reserved
+		growth, err := c.cancellationGrowth(ctx, tx, excludeCalendar, excludeName, nil)
+		if err != nil {
+			return 0, 0, err
+		}
+		used += pending + reserved + growth[id]
 	}
 	return n, used, nil
 }
