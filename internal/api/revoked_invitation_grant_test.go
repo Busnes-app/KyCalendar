@@ -175,6 +175,9 @@ func TestSponsoredCancellationRechecksPaidSameETag(t *testing.T) {
 	if err != nil || len(due) != 1 {
 		t.Fatalf("pending CANCEL: %v %d", err, len(due))
 	}
+	if err := w.st.Calendars().ApplyInternalCancellation(ctx, due[0].ID, "usr_carol", nil, store.OwnerLimits{}); !errors.Is(err, store.ErrPreconditionFailed) {
+		t.Fatalf("wrong recipient acknowledged an empty cancellation batch: %v", err)
+	}
 	copies, err := w.st.Calendars().SponsoredCancellationCopies(ctx, due[0].ID, "usr_bob", "paid-race")
 	if err != nil || len(copies) != 1 {
 		t.Fatalf("trusted cancellation lookup: %v %d", err, len(copies))

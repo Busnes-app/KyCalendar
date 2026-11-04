@@ -5,14 +5,17 @@ import (
 	"database/sql"
 )
 
+// Resolve the receipt's address to the same unique active user used by delivery. Stored
+// sponsorship follows that stable user ID, not an old email or current calendar grant.
+const cancellationRecipient = `EXISTS (SELECT 1 FROM users r WHERE r.id = ? AND r.status = 'active' AND r.role = 'user'
+ AND m.recipient = ('mailto:' || LOWER(r.email))
+ AND 1 = (SELECT COUNT(*) FROM users v WHERE LOWER(v.email) = LOWER(r.email) AND v.status = 'active' AND v.role = 'user'))`
+
 func (c *calendarStore) SponsoredCancellationCopies(ctx context.Context, deliveryID, recipientID, uid string) ([]*CalendarObject, error) {
 	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects
 WHERE invitation_sender <> '' AND invitation_recipient = ? AND uid = ?
 AND EXISTS (SELECT 1 FROM scheduling_outbox m WHERE m.id = ? AND m.status = 'pending'
- AND m.method = 'CANCEL' AND m.sender_id = invitation_sender
- AND EXISTS (SELECT 1 FROM users r WHERE r.id = ? AND r.status = 'active' AND r.role = 'user'
- AND m.recipient = ('mailto:' || LOWER(r.email))
- AND 1 = (SELECT COUNT(*) FROM users v WHERE LOWER(v.email) = LOWER(r.email) AND v.status = 'active' AND v.role = 'user')))
+ AND m.method = 'CANCEL' AND m.sender_id = invitation_sender AND `+cancellationRecipient+`)
 ORDER BY calendar_id, name`, recipientID, uid, deliveryID, recipientID)
 }
 
@@ -27,8 +30,8 @@ func (c *calendarStore) checkCancellationCopy(ctx context.Context, tx *sql.Tx, d
 JOIN scheduling_outbox m ON m.id = ? AND m.status = 'pending' AND m.method = 'CANCEL'
 WHERE o.calendar_id = ? AND o.name = ? AND o.uid = ? AND o.etag = ?
 AND o.invitation_sender = ? AND o.invitation_recipient = ?
-AND (o.invitation_sender = '' OR (o.invitation_sender = m.sender_id
- AND o.invitation_recipient = ? AND o.invitation_attendee = m.recipient))`),
+AND (o.invitation_sender = '' OR (o.invitation_sender = m.sender_id AND o.invitation_recipient = ?))
+AND `+cancellationRecipient),
 		deliveryID, o.CalendarID, o.Name, o.UID, o.ETag, o.InvitationSender, o.InvitationRecipient, recipientID, recipientID).Scan(&n)
 	if err != nil {
 		return err
@@ -53,7 +56,8 @@ func (c *calendarStore) ApplyInternalCancellation(ctx context.Context, deliveryI
 			return ErrPreconditionFailed
 		}
 	}
-	result, err := tx.ExecContext(ctx, c.q(`UPDATE scheduling_outbox SET status = 'delivered', attempts = attempts + 1, body = ?, last_error = '' WHERE id = ? AND status = 'pending' AND method = 'CANCEL'`), []byte{}, deliveryID)
+	result, err := tx.ExecContext(ctx, c.q(`UPDATE scheduling_outbox AS m SET status = 'delivered', attempts = attempts + 1, body = ?, last_error = ''
+WHERE m.id = ? AND m.status = 'pending' AND m.method = 'CANCEL' AND `+cancellationRecipient), []byte{}, deliveryID, recipientID)
 	if err != nil {
 		return err
 	}
