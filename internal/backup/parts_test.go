@@ -89,6 +89,30 @@ func TestJoinRestoredDatabase(t *testing.T) {
 		t.Fatalf("joining again with nothing to join: %v", err)
 	}
 
+	// Interrupted: the database was joined and only the last part removed. Run again, the
+	// restore keeps the joined database and removes the rest; an unrelated database is refused.
+	resume := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(resume, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{"kycalendar.db": "one-two-three", "kycalendar.db.part-0001": "one-", "kycalendar.db.part-0002": "two-"} {
+		if err := os.WriteFile(filepath.Join(resume, name), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := backup.JoinRestoredDatabase(resume); err != nil {
+		t.Fatalf("resuming an interrupted join: %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(resume, "*.part-*")); len(left) != 0 {
+		t.Fatalf("parts left behind after resuming: %v", left)
+	}
+	if err := os.WriteFile(filepath.Join(resume, "kycalendar.db.part-0001"), []byte("other"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := backup.JoinRestoredDatabase(resume); err == nil {
+		t.Fatal("a database that is not the join of its parts was kept")
+	}
+
 	gap := filepath.Join(t.TempDir(), "data")
 	if err := os.MkdirAll(gap, 0700); err != nil {
 		t.Fatal(err)

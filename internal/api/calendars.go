@@ -319,10 +319,11 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 }
 
 // groupOrganizer is who a group calendar's meeting is cancelled as: its organizer, when they are
-// a user here and no other calendar they own or are granted holds the meeting. Anyone who can
-// edit c can write any ORGANIZER into it, so a copy of a meeting the organizer keeps elsewhere
-// is deleted without a message rather than cancelled as them. A copy naming a meeting nobody
-// holds cancels nothing: delivery finds no attendee copy of that UID from that organizer.
+// a user here and no other calendar they can edit holds the meeting. Anyone who can edit c can
+// write any ORGANIZER into it, so a copy of a meeting the organizer keeps elsewhere is deleted
+// without a message rather than cancelled as them; a copy in a calendar they only read is no
+// sign of it. A copy naming a meeting nobody holds cancels nothing: delivery finds no attendee
+// copy of that UID from that organizer.
 func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip.Address, uid string) *store.User {
 	u, err := s.store.Users().CalendarUser(ctx, org.Email())
 	if err != nil {
@@ -338,10 +339,14 @@ func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip
 	}
 	ids := make([]string, 0, len(own)+len(grants))
 	for _, oc := range own {
-		ids = append(ids, oc.ID)
+		if !oc.Subscribed {
+			ids = append(ids, oc.ID)
+		}
 	}
 	for _, g := range grants {
-		ids = append(ids, g.CalendarID)
+		if gc, err := s.store.Calendars().GetCalendarByID(ctx, g.CalendarID); err == nil && access.CanEditEvents(gc, access.Resolve(u, gc, grants)) {
+			ids = append(ids, g.CalendarID)
+		}
 	}
 	for _, id := range ids {
 		if id == c.ID {

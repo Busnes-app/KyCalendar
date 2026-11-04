@@ -388,6 +388,12 @@ func deletedOccurrences(self Address, oldCal, newCal *ical.Calendar) []*ical.Com
 	if _, ok := invited[""]; !ok {
 		return nil
 	}
+	overridden := map[string]*ical.Component{} // old overrides by occurrence, whatever their form
+	for k, c := range before {
+		if key, ok := calendar.OccurrenceKey(oldCal, c.Props.Get(ical.PropRecurrenceID)); ok && k != "" {
+			overridden[key] = c
+		}
+	}
 	had := map[string]bool{}
 	for _, p := range oldMaster.Props[ical.PropExceptionDates] {
 		for _, v := range strings.Split(p.Value, ",") {
@@ -407,8 +413,10 @@ func deletedOccurrences(self Address, oldCal, newCal *ical.Calendar) []*ical.Com
 				}
 			}
 			src := newMaster // a deleted override answers with its own, possibly newer, SEQUENCE
-			if o := before[v]; o != nil && sequence(o) > sequence(newMaster) {
-				src = o
+			if key, ok := calendar.OccurrenceKey(newCal, rid); ok {
+				if o := overridden[key]; o != nil && sequence(o) > sequence(newMaster) {
+					src = o
+				}
 			}
 			out = append(out, instance(src, rid))
 		}

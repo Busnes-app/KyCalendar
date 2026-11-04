@@ -188,6 +188,24 @@ func TestAttendeeDeletingAnOccurrenceDeclinesIt(t *testing.T) {
 	if out := encode(t, msgs[0].Calendar); !strings.Contains(out, "SEQUENCE:9") || !strings.Contains(out, "PARTSTAT=DECLINED") {
 		t.Errorf("a deleted override is declined with its own SEQUENCE:\n%s", out)
 	}
+	// The same in a Berlin series whose override names the occurrence in UTC: the EXDATE and
+	// the RECURRENCE-ID are the same occurrence in two forms.
+	zoned := func(extra ...string) *ical.Calendar {
+		cal := ics(t, append([]string{"SEQUENCE:2", "RRULE:FREQ=WEEKLY", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com"}, extra...)...)
+		cal.Children[0].Props.Get(ical.PropDateTimeStart).Params.Set("TZID", "Europe/Berlin")
+		cal.Children[0].Props.Get(ical.PropDateTimeStart).Value = "20261110T090000"
+		cal.Children[0].Props.Del(ical.PropDateTimeEnd)
+		return cal
+	}
+	withUTCOverride := override(zoned())
+	withUTCOverride.Children[1].Props.Get(ical.PropRecurrenceID).Value = "20261117T080000Z"
+	msgs, err = Outgoing(bob, withUTCOverride, zoned("EXDATE;TZID=Europe/Berlin:20261117T090000"), now)
+	if got := summary(msgs, err); got != "REPLY alice@example.com" {
+		t.Fatalf("exclude a UTC-named override: %s", got)
+	}
+	if out := encode(t, msgs[0].Calendar); !strings.Contains(out, "SEQUENCE:9") {
+		t.Errorf("a deleted override named in another form is declined with its own SEQUENCE:\n%s", out)
+	}
 
 	two := func(keep int) *ical.Calendar {
 		cal := ics(t, "RECURRENCE-ID:20261110T090000Z", "ATTENDEE:mailto:bob@example.com")

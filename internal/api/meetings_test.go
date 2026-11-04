@@ -591,6 +591,44 @@ func TestDeletingAGroupCalendarCancelsAFormerMembersMeeting(t *testing.T) {
 	}
 }
 
+// A copy of alice's group meeting in a calendar she only reads is no sign the meeting is hers
+// elsewhere: deleting the group calendar still cancels it.
+func TestDeletingAGroupCalendarIgnoresAReadOnlyCopy(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	team, board := groupCalendar(t, st, "Team"), groupCalendar(t, st, "Board")
+	grantRole(t, st, team, "editor", "usr_alice")
+	grantRole(t, st, board, "reader", "usr_alice")
+	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+team.ID+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(ctx)
+	src, err := st.Calendars().GetObjectByUID(ctx, team.ID, made.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := *src
+	cp.CalendarID, cp.Name = board.ID, "copy.ics"
+	if _, err := st.Calendars().PutObject(ctx, &cp, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+team.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	if w := call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob); strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("bob kept the meeting of a deleted group calendar: %s", w.Body.String())
+	}
+}
+
 // The same forgery of a meeting alice organizes from another group calendar: deleting the
 // calendar mallory wrote it into still cancels nothing of alice's.
 func TestDeletingAGroupCalendarSparesAMeetingOfAnotherGroupCalendar(t *testing.T) {

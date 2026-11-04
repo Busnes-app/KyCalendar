@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -47,12 +48,10 @@ func warnNearLimit(files []recoveryclient.File) {
 	}
 }
 
-// joinDatabase writes dir's database parts, if any, into DatabaseMember in order and returns
-// their paths. Parts must run from 0001 without a gap; a database already in place is an
-// error, so a restore never mixes two. Nothing to join is not an error.
-func joinDatabase(dir string) ([]string, error) {
+// listParts is dir's database parts in order. They must run from 0001 without a gap.
+func listParts(dir string) ([]string, error) {
 	parts, err := filepath.Glob(filepath.Join(dir, filepath.FromSlash(partPrefix)) + "*")
-	if err != nil || len(parts) == 0 {
+	if err != nil {
 		return nil, err
 	}
 	slices.Sort(parts)
@@ -61,8 +60,23 @@ func joinDatabase(dir string) ([]string, error) {
 			return nil, fmt.Errorf("backup: database part %s is not %s: a part is missing", filepath.Base(p), want)
 		}
 	}
+	return parts, nil
+}
+
+// joinDatabase writes dir's database parts, if any, into DatabaseMember in order: through a
+// temporary file renamed into place, so the database never exists half written. A database
+// already in place is an error.
+func joinDatabase(dir string) ([]string, error) {
+	parts, err := listParts(dir)
+	if err != nil || len(parts) == 0 {
+		return nil, err
+	}
 	target := filepath.Join(dir, filepath.FromSlash(DatabaseMember))
-	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if _, err := os.Lstat(target); err == nil {
+		return nil, fmt.Errorf("backup: %s exists beside its parts", DatabaseMember)
+	}
+	tmp := target + ".joining"
+	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("backup: joining the database parts: %w", err)
 	}
@@ -73,27 +87,51 @@ func joinDatabase(dir string) ([]string, error) {
 		}
 		if err != nil {
 			out.Close()
-			os.Remove(target)
+			os.Remove(tmp)
 			return nil, err
 		}
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(target)
+		os.Remove(tmp)
 		return nil, err
 	}
-	return parts, nil
+	return parts, os.Rename(tmp, target)
 }
 
 // JoinRestoredDatabase joins a restored tree's database parts (in dataDir, the tree's data
-// directory) into its database and removes them.
+// directory) into its database and removes them, last part first. Run again after an
+// interruption it finishes the job: a database already joined, with the parts still there
+// (or the first of them, if removal stopped part-way), is kept when it begins with exactly
+// their bytes, and anything else is refused.
 func JoinRestoredDatabase(dataDir string) error {
-	parts, err := joinDatabase(filepath.Dir(dataDir))
-	for _, p := range parts {
-		if err == nil {
-			err = os.Remove(p)
+	dir := filepath.Dir(dataDir)
+	parts, err := listParts(dir)
+	if err != nil || len(parts) == 0 {
+		return err
+	}
+	target := filepath.Join(dir, filepath.FromSlash(DatabaseMember))
+	if db, err := os.ReadFile(target); err == nil {
+		for _, p := range parts {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			if !bytes.HasPrefix(db, data) {
+				return fmt.Errorf("backup: %s exists and is not the join of its parts", DatabaseMember)
+			}
+			db = db[len(data):]
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	} else if _, err := joinDatabase(dir); err != nil {
+		return err
+	}
+	for i := len(parts) - 1; i >= 0; i-- {
+		if err := os.Remove(parts[i]); err != nil {
+			return err
 		}
 	}
-	return err
+	return nil
 }
 
 // isPart reports a database part member name.

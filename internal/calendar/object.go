@@ -43,9 +43,10 @@ const maxIndexOccurrences = 100000
 const maxRecurringComponents = 10
 
 // fastFreq reports an RRULE with FREQ=SECONDLY or MINUTELY, which is never expanded.
-// EndedBefore reports whether every VEVENT of cal starts before t and repeats, if at all, only
-// by rules whose UNTIL is before t. It answers false when unsure (COUNT, RDATE, an unreadable
-// value), so callers use it for objects Inspect left without a last end, with their own margin.
+// EndedBefore reports whether every VEVENT of cal ends before t: its last occurrence (bounded
+// by the rule's UNTIL, or counted out for a COUNT of at most 1000) plus its length. Times are
+// read as UTC, so callers allow a day's margin. It answers false when unsure (RDATE, a longer
+// COUNT, an unreadable value); callers use it for objects Inspect left without a last end.
 func EndedBefore(cal *ical.Calendar, t time.Time) bool {
 	seen := false
 	for _, c := range cal.Children {
@@ -53,15 +54,33 @@ func EndedBefore(cal *ical.Calendar, t time.Time) bool {
 			continue
 		}
 		seen = true
-		start, err := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
-		if err != nil || start.IsZero() || !start.Before(t) || len(c.Props[ical.PropRecurrenceDates]) > 0 {
+		s, err := spanOf(c, time.UTC)
+		if err != nil || len(c.Props[ical.PropRecurrenceDates]) > 0 {
 			return false
 		}
+		last := s.start
 		for _, p := range c.Props[ical.PropRecurrenceRule] {
 			opt, err := rrule.StrToROption(p.Value)
-			if err != nil || opt.Until.IsZero() || !opt.Until.Before(t) {
+			switch {
+			case err != nil:
+				return false
+			case !opt.Until.IsZero():
+				last = maxTime(last, opt.Until)
+			case opt.Count > 0 && opt.Count <= 1000:
+				opt.Dtstart = s.start
+				r, err := rrule.NewRRule(*opt)
+				if err != nil {
+					return false
+				}
+				if all := r.All(); len(all) > 0 {
+					last = maxTime(last, all[len(all)-1])
+				}
+			default:
 				return false
 			}
+		}
+		if !s.endAt(last).Before(t) {
+			return false
 		}
 	}
 	return seen
