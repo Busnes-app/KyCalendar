@@ -174,7 +174,7 @@ func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
 	}
 }
 
-// Capsules are SQLite-only, so only SQLite needs the instance cap that keeps one under 64 MiB.
+// Capsules are SQLite-only, so only SQLite needs the instance cap that keeps one within its limit.
 func TestCalendarInstanceCap(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	t.Setenv("KY_DB_DRIVER", "postgres")

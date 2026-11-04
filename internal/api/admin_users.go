@@ -18,7 +18,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// userView is a person as the admin screens see them: never a hash, a TOTP secret or a code.
+// userView is a person as the admin screens see them: never a hash, a sealed secret or a code.
 type userView struct {
 	ID                 string     `json:"id"`
 	Username           string     `json:"username"`
@@ -27,7 +27,6 @@ type userView struct {
 	Role               string     `json:"role"`
 	Status             string     `json:"status"`
 	Source             string     `json:"source"`
-	MFA                bool       `json:"mfa"`
 	MustChangePassword bool       `json:"must_change_password"`
 	LastLoginAt        *time.Time `json:"last_login_at"`
 	// BoundTo is an SSO account's sign-in binding (`<kind> <issuer>`, "" when unstamped).
@@ -39,7 +38,7 @@ type userView struct {
 
 func userViewOf(u *store.User) userView {
 	v := userView{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email, Role: u.Role, Status: u.Status,
-		Source: u.SSOProvider, MFA: u.TOTPEnabled, MustChangePassword: u.MustChangePassword, LastLoginAt: u.LastLoginAt}
+		Source: u.SSOProvider, MustChangePassword: u.MustChangePassword, LastLoginAt: u.LastLoginAt}
 	if u.SSOProvider != "local" {
 		v.BoundTo = u.SSOIssuer
 	}

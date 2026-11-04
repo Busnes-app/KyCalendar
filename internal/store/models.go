@@ -21,7 +21,7 @@ type User struct {
 	// creation only: UpdateUser never writes it.
 	SSOIssuer          string     `json:"-"`
 	TOTPSecretEnc      string     `json:"-"` // AES-256-GCM encrypted
-	TOTPEnabled        bool       `json:"totp_enabled"`
+	TOTPEnabled        bool       `json:"-"`
 	TOTPLastCounter    int64      `json:"-"` // last RFC 6238 counter accepted; refuses replay inside the skew window
 	RecoveryCodesHash  string     `json:"-"` // JSON array of sha256 hashes
 	PushDeviceID       string     `json:"push_device_id,omitempty"`
@@ -31,17 +31,14 @@ type User struct {
 	LastLoginAt        *time.Time `json:"last_login_at,omitempty"`
 }
 
-// Credentials is the sign-in state a session was earned against: the password hash and, when
-// TOTP is on, the secret the code was checked with.
+// Credentials is the sign-in state a session was earned against: the password hash.
 type Credentials struct {
-	PasswordHash  string
-	TOTPEnabled   bool
-	TOTPSecretEnc string
+	PasswordHash string
 }
 
 // Credentials returns the sign-in state u was read with.
 func (u *User) Credentials() Credentials {
-	return Credentials{PasswordHash: u.PasswordHash, TOTPEnabled: u.TOTPEnabled, TOTPSecretEnc: u.TOTPSecretEnc}
+	return Credentials{PasswordHash: u.PasswordHash}
 }
 
 // Session represents an active authenticated user session.
@@ -56,12 +53,9 @@ type Session struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	// SSOSID is the identity provider's sid for an SSO login; empty for a local sign-in.
 	SSOSID string `json:"-"`
-}
-
-type MFAChallenge struct {
-	TokenHash string
-	UserID    string
-	ExpiresAt time.Time
+	// Unproven: an SSO login whose ID token had no auth_time. CreatedAt is then the token's
+	// issue time, which says nothing about when credentials were given: no step-up.
+	Unproven bool `json:"-"`
 }
 
 // DevicePairing represents a 90-second ephemeral session to link mobile/PWA wrappers.

@@ -17,7 +17,7 @@ const (
 	CSRFCookieName    = "ky_csrf"
 	HeaderCSRF        = "X-CSRF-Token"
 	// PreSessionCookieName carries the random value a signed-out browser's CSRF token is bound
-	// to, so sign-in and MFA are protected before a session exists.
+	// to, so sign-in is protected before a session exists.
 	PreSessionCookieName = "ky_presession"
 )
 
@@ -45,13 +45,14 @@ func NewSessionManager(st store.Store, cfg config.SecurityConfig) *SessionManage
 // IssueSession creates an active session for credentials verified just now and writes the
 // HttpOnly cookie + CSRF token.
 func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User) (*store.Session, string, error) {
-	return sm.IssueSSOSession(ctx, w, r, user, "", time.Now())
+	return sm.IssueSSOSession(ctx, w, r, user, "", time.Now(), false)
 }
 
 // IssueSSOSession is IssueSession for an SSO login the provider names by sid, dated by the ID
-// token's issuedAt, so a back-channel logout for that sid or subject ends it. It fails with
+// token's issuedAt, so a back-channel logout for that sid or subject ends it. unproven marks a
+// date that is not when credentials were given (see store.Session). It fails with
 // store.ErrSSOSessionEnded when the provider already ended that login.
-func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, sid string, issuedAt time.Time) (*store.Session, string, error) {
+func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, sid string, issuedAt time.Time, unproven bool) (*store.Session, string, error) {
 	authenticatedAt := issuedAt.UTC()
 	rawToken := crypto.RandomHex(32)
 	tokenHash := crypto.SHA256Hex([]byte(rawToken))
@@ -69,6 +70,7 @@ func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWr
 		CreatedAt: authenticatedAt,
 		ExpiresAt: time.Now().UTC().Add(ttl),
 		SSOSID:    sid,
+		Unproven:  unproven,
 	}
 
 	if err := sm.store.Sessions().CreateSession(ctx, sess, user.Credentials()); err != nil {
@@ -120,7 +122,7 @@ func (sm *SessionManager) ValidateCSRF(r *http.Request) bool {
 	return sm.validCSRF(r, SessionCookieName, csrfSession)
 }
 
-// ValidatePreSessionCSRF is ValidateCSRF for sign-in and MFA: the header must be the token of
+// ValidatePreSessionCSRF is ValidateCSRF for sign-in: the header must be the token of
 // the presented pre-session cookie or, for a browser that still holds a session, of that session.
 func (sm *SessionManager) ValidatePreSessionCSRF(r *http.Request) bool {
 	return sm.validCSRF(r, PreSessionCookieName, csrfPreSession) || sm.validCSRF(r, SessionCookieName, csrfSession)

@@ -97,7 +97,7 @@ type UserStore interface {
 	// makes it an administrator.
 	ResetAdminPassword(ctx context.Context, userID, newHash string) error
 	// ResetPassword is the operator reset for any local account: new hash, forced change,
-	// TOTP off, grants revoked. Role and status are untouched. Not local or missing: ErrNotFound.
+	// grants revoked. Role and status are untouched. Not local or missing: ErrNotFound.
 	// An actor no longer an active administrator with a live session: ErrActorRevoked.
 	ResetPassword(ctx context.Context, actor Actor, userID, newHash string) error
 	// RenameUser changes only a local account's username and audits it as actor in one
@@ -156,21 +156,6 @@ type UserStore interface {
 	// SetOIDCEmail writes the email of a generic OIDC account (sso_provider oidc); ErrNotFound
 	// for any other row.
 	SetOIDCEmail(ctx context.Context, userID, email string) error
-	UpdateRecoveryCodes(ctx context.Context, userID, oldHashes, newHashes string) error
-	// SpendTOTPCounter records counter as used. It returns ErrAlreadyExists when counter is
-	// not greater than the stored one, which is how a replayed code inside the skew window fails.
-	SpendTOTPCounter(ctx context.Context, userID string, counter int64) error
-	// SetPendingTOTP replaces the sealed secret oldEnc with newEnc on a local account whose TOTP
-	// is off: the secret an enrolment confirms. ErrAlreadyExists if TOTP is on or the secret
-	// changed meanwhile, so it never replaces an enrolled secret.
-	SetPendingTOTP(ctx context.Context, userID, oldEnc, newEnc string) error
-	// EnableTOTP turns on the pending secret secretEnc with recoveryHashes; DisableTOTP clears
-	// secret and codes if secretEnc, the secret the code was checked against, is still enrolled. Each runs in one transaction bound to passwordHash (ErrNotFound if the
-	// password or status changed), revokes every grant but the caller's session (keepSession is
-	// its token hash): sessions, MFA challenges, device pairings and app passwords, and audits.
-	// ErrAlreadyExists if the TOTP state changed.
-	EnableTOTP(ctx context.Context, userID, passwordHash, secretEnc, recoveryHashes, keepSession, ip string) error
-	DisableTOTP(ctx context.Context, userID, passwordHash, secretEnc, keepSession, ip string) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
 	// SCIMUserIDs returns those of ids that name an account in scope, in any order.
@@ -193,8 +178,6 @@ type SessionStore interface {
 	// EndSSOSession ends every session of an SSO login and fences its sid until fenceUntil.
 	EndSSOSession(ctx context.Context, sid string, fenceUntil time.Time) error
 	CleanExpiredSessions(ctx context.Context) error
-	CreateMFAChallenge(ctx context.Context, challenge *MFAChallenge, expectedPasswordHash string) error
-	ConsumeMFAChallenge(ctx context.Context, tokenHash string) (userID, passwordHash string, err error)
 }
 
 // DeviceStore handles 90s ephemeral QR pairing sessions and paired push clients.

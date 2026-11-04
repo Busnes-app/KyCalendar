@@ -273,7 +273,7 @@ func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
 // deleteMeetings deletes c's meetings one by one through the scheduled delete path, before the
 // calendar goes, so their guests get the cancellations (or the organizer an attendee's answer)
 // that deleting each event would send. as plans the deletes: the calendar's owner, or nil in a
-// group calendar, where each meeting is planned for its organizer when they are a user here.
+// group calendar (see groupOrganizer).
 func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *store.User) *apiError {
 	if s.sched == nil || c.Subscribed {
 		return nil // a subscription mirrors someone else's meetings: nothing is sent for them
@@ -293,8 +293,8 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 		}
 		writer := as
 		if writer == nil {
-			if writer, err = s.store.Users().CalendarUser(ctx, org.Email()); err != nil {
-				continue // an organizer outside this instance: nothing is sent from here
+			if writer = s.groupOrganizer(ctx, c, org, o.UID); writer == nil {
+				continue
 			}
 		}
 		err = davbackend.Delete(ctx, s.store, c, o.Name, o.ETag, s.objectLimits(), s.sched.Plan(ctx, writer, nil))
@@ -307,4 +307,45 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 		}
 	}
 	return nil
+}
+
+// groupOrganizer is who a group calendar's meeting is cancelled as: its organizer, when they are
+// a user here and no other calendar they can edit holds the meeting. Anyone who can edit c can
+// write any ORGANIZER into it, so a copy of a meeting the organizer keeps elsewhere is deleted
+// without a message rather than cancelled as them; a copy in a calendar they only read is no
+// sign of it. A copy naming a meeting nobody holds cancels nothing: delivery finds no attendee
+// copy of that UID from that organizer.
+func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip.Address, uid string) *store.User {
+	u, err := s.store.Users().CalendarUser(ctx, org.Email())
+	if err != nil {
+		return nil // an organizer outside this instance: nothing is sent from here
+	}
+	grants, err := s.store.Calendars().UserGrants(ctx, u.ID)
+	if err != nil {
+		return nil
+	}
+	own, err := s.store.Calendars().ListCalendarsByOwner(ctx, "user", u.ID)
+	if err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(own)+len(grants))
+	for _, oc := range own {
+		if !oc.Subscribed {
+			ids = append(ids, oc.ID)
+		}
+	}
+	for _, g := range grants {
+		if gc, err := s.store.Calendars().GetCalendarByID(ctx, g.CalendarID); err == nil && access.CanEditEvents(gc, access.Resolve(u, gc, grants)) {
+			ids = append(ids, g.CalendarID)
+		}
+	}
+	for _, id := range ids {
+		if id == c.ID {
+			continue
+		}
+		if _, err := s.store.Calendars().GetObjectByUID(ctx, id, uid); !errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+	}
+	return u
 }

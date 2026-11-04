@@ -14,7 +14,7 @@ import (
 )
 
 // runRenameUser renames a local account, e.g. a break-glass admin whose name an IdP user needs.
-// Password, role, MFA and sessions are kept; CalDAV clients must sign in with the new name.
+// Password, role and sessions are kept; CalDAV clients must sign in with the new name.
 func runRenameUser(args []string) {
 	fs := flag.NewFlagSet("rename-user", flag.ExitOnError)
 	from := fs.String("username", "", "current username (exact)")

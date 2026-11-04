@@ -39,28 +39,18 @@ and sets its password, read from stdin the same way:
 `printf '%s\n' "$PW" | kycalendar init-admin -username admin`. The password must be replaced at
 first sign-in.
 
-`rename-user` renames a local account, keeping its password, role and MFA:
+`rename-user` renames a local account, keeping its password and role:
 `kycalendar rename-user -username admin -to Cal-Admin`. Use it when a KyIdentity user has the
 same username as a local account: KyCalendar refuses that sign-in (409) rather than link the two
 by name. CalDAV clients of a renamed everyday account must sign in with the new name.
 
 ## Two-step verification
 
-Local accounts, the administrator included, can add a code from an authenticator app to their
-sign-in. Open **Settings** (the gear beside Sign out) → **Account**, enter your password under
-**Two-step verification** and choose **Set up**. Open the setup link on your phone, or type the
-key into the app, then enter the code the app shows and
-choose **Turn on**. A wrong code leaves it off. Save the ten recovery codes it then shows: each
-signs you in once instead of a code, and they are not shown again. Turning it on or off signs
-you out everywhere else and revokes your app passwords; create new ones afterwards.
-
-From then on, sign-in asks for the code after the password. To change phones, choose
-**Turn off** with your password and a current code or a recovery code, then set it up again;
-it cannot be set up again while it is on. App passwords you create afterwards are separate
-credentials: two-step verification guards the web sign-in only. If you lose both the phone and
-the recovery codes, ask an administrator to reset your password (for the administrator,
-`kycalendar init-admin`): a reset turns two-step verification off. SSO accounts use their
-identity provider's second factor instead.
+KyCalendar has no two-step verification of its own: a second factor is KyIdentity's. Connect
+KyIdentity under [Sign-in](#sign-in) and turn it on there. Earlier releases let local accounts
+add an authenticator app; this release no longer asks for those codes, so a local account signs
+in with its password alone. The stored secrets and recovery codes are kept, unused. Keep the
+local administrator's password long and unique, and give everyday people KyIdentity accounts.
 
 ## Administrators and group calendars
 
@@ -99,7 +89,7 @@ A member's phone shows every group calendar they can read under the same app pas
 KyCalendar always accepts local passwords. **Sign-in** connects one single sign-on provider:
 
 - **KyIdentity**: logins with the `kycalendar.admin` app role are administrators (see above), and SCIM users from KyIdentity sign in as themselves.
-- **Another OpenID Connect provider** (Keycloak, Authentik, Google, Entra ID and others): everyone who signs in is an everyday user, whatever roles the provider sends. Administrators stay local accounts. An account keeps its email only when the ID token says `email_verified: true`, checked again at every sign-in (an unverified email is removed; upgrading to this version clears the emails stored before, and each person's next sign-in restores a verified one), because the email is who the person invites and answers as. Entra ID often leaves `email_verified` out: map a verified claim to it, or provision people by SCIM. An email that two active accounts share is neither's for invitations.
+- **Another OpenID Connect provider** (Keycloak, Authentik, Google, Entra ID and others): everyone who signs in is an everyday user, whatever roles the provider sends. Administrators stay local accounts. An account keeps its email only when the ID token says `email_verified: true`, checked again at every sign-in (an unverified email is removed; upgrading to this version clears the emails stored before, and each person's next sign-in restores a verified one), because the email is who the person invites and answers as. Entra ID often leaves `email_verified` out: map a verified claim to it (in Entra, a claims mapping on the app registration). Provisioning people by SCIM does not help here: a SCIM account signs in only through KyIdentity (see [Administrators and group calendars](#administrators-and-group-calendars)), so beside a generic provider it is a second account nobody can sign in to, and invitations to that email land there. An email that two active accounts share is neither's for invitations.
 
 Register a client with PKCE (S256) at the provider, with the redirect URI the screen shows (`https://<your host>/api/sso/kysignon/callback`), then enter the issuer URL, client ID, client secret (required; only confidential clients are supported) and the button label. **Test** reads the provider's discovery document without saving; **Save** tests again, needs a sign-in from the last 10 minutes, and takes effect at once. The issuer must use HTTPS and must name itself exactly as typed; redirects, loopback and link-local addresses are refused, private LAN addresses are allowed. The secret is stored encrypted under the instance's data key, with the provider, issuer and client ID it was entered for, and never shown again; leave it blank to keep it. It is used only for that registration: if the issuer or client ID changes, on this screen or through `KY_KYSIGNON_ISSUER`/`KY_KYSIGNON_CLIENT_ID`, single sign-on stays off until you enter the new provider's secret, so one provider's secret is never sent to another. A secret saved by a pre-release build of this screen has no such record and must be entered again. Backups carry the settings and the key, so a restore should restore sign-in (not covered by the restore drill).
 
@@ -144,8 +134,9 @@ positive or startup fails.
 | `KYCALENDAR_KYPOST_SECRET_FILE` | empty | A file holding the secret KyCalendar and KyPost share, at least 32 bytes (`openssl rand -hex 32`), mode 600. In Compose, put it in `./data` and name it `/app/data/kypost.secret`. |
 | `KYCALENDAR_KYPOST_ALLOW_PRIVATE` | `false` | Let KyPost be on your own network (a private address). Loopback stays refused; `https://` is always required. |
 
-The instance cap exists because a capsule carries the SQLite database as one file and refuses a
-file over 64 MiB: past it, every backup fails for everyone. Raising it on SQLite trades that
+The instance cap exists because a capsule carries at most 256 MiB (the SQLite database travels in
+64 MiB parts) and past that every backup fails for everyone; the log warns at 80%. The database
+is several times the stored event bytes (indexes, change history, the audit log). Raising the cap on SQLite trades that
 guarantee away. Postgres deployments make no capsules, so the cap is off there. The cap is
 shared: once it is full, every user's writes get 507 until data is removed, which is visible,
 where a backup that silently stopped is not. Keep the per-user cap well below it; deleting a user

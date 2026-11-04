@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -122,5 +123,24 @@ func TestDAVFailuresEvictsExpiredFirst(t *testing.T) {
 	}
 	if _, ok := f.seen["ip:live0"]; !ok {
 		t.Fatal("live entry evicted before the expired one")
+	}
+}
+
+// Guesses naming no real token ID cost an audit row each, kept a year; spread over many
+// addresses they pass every per-address limit. They are audited 200 a day, so a flood cannot
+// grow the database past what a capsule can carry and stop backups.
+func TestDAVUnknownTokenAuditIsBoundedPerDay(t *testing.T) {
+	s, h := davInternalServer(t)
+	for i := range unknownAuthAuditsPerDay + 5 {
+		req := httptest.NewRequest("PROPFIND", "/dav/", nil)
+		req.SetBasicAuth("alice", "kc_nope_nope")
+		req.RemoteAddr = fmt.Sprintf("198.51.%d.%d:4000", i/250, i%250+1)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	if n := auditCount(t, s); n != unknownAuthAuditsPerDay {
+		t.Fatalf("audit rows: %d, want %d", n, unknownAuthAuditsPerDay)
+	}
+	if !s.unknownAudit.admit(time.Now().Add(24 * time.Hour)) {
+		t.Fatal("the budget did not renew the next day")
 	}
 }

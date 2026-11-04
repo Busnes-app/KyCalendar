@@ -39,7 +39,7 @@ Delivery, queues, credentials and storage belong to their callers; nothing here 
   - `Decode` refuses bodies over `calendar.MaxObjectSize` and `calendar.LongParams` input, and
     turns go-ical panics into `ErrInvalid`.
   - `Validate` accepts METHOD REQUEST, REPLY or CANCEL; VEVENT and VTIMEZONE only; one UID;
-    ORGANIZER on every VEVENT; at most 100 attendees per VEVENT and 1000 per object; every
+    the same ORGANIZER on every VEVENT (the sender is checked against the first); at most 100 attendees per VEVENT and 1000 per object; every
     address valid.
 - `ApplyReply(stored, reply, sender)`:
   - changes only the PARTSTAT of the ATTENDEE equal to sender, never times, text, other

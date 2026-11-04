@@ -34,6 +34,10 @@ func resetRestored(ctx context.Context, dataDir string) error {
 	if err := checkRestorePath(dataDir); err != nil {
 		return err
 	}
+	// A database too large for one capsule member was restored in parts: join them first.
+	if err := backup.JoinRestoredDatabase(dataDir); err != nil {
+		return err
+	}
 	path := filepath.Join(dataDir, filepath.Base(backup.DatabaseMember))
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("no restored database at %s: %w", path, err)
@@ -47,7 +51,7 @@ func resetRestored(ctx context.Context, dataDir string) error {
 	return st.ResetAfterRestore(ctx)
 }
 
-const resetDone = "✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written. Every user creates new app passwords; CalDAV clients resync."
+const resetDone = "✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written; scheduled backups turned off. Every user creates new app passwords; CalDAV clients resync. Turn the backup schedule back on once this server is the one in service."
 
 func runRestoreReset(args []string) {
 	fs := flag.NewFlagSet("restore-reset", flag.ExitOnError)

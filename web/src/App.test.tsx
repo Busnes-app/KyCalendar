@@ -91,7 +91,7 @@ describe('Settings', () => {
     expect(within(tabs).getByRole('link', { name: 'Account' }).getAttribute('aria-current')).toBe('page');
     expect(gear.getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('button', { name: 'Calendar' }).getAttribute('aria-current')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Two-step verification is off' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /Two-step verification/ })).toBeNull();
   });
 
   it('sends the old page addresses to their Settings section', async () => {

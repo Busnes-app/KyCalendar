@@ -106,7 +106,7 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 			if user != nil && !secretOK {
 				s.davFails.fail("mcp-user:"+user.ID, now)
 			}
-			if parsed {
+			if parsed && (p != nil || s.unknownAudit.admit(now)) {
 				rec := &store.AuditRecord{Action: "mcp.auth_failed", Resource: "user:unknown", IPAddress: s.requestIP(r)}
 				if p != nil { // only a real token ID is logged, never attacker text
 					rec.Resource, rec.Details = user.ID, "app_password:"+p.ID

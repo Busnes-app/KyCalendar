@@ -71,6 +71,7 @@ type Server struct {
 	attempts     map[string]attemptWindow
 	accounts     map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
 	davFails     davFailures
+	unknownAudit unknownAuthAudit // dav_auth.go
 	powSpent     auth.PoWSpent
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
@@ -204,12 +205,20 @@ func (s *Server) allowAttempt(key string, limit int, window time.Duration) bool 
 	return entry.count <= limit
 }
 
-// allowAccountAttempt counts a per-account window. Keys are built only from real user IDs, so
-// the map is bounded by the user count and never evicts.
+// allowAccountAttempt counts a per-account window. Keys are a real user ID plus the client
+// address, so a new key past attemptsCap first drops the expired windows; a live one is never
+// dropped, or flooding the map would reset someone's lockout.
 func (s *Server) allowAccountAttempt(key string, limit int, window time.Duration) bool {
 	now := time.Now()
 	s.attemptsMu.Lock()
 	defer s.attemptsMu.Unlock()
+	if _, known := s.accounts[key]; !known && len(s.accounts) >= attemptsCap {
+		for k, w := range s.accounts {
+			if now.After(w.reset) {
+				delete(s.accounts, k)
+			}
+		}
+	}
 	entry := bumpWindow(s.accounts[key], now, window)
 	s.accounts[key] = entry
 	return entry.count <= limit
@@ -287,15 +296,9 @@ func (s *Server) routes() {
 	// Auth
 	s.handle("/api/auth/pow-challenge", http.HandlerFunc(s.handlePoWChallenge))
 	s.handle("/api/auth/login", http.HandlerFunc(s.handleLogin))
-	s.handle("/api/auth/mfa/totp", http.HandlerFunc(s.handleMFATOTP))
-	s.handle("/api/auth/mfa/recovery-code", http.HandlerFunc(s.handleMFARecovery))
 	s.handle("/api/auth/logout", http.HandlerFunc(s.handleLogout))
 	s.handle("/api/auth/me", http.HandlerFunc(s.handleMe))
 	s.handle("/api/auth/change-password", http.HandlerFunc(s.handleChangePassword))
-	// TOTP enrolment: session routes, so CSRF-checked unlike the pre-session MFA steps above.
-	s.handle("POST /api/auth/mfa/enroll", s.requireSession(s.handleMFAEnroll))
-	s.handle("POST /api/auth/mfa/enroll/confirm", s.requireSession(s.handleMFAEnrollConfirm))
-	s.handle("POST /api/auth/mfa/disable", s.requireSession(s.handleMFADisable))
 
 	// SSO
 	s.handle("/api/sso/kysignon/login", s.requireSSO(s.handleKySignOnLogin))
@@ -500,7 +503,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusForbidden, "Invalid CSRF token")
 		return
 	}
-	// Login and MFA run before a session (and its CSRF token) exists; a cross-site form posting
+	// Login runs before a session (and its CSRF token) exists; a cross-site form posting
 	// there would plant the attacker's session in the victim's browser.
 	if isUnsafeMethod(r.Method) && strings.HasPrefix(r.URL.Path, "/api/auth/") && crossSite(r) {
 		s.writeError(w, http.StatusForbidden, "Cross-site request refused")
@@ -551,7 +554,7 @@ func (s *Server) requireSSO(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // csrfValid checks an unsafe request's X-CSRF-Token against the cookie it is bound to. Sign-in
-// and MFA run before a session exists: a browser must present the token of its pre-session
+// runs before a session exists: a browser must present the token of its pre-session
 // cookie (GET /api/auth/me hands one out). Every other route needs, when a session cookie
 // rides along, the token of that session. A request with no session cookie carries no ambient
 // credential to forge with; the signed directory webhook is server-to-server.
@@ -566,10 +569,9 @@ func (s *Server) csrfValid(r *http.Request) bool {
 	}
 }
 
-// credentialRoute is a pre-session sign-in step. Exact paths: MFA enrolment shares the
-// /api/auth/mfa/ prefix and is a session route.
+// credentialRoute is the pre-session sign-in step.
 func credentialRoute(path string) bool {
-	return path == "/api/auth/login" || path == "/api/auth/mfa/totp" || path == "/api/auth/mfa/recovery-code"
+	return path == "/api/auth/login"
 }
 
 // browserRequest reports a request a browser sent: browsers attach Origin to every POST and

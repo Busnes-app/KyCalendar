@@ -29,8 +29,8 @@ Everything a fresh server needs to be the old one:
 
 | Path in the capsule | What it is |
 |---|---|
-| `data/kycalendar.db` | The whole database: users, groups, calendars and events, app-password hashes, sessions, MFA state, audit log, settings (sign-in settings included), the sealed KyRecovery token |
-| `data/encryption.key` | 32 bytes. Every TOTP secret, the KyRecovery pairing token and the sign-in client secret are encrypted under it, so a restore brings sign-in settings back (not drill-checked) |
+| `data/kycalendar.db` | The whole database: users, groups, calendars and events, app-password hashes, sessions, audit log, settings (sign-in settings included), the sealed KyRecovery token |
+| `data/encryption.key` | 32 bytes. The KyRecovery pairing token and the sign-in client secret are encrypted under it, so a restore brings sign-in settings back (not drill-checked) |
 | `data/recovery.pub` | The suite recovery public key, so the restored server comes back pinned (present when the backup had a key) |
 | `config/settings.json` | App name, URL, port, database driver. For your reference when re-deploying; nothing reads it |
 
@@ -175,14 +175,17 @@ Restored 4 files from capsule cap-kycalendar-1788605720094118543
   payload hash: 8a053985...
 ```
 
-Then it resets the restored database in one transaction, with no further input: sessions,
+A database larger than 64 MiB travels in the capsule as ordered parts
+(`data/kycalendar.db.part-0001`, `-0002`, ...); the restore joins them into
+`data/kycalendar.db` first, and refuses if one is missing. Then it resets the restored
+database in one transaction, with no further input: sessions,
 MFA challenges and app passwords are deleted, invitations still queued in the backup are
-dropped (they describe the calendar as it was), a new sync epoch is written and
-`system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
+dropped (they describe the calendar as it was), scheduled backups are turned off, a new sync
+epoch is written and `system.restore_reset` is audited. Password hashes are left as the backup had them; Step 3
 deals with them. It ends with:
 
 ```
-✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written. Every user creates new app passwords; CalDAV clients resync.
+✓ Sessions, MFA challenges and app passwords revoked; queued invitations dropped; new sync epoch written; scheduled backups turned off. Every user creates new app passwords; CalDAV clients resync. Turn the backup schedule back on once this server is the one in service.
 ```
 
 If the reset fails, the files are in place but the credentials are still the backup's. The
@@ -324,12 +327,14 @@ reset-password -username <name>`), and only then start.
 
 ## Step 4: prove it
 
-1. Open the app URL and sign in. Every session was revoked, so everyone signs in again. TOTP
-   working proves `encryption.key` is right.
+1. Open the app URL and sign in. Every session was revoked, so everyone signs in again. Single
+   sign-on working proves `encryption.key` is right.
 2. Open Backup & recovery. If the backup had a key, the recovery key shows as pinned with the
    same key ID as before; compare it with the ceremony card. If the backup was paired, the
    sealed token came across in the database, so the restored server can deposit again
-   without re-pairing: click Back up now to prove it. If the screen says the key is missing,
+   without re-pairing. Scheduled backups are off after a restore, so a drill copy never deposits
+   its old state as the newest capsule: once this server is the one in service, click Back up
+   now to prove it and turn the schedule back on. If the screen says the key is missing,
    `data/recovery.pub` did not come across; re-pair, which is refused unless KyRecovery hands
    back the same key.
 3. Check the audit log: the last events before the restore are there, followed by your
@@ -338,7 +343,7 @@ reset-password -username <name>`), and only then start.
 ## Step 5: decide what to trust
 
 The restore proves the service works. It does not make the restored state current or safe.
-Everything comes back as of the capsule's `created_at`: users, passwords, MFA enrolments,
+Everything comes back as of the capsule's `created_at`: users, passwords,
 SCIM state, calendars and events. Anything you revoked or changed after that moment is undone.
 `restore` has already revoked every session, MFA challenge and app password and started a
 new sync epoch. It does not touch passwords: **a restore brings back every local password
@@ -350,22 +355,20 @@ would work again; Step 3 reset those before the service opened.
      CalDAV clients resync from scratch (the epoch changes the calendar CTag).
    - Local passwords changed after the backup were reset in Step 3; their owners sign in with
      the temporary password and choose a new one. SSO accounts are unaffected.
-   - Recovery codes come back as they were at backup time. A user who used or regenerated
-     recovery codes after the backup should regenerate them.
    - Events created after the backup are gone unless a client still holds them; the old audit
      log in step 2 shows what happened since.
    - The interop and real-device client checks remain an operator step: reconnect one
      iPhone, Android and Thunderbird client and confirm the calendars sync.
 2. Walk the old audit log (`old-data/kycalendar.db`, when you kept it) from `created_at` to
    the moment the old server was lost (the restored server's log stops at `created_at`), and
-   re-apply what else happened after the capsule: disabled accounts, reset MFA, SCIM changes.
+   re-apply what else happened after the capsule: disabled accounts, SCIM changes.
 3. If the reason for the restore was a suspected compromise rather than hardware loss, treat
    the restored secrets as exposed and rotate the ones that can be rotated. A restore from
    before a compromise brings the attacker's access back with the service unless you do this.
 
-   **Never rotate `encryption.key`.** Every TOTP secret and the KyRecovery pairing token are
-   encrypted under it. Remove it and every user's second factor and the pairing are gone for
-   good, on a server you just recovered.
+   **Never rotate `encryption.key`.** The KyRecovery pairing token and the sign-in client secret
+   are encrypted under it. Remove it and both are gone for good, on a server you just
+   recovered.
 
    What can be rotated, and how:
 
@@ -377,8 +380,8 @@ would work again; Step 3 reset those before the service opened.
    - The KyRecovery pairing token: ask the KyRecovery admin to revoke this service and pair
      again from the screen; the same key comes back, so the pairing is accepted.
 
-   Then have every admin re-enrol their second factor, and confirm with a Back up now so the
-   recovered server has a capsule that reflects the rotation.
+   Then confirm with a Back up now so the recovered server has a capsule that reflects the
+   rotation.
 
 ## Afterwards
 

@@ -20,7 +20,7 @@ itself, with `pg_dump` on its own schedule and its own retention, and must prote
 it is the plaintext of everything a capsule would have sealed. Nothing travels in a capsule
 there, because no capsule is made. The recovery key pin, the pairing and the schedule live in
 the database and so ride in the `pg_dump`; `data/encryption.key` and `data/recovery.pub` do
-not, and you must copy them separately. Without `encryption.key` no TOTP secret and no
+not, and you must copy them separately. Without `encryption.key` no sign-in client secret and no
 KyRecovery token in that dump can be decrypted.
 
 Backups also require the default database path: a capsule restores the database as

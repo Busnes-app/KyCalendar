@@ -391,6 +391,196 @@ func TestDeletingACalendarCancelsItsMeetings(t *testing.T) {
 	}
 }
 
+// Deleting a group calendar cancels a meeting as its organizer only when it can be theirs: an
+// editor who copies alice's private meeting into the group calendar cannot have it cancelled as
+// alice when an administrator deletes the calendar. Alice's own group meeting still is.
+func TestDeletingAGroupCalendarCancelsOnlyItsOrganizersMeetings(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	webUser(t, srv, st, "mallory")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_alice")
+	if err := st.Groups().AddGroupMember(ctx, "grp_editor_"+group.ID, "usr_mallory"); err != nil {
+		t.Fatal(err)
+	}
+
+	private := `{"title":"1:1","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", private, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	shared := `{"title":"Team sync","start":"2030-11-11T09:00:00Z","end":"2030-11-11T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w = call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", shared, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create in the group calendar %d %s", w.Code, w.Body.String())
+	}
+	var team struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &team)
+	srv.DeliverScheduled(ctx)
+
+	// Mallory's forged copy, as a CalDAV client would store it: alice's UID and ORGANIZER.
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:" + made.UID + "\r\nDTSTAMP:20301101T000000Z\r\n" +
+		"DTSTART:20301110T090000Z\r\nDTEND:20301110T100000Z\r\nSEQUENCE:9\r\nSUMMARY:1:1\r\nORGANIZER:mailto:alice@example.com\r\n" +
+		"ATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(group.ID, "forged.ics", cal, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Calendars().PutObject(ctx, o, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+group.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
+	var evs []struct {
+		UID       string
+		Cancelled bool
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &evs); err != nil {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	seen := map[string]bool{}
+	for _, e := range evs {
+		seen[e.UID] = true
+		if e.UID == made.UID && e.Cancelled {
+			t.Fatal("alice's private meeting was cancelled through mallory's copy")
+		}
+	}
+	if !seen[made.UID] {
+		t.Fatalf("bob lost alice's private meeting: %s", w.Body.String())
+	}
+	if seen[team.UID] {
+		t.Fatalf("alice's group meeting was not cancelled for bob (he never answered): %s", w.Body.String())
+	}
+}
+
+// Alice's own group meeting is still cancelled when she has left the group before an
+// administrator deletes the calendar.
+func TestDeletingAGroupCalendarCancelsAFormerMembersMeeting(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	group := groupCalendar(t, st, "Team")
+	grantRole(t, st, group, "editor", "usr_alice")
+	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	if w := call(t, srv, "POST", "/api/calendars/"+group.ID+"/events", body, alice); w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	if err := st.Groups().RemoveGroupMember(ctx, "grp_editor_"+group.ID, "usr_alice"); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+group.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	if w := call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob); strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("bob kept the meeting of a deleted group calendar: %s", w.Body.String())
+	}
+}
+
+// A copy of alice's group meeting in a calendar she only reads is no sign the meeting is hers
+// elsewhere: deleting the group calendar still cancels it.
+func TestDeletingAGroupCalendarIgnoresAReadOnlyCopy(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	team, board := groupCalendar(t, st, "Team"), groupCalendar(t, st, "Board")
+	grantRole(t, st, team, "editor", "usr_alice")
+	grantRole(t, st, board, "reader", "usr_alice")
+	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+team.ID+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(ctx)
+	src, err := st.Calendars().GetObjectByUID(ctx, team.ID, made.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := *src
+	cp.CalendarID, cp.Name = board.ID, "copy.ics"
+	if _, err := st.Calendars().PutObject(ctx, &cp, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+team.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	if w := call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob); strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("bob kept the meeting of a deleted group calendar: %s", w.Body.String())
+	}
+}
+
+// The same forgery of a meeting alice organizes from another group calendar: deleting the
+// calendar mallory wrote it into still cancels nothing of alice's.
+func TestDeletingAGroupCalendarSparesAMeetingOfAnotherGroupCalendar(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServer(t)
+	ctx := context.Background()
+	admin := loginAs(t, srv, st, "root", "admin")
+	alice, _ := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	webUser(t, srv, st, "mallory")
+	home, doomed := groupCalendar(t, st, "Home"), groupCalendar(t, st, "Doomed")
+	grantRole(t, st, home, "editor", "usr_alice")
+	grantRole(t, st, doomed, "editor", "usr_alice")
+	if err := st.Groups().AddGroupMember(ctx, "grp_editor_"+doomed.ID, "usr_mallory"); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`
+	w := call(t, srv, "POST", "/api/calendars/"+home.ID+"/events", body, alice)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ UID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &made)
+	srv.DeliverScheduled(ctx)
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:" + made.UID + "\r\nDTSTAMP:20301101T000000Z\r\n" +
+		"DTSTART:20301110T090000Z\r\nDTEND:20301110T100000Z\r\nSEQUENCE:9\r\nSUMMARY:Sync\r\nORGANIZER:mailto:alice@example.com\r\n" +
+		"ATTENDEE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(doomed.ID, "forged.ics", cal, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Calendars().PutObject(ctx, o, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, srv, "DELETE", "/api/admin/calendars/"+doomed.ID, "", admin); w.Code != http.StatusNoContent {
+		t.Fatalf("delete group calendar %d %s", w.Code, w.Body.String())
+	}
+	srv.DeliverScheduled(ctx)
+	w = call(t, srv, "GET", "/api/events?start=2030-11-01T00:00:00Z&end=2030-12-01T00:00:00Z&tz=UTC", "", bob)
+	if !strings.Contains(w.Body.String(), made.UID) || strings.Contains(w.Body.String(), `"cancelled":true`) {
+		t.Fatalf("bob's copy of alice's group meeting after the forged copy's calendar went: %s", w.Body.String())
+	}
+}
+
 // A subscription's mirrored meetings are someone else's: deleting the subscription sends nothing
 // and still works with scheduling on.
 func TestDeletingASubscriptionWithMeetings(t *testing.T) {

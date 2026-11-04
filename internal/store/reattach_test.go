@@ -23,9 +23,6 @@ func TestReattachSSOUser(t *testing.T) {
 	// Grants in every table, then a whole-row deactivation that leaves them in place.
 	seedSession(t, st, carol)
 	now := time.Now()
-	if err := st.Sessions().CreateMFAChallenge(ctx, &store.MFAChallenge{TokenHash: "mfa_carol", UserID: carol.ID, ExpiresAt: now.Add(time.Hour)}, "h"); err != nil {
-		t.Fatal(err)
-	}
 	if err := st.Devices().CreatePairing(ctx, &store.DevicePairing{Secret: "pair_carol", UserID: carol.ID, Status: "pending", CreatedAt: now, ExpiresAt: now.Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +62,6 @@ func TestReattachSSOUser(t *testing.T) {
 	}
 	if _, err := st.Sessions().GetSession(ctx, "tok_"+carol.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Error("session survived", err)
-	}
-	if _, _, err := st.Sessions().ConsumeMFAChallenge(ctx, "mfa_carol"); !errors.Is(err, store.ErrNotFound) {
-		t.Error("MFA challenge survived", err)
 	}
 	if _, err := st.Devices().GetPairingBySecret(ctx, "pair_carol"); !errors.Is(err, store.ErrNotFound) {
 		t.Error("device pairing survived", err)

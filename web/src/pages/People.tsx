@@ -12,7 +12,6 @@ interface Person {
   role: string;
   status: string;
   source: string;
-  mfa: boolean;
   must_change_password: boolean;
   last_login_at: string | null;
   bound_to?: string;
@@ -193,7 +192,6 @@ export default function People({ me }: { me: string }) {
                   <td data-label="Status">
                     <span className="badges">
                       <span className="ky-status" data-ky-status={p.status === "active" ? "success" : undefined}>{p.status === "active" ? "Active" : "Disabled"}</span>
-                      {p.mfa ? <span className="badge">MFA</span> : null}
                     </span>
                   </td>
                   <td data-label="Last sign-in" className="cell-nowrap">

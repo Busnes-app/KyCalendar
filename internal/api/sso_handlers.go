@@ -26,6 +26,14 @@ var (
 	errOtherIssuer   = errors.New("account belongs to another sign-in provider")
 )
 
+// nonceCookieKey MACs the nonce cookie, so a browser cannot back-date a step-up's start. It lives
+// as long as the process; so does a provider's ID, which the cookie already has to match.
+var nonceCookieKey = crypto.RandomHex(32)
+
+func nonceCookieMAC(state, value string) string {
+	return crypto.ComputeHMACSHA256([]byte(state+"|"+value), nonceCookieKey)
+}
+
 // upsertSSOUser maps a verified login through the provider bound as binding onto a local user,
 // which must carry that binding (new rows are stamped with it). A KyIdentity login's admin grant
 // follows the token's `roles` claim on every login; any other provider's users are everyday. A
@@ -159,14 +167,14 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 	// The nonce cookie carries the provider's ID: a callback after a provider swap fails. A
-	// step-up adds when it started.
+	// step-up adds when it started. A MAC over the state and value ends it.
 	value := p.ID + "." + nonce
 	if stepUp {
 		value += "." + strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ky_nonce_" + state,
-		Value:    value,
+		Value:    value + "." + nonceCookieMAC(state, value),
 		Path:     "/api/sso/kysignon/callback",
 		MaxAge:   300,
 		HttpOnly: true,
@@ -193,8 +201,16 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	value, mac := nonceCookie.Value, ""
+	if i := strings.LastIndexByte(value, '.'); i >= 0 {
+		value, mac = value[:i], value[i+1:]
+	}
+	if !crypto.VerifyHMACSHA256([]byte(state+"|"+value), nonceCookieKey, mac) {
+		s.writeError(w, http.StatusBadRequest, "Invalid or expired SSO nonce")
+		return
+	}
 	p := s.signin.Load()
-	providerID, rest, _ := strings.Cut(nonceCookie.Value, ".")
+	providerID, rest, _ := strings.Cut(value, ".")
 	nonce, started, stepUp := strings.Cut(rest, ".")
 	if p == nil || providerID != p.ID || nonce == "" {
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
@@ -241,20 +257,24 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 
 	// The session is dated from when the user last gave the provider their credentials, so a
 	// silent sign-in on a live provider session is not a step-up. A step-up must have an
-	// auth_time from after it started (a minute's leeway for the provider's clock).
+	// auth_time from after it started (a minute's leeway for the provider's clock). Without an
+	// auth_time the session is dated from iat, for the logout fences, and marked unproven: no
+	// step-up.
 	verified := claims.IssuedAt
 	if !claims.AuthTime.IsZero() {
 		verified = claims.AuthTime
 	}
 	if stepUp {
 		start, err := strconv.ParseInt(started, 10, 64)
-		if err != nil || claims.AuthTime.IsZero() || claims.AuthTime.Before(time.Unix(start, 0).Add(-time.Minute)) {
+		// The cookie's five minutes are the browser's to keep: a start older than that, from a
+		// signed cookie kept back, is refused here too.
+		if err != nil || time.Since(time.Unix(start, 0)) > 5*time.Minute || claims.AuthTime.IsZero() || claims.AuthTime.Before(time.Unix(start, 0).Add(-time.Minute)) {
 			log.Printf("sso: step-up for subject %s refused: the provider did not report a fresh sign-in (auth_time %v)", claims.Subject, claims.AuthTime)
 			s.writeError(w, http.StatusUnauthorized, "Your sign-in provider did not ask for your password again, so this sign-in cannot confirm it is you")
 			return
 		}
 	}
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified)
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
 	if errors.Is(err, store.ErrSSOSessionEnded) {
 		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
 		return

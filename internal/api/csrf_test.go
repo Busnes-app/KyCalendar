@@ -188,21 +188,6 @@ func TestPreSessionCSRFProtectsSignIn(t *testing.T) {
 	if got := createAppPassword(srv, session, csrf, myToken); got != http.StatusForbidden {
 		t.Errorf("pre-session token after sign-in: got %d, want 403", got)
 	}
-
-	// MFA steps are pre-session too.
-	for _, path := range []string{"/api/auth/mfa/totp", "/api/auth/mfa/recovery-code"} {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"mfa_token":"x","code":"123456"}`))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Origin", "http://localhost:8080")
-		for _, c := range mine {
-			req.AddCookie(c)
-		}
-		w := httptest.NewRecorder()
-		srv.ServeHTTP(w, req)
-		if w.Code != http.StatusForbidden {
-			t.Errorf("%s without a token: got %d, want 403", path, w.Code)
-		}
-	}
 }
 
 // Signing out needs the session's token, and hands the browser a fresh pre-session so the

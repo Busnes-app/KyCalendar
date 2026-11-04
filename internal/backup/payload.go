@@ -17,8 +17,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// encryptionKeyPath is where a restore drops the key that decrypts users.totp_secret_enc,
-// relative to the restore target: the same <DataDir>/encryption.key config.LoadFromEnv reads.
+// encryptionKeyPath is where a restore drops the key that opens the sealed secrets (sign-in,
+// KyRecovery token), relative to the restore target: the <DataDir>/encryption.key LoadFromEnv reads.
 const encryptionKeyPath = "data/encryption.key"
 
 // recoveryPubPath is where a restore drops the suite recovery public key, matching the
@@ -56,9 +56,8 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	if err != nil {
 		return recoveryclient.Payload{}, err
 	}
-	dbPath := DatabaseMember
-	files := []recoveryclient.File{{Path: dbPath, Data: dbBytes, Mode: 0600}}
-	sqlitePaths := []string{dbPath}
+	files, parts := databaseFiles(dbBytes)
+	sqlitePaths := []string{DatabaseMember}
 
 	cfgJSON, _ := json.MarshalIndent(map[string]any{
 		"server":   cfg.Server,
@@ -92,6 +91,11 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 		raw, _ := json.Marshal(paths)
 		files = append(files, recoveryclient.File{Path: "installer/credential-paths.json", Data: raw, Mode: 0600})
 	}
+	warnNearLimit(files)
+	required := requiredFiles(files)
+	if parts != nil {
+		required = append(required, DatabaseMember) // joined from the parts before any check
+	}
 	payload := recoveryclient.Payload{
 		ServiceName: ServiceName,
 		AppVersion:  appVersion,
@@ -105,10 +109,13 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 			"sqlite_paths":           sqlitePaths,
 			"calendar_count":         counts.Calendars,
 			"object_count":           counts.Objects,
-			"required_files":         requiredFiles(files),
+			"required_files":         required,
 			"expected_env":           []string{"KY_PORT", "KY_DB_DRIVER"},
 			"expected_ports":         []int{cfg.Server.Port},
 		},
+	}
+	if parts != nil {
+		payload.VerificationRecipe["database_parts"] = parts
 	}
 	return payload, nil
 }

@@ -251,7 +251,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 - `init-admin [-username <name>]` makes the named local account a break-glass admin (created if absent, promoted and reactivated if present) and resets its password; password from stdin, never argv (a `-password` flag is refused).
 - `create-user` makes a local everyday account (password from stdin, forced change at first sign-in); it refuses an existing name.
-- `rename-user -username <name> -to <new>` renames a local account (exact name; SSO accounts, taken names and case twins refused), keeping password, role, MFA and sessions; audited `user.renamed`. Use it when an IdP username collides with a local one.
+- `rename-user -username <name> -to <new>` renames a local account (exact name; SSO accounts, taken names and case twins refused), keeping password, role and sessions; audited `user.renamed`. Use it when an IdP username collides with a local one.
 - `reset-password -username <name>` resets any local account (exact name; SSO accounts refused): temporary password from stdin, role and status kept, sessions, MFA challenges and app passwords revoked, forced change at next sign-in.
 
 - Deployment defaults: the image runs as UID/GID 10001 and sets `KY_HOST=0.0.0.0`; `docker-compose.yml` runs it `read_only` (tmpfs `/tmp`), `cap_drop: [ALL]`, `no-new-privileges`, and publishes `${KY_BIND_ADDRESS:-127.0.0.1}:8080`. The image embeds the committed `web/dist` (no frontend build stage) and pins base images by digest. `TestComposeAndImageAreHardenedByDefault` pins these. Host bind mounts `./data` and `./backups` must be owned by 10001 (README).
@@ -345,7 +345,7 @@ only the process setting across base/build/LAN-DNS/static-IP combinations.
 - CLI `deposit`, `export-capsule` and `backup-drill` open through `openForBackup`, which loads the stored installer setup as `runServer` does, so managed capsules carry the installer credentials; `backup-drill` exits 1 when the drill fails (`TestBackupDrillCLIOnManagedInstall`).
 - Unpair, pairing, pinning a key and exporting a capsule require a sign-in younger than the step-up window (403 `reauth_required`).
 - `restore` runs `ResetAfterRestore` after extraction in one transaction: it deletes sessions, MFA challenges, device pairings and app passwords, writes a new `sync_epoch` (carried in the CalDAV CTag so clients resync) and audits `system.restore_reset`. If the reset fails, restore says not to start the server; `kycalendar restore-reset -to <dir>` is idempotent and finishes it. Both refuse a target containing `?` or `#`, which the SQLite DSN would cut.
-- Password hashes and recovery codes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
+- Password hashes come back as of the backup and are not forced to change; `docs/RESTORE.md` has the operator reset them with the stack down, before `docker compose up -d`: the accounts the old audit log shows rotated after the capsule, or every local account (administrators first) when the old log is gone.
 - The interop gate (spec Testing 6, real-device clients) remains open: an operator step with real devices.
 
 #### Standalone administration contracts
@@ -399,7 +399,7 @@ Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
 - [internal/config/AGENTS.md](internal/config/AGENTS.md): Configuration management and environment loader.
 - [internal/store/AGENTS.md](internal/store/AGENTS.md): Pluggable database abstraction layer (SQLite & PostgreSQL).
 - [internal/crypto/AGENTS.md](internal/crypto/AGENTS.md): Cryptographic primitives (AES-256-GCM, HMAC, SHA-256, randomness, PKCE).
-- [internal/auth/AGENTS.md](internal/auth/AGENTS.md): Authentication, MFA (TOTP), recovery codes, sessions, and CAPTCHA.
+- [internal/auth/AGENTS.md](internal/auth/AGENTS.md): Authentication, password policy, sessions, and CAPTCHA (no local MFA: a second factor is KyIdentity's).
 - [internal/sso/AGENTS.md](internal/sso/AGENTS.md): Single Sign-On federation (KySignOn, OIDC, SAML 2.0).
 - [internal/scim/AGENTS.md](internal/scim/AGENTS.md): SCIM 2.0 user and group provisioning engine.
 - [internal/backup/AGENTS.md](internal/backup/AGENTS.md): Product-side adapters over `ky-primitives/recoveryclient`: payload collection, drill checks, settings and sealer glue.
@@ -447,8 +447,7 @@ Keep `README.md` as the concise product overview and navigation. Detailed proced
 
 `docs/STRONG-CRYPTO.md` owns the supported process/edge configuration, per-boundary
 key rules and migration. Preserve the database, encryption/recovery keys, sealed
-credentials and all existing Compose overlays. TOTP delegates to the pinned
-merged primitive; keep historical records readable while rejecting short-key
-authentication. SSO owns verifier-matched JWKS parsing and configured direct HTTPS
+credentials and all existing Compose overlays. Stored TOTP columns are kept
+unused (local MFA was removed). SSO owns verifier-matched JWKS parsing and configured direct HTTPS
 flows; retain signature/claim/replay and destination checks. Update the nearest
 SSO/config/auth/crypto contracts when these boundaries change.

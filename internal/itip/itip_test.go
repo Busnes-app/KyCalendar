@@ -244,6 +244,9 @@ func TestValidate(t *testing.T) {
 	if m, uid, err := Validate(reply("ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com")); err != nil || m != MethodReply || uid != "m1" {
 		t.Errorf("valid reply: %q %q %v", m, uid, err)
 	}
+	if _, _, err := Validate(withOverride(reply(), "mailto:Alice@example.com")); err != nil {
+		t.Errorf("an override with the same organizer: %v", err)
+	}
 	many := make([]string, 101)
 	for i := range many {
 		many[i] = "ATTENDEE:mailto:a" + strings.Repeat("x", i%5) + "@example.com"
@@ -267,11 +270,26 @@ func TestValidate(t *testing.T) {
 			c.Children = append(c.Children, ical.NewComponent(ical.CompToDo))
 			return c
 		}(),
+		"an override with another organizer": withOverride(reply(), "mailto:carol@example.com"),
 	} {
 		if _, _, err := Validate(cal); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+}
+
+// withOverride adds an override of cal's first VEVENT naming organizer.
+func withOverride(cal *ical.Calendar, organizer string) *ical.Calendar {
+	e := ical.NewComponent(ical.CompEvent)
+	e.Props.SetText(ical.PropUID, cal.Children[0].Props.Get(ical.PropUID).Value)
+	rid := ical.NewProp(ical.PropRecurrenceID)
+	rid.Value = "20261108T090000Z"
+	e.Props.Set(rid)
+	o := ical.NewProp(ical.PropOrganizer)
+	o.Value = organizer
+	e.Props.Set(o)
+	cal.Children = append(cal.Children, e)
+	return cal
 }
 
 func TestApplyReply(t *testing.T) {
