@@ -630,14 +630,15 @@ func (s *SQLStore) withLockedUser(ctx context.Context, where string, args []any,
 	return tx.Commit()
 }
 
-// CreateSession also records the sign-in as the user's last_login_at. A session of an SSO login
+// CreateSession also records the sign-in, now, as the user's last_login_at (CreatedAt can be
+// older: an SSO session is dated from when the provider last checked the credentials). A session of an SSO login
 // whose sid, or whose subject's earlier logins, are fenced is deleted again: ErrSSOSessionEnded.
 func (s *sessionStore) CreateSession(ctx context.Context, sess *Session, expected Credentials) error {
 	err := s.store.withCredentials(ctx, sess.UserID, expected, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO sessions (token_hash, user_id, user_agent, ip_address, created_at, expires_at, sso_sid) VALUES (?, ?, ?, ?, ?, ?, ?)`), sess.TokenHash, sess.UserID, sess.UserAgent, sess.IPAddress, sess.CreatedAt, sess.ExpiresAt, sess.SSOSID); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), sess.CreatedAt, sess.UserID)
+		_, err := tx.ExecContext(ctx, s.store.rebind(`UPDATE users SET last_login_at = ? WHERE id = ?`), time.Now().UTC(), sess.UserID)
 		return err
 	})
 	if err != nil {
