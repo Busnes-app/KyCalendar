@@ -42,7 +42,6 @@ const maxIndexOccurrences = 100000
 // without yielding occurrences, so the occurrence budget alone does not cap the work.
 const maxRecurringComponents = 10
 
-// fastFreq reports an RRULE with FREQ=SECONDLY or MINUTELY, which is never expanded.
 // EndedBefore reports whether every VEVENT of cal ends before t: its last occurrence (bounded
 // by the rule's UNTIL, or counted out for a COUNT of at most 1000) plus its length. Times are
 // read as UTC, so callers allow a day's margin. It answers false when unsure (RDATE, a longer
@@ -86,6 +85,7 @@ func EndedBefore(cal *ical.Calendar, t time.Time) bool {
 	return seen
 }
 
+// fastFreq reports an RRULE with FREQ=SECONDLY or MINUTELY, which is never expanded.
 func fastFreq(comp *ical.Component) bool {
 	for _, p := range comp.Props[ical.PropRecurrenceRule] {
 		for _, part := range strings.Split(strings.ToUpper(p.Value), ";") {

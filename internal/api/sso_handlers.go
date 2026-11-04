@@ -266,7 +266,9 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	if stepUp {
 		start, err := strconv.ParseInt(started, 10, 64)
-		if err != nil || claims.AuthTime.IsZero() || claims.AuthTime.Before(time.Unix(start, 0).Add(-time.Minute)) {
+		// The cookie's five minutes are the browser's to keep: a start older than that, from a
+		// signed cookie kept back, is refused here too.
+		if err != nil || time.Since(time.Unix(start, 0)) > 5*time.Minute || claims.AuthTime.IsZero() || claims.AuthTime.Before(time.Unix(start, 0).Add(-time.Minute)) {
 			log.Printf("sso: step-up for subject %s refused: the provider did not report a fresh sign-in (auth_time %v)", claims.Subject, claims.AuthTime)
 			s.writeError(w, http.StatusUnauthorized, "Your sign-in provider did not ask for your password again, so this sign-in cannot confirm it is you")
 			return

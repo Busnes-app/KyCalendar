@@ -86,6 +86,26 @@ func TestSSOStepUpNeedsAFreshAuthTime(t *testing.T) {
 	if w.Code != http.StatusBadRequest || ssoSession(w) != nil {
 		t.Fatalf("step-up with a back-dated start: %d %s", w.Code, w.Body.String())
 	}
+
+	// A correctly signed cookie kept past its five minutes is refused by the server too.
+	req = startLoginAt(t, s, context.Background(), "/api/sso/kysignon/login?step_up=1")
+	state := req.URL.Query().Get("state")
+	stale := httptest.NewRequest(http.MethodGet, req.URL.String(), nil)
+	for _, c := range req.Cookies() {
+		if strings.HasPrefix(c.Name, "ky_nonce_") {
+			parts := strings.Split(c.Value, ".")
+			idp.nonce = parts[1]
+			value := parts[0] + "." + parts[1] + "." + strconv.FormatInt(time.Now().Add(-10*time.Minute).Unix(), 10)
+			c.Value = value + "." + nonceCookieMAC(state, value)
+		}
+		stale.AddCookie(c)
+	}
+	idp.authTime = time.Now()
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, stale)
+	if w.Code != http.StatusUnauthorized || ssoSession(w) != nil {
+		t.Fatalf("step-up with a ten-minute-old signed start: %d %s", w.Code, w.Body.String())
+	}
 }
 
 // A generic OIDC account's email follows the token at each sign-in (Q3): an account made with an
