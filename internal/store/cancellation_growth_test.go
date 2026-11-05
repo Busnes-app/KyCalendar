@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
+	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav/caldav"
 )
 
 func TestCancellationGrowthBoundsDateFormsAndOverlaps(t *testing.T) {
@@ -105,6 +107,82 @@ func TestCancellationGrowthBoundsDateFormsAndOverlaps(t *testing.T) {
 				if !strings.Contains(string(raw), fmt.Sprintf("EXDATE%s:20261111%s", form.params, form.suffix)) {
 					t.Fatal("wrong occurrence date form")
 				}
+			}
+		})
+	}
+}
+
+func TestCancellationGrowthBoundsConvertedYearAndRepeatedIdentities(t *testing.T) {
+	for _, tc := range []struct{ name, zone, start, key, generated string }{
+		{"year_10000", "Etc/GMT-14", "99991231T000000", "99991231T120000Z", "100000101T020000"},
+		{"year_minus_one", "Etc/GMT+12", "00000101T000000", "00000101T000000Z", "-00011231T120000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			decode := func(raw string) *ical.Calendar {
+				t.Helper()
+				cal, err := ical.NewDecoder(strings.NewReader(raw)).Decode()
+				if err != nil {
+					t.Fatal(err)
+				}
+				return cal
+			}
+			encode := func(cal *ical.Calendar) []byte {
+				t.Helper()
+				var b bytes.Buffer
+				if err := ical.NewEncoder(&b).Encode(cal); err != nil {
+					t.Fatal(err)
+				}
+				return b.Bytes()
+			}
+			common := "UID:year-bound\r\nDTSTAMP:20261101T000000Z\r\nLAST-MODIFIED:20261101T000000Z\r\nSEQUENCE:100\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com\r\nX-KYCALENDAR-ORGANIZER-SEQUENCE:100\r\n"
+			occurrence := "BEGIN:VEVENT\r\n" + common + "RECURRENCE-ID:" + tc.key + "\r\nDTSTART:" + tc.key + "\r\nDURATION:PT1S\r\nEND:VEVENT\r\n"
+			wrap := func(events string) string {
+				return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Year bound test//EN\r\n" + events + "END:VCALENDAR\r\n"
+			}
+			source := decode(wrap("BEGIN:VEVENT\r\n" + common + "DTSTART;TZID=" + tc.zone + ":" + tc.start + "\r\nDURATION:PT1S\r\nRDATE:" + tc.key + "\r\nEND:VEVENT\r\n" + occurrence))
+			raw := encode(source)
+			if _, _, err := caldav.ValidateCalendarObject(source); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := calendar.Inspect(source); err != nil {
+				t.Fatal(err)
+			}
+			notice := decode(wrap(strings.Repeat(occurrence, 1000)))
+			if _, _, err := caldav.ValidateCalendarObject(notice); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := calendar.Inspect(notice); err != nil {
+				t.Fatal(err)
+			}
+			notice.Props.SetText(ical.PropMethod, itip.MethodCancel)
+			if _, _, err := itip.Validate(notice); err != nil {
+				t.Fatal(err)
+			}
+			if len(encode(notice)) > calendar.MaxObjectSize {
+				t.Fatal("notice exceeds accepted wire cap")
+			}
+			reserved, err := cancellationCopyGrowth(raw, notice)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, ev := range notice.Children {
+				key, ok := calendar.OccurrenceKey(source, ev.Props.Get(ical.PropRecurrenceID))
+				if !ok {
+					t.Fatal("accepted recurrence key not resolved")
+				}
+				if err := calendar.DeleteOne(source, key, time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			actual := encode(source)
+			line := "EXDATE;TZID=" + tc.zone + ":" + tc.generated + "\r\n"
+			if n := strings.Count(string(actual), line); n != 1000 {
+				t.Fatalf("expected1000 actual generated lines, got%d", n)
+			}
+			growth := int64(len(actual) - len(raw))
+			t.Logf("actual growth=%d reserved=%d", growth, reserved)
+			if growth > reserved {
+				t.Fatalf("accepted TZID conversion escaped bound: actual%d > reserved%d", growth, reserved)
 			}
 		})
 	}

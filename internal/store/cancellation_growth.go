@@ -223,7 +223,8 @@ func cancellationCopyGrowth(raw []byte, notices ...*ical.Calendar) (int64, error
 		case start.ValueType() == ical.ValueDate:
 			exdate.Value = "20060102"
 		case start.Params.Get(ical.ParamTimezoneID) != "":
-			exdate.Value = "20060102T150405"
+			// A four-digit UTC key can cross into local year -1 or 10000.
+			exdate.Value = "100000101T150405"
 		case strings.HasSuffix(start.Value, "Z"):
 			exdate.Value = "20060102T150405Z"
 		default:
