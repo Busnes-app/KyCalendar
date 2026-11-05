@@ -69,6 +69,10 @@ func TestCancellationGrowthBoundsDateFormsAndOverlaps(t *testing.T) {
 					}
 					reserve += n
 				}
+				grouped, err := cancellationCopyGrowth(raw, ordered...)
+				if err != nil || grouped != reserve {
+					t.Fatalf("grouped bound differs from individual sum: %d != %d (%v)", grouped, reserve, err)
+				}
 				limit := int64(len(raw)) + reserve
 				for step, msg := range ordered {
 					cal := decode(string(raw))
@@ -89,6 +93,10 @@ func TestCancellationGrowthBoundsDateFormsAndOverlaps(t *testing.T) {
 							t.Fatal(err)
 						}
 						used += n
+					}
+					grouped, err := cancellationCopyGrowth(raw, ordered[step+1:]...)
+					if err != nil || int64(len(raw))+grouped != used {
+						t.Fatalf("remaining grouped bound differs at step%d: %v", step, err)
 					}
 					if used > limit {
 						t.Fatalf("%s reverse=%v step=%d unreserved growth: %d > %d", form.name, reverse, step, used, limit)

@@ -141,13 +141,9 @@ func (c *calendarStore) cancellationGrowth(ctx context.Context, tx *sql.Tx, excl
 		add(o.sender, uid, cal)
 	}
 	for _, o := range copies {
-		var liability int64
-		for _, msg := range messages[identity{o.sender, o.uid}] {
-			n, err := cancellationCopyGrowth(o.data, msg)
-			if err != nil {
-				return nil, err
-			}
-			liability += n
+		liability, err := cancellationCopyGrowth(o.data, messages[identity{o.sender, o.uid}]...)
+		if err != nil {
+			return nil, err
 		}
 		if int64(len(o.data))+liability > calendar.MaxObjectSize {
 			return nil, ErrQuotaExceeded
@@ -161,64 +157,93 @@ func (c *calendarStore) cancellationGrowth(ctx context.Context, tx *sql.Tx, excl
 // at most one EXDATE in the master's DTSTART form per named occurrence, then touches the
 // master. Count those positive additions without expanding recurrence or crediting removals.
 // Recipient, stale and occurrence checks can only reduce this conservative sizing bound.
-func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
-	for _, ev := range msg.Children {
-		if ev.Name == ical.CompEvent && ev.Props.Get(ical.PropRecurrenceID) == nil {
-			return 0, nil
+func cancellationCopyGrowth(raw []byte, notices ...*ical.Calendar) (int64, error) {
+	var partial []*ical.Calendar
+	for _, msg := range notices {
+		whole, events := false, 0
+		for _, ev := range msg.Children {
+			if ev.Name != ical.CompEvent {
+				continue
+			}
+			events++
+			if ev.Props.Get(ical.PropRecurrenceID) == nil {
+				whole = true
+				break
+			}
 		}
+		if !whole && events > 0 {
+			partial = append(partial, msg)
+		}
+	}
+	if len(partial) == 0 {
+		return 0, nil
 	}
 	cal, err := ical.NewDecoder(bytes.NewReader(raw)).Decode()
 	if err != nil {
 		return 0, err
 	}
 	org, ok := itip.Organizer(cal)
-	other, otherOK := itip.Organizer(msg)
-	if !ok || !otherOK || org != other {
+	if !ok {
 		return 0, nil
 	}
+	var noticeCount, occurrences int64
+	for _, msg := range partial {
+		other, ok := itip.Organizer(msg)
+		if !ok || other != org {
+			continue
+		}
+		noticeCount++
+		for _, ev := range msg.Children {
+			if ev.Name == ical.CompEvent {
+				occurrences++
+			}
+		}
+	}
+	if noticeCount == 0 {
+		return 0, nil
+	}
+	// The bound is linear in notices and named components. Decode/canonicalize once per
+	// physical copy, preserving exactly the sum of the individual-notice reservations.
 	var canonical bytes.Buffer
 	if err := ical.NewEncoder(&canonical).Encode(cal); err != nil {
 		return 0, err
 	}
 	master, _ := calendar.Master(cal)
-	var touchBytes int64
+	var exdateBytes, touchBytes int64
 	if master != nil {
 		start := master.Props.Get(ical.PropDateTimeStart)
 		if start == nil {
 			return 0, nil
-		} // no occurrence can be resolved without DTSTART
-		for _, ev := range msg.Children {
-			if ev.Name != ical.CompEvent {
-				continue
-			}
-			// Use formProp's generated width, including leniently parsed short DTSTART values.
-			// Retaining all stored parameters can only overcount its DATE/TZID parameters.
-			exdate := *start
-			exdate.Name = ical.PropExceptionDates
-			switch {
-			case start.ValueType() == ical.ValueDate:
-				exdate.Value = "20060102"
-			case start.Params.Get(ical.ParamTimezoneID) != "":
-				exdate.Value = "20060102T150405"
-			case strings.HasSuffix(start.Value, "Z"):
-				exdate.Value = "20060102T150405Z"
-			default:
-				exdate.Value = "20060102T150405"
-			}
-			master.Props.Add(&exdate)
+		} // cancellation cannot create a missing DTSTART
+		// Use formProp's generated width, including leniently parsed short DTSTART values.
+		// Retaining all stored parameters can only overcount its DATE/TZID parameters.
+		exdate := *start
+		exdate.Name = ical.PropExceptionDates
+		switch {
+		case start.ValueType() == ical.ValueDate:
+			exdate.Value = "20060102"
+		case start.Params.Get(ical.ParamTimezoneID) != "":
+			exdate.Value = "20060102T150405"
+		case strings.HasSuffix(start.Value, "Z"):
+			exdate.Value = "20060102T150405Z"
+		default:
+			exdate.Value = "20060102T150405"
 		}
-		// touch writes two UTC timestamps and a signed-int sequence, with no parameters.
-		// Reserve the complete fields: shrinking old fields is never reusable headroom.
+		master.Props.Add(&exdate)
+		var encoded bytes.Buffer
+		if err := ical.NewEncoder(&encoded).Encode(cal); err != nil {
+			return 0, err
+		}
+		exdateBytes = max(0, int64(encoded.Len()-canonical.Len()))
+		// touch writes two UTC timestamps and a signed-int sequence without parameters.
+		// Reserve complete fields, never reusable credits for shrinking their old values.
 		touchBytes = int64(len("DTSTAMP:20060102T150405Z\r\nLAST-MODIFIED:20060102T150405Z\r\nSEQUENCE:-9223372036854775808\r\n"))
 	}
-	var encoded bytes.Buffer
-	if err := ical.NewEncoder(&encoded).Encode(cal); err != nil {
-		return 0, err
-	}
-	if encoded.Len() > calendar.MaxObjectSize {
+	growth := (max(0, int64(canonical.Len()-len(raw)))+touchBytes)*noticeCount + exdateBytes*occurrences
+	if int64(len(raw))+growth > calendar.MaxObjectSize {
 		return 0, ErrQuotaExceeded
 	}
-	return max(0, int64(canonical.Len()-len(raw))) + max(0, int64(encoded.Len()-canonical.Len())) + touchBytes, nil
+	return growth, nil
 }
 
 func sumGrowth(growth map[string]int64) int64 {
