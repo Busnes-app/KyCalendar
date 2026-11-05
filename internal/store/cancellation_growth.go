@@ -4,8 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"errors"
-	"slices"
+	"strings"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
@@ -158,11 +157,10 @@ func (c *calendarStore) cancellationGrowth(ctx context.Context, tx *sql.Tx, excl
 	return growth, nil
 }
 
-// A whole sponsored cancellation deletes its copy. Partial cancellation can normalize raw
-// client bytes, add EXDATEs and touch the master. Simulate that same pure calendar operation.
-// Preserve removable components and old touch fields FOR SIZING ONLY: different notices must
-// never reuse the same shrink credit. Reserve new touch fields in full, plus positive encoding
-// expansion and EXDATE additions. Recipient/stale checks only reduce this conservative bound.
+// A whole sponsored cancellation deletes its copy. For a partial notice, DeleteOne adds
+// at most one EXDATE in the master's DTSTART form per named occurrence, then touches the
+// master. Count those positive additions without expanding recurrence or crediting removals.
+// Recipient, stale and occurrence checks can only reduce this conservative sizing bound.
 func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
 	for _, ev := range msg.Children {
 		if ev.Name == ical.CompEvent && ev.Props.Get(ical.PropRecurrenceID) == nil {
@@ -182,47 +180,35 @@ func cancellationCopyGrowth(raw []byte, msg *ical.Calendar) (int64, error) {
 	if err := ical.NewEncoder(&canonical).Encode(cal); err != nil {
 		return 0, err
 	}
-	children := slices.Clone(cal.Children)
 	master, _ := calendar.Master(cal)
-	oldTouch := ical.Props{}
-	if master != nil {
-		for _, name := range []string{ical.PropDateTimeStamp, ical.PropLastModified, ical.PropSequence} {
-			oldTouch[name] = slices.Clone(master.Props[name])
-		}
-	}
-	changed := false
-	for _, ev := range msg.Children {
-		if ev.Name != ical.CompEvent {
-			continue
-		}
-		key, ok := calendar.OccurrenceKey(cal, ev.Props.Get(ical.PropRecurrenceID))
-		if !ok {
-			continue
-		}
-		err := calendar.DeleteOne(cal, key, time.Now())
-		if errors.Is(err, calendar.ErrLastOccurrence) {
-			return 0, nil
-		}
-		if err == nil {
-			changed = true
-		}
-	}
-	if !changed {
-		return 0, nil
-	}
-	// Undo shrinkage in the sizing copy, never in the actual cancellation mutation.
-	cal.Children = children
 	var touchBytes int64
 	if master != nil {
-		for name, props := range oldTouch {
-			if len(props) == 0 {
-				delete(master.Props, name)
-			} else {
-				master.Props[name] = props
+		start := master.Props.Get(ical.PropDateTimeStart)
+		if start == nil {
+			return 0, nil
+		} // no occurrence can be resolved without DTSTART
+		for _, ev := range msg.Children {
+			if ev.Name != ical.CompEvent {
+				continue
 			}
+			// Use formProp's generated width, including leniently parsed short DTSTART values.
+			// Retaining all stored parameters can only overcount its DATE/TZID parameters.
+			exdate := *start
+			exdate.Name = ical.PropExceptionDates
+			switch {
+			case start.ValueType() == ical.ValueDate:
+				exdate.Value = "20060102"
+			case start.Params.Get(ical.ParamTimezoneID) != "":
+				exdate.Value = "20060102T150405"
+			case strings.HasSuffix(start.Value, "Z"):
+				exdate.Value = "20060102T150405Z"
+			default:
+				exdate.Value = "20060102T150405"
+			}
+			master.Props.Add(&exdate)
 		}
-		// touch writes two UTC timestamps and a sequence bounded by a signed 64-bit int,
-		// with no parameters. Charge the complete fields, never subtract their old sizes.
+		// touch writes two UTC timestamps and a signed-int sequence, with no parameters.
+		// Reserve the complete fields: shrinking old fields is never reusable headroom.
 		touchBytes = int64(len("DTSTAMP:20060102T150405Z\r\nLAST-MODIFIED:20060102T150405Z\r\nSEQUENCE:-9223372036854775808\r\n"))
 	}
 	var encoded bytes.Buffer

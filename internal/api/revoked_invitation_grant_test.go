@@ -748,3 +748,139 @@ func TestSponsoredOverlappingCancellationGrowth(t *testing.T) {
 		})
 	}
 }
+
+func TestSponsoredDenseCancellationGrowth(t *testing.T) {
+	for _, pendingB := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pending_B_%v", pendingB), func(t *testing.T) {
+			const cap int64 = 200000
+			const count = 12
+			w, db := cancellationWorld(t, cap, cap)
+			ctx := context.Background()
+			start := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+			var dates []string
+			for i := 0; i <= 1000; i++ {
+				dates = append(dates, start.Add(time.Duration(i)*time.Second).Format("20060102T150405Z"))
+			}
+			single := func(at time.Time) string {
+				body := meeting("dense-bound", "alice", "RECURRENCE-ID:"+at.Format("20060102T150405Z"), "LAST-MODIFIED:20261101T000000Z", "SEQUENCE:100", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+				body = strings.Replace(body, "20261110T090000Z", at.Format("20060102T150405Z"), 1)
+				return strings.Replace(body, "20261110T100000Z", at.Add(time.Second).Format("20060102T150405Z"), 1)
+			}
+			series := meeting("dense-bound", "alice", "RDATE:"+strings.Join(dates, ","), "LAST-MODIFIED:20261101T000000Z", "SEQUENCE:100", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com")
+			series = strings.Replace(series, "20261110T100000Z", "20261110T090001Z", 1)
+			// Construct A directly: AddOverride itself uses the bounded lookup under test.
+			base := decode(t, series)
+			base.Children = append(base.Children, decode(t, single(start)).Children...)
+			var encoded bytes.Buffer
+			if err := ical.NewEncoder(&encoded).Encode(base); err != nil {
+				t.Fatal(err)
+			}
+			series = encoded.String()
+			var teams []*store.Calendar
+			for i := 0; i < 3; i++ {
+				team := seedSponsoredGroup(t, w, series)
+				teams = append(teams, team)
+				etag := ""
+				if i > 0 {
+					_, _, etag = w.get("alice", "source.ics")
+				}
+				body := strings.Replace(series, "SUMMARY:Planning", fmt.Sprintf("SUMMARY:Dense %d", i), 1)
+				if code, _ := w.put("alice", "source.ics", body, etag); code != 201 && code != 204 {
+					t.Fatalf("dense source: %d", code)
+				}
+				w.deliver()
+				if err := w.st.Calendars().DeleteGrant(ctx, team.ID, "grp_editor_"+team.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var paths []string
+			for i := 0; i <= count; i++ {
+				slug := fmt.Sprintf("dense-%02d", i)
+				cal := &store.Calendar{ID: slug, OwnerKind: "user", OwnerID: "usr_alice", Slug: slug, Name: slug}
+				if err := w.st.Calendars().CreateCalendar(ctx, cal, 50); err != nil {
+					t.Fatal(err)
+				}
+				path := "/dav/usr_alice/calendars/" + slug + "/notice.ics"
+				paths = append(paths, path)
+				res := rawDAV(t, w.ts, "PUT", path, "alice", w.tokens["alice"], single(start.Add(time.Duration(i)*time.Second)), map[string]string{"Content-Type": "text/calendar"})
+				if res.StatusCode != 201 {
+					t.Fatalf("dense occurrence %d: %d %s", i, res.StatusCode, readAll(res))
+				}
+				w.deliver()
+			}
+			fillCancellationUsableQuota(t, w, cap)
+			cancel := func(path string) {
+				t.Helper()
+				res := rawDAV(t, w.ts, "DELETE", path, "alice", w.tokens["alice"], "", nil)
+				if res.StatusCode != 204 {
+					t.Fatalf("dense cancellation: %d %s", res.StatusCode, readAll(res))
+				}
+			}
+			cancel(paths[0])
+			if pendingB {
+				for _, path := range paths[1:] {
+					cancel(path)
+				}
+			}
+			fillCancellationUsableQuota(t, w, cap)
+			before, _, _ := reservationUsage(t, db)
+			originals := map[string]*store.CalendarObject{}
+			for _, team := range teams {
+				o, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+				if err != nil {
+					t.Fatal(err)
+				}
+				originals[team.ID] = o
+			}
+			w.srv.DeliverScheduled(ctx)
+			due, err := w.st.Calendars().DueOutbox(ctx, time.Now().Add(48*time.Hour), 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(due) != 0 {
+				// A quota-refused batch must preserve every copy, body and charge.
+				after, _, _ := reservationUsage(t, db)
+				if after != before {
+					t.Fatal("refused dense cancellation changed usage")
+				}
+				for _, team := range teams {
+					o, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+					if err != nil || o.ETag != originals[team.ID].ETag {
+						t.Fatal("refused dense cancellation partially applied")
+					}
+				}
+				t.Fatalf("dense admitted cancellation stalled: pending=%d reason=%s physical+body+source=%d", len(due), due[0].LastError, before)
+			}
+			for _, team := range teams {
+				o, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+				if err != nil || strings.Contains(string(o.Data), "RECURRENCE-ID:20261110T090000Z") || !strings.Contains(string(o.Data), "EXDATE:20261110T090000Z") || o.InvitationSender != "usr_alice" {
+					t.Fatalf("dense A cleanup not preserved: %v", err)
+				}
+			}
+			if !pendingB {
+				for _, path := range paths[1:] {
+					cancel(path)
+				}
+				fillCancellationUsableQuota(t, w, cap)
+				w.deliver()
+			}
+			for _, team := range teams {
+				o, err := w.st.Calendars().GetObject(ctx, team.ID, "group.ics")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := 1; i <= count; i++ {
+					if !strings.Contains(string(o.Data), "EXDATE:"+start.Add(time.Duration(i)*time.Second).Format("20060102T150405Z")) {
+						t.Fatalf("dense B%d missing", i)
+					}
+				}
+				if !strings.Contains(string(o.Data), "RDATE:") || strings.Contains(string(o.Data), "STATUS:CANCELLED") || o.InvitationSender != "usr_alice" {
+					t.Fatal("dense cleanup damaged unrelated recurrence or sponsorship")
+				}
+			}
+			if used, _, _ := reservationUsage(t, db); used > cap {
+				t.Fatal("dense cancellation exceeded cap")
+			}
+		})
+	}
+}
