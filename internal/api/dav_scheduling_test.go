@@ -162,13 +162,14 @@ func TestSchedulingInternalRoundTrip(t *testing.T) {
 		t.Fatalf("bob's copy after the move:\n%s", got)
 	}
 
-	// Alice deletes it. Bob has not answered the moved meeting, so his copy goes (Q7).
+	// Alice deletes it. Bob's authenticated response made this his paid copy; the move
+	// resetting PARTSTAT does not erase that trusted ownership, so cancellation retains it.
 	if r := rawDAV(t, w.ts, "DELETE", "/dav/usr_alice/calendars/default/m1.ics", "alice", w.tokens["alice"], "", nil); r.StatusCode != 204 {
 		t.Fatalf("delete %d", r.StatusCode)
 	}
 	w.deliver()
-	if got, obj := w.copyOf("bob", "m1"); obj != nil {
-		t.Fatalf("bob's unanswered copy after the cancel:\n%s", got)
+	if got, obj := w.copyOf("bob", "m1"); obj == nil || !strings.Contains(got, "STATUS:CANCELLED") || obj.InvitationSender != "" || obj.InvitationRecipient != "usr_bob" {
+		t.Fatalf("bob's previously answered paid copy after the cancel:\n%s", got)
 	}
 }
 
@@ -222,7 +223,7 @@ func TestSchedulingAgentCannotChangeMeetings(t *testing.T) {
 		"meet":  meeting("meet", "alice", "ATTENDEE:mailto:bob@example.com"),
 		"alone": strings.Replace(meeting("alone", "alice"), "ORGANIZER:mailto:alice@example.com\r\n", "", 1),
 	} {
-		if _, err := davbackend.Write(context.Background(), w.st, c, uid+".ics", decode(t, body), []byte(body), "", true, store.OwnerLimits{}, nil); err != nil {
+		if _, err := davbackend.Write(context.Background(), w.st, c, uid+".ics", decode(t, body), []byte(body), "", true, store.OwnerLimits{}, nil, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -289,7 +290,7 @@ func TestSchedulingAgentCannotDropAMeetingOverride(t *testing.T) {
 		"BEGIN:VEVENT\r\nUID:series\r\nDTSTAMP:20261001T000000Z\r\nRECURRENCE-ID:20261103T090000Z\r\nDTSTART:20261103T090000Z\r\n" +
 		"DTEND:20261103T100000Z\r\nSUMMARY:Standup with Bob\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE:mailto:bob@example.com\r\n" +
 		"END:VEVENT\r\nEND:VCALENDAR\r\n"
-	if _, err := davbackend.Write(ctx, w.st, c, "series.ics", decode(t, series), []byte(series), "", true, store.OwnerLimits{}, nil); err != nil {
+	if _, err := davbackend.Write(ctx, w.st, c, "series.ics", decode(t, series), []byte(series), "", true, store.OwnerLimits{}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	before, err := w.st.Calendars().GetObjectByUID(ctx, w.personal, "series")

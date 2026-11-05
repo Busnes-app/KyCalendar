@@ -8,17 +8,19 @@ import (
 
 // OutboxMessage is one queued iTIP message for one recipient.
 type OutboxMessage struct {
-	ID          string
-	DedupeKey   string // unique: queueing the same message again is a no-op
-	SenderID    string // the user the message speaks for
-	Method      string
-	Recipient   string // calendar user address; internal or external is decided at delivery
-	Body        []byte
-	Status      string // pending, delivered or failed
-	Attempts    int
-	NextAttempt time.Time
-	LastError   string
-	CreatedAt   time.Time
+	// CountInviteBytes is a transient planner input for internal REQUEST copies.
+	CountInviteBytes bool
+	ID               string
+	DedupeKey        string // unique: queueing the same message again is a no-op
+	SenderID         string // the user the message speaks for
+	Method           string
+	Recipient        string // calendar user address; internal or external is decided at delivery
+	Body             []byte
+	Status           string // pending, delivered or failed
+	Attempts         int
+	NextAttempt      time.Time
+	LastError        string
+	CreatedAt        time.Time
 }
 
 // pendingOutboxBytes is a scalar subquery: the bytes of every pending message. Every instance-cap
@@ -56,41 +58,68 @@ func (c *calendarStore) runPlan(ctx context.Context, tx *sql.Tx, o *CalendarObje
 // the whole write is refused (ErrQuotaExceeded).
 func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMessage, lim OwnerLimits) error {
 	if len(rows) == 0 {
-		return nil
+		return c.checkCancellationGrowth(ctx, tx, lim, nil)
 	}
-	var adding int64
+
+	now := time.Now().UTC()
+	var inviteBytes, adding int64
+	var fresh []*OutboxMessage
+	seen := map[string]bool{}
+	// calendar-total serializes every producer. Resolve dedupe and reserve quotas before
+	// inserting bodies: a refused large fan-out must not allocate its bytes in SQL/WAL.
 	for _, m := range rows {
-		adding += int64(len(m.Body))
-	}
-	if lim.MaxBytes > 0 {
-		var pending int64
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT COALESCE(SUM(LENGTH(body)), 0) FROM scheduling_outbox WHERE status = 'pending' AND sender_id = ?`),
-			rows[0].SenderID).Scan(&pending); err != nil {
+		if seen[m.DedupeKey] {
+			continue
+		}
+		seen[m.DedupeKey] = true
+		var exists int
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*) FROM scheduling_outbox WHERE dedupe_key = ?`), m.DedupeKey).Scan(&exists); err != nil {
 			return err
 		}
-		if pending+adding > lim.MaxBytes {
+		if exists != 0 {
+			continue
+		}
+		fresh = append(fresh, m)
+		adding += int64(len(m.Body))
+		if m.CountInviteBytes {
+			inviteBytes += int64(len(m.Body))
+		}
+	}
+
+	if err := c.admitInviteBytes(ctx, tx, rows[0].SenderID, inviteBytes, now); err != nil {
+		return err
+	}
+	if lim.MaxBytes > 0 {
+		_, used, err := c.ownerUsage(ctx, tx, "user", rows[0].SenderID, "", "")
+		if err != nil {
+			return err
+		}
+		if used+adding > lim.MaxBytes {
 			return ErrQuotaExceeded
 		}
 	}
 	if lim.MaxTotalBytes > 0 {
 		var used int64
-		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes)).Scan(&used); err != nil {
+		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes+` + `+cancellationReserveBytes)).Scan(&used); err != nil {
 			return err
 		}
 		if used+adding > lim.MaxTotalBytes {
 			return ErrQuotaExceeded
 		}
 	}
-	now := time.Now().UTC()
-	for _, m := range rows {
-		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
-(id, dedupe_key, sender_id, method, recipient, body, status, attempts, next_attempt_at, last_error, created_at)
-VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, '', ?) ON CONFLICT (dedupe_key) DO NOTHING`),
-			m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now)
-		if err != nil {
+
+	if err := c.checkCancellationGrowth(ctx, tx, lim, fresh); err != nil {
+		return err
+	}
+
+	for _, m := range fresh {
+		if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
+ (id,dedupe_key,sender_id,method,recipient,body,status,attempts,next_attempt_at,last_error,created_at)
+ VALUES (?,?,?,?,?,?,'pending',0,?,'',?) ON CONFLICT (dedupe_key) DO NOTHING`), m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 

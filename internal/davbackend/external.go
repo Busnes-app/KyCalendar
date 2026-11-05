@@ -107,7 +107,7 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 		}
 		return "", err
 	}
-	if err := s.deliverInto(ctx, c, o, existing, self, method, msg); err != nil {
+	if err := s.deliverInto(ctx, c, o, existing, self, method, msg, "", ""); err != nil {
 		var perm errPermanent
 		if errors.As(err, &perm) { // nothing here it applies to, or an object that cannot be stored
 			return InboundIgnored, nil
@@ -119,46 +119,70 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 
 // deliverInto writes an organizer's REQUEST or CANCEL over an attendee's existing copy. A message
 // about occurrences that names none of the copy's series is errPermanent{"no_occurrence"}.
-func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store.CalendarObject, existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) error {
+func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store.CalendarObject, existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, deliveryID, recipientID string) error {
+	if method == itip.MethodCancel {
+		next, err := cancellationCopy(o, existing, self, msg)
+		if errors.Is(err, errDeleteCopy) {
+			return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
+		}
+		if err != nil {
+			return err
+		}
+		return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
+	}
 	if stale(existing, msg) {
 		return errPermanent{"stale"} // a retry or replay older than what the copy already took
 	}
 	if occurrencesOnly(msg) {
 		if _, err := calendar.Master(existing); err == nil || occurrencesOnly(existing) {
-			next, err := deliverOccurrences(existing, self, method, msg)
-			if errors.Is(err, errDeleteCopy) {
-				return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
-			}
+			next, err := deliverOccurrences(existing, self, method, msg, c.OwnerKind == "group", false)
 			if err != nil {
 				return err
 			}
-			return s.put(ctx, c, o.Name, next, o.ETag, false)
+			return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
 		}
 	}
-	if method == itip.MethodCancel {
-		if !answered(existing, self) {
-			// Never answered: nothing of theirs to keep, and the copy stops counting against
-			// their storage.
-			return s.Store.Calendars().DeleteObject(ctx, c.ID, o.Name, o.ETag)
-		}
-		seq := 0
-		if m, err := calendar.Master(msg); err == nil {
-			seq = sequenceOf(m)
-		}
-		for _, ev := range existing.Children {
-			if ev.Name == ical.CompEvent {
-				ev.Props.SetText(ical.PropStatus, "CANCELLED")
-				setOrganizerSequence(ev, seq)
-			}
-		}
-		return s.put(ctx, c, o.Name, existing, o.ETag, false)
+	copyRequest := itip.AttendeeCopy
+	if c.OwnerKind == "group" {
+		copyRequest = itip.SharedAttendeeCopy
 	}
-	next, err := itip.AttendeeCopy(msg, existing, self)
+	next, err := copyRequest(msg, existing, self)
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
 	stamp(next)
-	return s.put(ctx, c, o.Name, next, o.ETag, false)
+	return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
+}
+
+// cancellationCopy is shared by normal delivery and metadata-authorized sponsorship cleanup.
+// Occurrence matching, retention and the delivery binding are the same on either path.
+func cancellationCopy(o *store.CalendarObject, existing *ical.Calendar, self itip.Address, msg *ical.Calendar) (*ical.Calendar, error) {
+	if stale(existing, msg) {
+		return nil, errPermanent{"stale"}
+	}
+	if occurrencesOnly(msg) {
+		if _, err := calendar.Master(existing); err == nil || occurrencesOnly(existing) {
+			return deliverOccurrences(existing, self, itip.MethodCancel, msg, false, o.InvitationRecipient != "" && o.InvitationSender != "")
+		}
+	}
+	keep := answered(existing, self)
+	if o.InvitationRecipient != "" {
+		keep = o.InvitationSender == ""
+	}
+	if !keep {
+		return nil, errDeleteCopy
+	}
+	seq := 0
+	if m, err := calendar.Master(msg); err == nil {
+		seq = sequenceOf(m)
+	}
+	for _, ev := range existing.Children {
+		if ev.Name == ical.CompEvent {
+			ev.Props.SetText(ical.PropStatus, "CANCELLED")
+			setOrganizerSequence(ev, seq)
+		}
+	}
+	return existing, nil
 }
 
 // organizerSequence is kept on each VEVENT of a delivered copy: the organizer's SEQUENCE it last
@@ -296,8 +320,9 @@ func sameOccurrence(c, o *ical.Component) {
 // deliverOccurrences applies an organizer's message about single occurrences to the attendee's copy
 // of the series: a REQUEST replaces or adds those overrides, a CANCEL marks those occurrences
 // cancelled. The master and every other override stay as they are. A copy with no master (an
-// invitation to some occurrences only) takes any occurrence the REQUEST names.
-func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar) (*ical.Calendar, error) {
+// invitation to some occurrences only) takes any occurrence the REQUEST names. Tracked sender-funded
+// copies have no billable answer; paid and legacy copies keep their per-occurrence answer rules.
+func deliverOccurrences(existing *ical.Calendar, self itip.Address, method string, msg *ical.Calendar, shared, senderFunded bool) (*ical.Calendar, error) {
 	_, err := calendar.Master(existing)
 	masterless := err != nil
 	have := overridesOf(existing)
@@ -337,7 +362,7 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 				continue // a VTIMEZONE
 			}
 			// An occurrence the attendee never answered goes, as a whole unanswered copy does.
-			if key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID)); ok && !answeredOccurrence(existing, have[key], self) {
+			if key, ok := calendar.OccurrenceKey(existing, c.Props.Get(ical.PropRecurrenceID)); ok && (senderFunded || !answeredOccurrence(existing, have[key], self)) {
 				err := calendar.DeleteOne(existing, key, time.Now())
 				if errors.Is(err, calendar.ErrLastOccurrence) {
 					return nil, errDeleteCopy
@@ -375,7 +400,11 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 	if len(before.Children) == 0 && !masterless {
 		return nil, errPermanent{"no_occurrence"}
 	}
-	next, err := itip.AttendeeCopy(msg, before, self)
+	copyRequest := itip.AttendeeCopy
+	if shared {
+		copyRequest = itip.SharedAttendeeCopy
+	}
+	next, err := copyRequest(msg, before, self)
 	if err != nil {
 		return nil, errPermanent{"invalid_object"}
 	}
@@ -438,7 +467,7 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 	}
 	c, o, cal, err := s.find(ctx, u, uid, org)
 	if errors.Is(err, store.ErrNotFound) {
-		if err := s.deliverToAttendee(ctx, u, self, org, uid, method, invite); err != nil {
+		if err := s.deliverToAttendee(ctx, u, self, org, uid, method, invite, ""); err != nil {
 			return err
 		}
 		c, o, cal, err = s.find(ctx, u, uid, org)
@@ -464,7 +493,7 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
-	_, err = Write(ctx, s.Store, c, o.Name, cal, raw, o.ETag, false, s.Limits, s.Plan(ctx, u, cal))
+	_, err = Write(ctx, s.Store, c, o.Name, cal, raw, o.ETag, false, s.Limits, s.Plan(ctx, u, cal), u.ID)
 	return err
 }
 

@@ -97,3 +97,38 @@ func TestReattachSkipsARowAlreadyBound(t *testing.T) {
 		t.Error("a skipped reattach revoked grants")
 	}
 }
+
+func TestEnableKyIdentityChecksActorBindingAndProvider(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	root := &store.User{ID: "usr_root", Username: "root", Role: "admin", Status: "active", SSOProvider: "local"}
+	target := &store.User{ID: "usr_target", Username: "target", Role: "admin", Status: "inactive", SSOProvider: "kysignon", SSOIssuer: "kyidentity https://live.example", SSOSubject: "s1"}
+	seedUsers(t, st, root, target)
+	actor := store.AdminActor(root.ID, seedRootSession(t, st, root))
+	if err := st.Users().EnableKyIdentityUser(ctx, store.Actor{}, target.ID, target.SSOIssuer); !errors.Is(err, store.ErrActorRevoked) {
+		t.Fatalf("revoked actor: %v", err)
+	}
+	if err := st.Users().EnableKyIdentityUser(ctx, actor, target.ID, "kyidentity https://old.example"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("stale binding: %v", err)
+	}
+	for _, provider := range []string{"scim", "oidc", "local"} {
+		target.SSOProvider = provider
+		if err := st.Users().UpdateUser(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Users().EnableKyIdentityUser(ctx, actor, target.ID, target.SSOIssuer); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("%s enabled: %v", provider, err)
+		}
+	}
+	target.SSOProvider = "kysignon"
+	if err := st.Users().UpdateUser(ctx, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Users().EnableKyIdentityUser(ctx, actor, target.ID, target.SSOIssuer); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Users().GetUserByID(ctx, target.ID)
+	if got.Status != "active" || got.Role != "admin" || got.SSOIssuer != target.SSOIssuer || got.SSOSubject != "s1" {
+		t.Fatalf("enable overwrote identity: %+v", got)
+	}
+}

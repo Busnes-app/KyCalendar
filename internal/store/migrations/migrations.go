@@ -590,7 +590,24 @@ CREATE TABLE sso_logouts (
 		SQLite:   sessionUnproven,
 		Postgres: sessionUnproven,
 	},
+	{Version: 23, Name: "invitation_sponsorship", SQLite: invitationSponsorship, Postgres: invitationSponsorship},
+	{Version: 24, Name: "cancellation_reservations", SQLite: cancellationReservations, Postgres: cancellationReservations},
 }
+
+const cancellationReservations = `CREATE TABLE cancellation_reservations (
+ calendar_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ sender_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ bytes BIGINT NOT NULL CHECK(bytes>=0),
+ PRIMARY KEY(calendar_id,name),
+ FOREIGN KEY(calendar_id,name) REFERENCES calendar_objects(calendar_id,name) ON DELETE CASCADE
+);
+CREATE INDEX cancellation_reservations_sender ON cancellation_reservations(sender_id);`
+
+const invitationSponsorship = `ALTER TABLE calendar_objects ADD COLUMN invitation_sender TEXT NOT NULL DEFAULT '';
+ALTER TABLE calendar_objects ADD COLUMN invitation_attendee TEXT NOT NULL DEFAULT '';
+ALTER TABLE calendar_objects ADD COLUMN invitation_recipient TEXT NOT NULL DEFAULT '';
+CREATE TABLE invitation_byte_budget (sender_id TEXT PRIMARY KEY, window_start BIGINT NOT NULL, bytes BIGINT NOT NULL);`
 
 const sessionUnproven = `ALTER TABLE sessions ADD COLUMN unproven BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE sessions SET unproven = TRUE WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');`

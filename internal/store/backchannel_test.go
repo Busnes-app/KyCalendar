@@ -163,7 +163,7 @@ func TestMigration20DropsUnreachableSSOSessions(t *testing.T) {
 	now := time.Now().UTC()
 
 	// The schema before migration 18, with a session and an MFA challenge of each account.
-	for _, q := range []string{"ALTER TABLE sessions DROP COLUMN unproven", "DROP INDEX idx_sessions_sso_sid", "ALTER TABLE sessions DROP COLUMN sso_sid", "DROP TABLE sso_logouts", "DROP TABLE sso_subject_logouts", "DELETE FROM schema_migrations WHERE version >= 18"} {
+	for _, q := range []string{"ALTER TABLE sessions DROP COLUMN unproven", "DROP INDEX idx_sessions_sso_sid", "ALTER TABLE sessions DROP COLUMN sso_sid", "DROP TABLE sso_logouts", "DROP TABLE sso_subject_logouts", "DELETE FROM schema_migrations WHERE version >= 18 AND version <= 22"} {
 		exec(q)
 	}
 	for _, u := range []string{local.ID, sso.ID} {

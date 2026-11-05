@@ -154,12 +154,18 @@ type Subscription struct {
 }
 
 type CalendarObject struct {
-	CalendarID, Name, UID, ETag string
-	Component                   string // VEVENT or VTODO
-	Data                        []byte
-	FirstStart                  int64
-	LastEnd                     *int64
-	ModifiedAt                  time.Time
+	// WriterID is the authenticated writer, never read from calendar content.
+	WriterID string
+	// DeliveryID is an internal pending outbox row consumed atomically with this write.
+	DeliveryID, DeliveryRecipient string
+	// InvitationSender/Attendee are server-owned sponsorship, retained until an answer.
+	InvitationSender, InvitationAttendee, InvitationRecipient string
+	CalendarID, Name, UID, ETag                               string
+	Component                                                 string // VEVENT or VTODO
+	Data                                                      []byte
+	FirstStart                                                int64
+	LastEnd                                                   *int64
+	ModifiedAt                                                time.Time
 }
 
 // UserField names a user column a list may filter on.
@@ -199,7 +205,7 @@ func (s SCIMScope) Contains(u *User) bool {
 }
 
 // OwnerLimits caps one owner's calendar objects, and MaxTotalBytes every owner's together;
-// zero means no limit.
+// MaxBytes includes pending messages and reserved cancellation capacity; zero means no limit.
 type OwnerLimits struct {
 	MaxObjects    int
 	MaxBytes      int64

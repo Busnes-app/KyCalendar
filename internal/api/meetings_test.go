@@ -85,11 +85,19 @@ func TestWebInviteAndAnswer(t *testing.T) {
 	if !ok || got.Organizer != "alice@example.com" || got.MyStatus != "NEEDS-ACTION" {
 		t.Fatalf("bob's view %+v", got)
 	}
+	copyBefore, err := st.Calendars().GetObjectByUID(context.Background(), got.CalendarID, made.UID)
+	if err != nil || copyBefore.InvitationSender != "usr_alice" {
+		t.Fatalf("unanswered copy not charged to sender: %+v %v", copyBefore, err)
+	}
 	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"MAYBE"}`, got.ETag, bob); r.Code != http.StatusBadRequest {
 		t.Errorf("bad answer: %d", r.Code)
 	}
 	if r := withIfMatch(t, srv, "POST", "/api/events/"+got.CalendarID+"/"+made.UID+"/rsvp", `{"partstat":"ACCEPTED"}`, got.ETag, bob); r.Code != http.StatusOK {
 		t.Fatalf("rsvp %d %s", r.Code, r.Body.String())
+	}
+	copyAfter, err := st.Calendars().GetObjectByUID(context.Background(), got.CalendarID, made.UID)
+	if err != nil || copyAfter.InvitationSender != "" {
+		t.Fatalf("answered copy still charged to sender: %+v %v", copyAfter, err)
 	}
 	srv.DeliverScheduled(context.Background())
 
@@ -303,6 +311,8 @@ func TestCancelledMeetingIsMarkedOrRemoved(t *testing.T) {
 // One sender may newly invite at most davbackend.InviteLimit people an hour; the refusal says
 // when they can send again, and sending a meeting again to its own guests is not counted.
 func TestInviteLimitPerHour(t *testing.T) {
+	// Isolate the invite-count gate from reserved full-CANCEL capacity for these large meetings.
+	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", "16777216")
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	srv, st, _ := setupTestServer(t)
 	alice, aliceCal := webUser(t, srv, st, "alice")

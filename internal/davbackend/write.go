@@ -26,7 +26,7 @@ var ErrTooLarge = errors.New("davbackend: calendar object too large")
 // creation, so checking it outside the transaction is safe. A non-nil plan (Scheduler.Plan)
 // runs inside the store's transaction and may rewrite the object; the returned object holds
 // what was stored.
-func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits, plan store.Planner) (*store.CalendarObject, error) {
+func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits, plan store.Planner, writerID string) (*store.CalendarObject, error) {
 	o, err := Prepare(c.ID, name, cal, raw)
 	if err != nil {
 		return nil, err
@@ -34,6 +34,7 @@ func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, 
 	if !c.Holds(o.Component) {
 		return nil, fmt.Errorf("%w: this calendar holds %s", calendar.ErrUnsupportedComponent, strings.Join(c.Components, " and "))
 	}
+	o.WriterID = writerID
 	if _, err := st.Calendars().PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan); err != nil {
 		return nil, err
 	}

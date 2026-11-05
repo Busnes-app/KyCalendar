@@ -426,7 +426,7 @@ func (s *Server) saveEvent(ctx context.Context, writer *store.User, c *store.Cal
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "The event cannot be encoded"}
 	}
-	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(ctx, writer, cal))
+	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(ctx, writer, cal), writer.ID)
 	switch {
 	case err == nil:
 		return o, nil
@@ -442,7 +442,7 @@ func (s *Server) saveEvent(ctx context.Context, writer *store.User, c *store.Cal
 		return nil, &apiError{status: http.StatusConflict, msg: "An event with this UID already exists"}
 	case errors.Is(err, store.ErrQuotaExceeded):
 		return nil, &apiError{status: http.StatusInsufficientStorage, msg: "Calendar storage is full", code: "quota"}
-	case errors.As(err, new(davbackend.InviteLimitError)):
+	case errors.As(err, new(davbackend.InviteLimitError)), errors.As(err, new(store.InviteByteLimitError)):
 		return nil, &apiError{status: http.StatusTooManyRequests, msg: err.Error(), code: "invite_limit"}
 	case errors.Is(err, calendar.ErrUnsupportedComponent):
 		return nil, &apiError{status: http.StatusUnprocessableEntity, msg: "This calendar holds tasks, not events", code: "tasks_only"}

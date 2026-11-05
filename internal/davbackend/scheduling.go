@@ -37,6 +37,9 @@ type Scheduler struct {
 // always fits; the limit bounds how fast one account can fill other people's calendars.
 const InviteLimit = 1000
 
+// InviteBytesLimit bounds internal REQUEST copies per sender per hour, including updates.
+const InviteBytesLimit = store.InviteBytesLimit
+
 type inviteWindow struct {
 	start time.Time
 	n     int
@@ -180,6 +183,24 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 	if !ok {
 		return nil
 	}
+	internal := map[itip.Address]bool{}
+	if newCal != nil {
+		for _, ev := range newCal.Children {
+			if ev.Name != ical.CompEvent {
+				continue
+			}
+			for _, a := range itip.AttendeesOf(ev) {
+				if _, seen := internal[a.Address]; seen {
+					continue
+				}
+				_, err := s.Store.Users().CalendarUser(ctx, a.Address.Email())
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					return func([]byte) ([]byte, []*store.OutboxMessage, error) { return nil, nil, err }
+				}
+				internal[a.Address] = err == nil && a.Address != self
+			}
+		}
+	}
 	return func(previous []byte) ([]byte, []*store.OutboxMessage, error) {
 		var oldCal *ical.Calendar
 		if previous != nil {
@@ -200,9 +221,6 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 			// client's sync over something it cannot fix.
 			return data, nil, nil
 		}
-		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
-			return nil, nil, err
-		}
 		var rows []*store.OutboxMessage
 		for _, m := range msgs {
 			body, err := encodeCal(m.Calendar)
@@ -212,8 +230,11 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 			for _, to := range m.Recipients {
 				sum := sha256.Sum256([]byte(writer.ID + "\x00" + m.Method + "\x00" + string(to) + "\x00" + string(body)))
 				rows = append(rows, &store.OutboxMessage{ID: "obx_" + uuid.NewString(), DedupeKey: hex.EncodeToString(sum[:]),
-					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body})
+					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body, CountInviteBytes: m.Method == itip.MethodRequest && internal[to]})
 			}
+		}
+		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
+			return nil, nil, err
 		}
 		return data, rows, nil
 	}
@@ -311,9 +332,9 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	}
 	switch method {
 	case itip.MethodRequest, itip.MethodCancel:
-		return s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg)
+		return s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg, m.ID)
 	default: // REPLY
-		return s.deliverReply(ctx, recipient, to, uid, from, msg)
+		return s.deliverReply(ctx, recipient, to, uid, from, msg, m.ID)
 	}
 }
 
@@ -412,6 +433,10 @@ func (s *Scheduler) organizerEdits(ctx context.Context, org itip.Address, c *sto
 }
 
 func (s *Scheduler) put(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, ifMatch string, create bool) error {
+	return s.putDelivery(ctx, c, name, cal, ifMatch, create, "", "")
+}
+
+func (s *Scheduler) putDelivery(ctx context.Context, c *store.Calendar, name string, cal *ical.Calendar, ifMatch string, create bool, deliveryID, recipientID string) error {
 	raw, err := encodeCal(cal)
 	if err != nil {
 		return err
@@ -420,15 +445,19 @@ func (s *Scheduler) put(ctx context.Context, c *store.Calendar, name string, cal
 	if err != nil {
 		return errPermanent{"invalid_object"}
 	}
+	o.DeliveryID, o.DeliveryRecipient = deliveryID, recipientID
 	_, err = s.Store.Calendars().PutObject(ctx, o, ifMatch, create, s.Limits)
 	return err
 }
 
 // deliverToAttendee writes the organizer's REQUEST or CANCEL into an internal attendee's
 // calendar: their existing copy when they have one, else (REQUEST only) their default calendar.
-func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, org itip.Address, uid, method string, msg *ical.Calendar) error {
+func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, org itip.Address, uid, method string, msg *ical.Calendar, deliveryID string) error {
 	if org == self {
 		return nil // the organizer's own address on the attendee list
+	}
+	if method == itip.MethodCancel && deliveryID != "" {
+		return s.deliverInternalCancellation(ctx, u, self, org, uid, msg, deliveryID)
 	}
 	c, o, existing, err := s.find(ctx, u, uid, org)
 	switch {
@@ -446,11 +475,81 @@ func (s *Scheduler) deliverToAttendee(ctx context.Context, u *store.User, self, 
 		}
 		stamp(first)
 		sum := sha256.Sum256([]byte(uid))
-		return s.put(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true)
+		return s.putDelivery(ctx, def, hex.EncodeToString(sum[:16])+".ics", first, "", true, deliveryID, u.ID)
 	case err != nil:
 		return err
 	}
-	return s.deliverInto(ctx, c, o, existing, self, method, msg)
+	return s.deliverInto(ctx, c, o, existing, self, method, msg, deliveryID, u.ID)
+}
+
+// deliverInternalCancellation reclaims trusted sponsorship independently of current grants.
+// Normal paid/legacy lookup still needs its ordinary permissions. All copy changes and the
+// pending body exchange commit together, so partial cancellations retain their quota capacity.
+func (s *Scheduler) deliverInternalCancellation(ctx context.Context, u *store.User, self, org itip.Address, uid string, msg *ical.Calendar, deliveryID string) error {
+	copies, err := s.Store.Calendars().SponsoredCancellationCopies(ctx, deliveryID, u.ID, uid)
+	if err != nil {
+		return err
+	}
+	var changes []store.CancellationChange
+	seen := map[[2]string]bool{}
+	prepare := func(o *store.CalendarObject, existing *ical.Calendar) error {
+		next, err := cancellationCopy(o, existing, self, msg)
+		if errors.Is(err, errDeleteCopy) {
+			next, err = nil, nil
+		}
+		if err != nil {
+			return err
+		}
+		var replacement *store.CalendarObject
+		if next != nil {
+			raw, err := encodeCal(next)
+			if err != nil {
+				return err
+			}
+			replacement, err = Prepare(o.CalendarID, o.Name, next, raw)
+			if err != nil {
+				return err
+			}
+		}
+		changes = append(changes, store.CancellationChange{Previous: o, Next: replacement})
+		seen[[2]string{o.CalendarID, o.Name}] = true
+		return nil
+	}
+	for _, o := range copies {
+		existing, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+		if err != nil {
+			return err
+		}
+		if got, ok := itip.Organizer(existing); !ok || got != org {
+			continue
+		}
+		if err := prepare(o, existing); err != nil {
+			var perm errPermanent
+			if errors.As(err, &perm) {
+				continue
+			}
+			return err
+		}
+	}
+	_, o, existing, err := s.find(ctx, u, uid, org)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		var perm errPermanent
+		if len(changes) == 0 || !errors.As(err, &perm) {
+			return err
+		}
+	}
+	if err == nil && !seen[[2]string{o.CalendarID, o.Name}] {
+		// A sponsored copy belonging to another delivery is not ordinary mutable content.
+		if o.InvitationSender == "" {
+			if err := prepare(o, existing); err != nil {
+				var perm errPermanent
+				if len(changes) == 0 || !errors.As(err, &perm) || (perm.reason != "stale" && perm.reason != "no_occurrence") {
+					return err
+				}
+			}
+		}
+	}
+	return s.Store.Calendars().ApplyInternalCancellation(ctx, deliveryID, u.ID, changes, s.Limits)
 }
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first
@@ -487,7 +586,7 @@ func (s *Scheduler) inviteCalendar(ctx context.Context, u *store.User) (*store.C
 }
 
 // deliverReply records an internal attendee's answer on the organizer's object.
-func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, self itip.Address, uid string, from itip.Address, msg *ical.Calendar) error {
+func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, self itip.Address, uid string, from itip.Address, msg *ical.Calendar, deliveryID string) error {
 	c, o, stored, err := s.find(ctx, organizer, uid, self)
 	if errors.Is(err, store.ErrNotFound) {
 		return errPermanent{"no_event"}
@@ -502,7 +601,7 @@ func (s *Scheduler) deliverReply(ctx context.Context, organizer *store.User, sel
 	if err != nil || !changed {
 		return err
 	}
-	return s.put(ctx, c, o.Name, next, o.ETag, false)
+	return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, organizer.ID)
 }
 
 // maxNewOverrides caps the overrides one message may add to a stored series: each is a copy of the

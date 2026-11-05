@@ -9,6 +9,7 @@ const dir = await mkdtemp(join(tmpdir(), 'ky-browser-'));
 const binary = fileURLToPath(new URL('../../.browser/server', import.meta.url));
 const env = {
   PATH: process.env.PATH,
+  PUSH_RELAY_URL: '', APNS_RELAY_URL: '',
   KY_APP_URL: 'http://127.0.0.1:5391',
   KY_HOST: '127.0.0.1', KY_PORT: '5391', KY_DB_DRIVER: 'sqlite',
   KY_DATA_DIR: join(dir, 'data'), KYCALENDAR_BACKUP_DIR: join(dir, 'backups'),
