@@ -137,6 +137,12 @@ func (s *Server) handleImportCSV(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	v := importView{}
 	for _, row := range rows {
+		// Shutdown waits seconds for detached work. Stop between rows, report and audit; the
+		// rows are keyed by UID, so importing the file again adds only what is missing.
+		if s.stopping.Err() != nil {
+			v.Stopped = fmt.Sprintf("Stopped at row %d: the server is restarting. Import the file again to finish; rows already imported are not duplicated", row.Line)
+			break
+		}
 		in := calendar.EventInput{Title: row.Title, Location: row.Location, Description: row.Description,
 			Start: row.Start, End: row.End, AllDay: row.AllDay}
 		if !row.AllDay {

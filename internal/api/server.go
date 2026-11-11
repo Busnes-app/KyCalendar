@@ -77,9 +77,19 @@ type Server struct {
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
 	detached detachedCounter
+	// stopping carries the slow legs of detached work: a backup's database snapshot and
+	// upload, and the pairing claim. StopDetached cancels it; a dropped connection does not.
+	stopping     context.Context
+	stopDetached context.CancelFunc
 	// imports admits one CSV import per user and a few server-wide (imports.go).
 	imports importGate
 }
+
+// StopDetached aborts the slow legs of every detached handler in flight: a backup's snapshot
+// or upload, a pairing claim. cmd/server calls it on SIGTERM so WaitDetached takes seconds.
+// The handlers' own writes (key pin, receipt, audit row) still finish, and an aborted deposit
+// is due again on the next start.
+func (s *Server) StopDetached() { s.stopDetached() }
 
 // detachedCounter is a WaitGroup that tolerates a registration arriving while the wait is
 // already running. sync.WaitGroup panics on an Add from zero concurrent with Wait, and there is
@@ -189,6 +199,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	s.newKyPost()
+	s.stopping, s.stopDetached = context.WithCancel(context.Background())
 	s.routes()
 	return s
 }

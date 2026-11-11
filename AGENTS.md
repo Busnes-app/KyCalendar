@@ -420,19 +420,20 @@ Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 - [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.
 
-`cmd/server` owns the scheduler: `backupLoop` builds the `RunConfig` and client once and
-returns with `scheduler disabled: ...` if that fails, because a run that never stamps its
-attempt would log and audit the same failure every minute forever. It closes its `done` channel
-only where it returns, between runs, and `runServer` cancels and waits on that channel after
-`httpServer.Shutdown` and before the store closes, then waits on `api.Server.WaitDetached()` for
-the pair, pin-key and deposit handlers, which detach from their requests and so outlive
-`Shutdown`. Nothing writes into a closed store. Both waits run under one `backupWaitTimeout`
-context (17m, the lib's 15m deposit ceiling plus sealing) -- a context, not a timer channel,
-which delivers once and would leave the second wait unbounded; the HTTP drain is `shutdownTimeout`
-(5s). `docker-compose.yml` grants a `stop_grace_period` above their sum, so the guarantee holds
-in the shipped deployment instead of assuming a supervisor grace period;
-`TestComposeGracePeriodCoversTheShutdownBudget` keeps the three in step. Past the deadline the
-work is abandoned with a log line rather than killed silently.
+`cmd/server` owns the scheduler: `backupLoop` builds the `RunConfig` once and returns with
+`scheduler disabled: ...` if that fails, because a run that never stamps its attempt would log
+and audit the same failure every minute forever. Shutdown interrupts backup work instead of
+waiting it out. On SIGTERM `runServer` cancels the loop's context and calls
+`api.Server.StopDetached()` before `httpServer.Shutdown`; `backup.Run` aborts the snapshot or
+upload, hands the attempt stamp back so the run is due again on the next start, and returns
+`backup.ErrInterrupted`, which is audited. `runServer` then waits on the loop's `done` channel
+and `api.Server.WaitDetached()` so the receipt, key pin and audit writes land before the store
+closes. Both waits run under one `backupWaitTimeout` context (10s) -- a context, not a timer
+channel, which delivers once and would leave the second wait unbounded; the HTTP drain is
+`shutdownTimeout` (5s). Their sum must stay within 20s, inside Kubernetes' default 30s
+termination grace, and below `docker-compose.yml`'s `stop_grace_period` (30s);
+`TestShutdownBudgetFitsTheGracePeriods` keeps them in step. Past the deadline the work is
+abandoned with a log line rather than killed silently.
 
 The KyRecovery wire contract is `kyrecovery-server/zero_code_pairing_handoff_spec.md` (v2.0.0, sealed-capsule deposit); the product half is `ky-primitives/recoveryclient`, wired through `internal/backup` and `internal/api` so every server built on this base inherits it. Operator documents: `docs/RECOVERY.md` (disaster recovery and every `KYCALENDAR_BACKUP_*` variable) and `docs/RUNNING.md` (deployment and the LAN DNS override) and `docs/RESTORE.md` (the restore runbook, proven against a scratch 2-of-3 kit).
 
