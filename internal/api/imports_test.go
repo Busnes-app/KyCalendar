@@ -371,6 +371,41 @@ func TestImportCSVIsTrackedForShutdown(t *testing.T) {
 	}
 }
 
+// TestImportCSVStopsAtShutdown: shutdown waits seconds, not the import's five minutes, so an
+// import in flight stops between rows, keeps what it wrote, says so and is audited. Importing
+// the file again finishes it without duplicates.
+func TestImportCSVStopsAtShutdown(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	cookie := loginAs(t, srv, st, "ivy", "user")
+	call(t, srv, "GET", "/api/calendars", "", cookie)
+	cal := personalCalendar(t, st, "usr_ivy")
+	p := pauseWrites(t, srv, st)
+
+	done := startImport(srv, cookie, cal.ID)
+	waitEntered(t, p) // the first row is being written
+	srv.StopDetached()
+	p.unpause()
+
+	waited := make(chan struct{})
+	go func() { defer close(waited); srv.WaitDetached() }()
+	select {
+	case <-waited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("WaitDetached was still blocked two seconds after StopDetached")
+	}
+	w := <-done
+	var v importJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("import %d %s", w.Code, w.Body.String())
+	}
+	if v.Imported != 1 || !strings.Contains(v.Stopped, "the server is restarting") {
+		t.Fatalf("interrupted import reported %+v, want one row imported and a restart notice", v)
+	}
+	if !audited(t, st, "calendar.import") {
+		t.Error("the interrupted import was not audited")
+	}
+}
+
 // TestImportCSVOnePerUser: a second import from the same person while one is writing is refused
 // with a message the web app shows; other people still import, up to the server-wide cap.
 func TestImportCSVOnePerUser(t *testing.T) {
