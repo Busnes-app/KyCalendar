@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Busnes-app/ky-primitives/netallow"
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/ky-primitives/syncauth"
 	"github.com/Busnes-app/kycalendar/internal/auth"
@@ -73,6 +74,8 @@ type Server struct {
 	davFails     davFailures
 	unknownAudit unknownAuthAudit // dav_auth.go
 	powSpent     auth.PoWSpent
+	// exempt is the office-network allowlist: environment plus admin setting (exempt_networks.go).
+	exempt atomic.Pointer[netallow.List]
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
@@ -200,6 +203,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	s.newKyPost()
 	s.stopping, s.stopDetached = context.WithCancel(context.Background())
+	s.loadExemptNetworks()
 	s.routes()
 	return s
 }
@@ -292,6 +296,15 @@ func (s *Server) limitIP(r *http.Request) string {
 	return ip
 }
 
+// perIPExempt reports whether the request comes from an allowlisted office network and so
+// skips per-IP limits. Only those: per-account windows, the CAPTCHA and every later check still
+// run. It matches the address requestIP resolved, so a forged X-Forwarded-For from an untrusted
+// peer cannot claim an allowlisted address.
+func (s *Server) perIPExempt(r *http.Request) bool {
+	addr, err := netip.ParseAddr(s.requestIP(r))
+	return err == nil && s.exempt.Load().Exempt(addr)
+}
+
 // handle registers a route and records its pattern, so the authorization matrix can prove it
 // covers every route.
 func (s *Server) handle(pattern string, h http.Handler) {
@@ -333,6 +346,8 @@ func (s *Server) routes() {
 	// Settings & Theme. The read endpoint tiers its own payload by role.
 	s.handle("/api/settings", http.HandlerFunc(s.handleGetSettings))
 	s.handle("/api/settings/theme", s.requireAdmin(s.handleSetTheme))
+	s.handle("GET /api/settings/rate-limit-networks", s.requireAdmin(s.handleGetExemptNetworks))
+	s.handle("PUT /api/settings/rate-limit-networks", s.requireAdmin(s.handleSetExemptNetworks))
 
 	// SCIM 2.0 routes
 	s.scim.RegisterRoutes(s.handle)

@@ -198,6 +198,8 @@ func apiRows(w *world) map[string]apiRow {
 		"PUT /api/backup/schedule":                  {method: "PUT", path: "/api/backup/schedule", body: "{}", want: adminOnly},
 		"GET /api/backup/status":                    {method: "GET", path: "/api/backup/status", want: adminOnly},
 		"/api/settings/theme":                       {method: "POST", path: "/api/settings/theme", body: "{}", want: adminOnly},
+		"GET /api/settings/rate-limit-networks":     {method: "GET", path: "/api/settings/rate-limit-networks", want: adminOnly},
+		"PUT /api/settings/rate-limit-networks":     {method: "PUT", path: "/api/settings/rate-limit-networks", body: `{"networks":""}`, want: adminOnly},
 		"/scim/v2":                                  {method: "GET", path: "/scim/v2", want: scimOnly},
 		"/scim/v2/":                                 {method: "GET", path: "/scim/v2/Users", want: scimOnly},
 		"GET /api/app-passwords":                    {method: "GET", path: "/api/app-passwords", want: everyday},

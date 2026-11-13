@@ -38,7 +38,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	if !s.allowAttempt("login:"+s.limitIP(r), 20, time.Minute) {
+	if !s.perIPExempt(r) && !s.allowAttempt("login:"+s.limitIP(r), 20, time.Minute) {
 		s.writeError(w, http.StatusTooManyRequests, "Too many login attempts")
 		return
 	}

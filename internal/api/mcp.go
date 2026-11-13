@@ -78,7 +78,8 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 		}
 		now := time.Now()
 		ipKey := "mcp-ip:" + s.limitIP(r)
-		if s.davLimited(w, ipKey, davFailsPerIP, now) {
+		exempt := s.perIPExempt(r)
+		if !exempt && s.davLimited(w, ipKey, davFailsPerIP, now) {
 			return
 		}
 		var p *store.AppPassword
@@ -89,6 +90,18 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 		parsed = parsed && isBearer
 		if parsed {
 			p, user, secretOK = s.appPasswordOwner(r.Context(), id, secret)
+		}
+		if exempt {
+			// An office shares one address: count its failures per token instead (one bucket for
+			// tokens that do not exist), so one stale client cannot lock out the rest.
+			tokenKey := "-"
+			if p != nil {
+				tokenKey = p.ID
+			}
+			ipKey += "|" + tokenKey
+			if s.davLimited(w, ipKey, davFailsPerIP, now) {
+				return
+			}
 		}
 		if user != nil && s.davLimited(w, "mcp-user:"+user.ID, davFailsPerUser, now) {
 			return

@@ -87,7 +87,7 @@ run failed. Results are cached for 5 seconds. Compose probes it every 30 seconds
 ## Settings in `.env`
 
 Compose passes these from `.env` to the server: `KY_APP_URL`, `KY_ENV`, `KY_SESSION_SECRET`,
-`KY_ADMIN_PASSWORD`, `KY_TRUSTED_PROXIES`, `KY_SCIM_TOKEN`, `KY_KYSIGNON_ISSUER`,
+`KY_ADMIN_PASSWORD`, `KY_TRUSTED_PROXIES`, `KY_RATE_LIMIT_EXEMPT_NETWORKS`, `KY_SCIM_TOKEN`, `KY_KYSIGNON_ISSUER`,
 `KY_KYSIGNON_CLIENT_ID`, `KY_KYSIGNON_SECRET`, `KY_KYSIGNON_HMAC_SECRET` and the
 `KYCALENDAR_*` settings below. Unset, each keeps the server's default. A production `.env`
 (mode 600) holds at least:
@@ -101,6 +101,38 @@ KY_TRUSTED_PROXIES=<your proxy's address>/32
 
 Switches that weaken security (`KY_ALLOW_INSECURE_HTTP`, `KY_COOKIE_SECURE`) are not passed;
 for local testing, set them in a local override's `environment:`.
+
+## Office networks and rate limits
+
+Sign-in, password change, CalDAV and agent (`/mcp`) sign-in are limited per client address:
+20 sign-ins a minute, 10 password changes a minute, 10 failed CalDAV or agent sign-ins per
+15 minutes. Staff in one office usually share one public NAT address, so they share those
+limits; one phone with an old app password can lock every calendar app in the office out for
+15 minutes.
+
+List the office's networks to lift the per-address limits for them only: in `.env` as
+`KY_RATE_LIMIT_EXEMPT_NETWORKS=203.0.113.0/24,2001:db8:1::/48`, or as an administrator under
+**Server settings → Office networks** (one per line; takes effect at once, audited as
+`admin.rate_limit_networks`, needs a sign-in younger than 10 minutes). The server uses both
+lists. It is empty by default. Ranges broader than /16 (IPv4) or /48 (IPv6), loopback and
+anything unparsable are refused: at startup for the variable, with the reason on save for the
+screen. A saved list that no longer parses at startup is ignored and logged, never widened.
+
+What still applies to a listed network: the per-account sign-in window (10 failures per
+account per 15 minutes), the per-account password-change limit, the CAPTCHA, and on CalDAV and
+`/mcp` ten failures per account name (CalDAV) or per token (`/mcp`) per address per 15 minutes,
+plus the per-user limit on wrong secrets. So one misconfigured device locks out only its own
+account.
+
+The match uses the client address the server already resolves through `KY_TRUSTED_PROXIES`, so
+a forged `X-Forwarded-For` cannot claim a listed network. Set `KY_TRUSTED_PROXIES` first when a
+proxy fronts the server.
+
+**Risk.** Everyone who reaches the server from a listed address loses the per-address limit.
+List only networks you control. Never list guest Wi-Fi, a shared or public network (a
+co-working space, a hotel, a carrier's CGNAT range), a VPN provider's exit, or the reverse
+proxy's own address: with the proxy listed, every client would be exempt whenever forwarding
+breaks.
 
 ## Container IP address
 

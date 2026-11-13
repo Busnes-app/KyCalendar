@@ -28,7 +28,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusConflict, "Your sign-in provider looks after your password")
 		return
 	}
-	if !s.allowAttempt("password-change:"+s.limitIP(r), 10, time.Minute) || !s.allowAccountAttempt("password-change:"+user.ID, 5, time.Minute) {
+	if (!s.perIPExempt(r) && !s.allowAttempt("password-change:"+s.limitIP(r), 10, time.Minute)) || !s.allowAccountAttempt("password-change:"+user.ID, 5, time.Minute) {
 		s.writeError(w, http.StatusTooManyRequests, "Too many password change attempts")
 		return
 	}

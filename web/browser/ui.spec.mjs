@@ -77,6 +77,21 @@ test('production CSP, worker, themes, keyboard and responsive shell', async ({ p
   await nav.getByRole('button', { name: 'Server settings', exact: true }).click();
   await expect(nav.getByRole('button', { name: 'Server settings', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { name: 'Server settings', exact: true })).toBeVisible();
+  // Office networks: a too-broad range is refused by the server, a real one is stored canonically,
+  // then cleared so no other spec's address skips a limit.
+  const networks = page.getByLabel('Networks that skip the per-address limit, one per line');
+  await expect(networks).toBeEnabled();
+  await networks.fill('10.0.0.0/8');
+  await page.getByRole('button', { name: 'Save networks' }).click();
+  await expect(page.getByRole('alert')).toContainText('too broad');
+  await networks.fill('198.18.40.9/24');
+  await page.getByRole('button', { name: 'Save networks' }).click();
+  await expect(page.getByRole('status')).toContainText('Saved');
+  await expect(networks).toHaveValue('198.18.40.0/24');
+  await page.screenshot({ path: testInfo.outputPath('office-networks.png'), fullPage: true });
+  await networks.fill('');
+  await page.getByRole('button', { name: 'Save networks' }).click();
+  await expect(page.getByRole('status')).toContainText('No network skips the limit');
   await fits(page);
   // Device pairing was removed (R27): the shell offers no pairing entry point.
   await expect(page.getByRole('button', { name: 'Pair Device' })).toHaveCount(0);
