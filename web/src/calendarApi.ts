@@ -129,3 +129,11 @@ export const searchPeople = (q: string): Promise<Person[]> =>
     .then((r) => (r.ok ? r.json() : null))
     .then((b) => (Array.isArray(b?.people) ? b.people.filter((p: Person) => typeof p?.email === 'string' && typeof p?.name === 'string') : []))
     .catch(() => []);
+
+/** Busy times of people on this instance from `GET /api/freebusy`; `unknown` for anyone else. */
+export interface Busy { start: string; end: string; tentative?: boolean }
+export interface PersonBusy { email: string; unknown?: boolean; busy: Busy[] }
+export const freeBusy = (emails: string[], start: Date, end: Date) =>
+  send(`/api/freebusy?users=${encodeURIComponent(emails.join(','))}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`)
+    .then((r) => parse<{ people: PersonBusy[] }>(r))
+    .then((b) => (Array.isArray(b?.people) ? b.people : []));

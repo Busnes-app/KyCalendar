@@ -4,7 +4,7 @@ KyCalendar's copy of the wave 1 wire contracts (owner decisions 2026-11-14; sour
 `ky-redesign/integrations/suite-integrations-contracts.md`). This copy is the durable one for
 this repository: change it together with the peer's copy. Sections implemented here: shared
 rules, B (KyCalendar → KyMessages meetings), D (people picker, KyCalendar's part) and E (the
-`/new` deep link, receiver). F (free/busy strip) follows in its own change.
+`/new` deep link, receiver) and F (the free/busy strip).
 
 ## Shared rules
 
@@ -136,3 +136,14 @@ How KyCalendar implements it: KyCalendar has no return-to (sign-in, SSO included
 is removed. A title or body over its limit or holding control characters (a title also
 newlines or tabs) is dropped; attendees past the 100th, duplicates and anything that is not
 `local@domain` are dropped. Guests show only where invitations are on (`scheduling`).
+
+## F. Free/busy strip (KyCalendar's part)
+
+KyCalendar event editor: a free/busy strip for attendees in the organisation, from the existing
+`GET /api/freebusy`.
+
+How KyCalendar implements it: one request for all guests over the chosen local day (the route
+takes up to 50 addresses, so no new backend); rows only for people the server knows (not
+`unknown`); busy and tentative blocks across the day, the chosen time outlined, and "Busy at
+this time" when a block overlaps it (an all-day event is the whole day). Any failure shows no
+strip. It appears with the People section, so only where invitations are on.
