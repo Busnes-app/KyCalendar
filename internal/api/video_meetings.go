@@ -16,6 +16,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/suitedir"
 	"github.com/emersion/go-ical"
 
+	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
@@ -102,6 +103,15 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 		return err
 	}
 	if cal == nil || !s.drivesMeeting(ctx, owner, cal) {
+		return s.closeMeeting(ctx, m, who)
+	}
+	// The creator must still be able to edit the event: access revoked on a shared calendar
+	// ends the room, so nothing of the event reaches them any more.
+	grants, err := s.store.Calendars().UserGrants(ctx, owner.ID)
+	if err != nil {
+		return err
+	}
+	if !access.CanEditEvents(c, access.Resolve(owner, c, grants)) {
 		return s.closeMeeting(ctx, m, who)
 	}
 	master, _ := calendar.Master(cal)

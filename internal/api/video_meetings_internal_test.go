@@ -655,3 +655,50 @@ func TestResolvePeopleAsksKyIdentityAsTheOrganizer(t *testing.T) {
 		t.Fatalf("query %v", got)
 	}
 }
+
+// Losing edit access to a shared calendar ends the creator's rooms there: nothing of the event
+// (a new title) reaches KyMessages for them afterwards.
+func TestRevokedAccessClosesTheRoom(t *testing.T) {
+	r := newMeetRig(t)
+	ctx := context.Background()
+	st := r.s.store
+	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_team", DisplayName: "Team"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Groups().AddGroupMember(ctx, "grp_team", r.org.ID); err != nil {
+		t.Fatal(err)
+	}
+	shared := &store.Calendar{ID: "cal_team", OwnerKind: "group", OwnerID: "cal_team", Slug: "team", Name: "Team", Components: []string{"VEVENT"}}
+	if err := st.Calendars().CreateCalendar(ctx, shared, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: shared.ID, GroupID: "grp_team", Role: "editor"}); err != nil {
+		t.Fatal(err)
+	}
+	r.cal = shared
+	uid := r.create(t, map[string]any{"meeting": true})
+	r.sync()
+	if err := st.Groups().RemoveGroupMember(ctx, "grp_team", r.org.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Another editor renames the event.
+	o := r.object(t, uid)
+	cal, _ := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	master, _ := calendar.Master(cal)
+	master.Props.SetText(ical.PropSummary, "Secret new title")
+	var buf bytes.Buffer
+	_ = ical.NewEncoder(&buf).Encode(cal)
+	if _, err := davbackend.Write(ctx, st, shared, o.Name, cal, buf.Bytes(), o.ETag, false, store.OwnerLimits{}, nil, "usr_other"); err != nil {
+		t.Fatal(err)
+	}
+	r.sync()
+	calls := r.km.seen()
+	if methods(calls) != "PUT DELETE" {
+		t.Fatalf("calls %s", methods(calls))
+	}
+	for _, c := range calls {
+		if strings.Contains(c.Body.Title, "Secret") {
+			t.Fatal("the new title reached KyMessages after access was revoked")
+		}
+	}
+}
