@@ -582,3 +582,49 @@ func TestRoomClosedByKyMessagesLeavesNoDeadLink(t *testing.T) {
 		t.Fatalf("calls %s", methods(calls))
 	}
 }
+
+// A failed people lookup still creates the room and writes its link, and never sends a member
+// list that would remove the people already in an existing room.
+func TestFailedPeopleLookupNeverShrinksTheRoom(t *testing.T) {
+	r := newMeetRig(t)
+	r.s.startScheduling()
+	working := resolvePeople
+	uid := r.create(t, map[string]any{"meeting": true, "attendees": []string{"ann@example.com"}})
+	r.sync()
+	if calls := r.km.seen(); len(calls) != 1 || fmt.Sprint(calls[0].Body.MemberSubs) != "[sub-ann]" {
+		t.Fatalf("calls %+v", calls)
+	}
+	resolvePeople = func(context.Context, *suitedir.Client, string, []string) ([]string, error) {
+		return nil, errPeopleUnavailable
+	}
+	r.update(t, uid, map[string]any{"title": "Renamed"})
+	r.sync()
+	r.sync()
+	if n := len(r.km.seen()); n != 1 {
+		t.Fatalf("a PUT went out without its members: %+v", r.km.seen())
+	}
+	// A new meeting whose lookup fails is created organizer first, with its link in the event.
+	uid2 := r.create(t, map[string]any{"meeting": true, "attendees": []string{"bob@example.com"}})
+	r.sync()
+	calls := r.km.seen()
+	if len(calls) != 2 || len(calls[1].Body.MemberSubs) != 0 {
+		t.Fatalf("calls %+v", calls)
+	}
+	if !strings.Contains(string(r.object(t, uid2).Data), "CONFERENCE") {
+		t.Fatal("link not written while the lookup fails")
+	}
+	r.sync()
+	if n := len(r.km.seen()); n != 2 {
+		t.Fatalf("retried PUTs while the lookup fails: %d", n)
+	}
+	// The lookup is back: both rooms catch up.
+	resolvePeople = working
+	r.sync()
+	got := map[string]string{}
+	for _, c := range r.km.seen()[2:] {
+		got[c.Body.Title] = fmt.Sprint(c.Body.MemberSubs)
+	}
+	if got["Renamed"] != "[sub-ann]" || got["Weekly sync"] != "[sub-bob]" {
+		t.Fatalf("after recovery %v", got)
+	}
+}

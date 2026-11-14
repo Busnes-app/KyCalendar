@@ -117,7 +117,9 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
 	url := m.MemberURL
-	if digest != m.Synced || url == "" || !resolved {
+	// A failed lookup never shrinks a room that exists: a PUT removes members it does not list.
+	// A new room is still created, organizer first, so the event gets its link.
+	if url == "" || resolved && digest != m.Synced {
 		res, err := s.kymessages.Put(ctx, m.ID, "evt_"+crypto.RandomHex(16), req)
 		if err != nil {
 			if err := s.meetingFailed(ctx, m, err, "put"); err != nil {
@@ -136,9 +138,10 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	}
 	if !resolved {
 		// Keep the link, stay due: the people lookup is retried with backoff.
-		if err := s.store.Calendars().SyncedMeeting(ctx, m.ID, m.DoneRev, "", url); err != nil {
+		if err := s.store.Calendars().SyncedMeeting(ctx, m.ID, m.DoneRev, m.Synced, url); err != nil {
 			return err
 		}
+		s.writeMeetingLink(ctx, owner, c, o, cal, url)
 		return s.store.Calendars().RetryMeeting(ctx, m.ID, meetingNow().Add(meetingWait(m.Attempts)), "people_unavailable")
 	}
 	if err := s.store.Calendars().SyncedMeeting(ctx, m.ID, m.Rev, digest, url); err != nil {
