@@ -14,6 +14,12 @@ interface ExemptStatus {
 
 const NETWORKS_ROUTE = '/api/settings/rate-limit-networks';
 
+// readStatus validates the route's reply at the boundary; anything else is null.
+const readStatus = async (res: Response): Promise<ExemptStatus | null> => {
+  const b = await res.json().catch(() => null);
+  return b && typeof b.networks === 'string' && typeof b.environment === 'string' && typeof b.exempted === 'number' ? b : null;
+};
+
 const lines = (list: string) => list.split(',').filter(Boolean).join('\n');
 
 // Office networks whose requests skip the per-address limits. One network per line.
@@ -30,9 +36,11 @@ const ExemptNetworks: React.FC = () => {
   };
 
   useEffect(() => {
-    void send(NETWORKS_ROUTE).then(async (res) =>
-      res?.ok ? show(await res.json()) : setError(res ? `Could not load the networks (HTTP ${res.status}).` : 'Could not load the networks.'),
-    );
+    void send(NETWORKS_ROUTE).then(async (res) => {
+      const s = res?.ok ? await readStatus(res) : null;
+      if (s) show(s);
+      else setError(res && !res.ok ? `Could not load the networks (HTTP ${res.status}).` : 'Could not load the networks.');
+    });
   }, []);
 
   const save = async (e: React.FormEvent) => {
@@ -51,7 +59,11 @@ const ExemptNetworks: React.FC = () => {
       setError(f.code === 'reauth_required' ? REAUTH : (f.error ?? 'Could not save the networks.'));
       return;
     }
-    const body: ExemptStatus = await res.json();
+    const body = await readStatus(res);
+    if (!body) {
+      setError('Could not read the saved networks. Reload the page.');
+      return;
+    }
     show(body);
     setMessage(body.networks ? 'Saved. These networks now skip the per-address limit.' : 'Saved. No network skips the limit.');
   };

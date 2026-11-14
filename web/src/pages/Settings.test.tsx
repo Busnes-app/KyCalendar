@@ -64,4 +64,10 @@ describe('Settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save networks' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/sign in again/i);
   });
+
+  it('reports an unexpected reply instead of failing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => json({}));
+    render(<Settings settings={{}} />);
+    expect((await screen.findByRole('alert')).textContent).toBe('Could not load the networks.');
+  });
 });
