@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { linkify } from '../linkify';
+import { FreeBusyStrip } from './FreeBusyStrip';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
 
 interface Props {
@@ -268,6 +269,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
                   {suggestions.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}
                 </datalist>
               </div>
+              <FreeBusyStrip emails={people.map((p) => p.email)} start={form.start} end={form.end} allDay={form.allDay} />
             </>
           )}
           {canMeet && scope === 'all' && (
