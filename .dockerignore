@@ -18,6 +18,7 @@
 **/coverage.out
 **/node_modules
 /kycalendar
+/server
 .claude/
 .codex/
 .superpowers/

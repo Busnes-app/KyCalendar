@@ -291,6 +291,7 @@ jobs:
           cache: true
 
       - run: shellcheck scripts/*.sh
+      - run: scripts/check-no-binaries.sh
       # Stamped as a release build is, so the smoke test proves the -X path end to end.
       - run: go build -ldflags "-X github.com/Busnes-app/kycalendar/internal/appversion.release=0.0.0-ci" -o kycalendar ./cmd/server
       - run: scripts/smoke-test.sh
