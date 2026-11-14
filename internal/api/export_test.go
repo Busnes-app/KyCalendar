@@ -103,3 +103,25 @@ func KyPostLinkForTest(s *Server) *kypost.Link { return s.kypost }
 
 // SchedulingOnForTest reports whether server-side scheduling is on.
 func SchedulingOnForTest(s *Server) bool { return s.sched != nil }
+
+// SetPasswordVerifyForTest replaces sign-in's password check and returns the restore func, so a
+// test can count verifications. Test-only.
+func SetPasswordVerifyForTest(f func(pass, hash string) (bool, error)) func() {
+	old := passwordVerify
+	passwordVerify = f
+	return func() { passwordVerify = old }
+}
+
+// DAVFailKeysForTest returns the DAV and /mcp failure limiter's keys. Test-only.
+func DAVFailKeysForTest(s *Server) []string {
+	s.davFails.mu.Lock()
+	defer s.davFails.mu.Unlock()
+	keys := make([]string, 0, len(s.davFails.seen))
+	for k := range s.davFails.seen {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// OfficeBudgetForTest is what allowlisted networks share per per-IP limit each minute.
+const OfficeBudgetForTest = officeBudget

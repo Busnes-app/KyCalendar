@@ -77,33 +77,29 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 			return
 		}
 		now := time.Now()
-		ipKey := "mcp-ip:" + s.limitIP(r)
-		exempt := s.perIPExempt(r)
-		if !exempt && s.davLimited(w, ipKey, davFailsPerIP, now) {
+		bearer, isBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		id, secret, parsed := apppass.Parse(strings.TrimSpace(bearer))
+		parsed = parsed && isBearer
+		// From an office the failure key is per token ID as presented (hashed), so a stale client
+		// locks out only itself; reserved before the lookup, like DAV.
+		tokenName := "-"
+		if parsed {
+			tokenName = id
+		}
+		release, reserved := s.reserveDAVFailure(w, r, "mcp-ip:", tokenName, now)
+		if !reserved {
 			return
 		}
 		var p *store.AppPassword
 		var user *store.User
 		var secretOK bool
-		bearer, isBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		id, secret, parsed := apppass.Parse(strings.TrimSpace(bearer))
-		parsed = parsed && isBearer
 		if parsed {
 			p, user, secretOK = s.appPasswordOwner(r.Context(), id, secret)
 		}
-		if exempt {
-			// An office shares one address: count its failures per token instead (one bucket for
-			// tokens that do not exist), so one stale client cannot lock out the rest.
-			tokenKey := "-"
-			if p != nil {
-				tokenKey = p.ID
-			}
-			ipKey += "|" + tokenKey
-			if s.davLimited(w, ipKey, davFailsPerIP, now) {
-				return
-			}
-		}
 		if user != nil && s.davLimited(w, "mcp-user:"+user.ID, davFailsPerUser, now) {
+			if secretOK { // the right secret is no guess; a wrong one stays counted
+				release()
+			}
 			return
 		}
 		// A dav token and an idle one fail like a wrong secret: the answer never says which.
@@ -115,7 +111,6 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 			}
 		}
 		if !allowed {
-			s.davFails.fail(ipKey, now)
 			if user != nil && !secretOK {
 				s.davFails.fail("mcp-user:"+user.ID, now)
 			}
@@ -129,6 +124,7 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 			mcpChallenge(w, s)
 			return
 		}
+		release()
 		if user.Role == "admin" {
 			s.writeError(w, http.StatusForbidden, "Administrator accounts cannot use calendars")
 			return
