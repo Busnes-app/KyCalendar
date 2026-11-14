@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -19,12 +18,15 @@ type person struct {
 	Email string `json:"email"`
 }
 
-// searchPeople asks KyIdentity's suite directory for people matching q, as sub.
-// ponytail: ky-primitives suitedir.People is unmerged (branch feat/suitedir-people); replace
-// this body with dir.People when the module is bumped. Until then the picker offers nothing
-// from the organisation and free text still works.
+// searchPeople asks KyIdentity's suite directory for people matching q, as sub. A variable so
+// tests can stand in for KyIdentity.
 var searchPeople = func(ctx context.Context, dir *suitedir.Client, sub, q string, limit int) ([]person, error) {
-	return nil, errors.New("suite people search unavailable")
+	found, err := dir.People(ctx, sub, q, limit)
+	people := make([]person, 0, len(found))
+	for _, p := range found {
+		people = append(people, person{Sub: p.Sub, Name: p.Name, Email: p.Email})
+	}
+	return people, err
 }
 
 // suitePeopleTTL is how long one user's answer to one query is reused.

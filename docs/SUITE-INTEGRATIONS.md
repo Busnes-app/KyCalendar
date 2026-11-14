@@ -118,8 +118,7 @@ from it; free text still works.
 How KyCalendar implements it: everyday users only (administrators get 403 like every
 everyday route); `q` of 2 to 64 characters, else an empty list without asking KyIdentity;
 `limit` 10; 60 searches per user per minute (429 `rate_limited`); only accounts the live
-KyIdentity binding signed in reach KyIdentity. The query is never logged. Until ky-primitives
-ships `People` (branch `feat/suitedir-people`) the list is always empty.
+KyIdentity binding signed in reach KyIdentity. The query is never logged.
 
 ## E. "New meeting" deep link (KyCalendar receives)
 

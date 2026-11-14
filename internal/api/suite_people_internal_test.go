@@ -12,6 +12,7 @@ import (
 
 	"github.com/Busnes-app/ky-primitives/suitedir"
 
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -81,5 +82,30 @@ func TestSuitePeopleIsRateLimited(t *testing.T) {
 	}
 	if !limited {
 		t.Fatal("never rate limited")
+	}
+}
+
+func TestSearchPeopleAsksKyIdentityAsTheUser(t *testing.T) {
+	var got url.Values
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id, secret, ok := r.BasicAuth(); r.URL.Path != "/api/suite/people" || !ok || id != "kycalendar" || secret != "suite-secret" {
+			http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
+			return
+		}
+		got = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"people":[{"sub":"s-al","name":"Alice Example","email":"alice@example.com"}]}`))
+	}))
+	t.Cleanup(idp.Close)
+	dir, err := sso.NewProvider(sso.KindKyIdentity, "x", idp.URL, "kycalendar", "suite-secret", idp.Client()).SuiteDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	people, err := searchPeople(context.Background(), dir, "sub-ann", "al", 10)
+	if err != nil || len(people) != 1 || people[0] != (person{Sub: "s-al", Name: "Alice Example", Email: "alice@example.com"}) {
+		t.Fatalf("people %v err %v", people, err)
+	}
+	if got.Get("sub") != "sub-ann" || got.Get("q") != "al" || got.Get("limit") != "10" {
+		t.Fatalf("query %v", got)
 	}
 }
