@@ -15,7 +15,7 @@ import { EventDialog } from '../components/EventDialog';
 import { MiniMonth } from '../components/MiniMonth';
 import { useScrollCue } from '../components/AppHeader';
 import { ScopeDialog } from '../components/ScopeDialog';
-import { WEEKDAYS, addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, validZone, type FormState } from '../eventForm';
+import { NEW_LINK_KEY, WEEKDAYS, addDays, bodyFromForm, emptyForm, formFromEvent, localDate, localDateTime, parseLocal, parseNewLink, validZone, type FormState } from '../eventForm';
 import '../styles/calendar.css';
 
 type MoveArg = EventDropArg | EventResizeDoneArg;
@@ -125,7 +125,7 @@ export function CalendarPage({ scheduling = false, meetings = false, me = '', si
   // Event fetch state, so an empty view never claims "no events" while loading or after a failure.
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [eventsFailed, setEventsFailed] = useState(false);
-  const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState } | null>(null);
+  const [dialog, setDialog] = useState<{ key: number; event?: EventInfo; initial: FormState; people?: string[] } | null>(null);
   const [pending, setPending] = useState<MoveArg | null>(null);
   const dragError = useRef<string | null>(null);
   const opens = useRef(0);
@@ -249,6 +249,20 @@ export function CalendarPage({ scheduling = false, meetings = false, me = '', si
     const target = writable.find((c) => !hidden.has(c.id)) ?? writable[0];
     setDialog({ key: ++opens.current, initial: emptyForm(start, end, allDay, target.id) });
   };
+  // A "New meeting" link (main.tsx kept its query): open the editor prefilled, once, as soon as
+  // there is a calendar to save to. Nothing is saved until the user saves.
+  useEffect(() => {
+    const search = sessionStorage.getItem(NEW_LINK_KEY);
+    if (search === null || writable.length === 0) return;
+    sessionStorage.removeItem(NEW_LINK_KEY);
+    const link = parseNewLink(search);
+    const s = new Date();
+    s.setMinutes(0, 0, 0);
+    s.setHours(s.getHours() + 1);
+    const target = writable.find((c) => !hidden.has(c.id)) ?? writable[0];
+    const initial = { ...emptyForm(s, new Date(s.getTime() + 3600_000), false, target.id), title: link.title, description: link.description };
+    setDialog({ key: ++opens.current, initial, people: link.attendees });
+  });
   const openEvent = (ev: EventInfo) => {
     focusAfterReload.current = null;
     setDialog({ key: ++opens.current, event: ev, initial: formFromEvent(ev, 'this') });
@@ -417,6 +431,7 @@ export function CalendarPage({ scheduling = false, meetings = false, me = '', si
             calendars={calendars}
             event={dialog.event}
             initial={dialog.initial}
+            initialPeople={dialog.people}
             onClose={closeDialog}
             onDone={closeDialog}
             scheduling={scheduling}

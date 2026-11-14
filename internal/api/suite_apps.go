@@ -64,7 +64,7 @@ func (s *Server) handleSuiteApps(w http.ResponseWriter, r *http.Request) {
 func (s *Server) suiteAppsFor(ctx context.Context, u *store.User) []suitedir.App {
 	none := []suitedir.App{}
 	p := s.signin.Load()
-	if p == nil || p.Kind != sso.KindKyIdentity || u.SSOSubject == "" || u.SSOIssuer != p.Binding || !slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider) {
+	if p == nil || !s.suiteAccount(u, p) {
 		return none
 	}
 	if apps, ok := s.suiteApps.get(u.ID, p.ID); ok {
@@ -89,4 +89,10 @@ func (s *Server) suiteAppsFor(ctx context.Context, u *store.User) []suitedir.App
 		s.suiteApps.put(u.ID, p.ID, apps)
 	}
 	return apps
+}
+
+// suiteAccount reports whether the live KyIdentity provider p signed u in, so KyIdentity's
+// suite directory knows u by its subject.
+func (s *Server) suiteAccount(u *store.User, p *sso.Provider) bool {
+	return p.Kind == sso.KindKyIdentity && u.SSOSubject != "" && u.SSOIssuer == p.Binding && slices.Contains(sso.AccountProviders(p.Kind), u.SSOProvider)
 }

@@ -120,3 +120,12 @@ export const rsvp = (calendarId: string, uid: string, etag: string, partstat: An
   }).then((r) => parse<{ etag: string }>(r));
 
 export const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+/** One organisation member from `GET /api/suite/people`. */
+export interface Person { sub: string; name: string; email: string }
+// The attendee autocomplete; [] on any failure or malformed answer, so free text still works.
+export const searchPeople = (q: string): Promise<Person[]> =>
+  fetch(`/api/suite/people?q=${encodeURIComponent(q)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((b) => (Array.isArray(b?.people) ? b.people.filter((p: Person) => typeof p?.email === 'string' && typeof p?.name === 'string') : []))
+    .catch(() => []);

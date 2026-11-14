@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bodyFromForm, emptyForm, formFromEvent, localDate, parseLocal, validZone } from './eventForm';
+import { bodyFromForm, emptyForm, formFromEvent, localDate, parseLocal, parseNewLink, validZone } from './eventForm';
 import type { EventInfo } from './calendarApi';
 
 const base: EventInfo = {
@@ -72,5 +72,25 @@ describe('eventForm', () => {
     expect(validZone('Eastern Standard Time')).toBe(false);
     expect(validZone('')).toBe(false);
     expect(localDate(new Date(2026, 0, 2))).toBe('2026-01-02');
+  });
+});
+
+describe('parseNewLink', () => {
+  it('reads title, body and attendees as plain text', () => {
+    const l = parseNewLink('?title=Plan%20%3Cb%3Eit%3C%2Fb%3E&body=Line%201%0ALine%202&attendees=ann%40example.com,%20bob%40example.com,ANN%40example.com');
+    expect(l).toEqual({ title: 'Plan <b>it</b>', description: 'Line 1\nLine 2', attendees: ['ann@example.com', 'bob@example.com'] });
+  });
+
+  it('drops anything out of bounds or malformed', () => {
+    const big = 'é'.repeat(128); // 256 bytes
+    const many = Array.from({ length: 120 }, (_, i) => `p${i}@example.com`).join(',');
+    const l = parseNewLink(`?title=${encodeURIComponent(big)}&body=${encodeURIComponent('x'.repeat(2001))}&attendees=${encodeURIComponent('not-an-address,a@b,"x"@y,' + many)}`);
+    expect(l.title).toBe('');
+    expect(l.description).toBe('');
+    expect(l.attendees[0]).toBe('a@b');
+    expect(l.attendees).toHaveLength(100);
+    expect(parseNewLink('?title=a%0Ab&body=%00').title).toBe('');
+    expect(parseNewLink('?body=%00')).toEqual({ title: '', description: '', attendees: [] });
+    expect(parseNewLink('')).toEqual({ title: '', description: '', attendees: [] });
   });
 });

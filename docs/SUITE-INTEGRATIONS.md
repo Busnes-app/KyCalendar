@@ -3,8 +3,8 @@
 KyCalendar's copy of the wave 1 wire contracts (owner decisions 2026-11-14; source:
 `ky-redesign/integrations/suite-integrations-contracts.md`). This copy is the durable one for
 this repository: change it together with the peer's copy. Sections implemented here: shared
-rules, B (KyCalendar → KyMessages meetings). D (people picker), E (`/new` deep link) and F
-(free/busy strip) follow in their own changes.
+rules, B (KyCalendar → KyMessages meetings), D (people picker, KyCalendar's part) and E (the
+`/new` deep link, receiver). F (free/busy strip) follows in its own change.
 
 ## Shared rules
 
@@ -107,3 +107,33 @@ Closes the room as the console's Close does (blocked, members out, history kept)
 - **Mail.** The first invitation leaves before KyMessages answers; once the link is written into
   the organizer's event, the scheduler sends the update, which carries `CONFERENCE` and the
   `Join:` line.
+
+## D. People picker (KyCalendar's part)
+
+KyCalendar adds `GET /api/suite/people?q=` for its own signed-in users (session auth, CSRF
+rules as its other GET routes), backed by `suitedir.People` with the session's subject, cached
+per user and query for 60 seconds, empty list on any failure. The attendee field autocompletes
+from it; free text still works.
+
+How KyCalendar implements it: everyday users only (administrators get 403 like every
+everyday route); `q` of 2 to 64 characters, else an empty list without asking KyIdentity;
+`limit` 10; 60 searches per user per minute (429 `rate_limited`); only accounts the live
+KyIdentity binding signed in reach KyIdentity. The query is never logged. Until ky-primitives
+ships `People` (branch `feat/suitedir-people`) the list is always empty.
+
+## E. "New meeting" deep link (KyCalendar receives)
+
+`https://<kycalendar-origin>/new?title=<≤255 bytes>&attendees=<comma-separated addresses,
+≤100>&body=<≤2000 bytes>`
+
+- Opens the event editor prefilled. Nothing is stored until the user saves. All values are
+  untrusted text: rendered as text, attendees validated as addresses, anything invalid dropped
+  silently.
+- Survives the sign-in redirect when the app has a return-to mechanism.
+
+How KyCalendar implements it: KyCalendar has no return-to (sign-in, SSO included, lands on
+`/`), so the page keeps the query in `sessionStorage` (this tab only) and moves to
+`/#/calendar`; once a calendar to save to has loaded, the editor opens prefilled and the copy
+is removed. A title or body over its limit or holding control characters (a title also
+newlines or tabs) is dropped; attendees past the 100th, duplicates and anything that is not
+`local@domain` are dropped. Guests show only where invitations are on (`scheduling`).

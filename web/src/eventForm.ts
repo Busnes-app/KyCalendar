@@ -78,3 +78,23 @@ export function bodyFromForm(f: FormState, zone: string, scope?: 'all' | 'this',
   if (scope === 'this' && recurrenceId) body.recurrence_id = recurrenceId;
   return body;
 }
+
+// The "New meeting" deep link (suite contract E): /new?title=&attendees=&body=. Every value is
+// untrusted text; anything out of bounds or malformed is dropped without a word.
+export interface NewLink { title: string; description: string; attendees: string[] }
+export const NEW_LINK_KEY = 'kycalendar.newEvent';
+const EMAIL = /^[^\s@,<>"]+@[^\s@,<>"]+$/;
+const byteLength = (s: string) => new TextEncoder().encode(s).length;
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/;
+
+export function parseNewLink(search: string): NewLink {
+  const q = new URLSearchParams(search);
+  const text = (v: string | null, max: number, line: boolean) =>
+    v !== null && byteLength(v) <= max && !CONTROL.test(v) && !(line && /[\n\t]/.test(v)) ? v.trim() : '';
+  const attendees: string[] = [];
+  for (const raw of (q.get('attendees') ?? '').split(',')) {
+    const a = raw.trim();
+    if (a.length <= 320 && EMAIL.test(a) && !attendees.some((x) => x.toLowerCase() === a.toLowerCase()) && attendees.length < 100) attendees.push(a);
+  }
+  return { title: text(q.get('title'), 255, true), description: text(q.get('body'), 2000, false), attendees };
+}

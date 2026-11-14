@@ -254,6 +254,7 @@ func apiRows(w *world) map[string]apiRow {
 		"DELETE /api/events/{cal}/{uid}":    {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
 		"POST /api/events/{cal}/{uid}/rsvp": {method: "POST", path: "/api/events/" + w.group.ID + "/seed-uid/rsvp", body: `{"partstat":"ACCEPTED"}`, want: groupWrite},
 		"GET /api/freebusy":                 {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
+		"GET /api/suite/people":             {method: "GET", path: "/api/suite/people?q=al", want: everyday},
 		"POST /api/itip/inbound":            {method: "POST", path: "/api/itip/inbound", body: `{}`, want: kypostOnly},
 		"POST /api/itip/respond":            {method: "POST", path: "/api/itip/respond", body: `{}`, want: kypostOnly},
 		// http:// links are refused before any fetch, so the allowed cells never reach the network.

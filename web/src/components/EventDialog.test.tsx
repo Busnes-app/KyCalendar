@@ -340,4 +340,28 @@ describe('EventDialog', () => {
       expect(screen.queryByRole('button', { name: 'Join video meeting' })).toBeNull();
     });
   });
+
+  it('prefills guests from a New meeting link and saves them only on Save', async () => {
+    const calls = capture();
+    const onDone = vi.fn();
+    render(<EventDialog calendars={cals} initial={{ ...emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p'), title: '<img src=x onerror=alert(1)>' }} initialPeople={['ann@example.com', 'me@example.com']} onDone={onDone} onClose={vi.fn()} scheduling me="me@example.com" />);
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('<img src=x onerror=alert(1)>');
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByText('ann@example.com')).toBeTruthy();
+    expect(calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(calls[0].body).toMatchObject({ attendees: ['ann@example.com'] });
+  });
+
+  it('suggests organisation people in the Invite field', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => new Response(JSON.stringify(String(input).startsWith('/api/suite/people?q=al')
+      ? { people: [{ sub: 's', name: 'Alice <b>Example</b>', email: 'alice@example.com' }, { name: 1 }] } : {}), { status: 200 }));
+    render(<EventDialog calendars={cals} initial={emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: 'al' } });
+    await waitFor(() => expect(document.querySelectorAll('#kc-invite-people option')).toHaveLength(1));
+    const option = document.querySelector('#kc-invite-people option') as HTMLOptionElement;
+    expect(option.value).toBe('alice@example.com');
+    expect(option.textContent).toBe('Alice <b>Example</b>');
+  });
 });

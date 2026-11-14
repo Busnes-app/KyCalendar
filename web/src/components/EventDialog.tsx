@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, rsvp, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { linkify } from '../linkify';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
@@ -8,6 +8,7 @@ interface Props {
   calendars: CalendarInfo[];
   event?: EventInfo;
   initial: FormState;
+  initialPeople?: string[]; // guests for a new event (the "New meeting" link)
   onDone: () => void;
   onClose: () => void;
   scheduling?: boolean; // server sends invitations
@@ -39,7 +40,7 @@ function message(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, onDone, onClose, scheduling = false, meetings = false, me = '' }: Props) {
+export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, me = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
@@ -54,12 +55,27 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
   // Only the organizer (or anyone, before there is one) manages people; the server lists the organizer itself.
   const organizes = scheduling && !readOnly && !invited && !!me && (!event?.organizer || sameEmail(event.organizer, me));
   const [loaded] = useState(() => (event?.attendees ?? []).filter((a) => !sameEmail(a.email, me)));
-  const [people, setPeople] = useState(loaded);
+  const [people, setPeople] = useState(() => [...loaded, ...initialPeople.filter((e) => !sameEmail(e, me)).map((email) => ({ email, status: 'NEEDS-ACTION' }))]);
   const [invitee, setInvitee] = useState('');
   // The video meeting switch: a new event follows its guests until the user chooses.
   const [meetingChoice, setMeetingChoice] = useState<boolean | null>(event ? !!event.meeting : null);
   const meeting = meetingChoice ?? people.length > 0;
   const canMeet = meetings && !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
+  const [suggestions, setSuggestions] = useState<Person[]>([]);
+  // Organisation people for the Invite field, after a short pause in typing; free text still works.
+  useEffect(() => {
+    const q = invitee.trim();
+    if (!organizes || q.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => void searchPeople(q).then((p) => { if (live) setSuggestions(p); }), 200);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [invitee, organizes]);
 
   useEffect(() => {
     const d = dialog.current!;
@@ -246,8 +262,11 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
                 </ul>
               )}
               <div className="kc-invite">
-                <input id="kc-invite" inputMode="email" autoComplete="off" placeholder="name@example.com" maxLength={320} value={invitee} onChange={(e) => setInvitee(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); invite(); } }} />
+                <input id="kc-invite" list="kc-invite-people" inputMode="email" autoComplete="off" placeholder="name@example.com" maxLength={320} value={invitee} onChange={(e) => setInvitee(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); invite(); } }} />
                 <button type="button" className="btn-secondary" onClick={invite}>Invite</button>
+                <datalist id="kc-invite-people">
+                  {suggestions.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}
+                </datalist>
               </div>
             </>
           )}

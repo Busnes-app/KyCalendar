@@ -55,6 +55,8 @@ type Server struct {
 	feed *feed.Refresher
 	// suiteApps caches each user's KyIdentity app list for the app rail (suite_apps.go).
 	suiteApps suiteAppsCache
+	// suitePeople caches people searches per user and query (suite_people.go).
+	suitePeople suitePeopleCache
 	// sched is server-side scheduling; nil while it is off. Decided by NewServer or StartKyPost
 	// before serving, then fixed.
 	sched *davbackend.Scheduler
@@ -422,6 +424,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/admin/kypost", s.requireAdmin(s.handleKyPostStatus))
 	s.handle("GET /api/admin/kymessages", s.requireAdmin(s.handleKyMessagesStatus))
 	s.handle("GET /api/suite/apps", s.requireSession(s.handleSuiteApps))
+	s.handle("GET /api/suite/people", s.requireEveryday(s.handleSuitePeople))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))
