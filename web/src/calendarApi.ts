@@ -29,6 +29,9 @@ export interface EventInfo {
   organizer?: string; attendees?: Attendee[]; my_status?: string;
   // cancelled: STATUS:CANCELLED, such as a meeting its organizer called off.
   cancelled?: boolean;
+  // Video meetings: meeting_url is the KyMessages room (Join); meeting is the organizer's switch,
+  // on with no meeting_url while the room is pending; meeting_error is KyMessages' refusal code.
+  meeting_url?: string; meeting?: boolean; meeting_error?: string;
 }
 export interface Attendee { email: string; status: string }
 export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
@@ -36,6 +39,7 @@ export interface EventBody {
   title: string; location: string; description: string; start: string; end: string; all_day: boolean;
   zone?: string; repeat: RepeatInfo; scope?: 'all' | 'this'; recurrence_id?: string;
   attendees?: string[]; // absent keeps the list; [] removes everyone
+  meeting?: boolean; // the video meeting switch; absent keeps it
 }
 
 export class ApiError extends Error {

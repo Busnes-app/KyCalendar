@@ -134,9 +134,12 @@ func (s *Server) StartKyPost(ctx context.Context) {
 }
 
 // kickKyPost asks for a lookup soon: the sign-in provider changed or KyPost refused the secret.
-func (s *Server) kickKyPost() {
+func (s *Server) kickKyPost() { kick(s.kypostKick) }
+
+// kick wakes a lookup loop without blocking; a nil channel is no loop.
+func kick(c chan struct{}) {
 	select {
-	case s.kypostKick <- struct{}{}:
+	case c <- struct{}{}:
 	default:
 	}
 }
@@ -147,9 +150,17 @@ func (s *Server) setSignIn(p *sso.Provider) {
 	if s.kypostKick != nil {
 		s.kickKyPost()
 	}
+	kick(s.kymessagesKick)
 }
 
 func (s *Server) kypostLoop(ctx context.Context, ok bool, refresh, retry, minGap time.Duration) {
+	s.peerLoop(ctx, s.kypostKick, s.resolveKyPost, ok, refresh, retry, minGap)
+}
+
+// peerLoop keeps one suite peer link fresh: resolve again every refresh, after a failure from
+// retry doubling to refresh, and on a kick (a new sign-in provider at once, else minGap after
+// the last lookup).
+func (s *Server) peerLoop(ctx context.Context, kick chan struct{}, resolve func(context.Context) bool, ok bool, refresh, retry, minGap time.Duration) {
 	from, last, failures := s.signin.Load(), time.Now(), 0
 	if !ok {
 		failures = 1
@@ -169,7 +180,7 @@ func (s *Server) kypostLoop(ctx context.Context, ok bool, refresh, retry, minGap
 				return
 			case <-t.C:
 				break sleep
-			case <-s.kypostKick:
+			case <-kick:
 				t.Stop()
 				// A new provider is looked up at once; anything else no sooner than minGap after
 				// the last lookup, so refused signatures cannot hammer KyIdentity.
@@ -183,7 +194,7 @@ func (s *Server) kypostLoop(ctx context.Context, ok bool, refresh, retry, minGap
 			}
 		}
 		from, last = s.signin.Load(), time.Now()
-		if s.resolveKyPost(ctx) {
+		if resolve(ctx) {
 			failures = 0
 		} else {
 			failures++

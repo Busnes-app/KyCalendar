@@ -342,7 +342,8 @@ func TestSCIMNeedsAnExplicitToken(t *testing.T) {
 	}
 }
 
-func TestKyPostConfigValidated(t *testing.T) {
+// The KyPost and KyMessages links read the same three variables under their own prefix.
+func TestPeerConfigValidated(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "good")
 	short := filepath.Join(dir, "short")
@@ -366,18 +367,27 @@ func TestKyPostConfigValidated(t *testing.T) {
 		"short secret":   {"https://kypost.example", short, false},
 		"secret, no url": {"", good, false},
 	} {
-		t.Run(name, func(t *testing.T) {
-			t.Setenv("KY_DATA_DIR", t.TempDir())
-			t.Setenv("KYCALENDAR_KYPOST_URL", c.url)
-			t.Setenv("KYCALENDAR_KYPOST_SECRET_FILE", c.file)
-			cfg, err := config.LoadFromEnv()
-			if (err == nil) != c.ok {
-				t.Fatalf("err %v, want ok=%v", err, c.ok)
-			}
-			if c.ok && c.url != "" && (cfg.Calendar.KyPostURL != "https://kypost.example" || len(cfg.Calendar.KyPostSecret) != 32) {
-				t.Errorf("url %q, secret %d bytes", cfg.Calendar.KyPostURL, len(cfg.Calendar.KyPostSecret))
-			}
-		})
+		for _, peer := range []string{"KYPOST", "KYMESSAGES"} {
+			t.Run(peer+" "+name, func(t *testing.T) {
+				t.Setenv("KY_DATA_DIR", t.TempDir())
+				t.Setenv("KYCALENDAR_"+peer+"_URL", c.url)
+				t.Setenv("KYCALENDAR_"+peer+"_SECRET_FILE", c.file)
+				cfg, err := config.LoadFromEnv()
+				if (err == nil) != c.ok {
+					t.Fatalf("err %v, want ok=%v", err, c.ok)
+				}
+				if !c.ok || c.url == "" {
+					return
+				}
+				url, secret := cfg.Calendar.KyPostURL, cfg.Calendar.KyPostSecret
+				if peer == "KYMESSAGES" {
+					url, secret = cfg.Calendar.KyMessagesURL, cfg.Calendar.KyMessagesSecret
+				}
+				if url != "https://kypost.example" || len(secret) != 32 {
+					t.Errorf("url %q, secret %d bytes", url, len(secret))
+				}
+			})
+		}
 	}
 }
 

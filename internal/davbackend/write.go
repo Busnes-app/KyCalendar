@@ -27,6 +27,12 @@ var ErrTooLarge = errors.New("davbackend: calendar object too large")
 // runs inside the store's transaction and may rewrite the object; the returned object holds
 // what was stored.
 func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits, plan store.Planner, writerID string) (*store.CalendarObject, error) {
+	return WriteMeeting(ctx, st, c, name, cal, raw, ifMatch, ifNoneMatch, lim, plan, writerID, nil)
+}
+
+// WriteMeeting is Write that also applies a web edit's video meeting switch (nil keeps it) in
+// the same transaction.
+func WriteMeeting(ctx context.Context, st store.Store, c *store.Calendar, name string, cal *ical.Calendar, raw []byte, ifMatch string, ifNoneMatch bool, lim store.OwnerLimits, plan store.Planner, writerID string, sw *store.MeetingSwitch) (*store.CalendarObject, error) {
 	o, err := Prepare(c.ID, name, cal, raw)
 	if err != nil {
 		return nil, err
@@ -34,7 +40,7 @@ func Write(ctx context.Context, st store.Store, c *store.Calendar, name string, 
 	if !c.Holds(o.Component) {
 		return nil, fmt.Errorf("%w: this calendar holds %s", calendar.ErrUnsupportedComponent, strings.Join(c.Components, " and "))
 	}
-	o.WriterID = writerID
+	o.WriterID, o.Meeting = writerID, sw
 	if _, err := st.Calendars().PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan); err != nil {
 		return nil, err
 	}

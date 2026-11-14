@@ -123,14 +123,22 @@ func (c *calendarStore) GetCalendarByID(ctx context.Context, id string) (*Calend
 }
 
 func (c *calendarStore) DeleteCalendar(ctx context.Context, id string) error {
-	res, err := c.store.db.ExecContext(ctx, c.q(`DELETE FROM calendars WHERE id = ?`), id)
+	tx, err := c.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendars WHERE id = ?`), id)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := c.closeMeetings(ctx, tx, `calendar_id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 const grantSelect = `SELECT g.calendar_id, g.group_id, gr.display_name, g.role FROM calendar_grants g JOIN groups gr ON gr.id = g.group_id `
@@ -432,6 +440,9 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 	if err := c.queue(ctx, tx, rows, lim); err != nil {
 		return false, err
 	}
+	if err := c.touchMeeting(ctx, tx, o.CalendarID, o.Name, o.WriterID, o.Meeting, false); err != nil {
+		return false, err
+	}
 	if ownTx {
 		return !exists, tx.Commit()
 	}
@@ -486,6 +497,9 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 		return err
 	}
 	if err := c.queue(ctx, tx, rows, lim); err != nil {
+		return err
+	}
+	if err := c.touchMeeting(ctx, tx, calendarID, name, "", nil, true); err != nil {
 		return err
 	}
 	if ownTx {

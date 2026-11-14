@@ -11,6 +11,7 @@ interface Props {
   onDone: () => void;
   onClose: () => void;
   scheduling?: boolean; // server sends invitations
+  meetings?: boolean; // KyMessages is paired and in the user's suite apps
   me?: string; // signed-in user's email
 }
 
@@ -27,12 +28,18 @@ const answerText = (status?: string) => ANSWERS.get(status ?? '') ?? 'Awaiting r
 const BUTTONS: [Answer, string][] = [['ACCEPTED', 'Accept'], ['TENTATIVE', 'Maybe'], ['DECLINED', 'Decline']];
 const sameEmail = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+const MEETING_ERRORS: Record<string, string> = {
+  no_user: 'The video meeting could not be set up: you have no KyMessages account yet.',
+  no_account: 'The video meeting could not be set up: your account did not sign in through KyIdentity.',
+};
+const meetingError = (code: string) => MEETING_ERRORS[code] ?? `The video meeting could not be set up (${code}).`;
+
 function message(e: unknown, fallback: string): string {
   if (e instanceof ApiError && e.status === 412) return 'This event changed elsewhere. Close and reopen it to see the latest version.';
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, onDone, onClose, scheduling = false, me = '' }: Props) {
+export function EventDialog({ calendars, event, initial, onDone, onClose, scheduling = false, meetings = false, me = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
@@ -49,6 +56,10 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
   const [loaded] = useState(() => (event?.attendees ?? []).filter((a) => !sameEmail(a.email, me)));
   const [people, setPeople] = useState(loaded);
   const [invitee, setInvitee] = useState('');
+  // The video meeting switch: a new event follows its guests until the user chooses.
+  const [meetingChoice, setMeetingChoice] = useState<boolean | null>(event ? !!event.meeting : null);
+  const meeting = meetingChoice ?? people.length > 0;
+  const canMeet = meetings && !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
 
   useEffect(() => {
     const d = dialog.current!;
@@ -93,6 +104,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
       return;
     }
     if (organizes && scope === 'all' && (people.length !== loaded.length || people.some((p, i) => p.email !== loaded[i].email))) body.attendees = people.map((p) => p.email);
+    if (canMeet && scope === 'all' && meeting !== !!event?.meeting) body.meeting = meeting;
     void act(() => (event ? updateEvent(event, body) : createEvent(form.calendarId, body)), 'Could not save the event');
   }
 
@@ -120,6 +132,15 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
     void act(() => deleteEvent(event, scope), 'Could not delete the event');
   }
 
+  // Join for anyone the event carries a room for; the organizer sees the room's state too.
+  const room = (
+    <>
+      {event?.meeting_url?.startsWith('https://') && <p><a className="btn-secondary" href={event.meeting_url} target="_blank" rel="noopener noreferrer">Join video meeting</a></p>}
+      {canMeet && event?.meeting && !event.meeting_url && !event.meeting_error && <p className="kc-hint" role="status">Meeting link pending</p>}
+      {canMeet && event?.meeting && event.meeting_error && <p role="alert">{meetingError(event.meeting_error)}</p>}
+    </>
+  );
+
   const invitation = invited && (
     <>
       {event!.organizer && <p>Organized by {event!.organizer}</p>}
@@ -144,6 +165,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
           <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
+          {room}
           {invitation}
           <div className="modal-actions">
             <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
@@ -159,6 +181,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
             </fieldset>
           )}
           {event?.recurring && scope === 'all' && <p role="note">{MOVE_ALL_WARNING}</p>}
+          {room}
           {invitation}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
@@ -226,6 +249,12 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
                 <input id="kc-invite" inputMode="email" autoComplete="off" placeholder="name@example.com" maxLength={320} value={invitee} onChange={(e) => setInvitee(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); invite(); } }} />
                 <button type="button" className="btn-secondary" onClick={invite}>Invite</button>
               </div>
+            </>
+          )}
+          {canMeet && scope === 'all' && (
+            <>
+              <label className="kc-check"><input type="checkbox" role="switch" checked={meeting} onChange={(e) => setMeetingChoice(e.target.checked)} /> Video meeting</label>
+              <p className="kc-hint">People outside your organisation cannot join yet.</p>
             </>
           )}
           <div className="modal-actions">

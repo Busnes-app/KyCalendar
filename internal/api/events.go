@@ -20,6 +20,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/itip"
+	"github.com/Busnes-app/kycalendar/internal/kymessages"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -66,6 +67,12 @@ type eventView struct {
 	MyStatus  string         `json:"my_status,omitempty"`
 	// Cancelled: STATUS:CANCELLED, such as an invitation the organizer called off.
 	Cancelled bool `json:"cancelled,omitempty"`
+	// Video meetings: MeetingURL is the KyMessages room link (the Join button; the description
+	// omits its "Join:" line). Meeting is the organizer's switch, on while a room is open for
+	// the event; MeetingError is KyMessages' last refusal code.
+	MeetingURL   string `json:"meeting_url,omitempty"`
+	Meeting      bool   `json:"meeting,omitempty"`
+	MeetingError string `json:"meeting_error,omitempty"`
 }
 
 type attendeeView struct {
@@ -121,6 +128,9 @@ func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView,
 	}
 	for _, a := range itip.AttendeesOf(in.Event) {
 		v.Attendees = append(v.Attendees, attendeeView{Email: a.Address.Email(), Status: a.Status})
+	}
+	if u := calendar.Conference(in.Event); kymessages.ValidURL(u) {
+		v.MeetingURL, v.Description = u, calendar.StripJoin(v.Description, u)
 	}
 	if in.AllDay {
 		v.Start, v.End = in.Start.In(viewer).Format(time.DateOnly), in.End.In(viewer).Format(time.DateOnly)
@@ -219,6 +229,15 @@ func compareListed(a, b listedInstance) int {
 func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*store.Calendar, grants []store.CalendarGrant, start, end time.Time, viewer *time.Location) ([]eventView, *apiError) {
 	begun := time.Now()
 	var listed []listedInstance
+	members := map[string]bool{}
+	member := func(email string) bool {
+		if ok, seen := members[email]; seen {
+			return ok
+		}
+		_, err := s.store.Users().CalendarUser(ctx, email)
+		members[email] = err == nil
+		return err == nil
+	}
 	tooSlow := func() bool {
 		if time.Since(begun) <= maxExpandTime {
 			return false
@@ -231,6 +250,10 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 		}
 		role := access.Resolve(user, c, grants)
 		objs, err := s.store.Calendars().ListObjectsInRange(ctx, c.ID, ical.CompEvent, start.Unix(), end.Unix())
+		if err != nil {
+			return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load events"}
+		}
+		meetings, err := s.store.Calendars().OpenMeetings(ctx, c.ID)
 		if err != nil {
 			return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load events"}
 		}
@@ -267,6 +290,17 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 			}
 			for _, in := range insts {
 				v := instanceView(c, o, repeat, zone, series, in, viewer, role)
+				if m := meetings[o.Name]; m != nil && v.Editable {
+					v.Meeting, v.MeetingError = true, m.LastError
+					if v.MeetingURL == "" {
+						v.MeetingURL = m.MemberURL
+					}
+				} else if v.MeetingURL != "" && v.Organizer != "" && !member(v.Organizer) {
+					// Members only: an outside organizer's link is no KyMessages room of ours; the
+					// description keeps it as text.
+					v.MeetingURL = ""
+					v.Description, _ = in.Event.Props.Text(ical.PropDescription)
+				}
 				if self := strings.ToLower(user.Email); self != "" && v.Organizer != self {
 					for _, a := range v.Attendees {
 						if a.Email == self {
@@ -307,6 +341,8 @@ type eventBody struct {
 	RecurrenceID string     `json:"recurrence_id"`
 	// Attendees replaces the meeting's attendee list (emails); absent keeps it, [] ends the meeting.
 	Attendees *[]string `json:"attendees"`
+	// Meeting is the video meeting switch; absent keeps it.
+	Meeting *bool `json:"meeting"`
 }
 
 var errBadEvent = errors.New("bad event")
@@ -412,7 +448,11 @@ func ifMatch(r *http.Request) (etag string, present, ok bool) {
 
 // writeEvent stores cal through the one write path and writes any error as JSON.
 func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, bool) {
-	o, apiErr := s.saveEvent(r.Context(), sessionUser(r.Context()), c, name, cal, etag, create)
+	return s.writeEventMeeting(w, r, c, name, cal, etag, create, nil)
+}
+
+func (s *Server) writeEventMeeting(w http.ResponseWriter, r *http.Request, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool, sw *store.MeetingSwitch) (*store.CalendarObject, bool) {
+	o, apiErr := s.saveEventMeeting(r.Context(), sessionUser(r.Context()), c, name, cal, etag, create, sw)
 	if apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return nil, false
@@ -422,11 +462,18 @@ func (s *Server) writeEvent(w http.ResponseWriter, r *http.Request, c *store.Cal
 
 // saveEvent stores cal for writer through the one write path and maps its errors.
 func (s *Server) saveEvent(ctx context.Context, writer *store.User, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool) (*store.CalendarObject, *apiError) {
+	return s.saveEventMeeting(ctx, writer, c, name, cal, etag, create, nil)
+}
+
+// saveEventMeeting is saveEvent with the video meeting switch sw (nil keeps it) applied in the
+// same transaction. Every web and agent edit keeps the room's "Join:" description line.
+func (s *Server) saveEventMeeting(ctx context.Context, writer *store.User, c *store.Calendar, name string, cal *ical.Calendar, etag string, create bool, sw *store.MeetingSwitch) (*store.CalendarObject, *apiError) {
+	calendar.KeepJoin(cal)
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "The event cannot be encoded"}
 	}
-	o, err := davbackend.Write(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(ctx, writer, cal), writer.ID)
+	o, err := davbackend.WriteMeeting(ctx, s.store, c, name, cal, buf.Bytes(), etag, create, s.objectLimits(), s.sched.Plan(ctx, writer, cal), writer.ID, sw)
 	switch {
 	case err == nil:
 		return o, nil
@@ -482,7 +529,12 @@ func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, apiErr)
 		return
 	}
-	o, ok := s.writeEvent(w, r, c, uid+".ics", cal, "", true)
+	sw, apiErr := s.meetingSwitch(r.Context(), c, nil, cal, b.Meeting)
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	o, ok := s.writeEventMeeting(w, r, c, uid+".ics", cal, "", true, sw)
 	if !ok {
 		return
 	}
@@ -560,8 +612,8 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	// Who is invited is one list for the whole series: the scheduler sends each person the
 	// series, so a per-occurrence change would reach every occurrence.
-	if b.Scope == "this" && b.Attendees != nil {
-		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests can only be changed for all events", code: "attendees_series_only"})
+	if b.Scope == "this" && (b.Attendees != nil || b.Meeting != nil) {
+		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests and the video meeting can only be changed for all events", code: "attendees_series_only"})
 		return
 	}
 	if apiErr := applyEdit(cal, b); apiErr != nil {
@@ -572,7 +624,12 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, apiErr)
 		return
 	}
-	if saved, ok := s.writeEvent(w, r, c, o.Name, cal, etag, false); ok {
+	sw, apiErr := s.meetingSwitch(r.Context(), c, o, cal, b.Meeting)
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	if saved, ok := s.writeEventMeeting(w, r, c, o.Name, cal, etag, false, sw); ok {
 		s.writeJSON(w, http.StatusOK, map[string]string{"etag": saved.ETag})
 	}
 }

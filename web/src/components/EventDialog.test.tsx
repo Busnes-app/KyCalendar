@@ -276,4 +276,68 @@ describe('EventDialog', () => {
       expect(screen.queryByLabelText('People')).toBeNull();
     });
   });
+
+  describe('video meetings', () => {
+    const single: EventInfo = { ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' }, description: '' };
+    const newForm = () => emptyForm(new Date('2026-10-07T09:00:00Z'), new Date('2026-10-07T10:00:00Z'), false, 'cal_p');
+
+    it('shows no switch unless KyMessages is available', () => {
+      render(<EventDialog calendars={cals} initial={newForm()} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      expect(screen.queryByRole('switch', { name: 'Video meeting' })).toBeNull();
+      expect(screen.queryByText(/outside your organisation/)).toBeNull();
+    });
+
+    it('turns on with the first guest until the user chooses, and sends the choice', async () => {
+      const calls = capture();
+      const onDone = vi.fn();
+      render(<EventDialog calendars={cals} initial={newForm()} onDone={onDone} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      const toggle = screen.getByRole('switch', { name: 'Video meeting' }) as HTMLInputElement;
+      expect(toggle.checked).toBe(false);
+      expect(screen.getByText('People outside your organisation cannot join yet.')).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('People'), { target: { value: 'ann@example.com' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+      expect(toggle.checked).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+      expect(calls[0].body).toMatchObject({ meeting: true, attendees: ['ann@example.com'] });
+    });
+
+    it('sends meeting only when the switch changed, and only for all events', async () => {
+      const calls = capture();
+      const onDone = vi.fn();
+      render(<EventDialog calendars={cals} event={{ ...single, meeting: true, meeting_url: 'https://chat.example/#/room/!a:example' }} initial={formFromEvent(single, 'all')} onDone={onDone} onClose={vi.fn()} meetings me="me@example.com" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+      expect(calls[0].body).not.toHaveProperty('meeting');
+      cleanup();
+      render(<EventDialog calendars={cals} event={{ ...single, meeting: true }} initial={formFromEvent(single, 'all')} onDone={onDone} onClose={vi.fn()} meetings me="me@example.com" />);
+      fireEvent.click(screen.getByRole('switch', { name: 'Video meeting' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[1].body).toMatchObject({ meeting: false });
+    });
+
+    it('shows Join, a pending link and a refusal to the organizer', () => {
+      render(<EventDialog calendars={cals} event={{ ...single, meeting: true, meeting_url: 'https://chat.example/#/room/!a:example' }} initial={formFromEvent(single, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
+      const join = screen.getByRole('link', { name: 'Join video meeting' });
+      expect(join.getAttribute('href')).toBe('https://chat.example/#/room/!a:example');
+      expect(join.getAttribute('rel')).toBe('noopener noreferrer');
+      cleanup();
+      render(<EventDialog calendars={cals} event={{ ...single, meeting: true }} initial={formFromEvent(single, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
+      expect(screen.getByRole('status').textContent).toBe('Meeting link pending');
+      cleanup();
+      render(<EventDialog calendars={cals} event={{ ...single, meeting: true, meeting_error: 'no_user' }} initial={formFromEvent(single, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
+      expect(screen.getByRole('alert').textContent).toMatch(/no KyMessages account/);
+    });
+
+    it('gives an invitee Join and no switch, and never links anything but https', () => {
+      const invite: EventInfo = { ...single, organizer: 'boss@example.com', my_status: 'NEEDS-ACTION', attendees: [{ email: 'me@example.com', status: 'NEEDS-ACTION' }], meeting_url: 'https://chat.example/#/room/!b:example' };
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      expect(screen.getByRole('link', { name: 'Join video meeting' })).toBeTruthy();
+      expect(screen.queryByRole('switch')).toBeNull();
+      cleanup();
+      render(<EventDialog calendars={cals} event={{ ...invite, meeting_url: 'javascript:alert(1)' }} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      expect(screen.queryByRole('link', { name: 'Join video meeting' })).toBeNull();
+    });
+  });
 });
