@@ -158,6 +158,8 @@ type CalendarObject struct {
 	WriterID string
 	// DeliveryID is an internal pending outbox row consumed atomically with this write.
 	DeliveryID, DeliveryRecipient string
+	// Meeting, when set, turns the object's video meeting on or off in the write's transaction.
+	Meeting *MeetingSwitch
 	// InvitationSender/Attendee are server-owned sponsorship, retained until an answer.
 	InvitationSender, InvitationAttendee, InvitationRecipient string
 	CalendarID, Name, UID, ETag                               string

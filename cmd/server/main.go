@@ -142,6 +142,7 @@ func runServer() {
 	}
 	// Before serving: automatic scheduling is decided on the first KyPost lookup.
 	srv.StartKyPost(ctx)
+	srv.StartKyMessages(ctx)
 	backupCtx, stopBackups := context.WithCancel(ctx)
 	defer stopBackups()
 	backupDone := make(chan struct{})
@@ -170,6 +171,20 @@ func runServer() {
 			case <-ticker.C:
 			}
 			srv.DeliverScheduled(ctx)
+		}
+	}()
+	// Video meetings, apart so a slow KyMessages never delays invitations. Each attempt is
+	// idempotent: a PUT reconciles the room, and closing a closed room succeeds.
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			srv.SyncMeetings(ctx)
 		}
 	}()
 

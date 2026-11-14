@@ -326,6 +326,20 @@ type CalendarStore interface {
 	FinishOutbox(ctx context.Context, id, status string, next time.Time, lastError string) error
 	// PruneOutbox deletes finished messages created before before.
 	PruneOutbox(ctx context.Context, before time.Time) error
+	// OpenMeeting is the object's open video meeting (ErrNotFound when none).
+	OpenMeeting(ctx context.Context, calendarID, name string) (*VideoMeeting, error)
+	// OpenMeetings maps object names in calendarID to their open video meeting.
+	OpenMeetings(ctx context.Context, calendarID string) (map[string]*VideoMeeting, error)
+	// DueMeetings lists up to limit meetings owed a sync whose next attempt is due, oldest first.
+	DueMeetings(ctx context.Context, now time.Time, limit int) ([]*VideoMeeting, error)
+	// SyncedMeeting records a PUT KyMessages accepted for rev; a later write keeps it due.
+	SyncedMeeting(ctx context.Context, id string, rev int64, synced, memberURL string) error
+	// ClosedMeeting records a close KyMessages accepted: the ID is never used again.
+	ClosedMeeting(ctx context.Context, id string) error
+	// RetryMeeting records a failed attempt to retry at next.
+	RetryMeeting(ctx context.Context, id string, next time.Time, lastError string) error
+	// FailedMeeting records a refusal for rev; the next write makes it due again.
+	FailedMeeting(ctx context.Context, id string, rev int64, lastError string) error
 	ChangesSince(ctx context.Context, calendarID string, seq int64) ([]CalendarChange, error)
 	PruneChanges(ctx context.Context, before time.Time) error
 	SyncEpoch(ctx context.Context) (string, error)

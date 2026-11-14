@@ -21,6 +21,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/feed"
+	"github.com/Busnes-app/kycalendar/internal/kymessages"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/scim"
 	"github.com/Busnes-app/kycalendar/internal/sso"
@@ -62,6 +63,11 @@ type Server struct {
 	kypost      *kypost.Link
 	kypostState kypostState
 	kypostKick  chan struct{}
+	// kymessages is the KyMessages link for video meetings, looked up like kypost
+	// (kymessages_link.go); the meetings worker is video_meetings.go.
+	kymessages      *kymessages.Link
+	kymessagesState kypostState
+	kymessagesKick  chan struct{}
 	// kypostReplay remembers KyPost event IDs inside the signature window.
 	kypostReplay syncauth.Replay
 	scim         *scim.Server
@@ -202,6 +208,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	s.newKyPost()
+	s.newKyMessages()
 	s.stopping, s.stopDetached = context.WithCancel(context.Background())
 	s.loadExemptNetworks()
 	s.routes()
@@ -413,6 +420,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
 	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))
 	s.handle("GET /api/admin/kypost", s.requireAdmin(s.handleKyPostStatus))
+	s.handle("GET /api/admin/kymessages", s.requireAdmin(s.handleKyMessagesStatus))
 	s.handle("GET /api/suite/apps", s.requireSession(s.handleSuiteApps))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))

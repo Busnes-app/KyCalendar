@@ -168,7 +168,7 @@ export const App: React.FC = () => {
       />
 
       <main className="ky-content">
-        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
+        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab.startsWith('settings/') && (
           <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onPasswordChanged={passwordChanged} />
         )}

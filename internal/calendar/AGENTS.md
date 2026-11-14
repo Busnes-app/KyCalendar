@@ -33,5 +33,7 @@ Pure iCalendar rules: what a calendar object must contain and how it is indexed;
 - `SeriesTimes(master, viewer)` returns the master's own first start, end and all-day flag, the values `EditAll` compares against.
 - Sync tokens (and CTags) are `urn:kycalendar:sync:<epoch>:<calendar-id>:<seq>`: the calendar ID binds a token to one calendar, so one deleted and recreated at the same path (its seq restarts at 0) never accepts the old token. Tokens of any other shape are malformed.
 
+- `SetConference(cal, url)` writes a KyMessages room on every VEVENT as `CONFERENCE;VALUE=URI;FEATURE=VIDEO;LABEL=KyMessages:<url>` and a final `Join: <url>` description line ("" removes both; other `CONFERENCE` properties stay). Edits mutate in place, so `CONFERENCE` survives them; `KeepJoin` restores the `Join:` line a replaced description lost; `StripJoin` removes it for display; `Conference(ev)` reads the link.
+
 ## Verification
 - `go test ./internal/calendar/`

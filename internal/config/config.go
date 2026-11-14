@@ -49,6 +49,11 @@ type CalendarConfig struct {
 	KyPostURL          string `json:"kypost_url,omitempty"`
 	KyPostSecret       []byte `json:"-"`
 	KyPostAllowPrivate bool   `json:"kypost_allow_private"` // a LAN address; loopback stays refused
+	// KyMessages hosts video meetings: its console's https base URL and the shared secret, read
+	// from KYCALENDAR_KYMESSAGES_SECRET_FILE. Empty URL: the link comes from KyIdentity.
+	KyMessagesURL          string `json:"kymessages_url,omitempty"`
+	KyMessagesSecret       []byte `json:"-"`
+	KyMessagesAllowPrivate bool   `json:"kymessages_allow_private"`
 }
 
 // ServerConfig defines HTTP and network settings.
@@ -213,6 +218,8 @@ func LoadFromEnv() (*Config, error) {
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
 		KyPostAllowPrivate:  getEnvBool("KYCALENDAR_KYPOST_ALLOW_PRIVATE", false),
+		// Same rule for KyMessages.
+		KyMessagesAllowPrivate: getEnvBool("KYCALENDAR_KYMESSAGES_ALLOW_PRIVATE", false),
 	}
 	if calCfg.Scheduling, err = schedulingMode(getEnv("KYCALENDAR_SCHEDULING", "")); err != nil {
 		return nil, err
@@ -224,7 +231,18 @@ func LoadFromEnv() (*Config, error) {
 		if secretFile == "" {
 			return nil, fmt.Errorf("KYCALENDAR_KYPOST_URL needs KYCALENDAR_KYPOST_SECRET_FILE")
 		}
-		if calCfg.KyPostSecret, err = kypostSecret(secretFile); err != nil {
+		if calCfg.KyPostSecret, err = peerSecret("KYCALENDAR_KYPOST_SECRET_FILE", secretFile); err != nil {
+			return nil, err
+		}
+	}
+	if rawURL, secretFile := getEnv("KYCALENDAR_KYMESSAGES_URL", ""), getEnv("KYCALENDAR_KYMESSAGES_SECRET_FILE", ""); rawURL != "" || secretFile != "" {
+		if calCfg.KyMessagesURL, err = KyPostURL(rawURL); err != nil {
+			return nil, fmt.Errorf("KYCALENDAR_KYMESSAGES_URL: %w", err)
+		}
+		if secretFile == "" {
+			return nil, fmt.Errorf("KYCALENDAR_KYMESSAGES_URL needs KYCALENDAR_KYMESSAGES_SECRET_FILE")
+		}
+		if calCfg.KyMessagesSecret, err = peerSecret("KYCALENDAR_KYMESSAGES_SECRET_FILE", secretFile); err != nil {
 			return nil, err
 		}
 	}
@@ -449,8 +467,8 @@ func schedulingMode(v string) (string, error) {
 	return "", fmt.Errorf("KYCALENDAR_SCHEDULING must be true, false or auto (unset), got %q", v)
 }
 
-// KyPostURL checks a KyPost base URL, from the environment or from KyIdentity, and returns it
-// without a trailing slash.
+// KyPostURL checks a suite peer's base URL (KyPost, KyMessages), from the environment or from
+// KyIdentity, and returns it without a trailing slash.
 func KyPostURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
@@ -459,15 +477,15 @@ func KyPostURL(raw string) (string, error) {
 	return strings.TrimSuffix(raw, "/"), nil
 }
 
-// kypostSecret reads the shared KyPost secret: at least 32 bytes once trimmed.
-func kypostSecret(path string) ([]byte, error) {
+// peerSecret reads a shared pair secret from the file env names: at least 32 bytes once trimmed.
+func peerSecret(env, path string) ([]byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("KYCALENDAR_KYPOST_SECRET_FILE: %w", err)
+		return nil, fmt.Errorf("%s: %w", env, err)
 	}
 	secret := bytes.TrimSpace(raw)
 	if len(secret) < 32 {
-		return nil, fmt.Errorf("KYCALENDAR_KYPOST_SECRET_FILE: the secret must be at least 32 bytes")
+		return nil, fmt.Errorf("%s: the secret must be at least 32 bytes", env)
 	}
 	return secret, nil
 }

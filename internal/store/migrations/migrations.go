@@ -592,6 +592,30 @@ CREATE TABLE sso_logouts (
 	},
 	{Version: 23, Name: "invitation_sponsorship", SQLite: invitationSponsorship, Postgres: invitationSponsorship},
 	{Version: 24, Name: "cancellation_reservations", SQLite: cancellationReservations, Postgres: cancellationReservations},
+	{Version: 25, Name: "video_meetings", SQLite: videoMeetings("DATETIME"), Postgres: videoMeetings("TIMESTAMPTZ")},
+}
+
+// videoMeetings: one row per KyMessages room, which is also its outbox. A write to the event
+// bumps rev in the write's transaction; the worker syncs until done_rev catches up. A closed
+// row is kept so its ID is never reused.
+func videoMeetings(ts string) string {
+	return `CREATE TABLE video_meetings (
+ id TEXT PRIMARY KEY,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ calendar_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ state TEXT NOT NULL,
+ member_url TEXT NOT NULL DEFAULT '',
+ synced TEXT NOT NULL DEFAULT '',
+ rev BIGINT NOT NULL DEFAULT 1,
+ done_rev BIGINT NOT NULL DEFAULT 0,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ next_attempt_at ` + ts + ` NOT NULL,
+ last_error TEXT NOT NULL DEFAULT '',
+ created_at ` + ts + ` NOT NULL
+);
+CREATE UNIQUE INDEX video_meetings_object ON video_meetings(calendar_id, name) WHERE state = 'open';
+CREATE INDEX video_meetings_due ON video_meetings(state, next_attempt_at);`
 }
 
 const cancellationReservations = `CREATE TABLE cancellation_reservations (
