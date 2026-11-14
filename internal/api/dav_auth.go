@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/apppass"
+	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -84,6 +85,78 @@ func (f *davFailures) fail(key string, now time.Time) {
 	f.seen[key] = e
 }
 
+// reserve counts one failure for key before the credential is checked, unless key already has
+// limit failures in its window, and reports the wait if so. Counting first means concurrent
+// guesses cannot all pass a check none of them has recorded yet; release hands it back when the
+// credential turns out right, so successes still never count.
+func (f *davFailures) reserve(key string, limit int, now time.Time) (bool, time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.seen == nil {
+		f.seen = map[string]davFailure{}
+	}
+	e, known := f.seen[key]
+	if known && now.Sub(e.since) <= davFailWindow && e.count >= limit {
+		return false, davFailWindow - now.Sub(e.since)
+	}
+	if !known && len(f.seen) >= davFailKeysCap {
+		f.makeRoom(now)
+	}
+	if now.Sub(e.since) > davFailWindow {
+		e = davFailure{since: now}
+	}
+	e.count++
+	f.seen[key] = e
+	return true, 0
+}
+
+// release takes back one reservation; a key left with no failures is dropped.
+func (f *davFailures) release(key string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	e, ok := f.seen[key]
+	switch {
+	case !ok:
+	case e.count <= 1:
+		delete(f.seen, key)
+	default:
+		e.count--
+		f.seen[key] = e
+	}
+}
+
+// davOfficeBudget names the office budget for the per-IP failure key DAV and /mcp share.
+const davOfficeBudget = "dav-fail"
+
+// reserveDAVFailure reserves one failure on the per-IP key prefix+<address>, before any lookup or
+// secret check. An office request (allowlisted network, office budget left) uses
+// prefix+<address>|<hash of name> instead, so one stale device locks out only its own account
+// or token; name is caller-chosen, so the key holds a fixed-size hash, never the name, and the
+// office budget bounds how many such keys one office can mint. It answers 429 itself when the
+// key is full. The returned release hands the reservation (and the office budget) back.
+func (s *Server) reserveDAVFailure(w http.ResponseWriter, r *http.Request, prefix, name string, now time.Time) (release func(), ok bool) {
+	key := prefix + s.limitIP(r)
+	office := s.officeExempt(r, davOfficeBudget)
+	if office {
+		key += "|" + crypto.SHA256Hex([]byte(strings.ToLower(name)))[:32]
+	}
+	release = func() {
+		s.davFails.release(key)
+		if office {
+			s.refundAccountAttempt(officeKey(davOfficeBudget))
+		}
+	}
+	if ok, wait := s.davFails.reserve(key, davFailsPerIP, now); !ok {
+		if office {
+			s.refundAccountAttempt(officeKey(davOfficeBudget))
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		http.Error(w, "Too many failed attempts", http.StatusTooManyRequests)
+		return nil, false
+	}
+	return release, true
+}
+
 // makeRoom drops expired entries, then the single oldest one; live lockouts are never mass-reset.
 func (f *davFailures) makeRoom(now time.Time) {
 	oldest, oldestAt := "", now
@@ -123,13 +196,8 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			return
 		}
 		now := time.Now()
-		ipKey := "ip:" + s.limitIP(r)
-		if s.perIPExempt(r) {
-			// An office shares one address: count its failures per address and account name, so
-			// one misconfigured device locks out only its own account and guessing stays bounded.
-			ipKey += "|" + strings.ToLower(username)
-		}
-		if s.davLimited(w, ipKey, davFailsPerIP, now) {
+		release, reserved := s.reserveDAVFailure(w, r, "ip:", username, now)
+		if !reserved {
 			return
 		}
 		id, secret, parsed := apppass.Parse(token)
@@ -143,11 +211,13 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 		if user != nil {
 			resource = user.ID
 			if s.davLimited(w, "user:"+user.ID, davFailsPerUser, now) {
+				if secretOK { // the right secret is no guess; a wrong one stays counted
+					release()
+				}
 				return
 			}
 		}
 		if user == nil || !secretOK || user.Status != "active" {
-			s.davFails.fail(ipKey, now)
 			if user != nil && !secretOK {
 				s.davFails.fail("user:"+user.ID, now)
 			}
@@ -158,6 +228,7 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			davChallenge(w)
 			return
 		}
+		release()
 		if user.Role == "admin" {
 			http.Error(w, "Administrator accounts cannot use calendars", http.StatusForbidden)
 			return

@@ -296,13 +296,37 @@ func (s *Server) limitIP(r *http.Request) string {
 	return ip
 }
 
-// perIPExempt reports whether the request comes from an allowlisted office network and so
-// skips per-IP limits. Only those: per-account windows, the CAPTCHA and every later check still
-// run. It matches the address requestIP resolved, so a forged X-Forwarded-For from an untrusted
-// peer cannot claim an allowlisted address.
-func (s *Server) perIPExempt(r *http.Request) bool {
+// officeBudget is what all allowlisted office networks together may spend each minute on one
+// per-IP limit before their requests fall back to that limit. It keeps one host inside an
+// office from making unbounded attempts. Sustained for the longest window it guards (DAV's 15
+// minutes), 300 a minute is 4 500 keys, under attemptsCap and davFailKeysCap, so office
+// traffic alone cannot fill a limiter and evict live counters.
+const officeBudget = 300
+
+// officeExempt reports whether the request comes from an allowlisted office network and may
+// skip the per-IP limit named bucket, spending one unit of that bucket's shared office budget.
+// It counts the request as exempted only then. It matches the address requestIP resolved, so a
+// forged X-Forwarded-For from an untrusted peer cannot claim an allowlisted address. The budget
+// lives with the per-account windows, which never drop a live entry, so a flood of address
+// keys cannot reset it.
+func (s *Server) officeExempt(r *http.Request, bucket string) bool {
+	list := s.exempt.Load()
 	addr, err := netip.ParseAddr(s.requestIP(r))
-	return err == nil && s.exempt.Load().Exempt(addr)
+	if err != nil || !list.Contains(addr) || !s.allowAccountAttempt(officeKey(bucket), officeBudget, time.Minute) {
+		return false
+	}
+	list.Exempt(addr)
+	return true
+}
+
+func officeKey(bucket string) string { return "office:" + bucket }
+
+// allowPerIP is allowAttempt for a limit keyed only on the client address: an office request
+// draws on the shared office budget instead, and on the ordinary per-IP window once that is
+// spent. Only per-IP limits come here; per-account windows, the CAPTCHA and every later check
+// run regardless.
+func (s *Server) allowPerIP(r *http.Request, bucket string, limit int, window time.Duration) bool {
+	return s.officeExempt(r, bucket) || s.allowAttempt(bucket+":"+s.limitIP(r), limit, window)
 }
 
 // handle registers a route and records its pattern, so the authorization matrix can prove it

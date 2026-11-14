@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
@@ -227,15 +229,16 @@ func TestExemptNetworkMCPFailuresAreCountedPerToken(t *testing.T) {
 	_, one := seedToken(t, w.st, "usr_alice", store.ScopeMCPRead)
 	_, two := seedToken(t, w.st, "usr_alice", store.ScopeMCPRead)
 
-	for range 12 {
-		_, garbage, _, _ := apppass.Generate()
-		if code := mcpFrom(w.srv, officePeer, garbage); code != http.StatusUnauthorized && code != http.StatusTooManyRequests {
-			t.Fatalf("unknown token: %d", code)
+	// One unknown token ID gets ten failures; distinct ones are bounded by the office budget
+	// (TestOfficeBudgetBoundsDAVFailureKeys).
+	_, garbage, _, _ := apppass.Generate()
+	for i := 1; i <= 10; i++ {
+		if code := mcpFrom(w.srv, officePeer, garbage); code != http.StatusUnauthorized {
+			t.Fatalf("unknown token failure %d: %d, want 401", i, code)
 		}
 	}
-	_, garbage, _, _ := apppass.Generate()
 	if code := mcpFrom(w.srv, officePeer, garbage); code != http.StatusTooManyRequests {
-		t.Fatalf("unknown tokens from the office after 12 failures: %d, want 429", code)
+		t.Fatalf("one unknown token from the office after 10 failures: %d, want 429", code)
 	}
 	if code := mcpFrom(w.srv, officePeer, one); code != http.StatusOK {
 		t.Fatalf("a valid token after unknown-token failures from the office: %d, want 200", code)
@@ -353,4 +356,128 @@ func TestExemptNetworksSaveNeedsStepUp(t *testing.T) {
 	if v, err := st.Settings().GetSetting(context.Background(), "rate_limit_exempt_networks"); err == nil {
 		t.Fatalf("a refused save stored %q", v)
 	}
+}
+
+// Offices share one budget per per-IP limit. Past it their requests meet the ordinary per-IP
+// window again, so one host inside an office cannot make unbounded attempts; another office
+// address keeps its own window.
+func TestOfficeBudgetFallsBackToThePerIPLoginLimit(t *testing.T) {
+	t.Setenv("KY_RATE_LIMIT_EXEMPT_NETWORKS", officeRange)
+	srv, _, _ := setupTestServer(t)
+	for i := 1; i <= api.OfficeBudgetForTest+20; i++ {
+		if code := limitStatus(t, srv, officePeer, ""); code == http.StatusTooManyRequests {
+			t.Fatalf("office attempt %d throttled, want the budget and then a window of 20", i)
+		}
+	}
+	if code := limitStatus(t, srv, officePeer, ""); code != http.StatusTooManyRequests {
+		t.Fatalf("office attempt past budget and window answered %d, want 429", code)
+	}
+	if code := limitStatus(t, srv, "203.0.113.77:41000", ""); code == http.StatusTooManyRequests {
+		t.Fatal("a second office address was throttled by the first one's window")
+	}
+}
+
+// DAV failures from an office under junk account names: each name is a new key, so the office
+// budget is what bounds them. Past it the office meets its address's shared ten again, the
+// limiter holds no more than budget-many office keys, and no key carries the caller's name.
+func TestOfficeBudgetBoundsDAVFailureKeys(t *testing.T) {
+	t.Setenv("KY_RATE_LIMIT_EXEMPT_NETWORKS", officeRange)
+	srv, st, _ := setupTestServer(t)
+	bob := davUser(t, st, "bob", "user")
+	for i := 1; i <= api.OfficeBudgetForTest+10; i++ {
+		if code := davForwarded(srv, officePeer, "", fmt.Sprintf("junk%d", i), "kc_bad_bad"); code != http.StatusUnauthorized {
+			t.Fatalf("office failure %d: %d, want 401 within the budget and then the per-IP ten", i, code)
+		}
+	}
+	if code := davForwarded(srv, officePeer, "", "junk-next", "kc_bad_bad"); code != http.StatusTooManyRequests {
+		t.Fatalf("office failure past budget and per-IP ten: %d, want 429", code)
+	}
+	keys := api.DAVFailKeysForTest(srv)
+	if len(keys) > api.OfficeBudgetForTest+1 {
+		t.Fatalf("%d failure keys, want at most the budget plus the shared per-IP key", len(keys))
+	}
+	for _, k := range keys {
+		if strings.Contains(k, "junk") {
+			t.Fatalf("key %q carries the caller's name", k)
+		}
+	}
+	// A successful sign-in leaves no key behind and is not throttled.
+	if code := davForwarded(srv, "203.0.113.77:41000", "", "bob", bob); code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
+		t.Fatalf("a second office address was throttled by the first one's window: %d", code)
+	}
+	if got := len(api.DAVFailKeysForTest(srv)); got != len(keys) {
+		t.Fatalf("a success changed the failure keys from %d to %d", len(keys), got)
+	}
+}
+
+// countingStore counts the lookups that precede every credential check.
+type countingStore struct {
+	store.Store
+	tokens *atomic.Int64
+}
+
+type countingAppPasswords struct {
+	store.AppPasswordStore
+	n *atomic.Int64
+}
+
+func (c countingAppPasswords) Get(ctx context.Context, id string) (*store.AppPassword, error) {
+	c.n.Add(1)
+	return c.AppPasswordStore.Get(ctx, id)
+}
+
+func (c countingStore) AppPasswords() store.AppPasswordStore {
+	return countingAppPasswords{c.Store.AppPasswords(), c.tokens}
+}
+
+func concurrently(n int, f func()) {
+	var wg sync.WaitGroup
+	for range n {
+		wg.Add(1)
+		go func() { defer wg.Done(); f() }()
+	}
+	wg.Wait()
+}
+
+// Concurrent wrong guesses from an office reserve their failure before any lookup or check, so
+// no more reach verification than the limit allows, however they interleave.
+func TestConcurrentOfficeGuessesCannotOutrunTheFailureLimits(t *testing.T) {
+	t.Setenv("KY_RATE_LIMIT_EXEMPT_NETWORKS", officeRange)
+
+	t.Run("sign-in", func(t *testing.T) {
+		srv, st, _ := setupTestServer(t)
+		loginAs(t, srv, st, "carol", "user")
+		var verified atomic.Int64
+		restore := api.SetPasswordVerifyForTest(func(pass, hash string) (bool, error) {
+			verified.Add(1)
+			return false, nil
+		})
+		defer restore()
+		concurrently(40, func() { loginFrom(t, srv, officePeer, "carol", "WrongPass123!") })
+		if got := verified.Load(); got != 10 {
+			t.Fatalf("%d guesses reached password verification, want exactly 10", got)
+		}
+	})
+
+	t.Run("dav", func(t *testing.T) {
+		srv, st, _ := setupTestServer(t)
+		alice := davUser(t, st, "alice", "user")
+		var tokens atomic.Int64
+		api.SetStoreForTest(srv, countingStore{Store: st, tokens: &tokens})
+		concurrently(40, func() { davForwarded(srv, officePeer, "", "alice", alice[:len(alice)-4]+"zzzz") })
+		if got := tokens.Load(); got != 10 {
+			t.Fatalf("%d DAV guesses reached the token check, want exactly 10", got)
+		}
+	})
+
+	t.Run("mcp", func(t *testing.T) {
+		w := newMCPWorld(t)
+		_, one := seedToken(t, w.st, "usr_alice", store.ScopeMCPRead)
+		var tokens atomic.Int64
+		api.SetStoreForTest(w.srv, countingStore{Store: w.st, tokens: &tokens})
+		concurrently(40, func() { mcpFrom(w.srv, officePeer, one[:len(one)-4]+"zzzz") })
+		if got := tokens.Load(); got != 10 {
+			t.Fatalf("%d MCP guesses reached the token check, want exactly 10", got)
+		}
+	})
 }

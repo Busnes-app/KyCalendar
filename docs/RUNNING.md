@@ -124,6 +124,11 @@ account per 15 minutes), the per-account password-change limit, the CAPTCHA, and
 plus the per-user limit on wrong secrets. So one misconfigured device locks out only its own
 account.
 
+The exemption has a ceiling: all listed networks together share 300 sign-ins, 300 password
+changes and 300 failed CalDAV or agent sign-ins a minute past the per-address limits. Beyond
+that their requests meet the ordinary per-address limits again until the minute is over, so one
+host inside the office cannot make unlimited attempts.
+
 The match uses the client address the server already resolves through `KY_TRUSTED_PROXIES`, so
 a forged `X-Forwarded-For` cannot claim a listed network. Set `KY_TRUSTED_PROXIES` first when a
 proxy fronts the server.
