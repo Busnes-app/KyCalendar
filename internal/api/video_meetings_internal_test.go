@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/kymessages"
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -626,5 +628,30 @@ func TestFailedPeopleLookupNeverShrinksTheRoom(t *testing.T) {
 	}
 	if got["Renamed"] != "[sub-ann]" || got["Weekly sync"] != "[sub-bob]" {
 		t.Fatalf("after recovery %v", got)
+	}
+}
+
+func TestResolvePeopleAsksKyIdentityAsTheOrganizer(t *testing.T) {
+	var got url.Values
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id, secret, ok := r.BasicAuth(); r.URL.Path != "/api/suite/people" || !ok || id != "kycalendar" || secret != "suite-secret" {
+			http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
+			return
+		}
+		got = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"people":[{"sub":"sub-ann","name":"Ann","email":"ann@example.com"}]}`)
+	}))
+	t.Cleanup(idp.Close)
+	dir, err := sso.NewProvider(sso.KindKyIdentity, "x", idp.URL, "kycalendar", "suite-secret", idp.Client()).SuiteDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	subs, err := resolvePeople(context.Background(), dir, "sub-org", []string{"ann@example.com", "nobody@example.com"})
+	if err != nil || fmt.Sprint(subs) != "[sub-ann]" {
+		t.Fatalf("subs %v err %v", subs, err)
+	}
+	if got.Get("sub") != "sub-org" || fmt.Sprint(got["email"]) != "[ann@example.com nobody@example.com]" {
+		t.Fatalf("query %v", got)
 	}
 }

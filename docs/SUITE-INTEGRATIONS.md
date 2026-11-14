@@ -102,8 +102,8 @@ Closes the room as the console's Close does (blocked, members out, history kept)
   else is treated as a refusal (`bad_reply`) and never written into an event.
 - **Title.** Control characters become spaces, at most 255 bytes, `Meeting` when empty.
 - **Members.** Attendees of every VEVENT but the organizer, at most 100, resolved with
-  `suitedir.Resolve`. Until ky-primitives ships `Resolve` (branch `feat/suitedir-people`), the
-  room holds the organizer only and each meeting retries the lookup with backoff.
+  `suitedir.Resolve`. A failed lookup is retried with backoff; meanwhile a new room is created
+  with the organizer only and an existing room is not PUT (a PUT removes unlisted members).
 - **Mail.** The first invitation leaves before KyMessages answers; once the link is written into
   the organizer's event, the scheduler sends the update, which carries `CONFERENCE` and the
   `Join:` line.

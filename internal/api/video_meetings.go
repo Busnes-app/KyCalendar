@@ -39,12 +39,15 @@ var meetingNow = time.Now
 
 var errPeopleUnavailable = errors.New("suite people lookup unavailable")
 
-// resolvePeople turns attendee emails into KyIdentity subjects (suite contract A3, Resolve).
-// ponytail: ky-primitives suitedir.Resolve is unmerged (branch feat/suitedir-people); replace
-// this body with dir.Resolve when the module is bumped. Until then rooms hold the organizer only
-// and each meeting retries the lookup with backoff.
+// resolvePeople turns attendee emails into KyIdentity subjects (suite contract A3, Resolve);
+// unmatched addresses are absent. A variable so tests can stand in for KyIdentity.
 var resolvePeople = func(ctx context.Context, dir *suitedir.Client, sub string, emails []string) ([]string, error) {
-	return nil, errPeopleUnavailable
+	people, err := dir.Resolve(ctx, sub, emails)
+	subs := make([]string, 0, len(people))
+	for _, p := range people {
+		subs = append(subs, p.Sub)
+	}
+	return subs, err
 }
 
 // newMeetingID is a fresh opaque room ID, never derived from the event: 32 base64url characters.
