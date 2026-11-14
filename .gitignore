@@ -1,5 +1,6 @@
 # Binaries
 /kycalendar
+/server
 *.exe
 *.dll
 *.so
