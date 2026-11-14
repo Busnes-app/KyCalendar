@@ -124,6 +124,11 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 		}
 		now := time.Now()
 		ipKey := "ip:" + s.limitIP(r)
+		if s.perIPExempt(r) {
+			// An office shares one address: count its failures per address and account name, so
+			// one misconfigured device locks out only its own account and guessing stays bounded.
+			ipKey += "|" + strings.ToLower(username)
+		}
 		if s.davLimited(w, ipKey, davFailsPerIP, now) {
 			return
 		}
