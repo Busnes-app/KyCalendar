@@ -319,9 +319,9 @@ describe('EventDialog', () => {
 
     it('shows Join, a pending link and a refusal to the organizer', () => {
       render(<EventDialog calendars={cals} event={{ ...single, meeting: true, meeting_url: 'https://chat.example/#/room/!a:example' }} initial={formFromEvent(single, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
-      const join = screen.getByRole('link', { name: 'Join video meeting' });
-      expect(join.getAttribute('href')).toBe('https://chat.example/#/room/!a:example');
-      expect(join.getAttribute('rel')).toBe('noopener noreferrer');
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      fireEvent.click(screen.getByRole('button', { name: 'Join video meeting' }));
+      expect(open).toHaveBeenCalledWith('https://chat.example/#/room/!a:example', '_blank', 'noopener,noreferrer');
       cleanup();
       render(<EventDialog calendars={cals} event={{ ...single, meeting: true }} initial={formFromEvent(single, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
       expect(screen.getByRole('status').textContent).toBe('Meeting link pending');
@@ -333,11 +333,11 @@ describe('EventDialog', () => {
     it('gives an invitee Join and no switch, and never links anything but https', () => {
       const invite: EventInfo = { ...single, organizer: 'boss@example.com', my_status: 'NEEDS-ACTION', attendees: [{ email: 'me@example.com', status: 'NEEDS-ACTION' }], meeting_url: 'https://chat.example/#/room/!b:example' };
       render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
-      expect(screen.getByRole('link', { name: 'Join video meeting' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Join video meeting' })).toBeTruthy();
       expect(screen.queryByRole('switch')).toBeNull();
       cleanup();
       render(<EventDialog calendars={cals} event={{ ...invite, meeting_url: 'javascript:alert(1)' }} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
-      expect(screen.queryByRole('link', { name: 'Join video meeting' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Join video meeting' })).toBeNull();
     });
   });
 });

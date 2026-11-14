@@ -135,7 +135,7 @@ export function EventDialog({ calendars, event, initial, onDone, onClose, schedu
   // Join for anyone the event carries a room for; the organizer sees the room's state too.
   const room = (
     <>
-      {event?.meeting_url?.startsWith('https://') && <p><a className="btn-secondary" href={event.meeting_url} target="_blank" rel="noopener noreferrer">Join video meeting</a></p>}
+      {event?.meeting_url?.startsWith('https://') && <p><button type="button" className="btn-secondary" onClick={() => window.open(event.meeting_url, '_blank', 'noopener,noreferrer')}>Join video meeting</button></p>}
       {canMeet && event?.meeting && !event.meeting_url && !event.meeting_error && <p className="kc-hint" role="status">Meeting link pending</p>}
       {canMeet && event?.meeting && event.meeting_error && <p role="alert">{meetingError(event.meeting_error)}</p>}
     </>
