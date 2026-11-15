@@ -93,8 +93,7 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	}
 	var who kymessages.User
 	if owner != nil {
-		// sso_issuer is the binding "kyidentity <issuer URL>"; the wire carries the URL.
-		who = kymessages.User{Sub: owner.SSOSubject, Issuer: strings.TrimPrefix(owner.SSOIssuer, sso.KindKyIdentity+" ")}
+		who = kymessages.User{Sub: owner.SSOSubject, Issuer: issuerURL(owner)}
 	}
 	if m.State == "closing" {
 		return s.closeMeeting(ctx, m, who)
