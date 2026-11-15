@@ -186,14 +186,15 @@ organisation. Clicking asks KyCalendar's own session route, which calls the cons
 the answer in a new tab. `no_target` shows "This person isn't on KyMessages yet." The answer's
 URL must be `https://` on the paired KyMessages origin's Element host, else it is dropped.
 
-### Deviation: the Element host is not checked
+### Where Element is (shared with KyPost)
 
-The pairing names the KyMessages console's URL, not Element's host (KyMessages' `ChatHost`), so
-KyCalendar cannot compare the answer's host with anything. Instead it admits only Element's user
-view in shape: absolute `https`, no credentials, path empty or `/`, no query, fragment exactly
-`/user/@<localpart>:<server>` with a well-formed Matrix ID (`kymessages.ValidChatURL`). Anything
-else is `bad_reply` and never reaches the browser. The browser checks `https://` again and opens
-it with `noopener,noreferrer`.
+The pairing names the KyMessages console's URL, not Element's host, so KyCalendar reads Element's
+origin from the user's suite app list, entry `kymessage-chat` (as KyPost does, KyPost #613). Chat
+shows only when that entry is there with an `https` URL, and the answer must be on exactly that
+origin and also pass `kymessages.ValidChatURL`: no credentials, path empty or `/`, no query,
+fragment exactly `/user/@<localpart>:<server>`. Anything else is `bad_reply` and never reaches the
+browser. KyMessages answers `ChatHost + "/#/user/@bob:example"`; `KY_MATRIX_CHAT_HOST` must equal
+the `kymessage-chat` launch URL's origin.
 
 ### How KyCalendar implements it
 
@@ -201,8 +202,8 @@ it with `noopener,noreferrer`.
   `Cache-Control: no-store`. It resolves the address with `suitedir.Resolve` as the caller; no
   match, or the caller themself, is 404 `no_target` without asking KyMessages. Refusals: 400
   `bad_body` (not one address, body over 1 KiB), 429 `rate_limited` (20 per user per minute),
-  404 `chat_off` (KyMessages not linked, or the account did not sign in through the live
-  KyIdentity binding: the video meetings condition), 404 `no_target`/`no_user` (passed on from
+  404 `chat_off` (KyMessages not linked, the account did not sign in through the live
+  KyIdentity binding, or no `kymessage-chat` in the user's suite apps), 404 `no_target`/`no_user` (passed on from
   KyMessages), 502 `refused` (any other refusal or a bad link), 503 `unavailable` (the people
   lookup, the network, 429/5xx or `kycalendar_off` from KyMessages; never retried for the user).
 - **Who gets the action.** `GET /api/suite/people?email=…` (repeated, 1 to 100 addresses) answers

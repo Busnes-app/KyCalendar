@@ -5,8 +5,11 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Busnes-app/ky-primitives/suitedir"
 
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/kymessages"
@@ -17,6 +20,17 @@ import (
 // issuerURL is u's KyIdentity issuer URL: sso_issuer is the binding "kyidentity <issuer URL>".
 func issuerURL(u *store.User) string {
 	return strings.TrimPrefix(u.SSOIssuer, sso.KindKyIdentity+" ")
+}
+
+// elementOrigin is the https origin of Element (suite app kymessage-chat) in the user's app
+// list, "" when absent: KyMessages' chat links must point there and nowhere else.
+func elementOrigin(apps []suitedir.App) string {
+	for _, a := range apps {
+		if u, err := url.Parse(a.URL); a.ID == "kymessage-chat" && err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil {
+			return "https://" + u.Host
+		}
+	}
+	return ""
 }
 
 // handleSuiteChat is POST /api/suite/chat {"email"} (suite contract H): KyMessages' link for
@@ -37,7 +51,8 @@ func (s *Server) handleSuiteChat(w http.ResponseWriter, r *http.Request) {
 		refuse(http.StatusTooManyRequests, "rate_limited", "Too many chats opened; wait a minute")
 		return
 	}
-	if !s.meetingsFor(u) {
+	element := elementOrigin(s.suiteAppsFor(r.Context(), u))
+	if !s.meetingsFor(u) || element == "" {
 		refuse(http.StatusNotFound, "chat_off", "Chat needs KyMessages and a KyIdentity sign-in")
 		return
 	}
@@ -61,6 +76,9 @@ func (s *Server) handleSuiteChat(w http.ResponseWriter, r *http.Request) {
 	link, err := s.kymessages.Chat(r.Context(), "evt_"+crypto.RandomHex(16), kymessages.ChatRequest{
 		User: kymessages.User{Sub: u.SSOSubject, Issuer: issuerURL(u)}, TargetSub: target,
 	})
+	if err == nil && !strings.HasPrefix(link, element+"/") && !strings.HasPrefix(link, element+"#") {
+		err = kymessages.Refused{Code: "bad_reply"} // not on Element's own host
+	}
 	var refused kymessages.Refused
 	switch {
 	case errors.As(err, &refused) && (refused.Code == "no_target" || refused.Code == "no_user"):

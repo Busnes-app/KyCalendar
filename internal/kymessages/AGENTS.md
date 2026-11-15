@@ -17,7 +17,7 @@ contracts are `docs/SUITE-INTEGRATIONS.md` sections B and H; KyMessages implemen
 - **`member_url`** passes `ValidURL` (https, no credentials, no spaces or controls, 2048 bytes)
   or the PUT is `Refused{bad_reply}`.
 - **Chat** answers pass `ValidChatURL` (a `ValidURL` that is exactly Element's user view,
-  `https://<host>/#/user/@local:server`) or are `Refused{bad_reply}`; the host cannot be checked.
+  `https://<host>/#/user/@local:server`) or are `Refused{bad_reply}`; the caller checks the host against Element in the user's suite apps.
 - `Title` makes any event title a valid room name.
 - `Link` holds the live peer, swapped atomically; nil is `ErrNotConnected`.
 
