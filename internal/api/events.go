@@ -75,6 +75,10 @@ type eventView struct {
 	MeetingURL   string `json:"meeting_url,omitempty"`
 	Meeting      bool   `json:"meeting,omitempty"`
 	MeetingError string `json:"meeting_error,omitempty"`
+	// Guests are the organizer's attendees outside the organisation on the meeting (contract
+	// L), each sent their own link unless GuestsError says why KyMessages took none.
+	Guests      []string `json:"guests,omitempty"`
+	GuestsError string   `json:"guests_error,omitempty"`
 	// Files are the event's file links (KyDrive, contract I); the description omits their
 	// "File:" lines.
 	Files []fileView `json:"files,omitempty"`
@@ -248,6 +252,7 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 	begun := time.Now()
 	var listed []listedInstance
 	members := map[string]bool{}
+	guestsOf := map[string][]string{} // meeting ID -> guest addresses, loaded once
 	member := func(email string) bool {
 		if ok, seen := members[email]; seen {
 			return ok
@@ -309,7 +314,22 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 			for _, in := range insts {
 				v := instanceView(c, o, repeat, zone, series, in, viewer, role)
 				if m := meetings[o.Name]; m != nil && v.Editable {
-					v.Meeting, v.MeetingError = true, m.LastError
+					v.Meeting, v.MeetingError, v.GuestsError = true, m.LastError, m.GuestsError
+					if _, ok := guestsOf[m.ID]; !ok {
+						gs, err := s.store.Calendars().MeetingGuests(ctx, m.ID)
+						if err != nil {
+							return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load the meeting's guests"}
+						}
+						for _, g := range gs {
+							guestsOf[m.ID] = append(guestsOf[m.ID], g.Email)
+						}
+						if guestsOf[m.ID] == nil {
+							guestsOf[m.ID] = []string{}
+						}
+					}
+					if len(guestsOf[m.ID]) > 0 {
+						v.Guests = guestsOf[m.ID]
+					}
 					if v.MeetingURL == "" {
 						v.MeetingURL = m.MemberURL
 					}

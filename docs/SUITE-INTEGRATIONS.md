@@ -1,11 +1,11 @@
 # Suite integrations (KyCalendar's half)
 
-KyCalendar's copy of the wave 1 wire contracts (owner decisions 2026-11-14; source:
-`ky-redesign/integrations/suite-integrations-contracts.md`). This copy is the durable one for
-this repository: change it together with the peer's copy. Sections implemented here: shared
-rules, B (KyCalendar → KyMessages meetings), D (people picker, KyCalendar's part) and E (the
-`/new` deep link, receiver) and F (the free/busy strip); from wave 2
-(`ky-redesign/integrations/suite-integrations-wave2.md`), I (the KyDrive picker, as a caller).
+KyCalendar's copy of the wave 1 and wave 2 wire contracts (owner decisions 2026-11-14; source:
+`ky-redesign/integrations/suite-integrations-contracts.md` and `suite-integrations-wave2.md`).
+This copy is the durable one for this repository: change it together with the peer's copy.
+Sections implemented here: shared rules, B (KyCalendar → KyMessages meetings), D (people picker,
+KyCalendar's part), E (the `/new` deep link, receiver), F (the free/busy strip) and, from wave 2,
+H (chat from the event view, KyCalendar's part), I (the KyDrive picker, as a caller) and L (meeting guests, KyCalendar's part).
 
 Wave 2 compatibility rule: each side must keep working against the other side's wave 1 `main`
 until both have merged. A new request field the old receiver refuses means: retry without it
@@ -54,7 +54,8 @@ Pairing is the suite pair `kycalendar`↔`kymessage`.
 - `member_subs` holds KyIdentity subjects (KyCalendar resolves attendee addresses with
   `suitedir.Resolve`). A subject with no KyMessages account yet is skipped, not refused, and
   reported back; a later PUT picks it up.
-- A `guests` field that is present and non-empty: 422 `guests_unsupported`. `windows` is ignored.
+- A `guests` field that is present and non-empty: 422 `guests_unsupported` (wave 1 KyMessages;
+  section L replaces this).
 - Room state: join rule `invite`, history visibility `joined`, encryption on, power levels
   console 100, organizer 50, members 0, invite 50, kick 50.
 
@@ -85,8 +86,8 @@ Closes the room as the console's Close does (blocked, members out, history kept)
 - The link is stored in the event as `CONFERENCE;VALUE=URI;FEATURE=VIDEO;LABEL=KyMessages:<url>`
   (RFC 7986) and as a final description line `Join: <url>` so other calendar clients show it.
   Web edits must preserve both.
-- Event view: a Join button. Beside the switch, one line saying people outside the organisation
-  cannot join yet.
+- Event view: a Join button. Beside the switch, one line saying what people outside the
+  organisation get (section L).
 - PUT and DELETE go through a durable outbox (like `scheduling_outbox`): on create, on title or
   attendee change, on switch off, on event delete or cancel. Recurring events use one room for
   the series.
@@ -159,6 +160,65 @@ takes up to 50 addresses, so no new backend); rows only for people the server kn
 this time" when a block overlaps it (an all-day event is the whole day). Any failure shows no
 strip. It appears with the People section, so only where invitations are on.
 
+## H. Chat from the event view (KyCalendar → KyMessages)
+
+| Event type | Route on KyMessages console |
+|---|---|
+| `kycalendar.chat.open` | `POST /api/suite/chat` |
+
+One route serves KyPost (`kypost.chat.open`) and KyCalendar; the receiver accepts each type only
+from its own pair secret. Pair: `kycalendar`↔`kymessage`, the meetings pair.
+
+```json
+{"sub":"<caller>","issuer":"https://id.example","target_sub":"<person to chat with>"}
+```
+
+200 `{"url":"https://chat.example/#/user/@bob:example"}`: Element's user view, which offers
+"Message" and reuses an existing direct chat. The console creates nothing.
+
+| Status | Code | When |
+|---|---|---|
+| 404 | `kycalendar_off` | Not paired. |
+| 404 | `no_user` | Caller has no active KyMessages account. |
+| 404 | `no_target` | Target has no active KyMessages account, is the caller, or is an administrator identity. |
+| 400 | `bad_body` | |
+| 429 | `rate_limited` | |
+
+Caller: a "Chat" action on each organisation attendee in the event view, shown only when
+KyMessages is in the user's suite app list and `suitedir.Resolve` places the address in the
+organisation. Clicking asks KyCalendar's own session route, which calls the console and opens
+the answer in a new tab. `no_target` shows "This person isn't on KyMessages yet." The answer's
+URL must be `https://` on the paired KyMessages origin's Element host, else it is dropped.
+
+### Where Element is (shared with KyPost)
+
+The pairing names the KyMessages console's URL, not Element's host, so KyCalendar reads Element's
+origin from the user's suite app list, entry `kymessage-chat` (as KyPost does, KyPost #613). Chat
+shows only when that entry is there with an `https` URL, and the answer must be on exactly that
+origin and also pass `kymessages.ValidChatURL`: no credentials, path empty or `/`, no query,
+fragment exactly `/user/@<localpart>:<server>`. Anything else is `bad_reply` and never reaches the
+browser. KyMessages answers `ChatHost + "/#/user/@bob:example"`; `KY_MATRIX_CHAT_HOST` must equal
+the `kymessage-chat` launch URL's origin.
+
+### How KyCalendar implements it
+
+- **Session routes.** `POST /api/suite/chat {"email"}` (everyday, CSRF) → 200 `{"url"}`,
+  `Cache-Control: no-store`. It resolves the address with `suitedir.Resolve` as the caller; no
+  match, or the caller themself, is 404 `no_target` without asking KyMessages. Refusals: 400
+  `bad_body` (not one address, body over 1 KiB), 429 `rate_limited` (20 per user per minute),
+  404 `chat_off` (KyMessages not linked, the account did not sign in through the live
+  KyIdentity binding, or no `kymessage-chat` in the user's suite apps), 404 `no_target`/`no_user` (passed on from
+  KyMessages), 502 `refused` (any other refusal or a bad link), 503 `unavailable` (the people
+  lookup, the network, 429/5xx or `kycalendar_off` from KyMessages; never retried for the user).
+- **Who gets the action.** `GET /api/suite/people?email=…` (repeated, 1 to 100 addresses) answers
+  which addresses are organisation people, with the search's rate limit, minute cache and
+  empty-list-on-failure rules. The event view asks it once for the organizer and attendees but
+  the user, and shows Chat beside each match.
+- **Body.** `issuer` is the issuer URL: the account's `sso_issuer` binding without its
+  `kyidentity ` prefix. Every attempt carries a fresh event ID.
+- **Audit.** `chat.open`, or `chat.refused` with `code=`, by user ID only: never the address,
+  the subject or the link.
+
 ## I. KyDrive picker (KyCalendar is a caller, in the browser)
 
 `https://<kydrive-origin>/pick?origin=<caller origin>&mode=link|copy`, opened as a popup on a
@@ -206,3 +266,64 @@ organisation see the line but cannot open it; say so beside the button.
   (`calendar.KeepJoin`).
 - **View.** `files: [{name, url, type?}]` (https links only); the description omits the block.
   The web lists them as links opened with `noopener noreferrer`.
+
+## L. Meeting guests (KyCalendar → KyMessages)
+
+Builds the guest half of KyMessages `docs/superpowers/specs/2026-10-18-kymessages-meeting-rooms-design.md`
+(owner-approved 2026-10-18). Where that spec and contract B differ, contract B's wire shape wins
+(`sub`/`issuer`, not `organizer_sub`).
+
+- KyMessages console gains an administrator switch "Let people outside the organisation join
+  meetings", default **off**. Off: a non-empty `guests` answers 422 `guests_off` (replacing
+  `guests_unsupported`, which old KyMessages still sends).
+- PUT body gains `guests:[{key}]` (opaque per-attendee key, ≤100, `[A-Za-z0-9_-]{16,64}`, never
+  a name or address) and `windows:[{start,end}]` (RFC 3339 UTC, ≤400, at most 90 days ahead).
+  The answer gains `guest_urls:{key:url}`, returned only for keys new in this call or re-issued;
+  a key dropped from the list revokes its link.
+- KyCalendar: an attendee outside the organisation (by `suitedir.Resolve`) on an event with
+  "Video meeting" on becomes a guest key. Each guest's link goes only into that attendee's own
+  invitation; never into the stored event, its CONFERENCE property, the shared description or
+  any other attendee's copy. If invitations are not per-recipient today, make them so for
+  guests. Windows refresh daily through the outbox for recurring events. On `guests_off` or
+  `guests_unsupported`, KyCalendar retries without guests and the editor says which attendees
+  cannot join and why. The wave 1 line "people outside the organisation cannot join yet" becomes
+  accurate to the state.
+
+### How KyCalendar implements it
+
+- **Who is a guest.** On each sync of a meeting, the attendees of every VEVENT but the organizer
+  are resolved with `suitedir.Resolve` as the organizer; organisation people become
+  `member_subs`, every other address (lower-cased, at most 100) a guest. A failed lookup keeps
+  the stored guests and, as for members, never PUTs to an existing room.
+- **Keys** are 32 random base64url characters (`newMeetingID`), one per meeting and address,
+  stored in `meeting_guests` with the guest link sealed (AES-GCM under a key derived from the
+  server's encryption key, label `kycalendar:guest-url`). A removed attendee's row and key go,
+  so the next PUT revokes the link. A key that gets no link and has none stored (an answer lost
+  in transit) is replaced by a fresh key and the PUT is retried with backoff.
+- **Windows** are sent only with guests: each occurrence from now to 90 days ahead (cancelled
+  ones skipped) as `[start − 10 min, end]` in UTC, at most 400, the last cut at 90 days.
+- **Refusals.** `guests_off` and `guests_unsupported` make KyCalendar send the same PUT at once
+  without `guests` and `windows`; the room works for members, the code is kept on the meeting
+  (`guests_error`) and the guests get fresh keys without links. A meeting with guests (recurring,
+  or refused) is due again daily (`refresh_at`), so new windows reach KyMessages and a switch
+  turned on is picked up within a day. A body without guests carries no `guests` or `windows`
+  field, so wave 1 KyMessages sees exactly the body it knows.
+- **Per-recipient invitations.** Every outbox row already has one recipient, and KyPost mails
+  each to that one address. The link is added only there, at send time: for a REQUEST to an
+  address outside the instance, the scheduler asks for that address's link on the sender's
+  open meeting for that UID and, if one exists, appends `Join as a guest: <url>` as a final
+  description line to that recipient's copy only. The stored event, its `CONFERENCE`, the
+  queued body and every other copy are untouched. Recipients on this instance (internal
+  delivery) never get a guest link.
+- **Waiting for the link.** While the meeting has a change KyMessages has not answered and
+  KyMessages is linked, such an invitation is held (`guest_pending`, the outbox's usual backoff)
+  for at most 10 minutes after it was queued; then it leaves without a link, and the guest gets
+  theirs with the next update of the event.
+- **Editor.** The organizer's view carries `guests` (their addresses) and `guests_error`. Beside
+  the switch: "<addresses> can join as guests, each with their own link sent only in their
+  invitation.", "<addresses> cannot join: KyMessages does not let people outside the
+  organisation join meetings." (`guests_off`), "<addresses> cannot join: this KyMessages cannot
+  take guests yet." (`guests_unsupported`), or, before any sync, "People outside your
+  organisation get their own guest link in their invitation when KyMessages lets guests join."
+- **Never logged or audited:** keys, links, addresses. `meeting.refused op=put code=guests_off`
+  records the refusal by meeting ID.

@@ -4,11 +4,15 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Busnes-app/ky-primitives/suitedir"
+
+	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
 // person is one organisation member from KyIdentity's people search (suite contract A2/D).
@@ -68,11 +72,16 @@ func (c *suitePeopleCache) put(key string, people []person) {
 }
 
 // handleSuitePeople is the attendee field's autocomplete: GET /api/suite/people?q=, people in
-// the organisation who may open KyCalendar. Every failure is an empty list.
+// the organisation who may open KyCalendar; with ?email= (repeated) instead, which of those
+// addresses are such people (resolveEmails). Every failure is an empty list.
 func (s *Server) handleSuitePeople(w http.ResponseWriter, r *http.Request) {
 	u := sessionUser(r.Context())
 	none := map[string][]person{"people": {}}
-	q := r.URL.Query().Get("q")
+	q, emails := r.URL.Query().Get("q"), r.URL.Query()["email"]
+	if emails != nil {
+		s.resolveEmails(w, r, u, emails)
+		return
+	}
 	if n := utf8.RuneCountInString(q); n < 2 || n > 64 || !utf8.ValidString(q) {
 		s.writeJSON(w, http.StatusOK, none)
 		return
@@ -103,6 +112,44 @@ func (s *Server) handleSuitePeople(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("suite: people search for %s: %v", u.ID, err) // never the query
 		people = []person{}
+	}
+	if people == nil {
+		people = []person{}
+	}
+	if r.Context().Err() == nil {
+		s.suitePeople.put(key, people)
+	}
+	s.writeJSON(w, http.StatusOK, map[string][]person{"people": people})
+}
+
+// resolveEmails answers GET /api/suite/people?email=…: the organisation people among 1 to 100
+// valid addresses (anything else, or q as well, is an empty list), as the event view's Chat
+// action needs. Same limit, cache and failure rules as a search.
+func (s *Server) resolveEmails(w http.ResponseWriter, r *http.Request, u *store.User, emails []string) {
+	none := map[string][]person{"people": {}}
+	if r.URL.Query().Has("q") || len(emails) > 100 || slices.ContainsFunc(emails, func(e string) bool { return e == "" || validEmail(e) != nil }) {
+		s.writeJSON(w, http.StatusOK, none)
+		return
+	}
+	if !s.allowAccountAttempt("people:"+u.ID, 60, time.Minute) {
+		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many searches; wait a minute", "code": "rate_limited"})
+		return
+	}
+	p := s.signin.Load()
+	if p == nil || !s.suiteAccount(u, p) {
+		s.writeJSON(w, http.StatusOK, none)
+		return
+	}
+	sorted := slices.Sorted(slices.Values(emails))
+	key := p.ID + "\x00" + u.ID + "\x01" + strings.ToLower(strings.Join(sorted, "\x00"))
+	if people, ok := s.suitePeople.get(key); ok {
+		s.writeJSON(w, http.StatusOK, map[string][]person{"people": people})
+		return
+	}
+	people, err := s.resolveAs(r.Context(), u, sorted)
+	if err != nil {
+		log.Printf("suite: people lookup for %s: %v", u.ID, err) // never the addresses
+		people = nil
 	}
 	if people == nil {
 		people = []person{}

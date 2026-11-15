@@ -32,6 +32,8 @@ export interface EventInfo {
   // Video meetings: meeting_url is the KyMessages room (Join); meeting is the organizer's switch,
   // on with no meeting_url while the room is pending; meeting_error is KyMessages' refusal code.
   meeting_url?: string; meeting?: boolean; meeting_error?: string;
+  // Meeting guests (organizer only): attendees outside the organisation; guests_error is why KyMessages took none.
+  guests?: string[]; guests_error?: string;
   files?: { name: string; url: string; type?: string }[]; // KyDrive links (contract I); the description omits their File: lines
 }
 export interface Attendee { email: string; status: string }
@@ -139,3 +141,21 @@ export const freeBusy = (emails: string[], start: Date, end: Date) =>
   send(`/api/freebusy?users=${encodeURIComponent(emails.join(','))}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`)
     .then((r) => parse<{ people: PersonBusy[] }>(r))
     .then((b) => (Array.isArray(b?.people) ? b.people : []));
+
+/** Which of these addresses are organisation people (`GET /api/suite/people?email=`); `[]` on any failure. */
+export const orgEmails = (emails: string[]): Promise<string[]> =>
+  emails.length === 0
+    ? Promise.resolve([])
+    : fetch(`/api/suite/people?${emails.map((e) => `email=${encodeURIComponent(e)}`).join('&')}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => (Array.isArray(b?.people) ? b.people.map((p: Person) => p?.email).filter((e: unknown): e is string => typeof e === 'string') : []))
+        .catch(() => []);
+
+/** KyMessages' link for chatting with an organisation person (`POST /api/suite/chat`); throws `ApiError`. */
+export const chatLink = (email: string) =>
+  send('/api/suite/chat', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ email }) })
+    .then((r) => parse<{ url?: unknown }>(r))
+    .then((b) => {
+      if (typeof b?.url !== 'string' || !b.url.startsWith('https://')) throw new ApiError(502, 'refused', 'KyMessages refused to open the chat');
+      return b.url;
+    });

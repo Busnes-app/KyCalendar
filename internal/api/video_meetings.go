@@ -40,15 +40,15 @@ var meetingNow = time.Now
 
 var errPeopleUnavailable = errors.New("suite people lookup unavailable")
 
-// resolvePeople turns attendee emails into KyIdentity subjects (suite contract A3, Resolve);
+// resolvePeople turns attendee emails into organisation people (suite contract A3, Resolve);
 // unmatched addresses are absent. A variable so tests can stand in for KyIdentity.
-var resolvePeople = func(ctx context.Context, dir *suitedir.Client, sub string, emails []string) ([]string, error) {
-	people, err := dir.Resolve(ctx, sub, emails)
-	subs := make([]string, 0, len(people))
-	for _, p := range people {
-		subs = append(subs, p.Sub)
+var resolvePeople = func(ctx context.Context, dir *suitedir.Client, sub string, emails []string) ([]person, error) {
+	found, err := dir.Resolve(ctx, sub, emails)
+	people := make([]person, 0, len(found))
+	for _, p := range found {
+		people = append(people, person{Sub: p.Sub, Name: p.Name, Email: p.Email})
 	}
-	return subs, err
+	return people, err
 }
 
 // newMeetingID is a fresh opaque room ID, never derived from the event: 32 base64url characters.
@@ -64,6 +64,9 @@ func (s *Server) meetingsFor(u *store.User) bool {
 
 // SyncMeetings sends due meetings to KyMessages until none is due. cmd/server calls it on a ticker.
 func (s *Server) SyncMeetings(ctx context.Context) {
+	if err := s.store.Calendars().RefreshMeetings(ctx, meetingNow()); err != nil {
+		log.Printf("[KYMESSAGES] refreshing guest windows failed: %v", err)
+	}
 	for ctx.Err() == nil {
 		due, err := s.store.Calendars().DueMeetings(ctx, meetingNow(), meetingBatch)
 		if err != nil {
@@ -90,8 +93,7 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	}
 	var who kymessages.User
 	if owner != nil {
-		// sso_issuer is the binding "kyidentity <issuer URL>"; the wire carries the URL.
-		who = kymessages.User{Sub: owner.SSOSubject, Issuer: strings.TrimPrefix(owner.SSOIssuer, sso.KindKyIdentity+" ")}
+		who = kymessages.User{Sub: owner.SSOSubject, Issuer: issuerURL(owner)}
 	}
 	if m.State == "closing" {
 		return s.closeMeeting(ctx, m, who)
@@ -118,23 +120,36 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	master, _ := calendar.Master(cal)
 	title, _ := master.Props.Text(ical.PropSummary)
 	req := kymessages.PutRequest{User: who, Title: kymessages.Title(title), MemberSubs: []string{}}
-	resolved := true
+	stored, err := s.store.Calendars().MeetingGuests(ctx, m.ID)
+	if err != nil {
+		return err
+	}
+	guests, resolved := stored, true
 	if emails := meetingEmails(cal, owner.Email); len(emails) > 0 {
-		subs, err := s.meetingMembers(ctx, owner, emails)
+		subs, outside, err := s.meetingMembers(ctx, owner, emails)
 		if err != nil {
 			resolved = false
 		} else {
-			req.MemberSubs = subs
+			req.MemberSubs, guests = subs, guestKeys(stored, outside)
 		}
+	} else {
+		guests = nil
+	}
+	for _, g := range guests {
+		req.Guests = append(req.Guests, kymessages.Guest{Key: g.Key})
+	}
+	if len(guests) > 0 {
+		req.Windows = meetingWindows(cal, meetingNow())
 	}
 	body, _ := json.Marshal(req)
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
 	url := m.MemberURL
 	// A failed lookup never shrinks a room that exists: a PUT removes members it does not list.
-	// A new room is still created, organizer first, so the event gets its link.
-	if url == "" || resolved && digest != m.Synced {
-		res, err := s.kymessages.Put(ctx, m.ID, "evt_"+crypto.RandomHex(16), req)
+	// A new room is still created, organizer first, so the event gets its link. Guests that
+	// KyMessages refused last time are offered again on every change and daily refresh.
+	if url == "" || resolved && (digest != m.Synced || len(guests) > 0 && m.GuestsError != "") {
+		res, guestsErr, err := s.putMeeting(ctx, m, req)
 		if err != nil {
 			if err := s.meetingFailed(ctx, m, err, "put"); err != nil {
 				return err
@@ -149,6 +164,21 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 			log.Printf("[KYMESSAGES] meeting %s: %d members have no KyMessages account yet", m.ID, len(res.SkippedSubs))
 		}
 		s.auditMeeting(ctx, m, "meeting.put", "")
+		if resolved {
+			missing, err := s.saveGuests(ctx, m, cal, guests, res.GuestURLs, guestsErr)
+			if err != nil {
+				return err
+			}
+			if missing {
+				// A guest without a link got a fresh key: send it again soon. Their invitation
+				// waits meanwhile (guestLink).
+				if err := s.store.Calendars().SyncedMeeting(ctx, m.ID, m.DoneRev, "", url); err != nil {
+					return err
+				}
+				s.writeMeetingLink(ctx, owner, c, o, cal, url)
+				return s.store.Calendars().RetryMeeting(ctx, m.ID, meetingNow().Add(meetingWait(m.Attempts)), "guest_link_missing")
+			}
+		}
 	}
 	if !resolved {
 		// Keep the link, stay due: the people lookup is retried with backoff.
@@ -163,6 +193,111 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	}
 	s.writeMeetingLink(ctx, owner, c, o, cal, url)
 	return nil
+}
+
+// putMeeting PUTs req; a KyMessages that takes no guests (guests_off, or guests_unsupported
+// from one that predates them) gets the same PUT without guests and windows, and its code is
+// returned as guestsErr.
+func (s *Server) putMeeting(ctx context.Context, m *store.VideoMeeting, req kymessages.PutRequest) (kymessages.PutResult, string, error) {
+	res, err := s.kymessages.Put(ctx, m.ID, "evt_"+crypto.RandomHex(16), req)
+	var refused kymessages.Refused
+	if len(req.Guests) == 0 || !errors.As(err, &refused) || refused.Code != kymessages.CodeGuestsOff && refused.Code != kymessages.CodeGuestsUnsupported {
+		return res, "", err
+	}
+	s.auditMeeting(ctx, m, "meeting.refused", "op=put code="+refused.Code)
+	req.Guests, req.Windows = nil, nil
+	res, err = s.kymessages.Put(ctx, m.ID, "evt_"+crypto.RandomHex(16), req)
+	return res, refused.Code, err
+}
+
+// guestKeys gives each address outside the organisation its stored key and link, or a fresh
+// key: opaque, random, never derived from the address.
+func guestKeys(stored []store.MeetingGuest, outside []string) []store.MeetingGuest {
+	var out []store.MeetingGuest
+	for _, e := range outside {
+		i := slices.IndexFunc(stored, func(g store.MeetingGuest) bool { return g.Email == e })
+		if i >= 0 {
+			out = append(out, stored[i])
+		} else {
+			out = append(out, store.MeetingGuest{Email: e, Key: newMeetingID()})
+		}
+	}
+	return out
+}
+
+// saveGuests stores what KyMessages answered for guests: each new link sealed. A guest whose
+// key got no link and who has none stored gets a fresh key (missing), since KyMessages only
+// returns a link for a key new in that call. Refused guests keep their addresses (the editor
+// names them) with fresh keys and no link. Guests are offered again daily.
+func (s *Server) saveGuests(ctx context.Context, m *store.VideoMeeting, cal *ical.Calendar, guests []store.MeetingGuest, links map[string]string, guestsErr string) (missing bool, err error) {
+	for i := range guests {
+		g := &guests[i]
+		switch link, ok := links[g.Key]; {
+		case guestsErr != "":
+			g.Key, g.SealedURL = newMeetingID(), ""
+		case ok:
+			if g.SealedURL, err = crypto.EncryptAESGCM([]byte(link), crypto.DeriveKey(s.config.Security.EncryptionKey, guestURLLabel)); err != nil {
+				return false, err
+			}
+		case g.SealedURL == "":
+			g.Key, missing = newMeetingID(), true
+		}
+	}
+	var refresh *time.Time
+	if len(guests) > 0 && (guestsErr != "" || calendar.Recurring(cal)) {
+		at := meetingNow().Add(24 * time.Hour)
+		refresh = &at
+	}
+	return missing, s.store.Calendars().SetMeetingGuests(ctx, m.ID, guests, guestsErr, refresh)
+}
+
+// guestURLLabel derives the key that seals guest links at rest.
+const guestURLLabel = "kycalendar:guest-url"
+
+// guestWait is how long an invitation to someone outside the instance waits for its meeting's
+// guest link; past it the invitation leaves without one.
+const guestWait = 10 * time.Minute
+
+// guestLink is the scheduler's GuestLink: email's own guest link on sender's meeting for uid.
+// It waits while KyMessages has not answered the meeting's latest change, for guestWait at most.
+func (s *Server) guestLink(ctx context.Context, sender *store.User, uid, email string, queued time.Time) (string, bool, error) {
+	sealed, pending, err := s.store.Calendars().GuestLink(ctx, sender.ID, uid, strings.ToLower(email))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return "", false, nil
+	case err != nil:
+		return "", false, err
+	case sealed == "":
+		return "", pending && s.kymessages.Peer() != nil && time.Since(queued) < guestWait, nil
+	}
+	link, err := crypto.DecryptAESGCM(sealed, crypto.DeriveKey(s.config.Security.EncryptionKey, guestURLLabel))
+	if err != nil || !kymessages.ValidURL(string(link)) {
+		log.Printf("[KYMESSAGES] a guest link of %s does not open", sender.ID)
+		return "", false, nil
+	}
+	return string(link), false, nil
+}
+
+// meetingWindows are the occurrences guests may join from now to 90 days ahead, each from ten
+// minutes before it starts to its end, in UTC, at most kymessages.MaxWindows.
+func meetingWindows(cal *ical.Calendar, now time.Time) []kymessages.Window {
+	insts, _ := calendar.Expand(cal, now.Add(-24*time.Hour), now.AddDate(0, 0, 90), time.UTC, maxEventInstances)
+	out := []kymessages.Window{}
+	for _, in := range insts {
+		if st, _ := in.Event.Props.Text(ical.PropStatus); strings.EqualFold(st, "CANCELLED") || !in.End.After(now) {
+			continue
+		}
+		start := in.Start.Add(-10 * time.Minute).UTC()
+		end := in.End
+		if limit := now.AddDate(0, 0, 90); end.After(limit) {
+			end = limit
+		}
+		out = append(out, kymessages.Window{Start: start.Format(time.RFC3339), End: end.UTC().Format(time.RFC3339)})
+		if len(out) == kymessages.MaxWindows {
+			break
+		}
+	}
+	return out
 }
 
 // meetingEvent loads m's event; cal is nil when it is gone.
@@ -222,7 +357,29 @@ func meetingEmails(cal *ical.Calendar, self string) []string {
 	return out
 }
 
-func (s *Server) meetingMembers(ctx context.Context, owner *store.User, emails []string) ([]string, error) {
+// meetingMembers splits attendee emails into organisation members' subjects and the addresses
+// outside the organisation (lower-cased, at most kymessages.MaxGuests).
+func (s *Server) meetingMembers(ctx context.Context, owner *store.User, emails []string) (subs, outside []string, err error) {
+	people, err := s.resolveAs(ctx, owner, emails)
+	if err != nil {
+		return nil, nil, err
+	}
+	subs = []string{}
+	for _, p := range people {
+		if p.Sub != owner.SSOSubject {
+			subs = append(subs, p.Sub)
+		}
+	}
+	for _, e := range emails {
+		if !slices.ContainsFunc(people, func(p person) bool { return strings.EqualFold(p.Email, e) }) && len(outside) < kymessages.MaxGuests {
+			outside = append(outside, strings.ToLower(e))
+		}
+	}
+	return subs[:min(len(subs), kymessages.MaxMembers)], outside, nil
+}
+
+// resolveAs asks KyIdentity, as u, which of emails belong to organisation people.
+func (s *Server) resolveAs(ctx context.Context, u *store.User, emails []string) ([]person, error) {
 	p := s.signin.Load()
 	if p == nil || p.Kind != sso.KindKyIdentity {
 		return nil, errPeopleUnavailable
@@ -233,12 +390,7 @@ func (s *Server) meetingMembers(ctx context.Context, owner *store.User, emails [
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	subs, err := resolvePeople(ctx, dir, owner.SSOSubject, emails)
-	if err != nil {
-		return nil, err
-	}
-	subs = slices.DeleteFunc(subs, func(sub string) bool { return sub == owner.SSOSubject })
-	return subs[:min(len(subs), kymessages.MaxMembers)], nil
+	return resolvePeople(ctx, dir, u.SSOSubject, emails)
 }
 
 // writeMeetingLink puts url into the organizer's event through the scheduled write path, so

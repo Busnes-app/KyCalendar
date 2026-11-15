@@ -12,6 +12,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,7 +27,9 @@ import (
 const (
 	EventPut   = "kycalendar.meeting.put"   // PUT /api/meetings/{id}: create or reconcile the room
 	EventClose = "kycalendar.meeting.close" // DELETE /api/meetings/{id}: close it for good
+	EventChat  = "kycalendar.chat.open"     // POST /api/suite/chat: a link to chat with someone
 	MeetPath   = "/api/meetings/"
+	ChatPath   = "/api/suite/chat"
 	MaxMembers = 100
 	MaxTitle   = 255
 	maxReply   = 64 << 10
@@ -57,19 +61,49 @@ type User struct {
 }
 
 // PutRequest names the room and who may join it. Put sets ID, the path's meeting ID: the path
-// is not signed, so KyMessages refuses a body naming another meeting.
+// is not signed, so KyMessages refuses a body naming another meeting. Guests and Windows are
+// left out when empty, so a KyMessages without guests (wave 1) sees the body it knows.
 type PutRequest struct {
 	ID string `json:"id"`
 	User
 	Title      string   `json:"title"`
 	MemberSubs []string `json:"member_subs"`
+	Guests     []Guest  `json:"guests,omitempty"`
+	Windows    []Window `json:"windows,omitempty"`
 }
 
-// PutResult is KyMessages' answer: the room's link for members, and the subjects it skipped
-// because they have no KyMessages account yet.
+// Guest is an attendee outside the organisation, known to KyMessages only by an opaque key.
+type Guest struct {
+	Key string `json:"key"`
+}
+
+// Window is when guests may join: RFC 3339 UTC.
+type Window struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+// Guest refusals: the administrator switch is off, or this KyMessages takes no guests at all.
+const (
+	CodeGuestsOff         = "guests_off"
+	CodeGuestsUnsupported = "guests_unsupported"
+	MaxGuests             = 100
+	MaxWindows            = 400
+)
+
+// PutResult is KyMessages' answer: the room's link for members, the subjects it skipped
+// because they have no KyMessages account yet, and the guest links for keys new in this call
+// or re-issued. Each guest link is a secret for one attendee.
 type PutResult struct {
-	MemberURL   string   `json:"member_url"`
-	SkippedSubs []string `json:"skipped_subs"`
+	MemberURL   string            `json:"member_url"`
+	SkippedSubs []string          `json:"skipped_subs"`
+	GuestURLs   map[string]string `json:"guest_urls"`
+}
+
+// ChatRequest asks for a link to chat with TargetSub, as User.
+type ChatRequest struct {
+	User
+	TargetSub string `json:"target_sub"`
 }
 
 // Peer is one KyMessages console: its https base URL (no trailing slash) and the pair secret.
@@ -125,33 +159,57 @@ func Title(s string) string {
 // replayed one with {"outcome":"duplicate"} and no link.
 func (l *Link) Put(ctx context.Context, id, eventID string, req PutRequest) (PutResult, error) {
 	var out PutResult
+	if !ValidID(id) {
+		return out, Refused{Code: "bad_id"}
+	}
 	req.ID = id
-	reply, err := l.do(ctx, http.MethodPut, EventPut, id, eventID, req)
+	reply, err := l.do(ctx, http.MethodPut, EventPut, MeetPath+id, eventID, req)
 	if err != nil {
 		return out, err
 	}
 	if json.Unmarshal(reply, &out) != nil || !ValidURL(out.MemberURL) {
 		return PutResult{}, Refused{Code: "bad_reply"}
 	}
+	for key, u := range out.GuestURLs { // only links for keys this call sent, and safe ones
+		if !ValidURL(u) || !slices.ContainsFunc(req.Guests, func(g Guest) bool { return g.Key == key }) {
+			delete(out.GuestURLs, key)
+		}
+	}
 	return out, nil
 }
 
 // Close closes meeting id; an unknown or already closed ID is success too.
 func (l *Link) Close(ctx context.Context, id, eventID string, u User) error {
-	_, err := l.do(ctx, http.MethodDelete, EventClose, id, eventID, struct {
+	if !ValidID(id) {
+		return Refused{Code: "bad_id"}
+	}
+	_, err := l.do(ctx, http.MethodDelete, EventClose, MeetPath+id, eventID, struct {
 		ID string `json:"id"`
 		User
 	}{id, u})
 	return err
 }
 
-func (l *Link) do(ctx context.Context, method, eventType, id, eventID string, v any) ([]byte, error) {
+// Chat asks for Element's view of req.TargetSub, which offers a direct chat. KyMessages creates
+// nothing. A link that is not ValidChatURL is Refused{bad_reply}.
+func (l *Link) Chat(ctx context.Context, eventID string, req ChatRequest) (string, error) {
+	reply, err := l.do(ctx, http.MethodPost, EventChat, ChatPath, eventID, req)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		URL string `json:"url"`
+	}
+	if json.Unmarshal(reply, &out) != nil || !ValidChatURL(out.URL) {
+		return "", Refused{Code: "bad_reply"}
+	}
+	return out.URL, nil
+}
+
+func (l *Link) do(ctx context.Context, method, eventType, path, eventID string, v any) ([]byte, error) {
 	p := l.Peer()
 	if p == nil {
 		return nil, ErrNotConnected
-	}
-	if !ValidID(id) {
-		return nil, Refused{Code: "bad_id"}
 	}
 	body, err := json.Marshal(v)
 	if err != nil {
@@ -161,7 +219,7 @@ func (l *Link) do(ctx context.Context, method, eventType, id, eventID string, v 
 	if err != nil {
 		return nil, err
 	}
-	hr, err := http.NewRequestWithContext(ctx, method, p.URL+MeetPath+id, bytes.NewReader(body))
+	hr, err := http.NewRequestWithContext(ctx, method, p.URL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -216,4 +274,19 @@ func ValidURL(s string) bool {
 	}
 	u, err := url.Parse(s)
 	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil
+}
+
+// matrixUser is a Matrix user ID: @localpart:server, the server a host name with an optional port.
+var matrixUser = regexp.MustCompile(`^@[a-z0-9._=/+-]{1,255}:[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$`)
+
+// ValidChatURL admits only Element's user view, https://<host>/#/user/@bob:example: a
+// ValidURL with no path beyond "/", no query and that fragment. The host is the caller's to
+// check: the pairing names the console, not Element.
+func ValidChatURL(s string) bool {
+	if !ValidURL(s) {
+		return false
+	}
+	u, _ := url.Parse(s)
+	id, ok := strings.CutPrefix(u.Fragment, "/user/")
+	return ok && (u.Path == "" || u.Path == "/") && u.RawQuery == "" && !u.ForceQuery && u.RawFragment == "" && matrixUser.MatchString(id)
 }

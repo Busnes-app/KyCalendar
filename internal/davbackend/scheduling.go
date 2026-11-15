@@ -27,6 +27,10 @@ type Scheduler struct {
 	Limits store.OwnerLimits // applied to deliveries into a recipient's calendar
 	Now    func() time.Time
 	KyPost KyPostSender // nil: nothing reaches people outside the instance (no_transport)
+	// GuestLink is recipient email's own guest link for sender's meeting uid (suite contract
+	// L), "" when none; wait holds the invitation while KyMessages has not answered yet. nil:
+	// no guest links.
+	GuestLink func(ctx context.Context, sender *store.User, uid, email string, queued time.Time) (url string, wait bool, err error)
 
 	invitesMu sync.Mutex
 	invites   map[string]*inviteWindow // sender ID -> this hour's new invitees
@@ -273,6 +277,8 @@ func reason(err error) string {
 		return perm.reason
 	case errors.Is(err, errNoTransport):
 		return "no_transport"
+	case errors.Is(err, errGuestPending):
+		return "guest_pending"
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return "conflict"
 	case errors.Is(err, store.ErrQuotaExceeded):
@@ -325,7 +331,7 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	}
 	recipient, err := s.Store.Users().CalendarUser(ctx, to.Email())
 	if errors.Is(err, store.ErrNotFound) {
-		return s.sendExternal(ctx, m, sender, from, to)
+		return s.sendExternal(ctx, m, sender, from, to, uid, msg)
 	}
 	if err != nil {
 		return err

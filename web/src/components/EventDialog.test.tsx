@@ -293,7 +293,7 @@ describe('EventDialog', () => {
       render(<EventDialog calendars={cals} initial={newForm()} onDone={onDone} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
       const toggle = screen.getByRole('switch', { name: 'Video meeting' }) as HTMLInputElement;
       expect(toggle.checked).toBe(false);
-      expect(screen.getByText('People outside your organisation cannot join yet.')).toBeTruthy();
+      expect(screen.getByText(/get their own guest link in their invitation when KyMessages lets guests join/)).toBeTruthy();
       fireEvent.change(screen.getByLabelText('People'), { target: { value: 'ann@example.com' } });
       fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
       expect(toggle.checked).toBe(true);
@@ -338,6 +338,87 @@ describe('EventDialog', () => {
       cleanup();
       render(<EventDialog calendars={cals} event={{ ...invite, meeting_url: 'javascript:alert(1)' }} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
       expect(screen.queryByRole('button', { name: 'Join video meeting' })).toBeNull();
+    });
+  });
+
+  describe('meeting guests', () => {
+    const single: EventInfo = { ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' }, description: '', meeting: true };
+    const line = (ev: EventInfo) => {
+      render(<EventDialog calendars={cals} event={ev} initial={formFromEvent(ev, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
+      const text = screen.getByRole('switch', { name: 'Video meeting' }).closest('form')!.textContent!;
+      cleanup();
+      return text;
+    };
+    it('says which attendees cannot join and why, or that they get their own link', () => {
+      expect(line({ ...single, guests: ['out@x.test'], guests_error: 'guests_off' })).toContain('out@x.test cannot join: KyMessages does not let people outside the organisation join meetings.');
+      expect(line({ ...single, guests: ['out@x.test', 'eve@y.test'], guests_error: 'guests_unsupported' })).toContain('out@x.test, eve@y.test cannot join: this KyMessages cannot take guests yet.');
+      expect(line({ ...single, guests: ['out@x.test'] })).toContain('out@x.test can join as guests, each with their own link sent only in their invitation.');
+    });
+  });
+
+  describe('chat', () => {
+    const invite: EventInfo = {
+      ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' }, description: '', organizer: 'boss@example.com', my_status: 'ACCEPTED',
+      attendees: [{ email: 'me@example.com', status: 'ACCEPTED' }, { email: 'ann@example.com', status: 'ACCEPTED' }, { email: 'eve@elsewhere.test', status: 'NEEDS-ACTION' }],
+    };
+    // The organisation is boss@ and ann@; chat answers with reply.
+    function suite(reply: { status: number; body: unknown }) {
+      const asked: string[] = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const url = String(input);
+        asked.push(`${init?.method ?? 'GET'} ${url}${init?.body ? ' ' + String(init.body) : ''}`);
+        if (url.startsWith('/api/suite/people?')) return new Response(JSON.stringify({ people: [{ sub: 's1', name: 'Boss', email: 'boss@example.com' }, { sub: 's2', name: 'Ann', email: 'ann@example.com' }] }));
+        return new Response(JSON.stringify(reply.body), { status: reply.status });
+      });
+      return asked;
+    }
+
+    it('offers Chat on organisation people only, never the user, and opens the link', async () => {
+      const asked = suite({ status: 200, body: { url: 'https://chat.example/#/user/@ann:example' } });
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
+      await screen.findByRole('button', { name: 'Chat with ann@example.com' });
+      expect(screen.getByRole('button', { name: 'Chat with boss@example.com' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Chat with eve@elsewhere.test' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Chat with me@example.com' })).toBeNull();
+      expect(asked[0]).toBe('GET /api/suite/people?email=boss%40example.com&email=ann%40example.com&email=eve%40elsewhere.test');
+      fireEvent.click(screen.getByRole('button', { name: 'Chat with ann@example.com' }));
+      await waitFor(() => expect(open).toHaveBeenCalledWith('https://chat.example/#/user/@ann:example', '_blank', 'noopener,noreferrer'));
+      expect(asked[1]).toBe('POST /api/suite/chat {"email":"ann@example.com"}');
+    });
+
+    it('says who is not on KyMessages, and never opens anything but https', async () => {
+      suite({ status: 404, body: { error: 'x', code: 'no_target' } });
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Chat with ann@example.com' }));
+      expect((await screen.findByRole('alert')).textContent).toBe("This person isn't on KyMessages yet.");
+      cleanup();
+      vi.restoreAllMocks();
+      suite({ status: 200, body: { url: 'javascript:alert(1)' } });
+      const open2 = vi.spyOn(window, 'open').mockReturnValue(null);
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Chat with ann@example.com' }));
+      expect((await screen.findByRole('alert')).textContent).toMatch(/Could not open the chat/);
+      expect(open).not.toHaveBeenCalled();
+      expect(open2).not.toHaveBeenCalled();
+    });
+
+    it('offers nothing and asks nothing without Element in the suite apps', async () => {
+      const asked = suite({ status: 200, body: {} });
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(screen.queryByRole('button', { name: /^Chat with/ })).toBeNull();
+      expect(asked).toHaveLength(0);
+    });
+
+    it('offers Chat in the organizer\'s People list', async () => {
+      suite({ status: 200, body: {} });
+      const mine: EventInfo = { ...invite, organizer: 'me@example.com', my_status: undefined };
+      render(<EventDialog calendars={cals} event={mine} initial={formFromEvent(mine, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
+      await screen.findByRole('button', { name: 'Chat with ann@example.com' });
+      expect(screen.getByRole('button', { name: 'Remove ann@example.com' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Chat with eve@elsewhere.test' })).toBeNull();
     });
   });
 

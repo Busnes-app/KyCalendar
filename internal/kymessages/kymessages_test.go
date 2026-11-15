@@ -26,7 +26,7 @@ func peer(t *testing.T, status int, body string) (*Link, *[]*http.Request) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		h := syncauth.FromRequest(r)
-		want := map[string]string{http.MethodPut: EventPut, http.MethodDelete: EventClose}[r.Method]
+		want := map[string]string{http.MethodPut: EventPut, http.MethodDelete: EventClose, http.MethodPost: EventChat}[r.Method]
 		if _, err := syncauth.Verify(secret, h, b, syncauth.Options{}); err != nil || h.EventType != want {
 			t.Errorf("%s %s: event %q, signature %v", r.Method, r.URL.Path, h.EventType, err)
 		}
@@ -141,5 +141,82 @@ func TestTitle(t *testing.T) {
 		if got := Title(in); got != want || len(got) > MaxTitle {
 			t.Errorf("Title(%q) = %q", in, got)
 		}
+	}
+}
+
+func TestChatSignsAndReadsTheLink(t *testing.T) {
+	l, seen := peer(t, 200, `{"url":"https://chat.example/#/user/@bob:example"}`)
+	got, err := l.Chat(context.Background(), "evt-1", ChatRequest{User: User{Sub: "s1", Issuer: "https://id.example"}, TargetSub: "s2"})
+	if err != nil || got != "https://chat.example/#/user/@bob:example" {
+		t.Fatalf("%q %v", got, err)
+	}
+	if r := (*seen)[0]; r.Method != http.MethodPost || r.URL.Path != ChatPath {
+		t.Fatalf("request %s %s", r.Method, r.URL.Path)
+	}
+}
+
+func TestChatRefusesAnythingButElementsUserView(t *testing.T) {
+	for _, u := range []string{
+		"", "http://chat.example/#/user/@bob:example", "https://u:p@chat.example/#/user/@bob:example",
+		"https://chat.example/#/room/!abc:example", "https://chat.example/x#/user/@bob:example",
+		"https://chat.example/?next=evil#/user/@bob:example", "https://chat.example/#/user/@bob:example/../x",
+		"https://chat.example/#/user/bob", "https://chat.example/#/user/@Bob:example", "javascript:alert(1)//#/user/@bob:example",
+		"https://chat.example/#/user/%40bob:example", "https://chat.example/#/user/@bob:example?x",
+	} {
+		l, _ := peer(t, 200, `{"url":"`+u+`"}`)
+		var refused Refused
+		if _, err := l.Chat(context.Background(), "e", ChatRequest{}); !errors.As(err, &refused) || refused.Code != "bad_reply" {
+			t.Errorf("%q: %v", u, err)
+		}
+	}
+	for _, u := range []string{"https://chat.example/#/user/@bob.smith_1:example.org", "https://chat.example:8448#/user/@b:ex:8448"} {
+		if !ValidChatURL(u) {
+			t.Errorf("%q refused", u)
+		}
+	}
+}
+
+func TestChatOutcomes(t *testing.T) {
+	for _, c := range []struct {
+		status int
+		body   string
+		code   string
+	}{{404, `{"code":"no_target"}`, "no_target"}, {404, `{"code":"no_user"}`, "no_user"}, {400, `{"code":"bad_body"}`, "bad_body"}} {
+		l, _ := peer(t, c.status, c.body)
+		var refused Refused
+		if _, err := l.Chat(context.Background(), "e", ChatRequest{}); !errors.As(err, &refused) || refused.Code != c.code {
+			t.Errorf("%d: %v", c.status, err)
+		}
+	}
+	l, _ := peer(t, 429, `{"code":"rate_limited"}`)
+	if _, err := l.Chat(context.Background(), "e", ChatRequest{}); !errors.Is(err, ErrRetry) {
+		t.Fatal(err)
+	}
+}
+
+func TestPutSendsGuestsOnlyWhenThereAreAny(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_, _ = io.WriteString(w, `{"member_url":"https://chat.example/#/room/!a:x","guest_urls":{"g1key0123456789ab":"https://chat.example/meet/t1","other":"https://evil.example/x","g2key0123456789ab":"javascript:x"}}`)
+	}))
+	t.Cleanup(srv.Close)
+	l := &Link{HTTP: srv.Client()}
+	l.Set(&Peer{URL: srv.URL, Secret: secret, Source: SourceEnvironment})
+	if _, err := l.Put(context.Background(), meetingID, "e1", PutRequest{Title: "T", MemberSubs: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(bodies[0], "guests") || strings.Contains(bodies[0], "windows") {
+		t.Fatalf("wave 1 body carries guests: %s", bodies[0])
+	}
+	res, err := l.Put(context.Background(), meetingID, "e2", PutRequest{Title: "T", MemberSubs: []string{},
+		Guests:  []Guest{{Key: "g1key0123456789ab"}, {Key: "g2key0123456789ab"}},
+		Windows: []Window{{Start: "2026-11-16T08:50:00Z", End: "2026-11-16T10:00:00Z"}}})
+	if err != nil || len(res.GuestURLs) != 1 || res.GuestURLs["g1key0123456789ab"] != "https://chat.example/meet/t1" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if !strings.Contains(bodies[1], `"guests":[{"key":"g1key0123456789ab"},{"key":"g2key0123456789ab"}],"windows":[{"start":"2026-11-16T08:50:00Z","end":"2026-11-16T10:00:00Z"}]`) {
+		t.Fatalf("body %s", bodies[1])
 	}
 }

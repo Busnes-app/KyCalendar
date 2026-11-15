@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, chatLink, createEvent, deleteEvent, orgEmails, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { pickFromDrive, type DriveFile } from '../drivePicker';
 import { linkify } from '../linkify';
@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void;
   scheduling?: boolean; // server sends invitations
   meetings?: boolean; // KyMessages is paired and in the user's suite apps
+  chat?: boolean; // the same, with Element (kymessage-chat) in the suite apps: the Chat action
   me?: string; // signed-in user's email
   drive?: string; // KyDrive's https origin when it is in the user's suite apps
 }
@@ -36,6 +37,22 @@ const MEETING_ERRORS: Record<string, string> = {
   no_user: 'The video meeting could not be set up: you have no KyMessages account yet.',
   no_account: 'The video meeting could not be set up: your account did not sign in through KyIdentity.',
 };
+const CHAT_ERRORS: Record<string, string> = {
+  no_target: "This person isn't on KyMessages yet.",
+  no_user: 'You have no KyMessages account yet.',
+  rate_limited: 'Too many chats opened; wait a minute.',
+};
+const chatError = (e: unknown) => (e instanceof ApiError && CHAT_ERRORS[e.code]) || 'Could not open the chat. Try again in a moment.';
+
+// The line beside the Video meeting switch says what people outside the organisation get (contract L).
+function guestsText(event?: EventInfo): string {
+  const who = (event?.guests ?? []).join(', ');
+  if (who && event?.guests_error === 'guests_off') return `${who} cannot join: KyMessages does not let people outside the organisation join meetings.`;
+  if (who && event?.guests_error) return `${who} cannot join: this KyMessages cannot take guests yet.`;
+  if (who) return `${who} can join as guests, each with their own link sent only in their invitation.`;
+  return 'People outside your organisation get their own guest link in their invitation when KyMessages lets guests join.';
+}
+
 const meetingError = (code: string) => MEETING_ERRORS[code] ?? `The video meeting could not be set up (${code}).`;
 
 function message(e: unknown, fallback: string): string {
@@ -43,7 +60,7 @@ function message(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, me = '', drive = '' }: Props) {
+export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, chat: chatOn = false, me = '', drive = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
@@ -65,6 +82,17 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
   const meeting = meetingChoice ?? people.length > 0;
   const canMeet = meetings && !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
   const [suggestions, setSuggestions] = useState<Person[]>([]);
+  // Chat (contract H): offered on the organisation people of a saved event, asked once.
+  const [chatty, setChatty] = useState<string[]>([]);
+  useEffect(() => {
+    if (!chatOn || !event) return;
+    const emails = [event.organizer, ...(event.attendees ?? []).map((a) => a.email)].filter((e): e is string => !!e && !sameEmail(e, me));
+    let live = true;
+    void orgEmails([...new Set(emails)].slice(0, 100)).then((found) => { if (live) setChatty(found); });
+    return () => {
+      live = false;
+    };
+  }, [event, chatOn, me]);
   // Linked files (contract I): kept by the server unless Save sends a changed list.
   const [files, setFiles] = useState<DriveFile[]>(() => event?.files ?? []);
   const filesChanged = files.length !== (event?.files ?? []).length || files.some((f, i) => f.url !== event!.files![i].url);
@@ -142,6 +170,20 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
     if (!sameEmail(email, me) && !people.some((p) => sameEmail(p.email, email))) setPeople([...people, { email, status: 'NEEDS-ACTION' }]);
   }
 
+  async function chat(email: string) {
+    setError(null);
+    try {
+      window.open(await chatLink(email), '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setError(chatError(e));
+    }
+  }
+
+  const chatButton = (email: string, push = false) =>
+    chatty.some((e) => sameEmail(e, email)) && (
+      <button type="button" className={`btn-ghost btn-sm${push ? ' kc-push' : ''}`} aria-label={`Chat with ${email}`} onClick={() => void chat(email)}>Chat</button>
+    );
+
   async function addFiles() {
     const picked = await pickFromDrive(drive);
     setFiles((now) => [...now, ...picked.filter((p) => !now.some((f) => f.url === p.url))].slice(0, 20));
@@ -181,9 +223,9 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
 
   const invitation = invited && (
     <>
-      {event!.organizer && <p>Organized by {event!.organizer}</p>}
+      {event!.organizer && <p>Organized by {event!.organizer} {chatButton(event!.organizer)}</p>}
       <ul className="kc-people">
-        {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span></li>)}
+        {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>{chatButton(p.email, true)}</li>)}
       </ul>
       {!event!.cancelled && <div className="kc-actions" role="group" aria-label="Your answer">
         {BUTTONS.map(([value, label]) => (
@@ -300,7 +342,8 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
                   {people.map((p) => (
                     <li key={p.email}>
                       <span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
-                      <button type="button" className="btn-ghost btn-danger btn-sm kc-push" aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
+                      {chatButton(p.email, true)}
+                      <button type="button" className={`btn-ghost btn-danger btn-sm${chatty.some((e) => sameEmail(e, p.email)) ? '' : ' kc-push'}`} aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
                     </li>
                   ))}
                 </ul>
@@ -318,7 +361,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {canMeet && scope === 'all' && (
             <>
               <label className="kc-check"><input type="checkbox" role="switch" checked={meeting} onChange={(e) => setMeetingChoice(e.target.checked)} /> Video meeting</label>
-              <p className="kc-hint">People outside your organisation cannot join yet.</p>
+              <p className="kc-hint">{guestsText(event)}</p>
             </>
           )}
           <div className="modal-actions">
