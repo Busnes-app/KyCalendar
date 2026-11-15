@@ -1,12 +1,14 @@
 import { PageHeader } from '../components/ui';
 import { Appearance } from './Appearance';
 import AppPasswords from './AppPasswords';
+import BookingPages from './BookingPages';
 import { PasswordForm } from './ChangePassword';
 
 const SECTIONS = [
   { id: 'account', label: 'Account' },
   // App passwords are for everyday users' calendar clients; the API refuses administrators.
   { id: 'devices', label: 'Phones & apps', everyday: true },
+  { id: 'booking', label: 'Booking pages', everyday: true },
   { id: 'appearance', label: 'Appearance' },
 ];
 
@@ -28,11 +30,12 @@ export function PersonalSettings({ section, user, onPasswordChanged }: { section
       ? 'Who you are signed in as, and your password.'
       : 'Who you are signed in as. Your sign-in provider looks after your password and two-step verification.',
     devices: 'Each device or AI agent gets its own app password. Revoke one and only that one stops working.',
+    booking: 'Share a link where people outside your organisation pick a free time with you. Only free times show; nothing else in your calendar does.',
     appearance: 'Pick a palette and how it handles light and dark. Match system switches with your device’s setting; Light or Dark keeps one. Your choice applies straight away and is saved in this browser only.',
   }[open.id];
   return (
     <>
-      <PageHeader title="Settings" lede={sections.length > 2 ? 'Your account, the phones and apps that sync with it, and how KyCalendar looks.' : 'Your account, and how KyCalendar looks.'} />
+      <PageHeader title="Settings" lede={sections.length > 2 ? 'Your account, the phones and apps that sync with it, your booking pages, and how KyCalendar looks.' : 'Your account, and how KyCalendar looks.'} />
       <nav className="ky-settings-tabs" aria-label="Settings sections">
         {sections.map((s) => (
           <a key={s.id} className="ky-nav-item" href={`#/settings/${s.id}`} aria-current={s === open ? 'page' : undefined}>{s.label}</a>
@@ -61,6 +64,7 @@ export function PersonalSettings({ section, user, onPasswordChanged }: { section
           </>
         )}
         {open.id === 'devices' && <AppPasswords username={user.username} />}
+        {open.id === 'booking' && <BookingPages />}
         {open.id === 'appearance' && <Appearance />}
       </section>
     </>

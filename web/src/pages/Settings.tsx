@@ -115,6 +115,78 @@ const ExemptNetworks: React.FC = () => {
   );
 };
 
+interface BookingAdmin {
+  allowed: boolean;
+  available: boolean;
+  prerequisite: string;
+}
+
+const BOOKING_ROUTE = '/api/admin/booking';
+const PREREQ: Record<string, string> = {
+  kypost_unpaired: 'KyCalendar is not paired with KyPost, which mails the booking emails and invitations. Pair KyPost (see Sign-in) to turn this on.',
+  scheduling_off: 'Invitations are off on this server (KYCALENDAR_SCHEDULING). Booking pages send invitations, so they need it on.',
+};
+
+const readBooking = async (res: Response): Promise<BookingAdmin | null> => {
+  const b = await res.json().catch(() => null);
+  return b && typeof b.allowed === 'boolean' && typeof b.available === 'boolean' && typeof b.prerequisite === 'string' ? b : null;
+};
+
+// The administrator switch for booking pages: off by default, and only possible with KyPost paired.
+const BookingPagesCard: React.FC = () => {
+  const [status, setStatus] = useState<BookingAdmin | null>(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void send(BOOKING_ROUTE).then(async (res) => {
+      const s = res?.ok ? await readBooking(res) : null;
+      if (s) setStatus(s);
+      else setError('Could not load the booking page setting.');
+    });
+  }, []);
+
+  const toggle = async (allowed: boolean) => {
+    setSaving(true);
+    setError('');
+    const res = await send(BOOKING_ROUTE, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ allowed }) });
+    setSaving(false);
+    const s = res?.ok ? await readBooking(res) : null;
+    if (s) {
+      setStatus(s);
+      return;
+    }
+    const f = await failure(res);
+    setError(f.code === 'reauth_required' ? REAUTH : (f.error ?? 'Could not save the setting.'));
+  };
+
+  const blocked = !!status?.prerequisite && !status.allowed;
+  return (
+    <div className="card" aria-labelledby="booking-heading">
+      <h2 className="section-title" id="booking-heading">Booking pages</h2>
+      <p className="field-hint card-body">
+        Members can publish a link where people outside your organisation pick a free time with them. Visitors see free times only, confirm by
+        email, and get an ordinary invitation sent from the member's mailbox through KyPost.
+      </p>
+      <div className="form form-wide">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={!!status?.allowed}
+            disabled={!status || saving || blocked}
+            aria-describedby={blocked ? 'booking-why' : undefined}
+            onChange={(e) => void toggle(e.target.checked)}
+          />
+          Allow booking pages
+        </label>
+        {status?.prerequisite && <p role="note" id="booking-why">{PREREQ[status.prerequisite] ?? status.prerequisite}</p>}
+        {error && <p role="alert">{error}</p>}
+      </div>
+    </div>
+  );
+};
+
 const DRIVERS: Record<string, string> = { sqlite: 'SQLite', postgres: 'PostgreSQL', postgresql: 'PostgreSQL', pgx: 'PostgreSQL' };
 
 export const Settings: React.FC<SettingsProps> = ({ settings }) => {
@@ -122,7 +194,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const version = settings?.version ? String(settings.version) : '';
   return (
     <section>
-      <PageHeader title="Server settings" lede="Where the server keeps its data, which version it runs, and which office networks skip the per-address limit." />
+      <PageHeader title="Server settings" lede="Where the server keeps its data, which version it runs, whether members may publish booking pages, and which office networks skip the per-address limit." />
 
       <div className="card">
         <h2 className="section-title">Database</h2>
@@ -147,6 +219,8 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
           Stamped into the server when it was built. <code>dev</code> means it was built from source, not from a release.
         </p>
       </div>
+
+      <BookingPagesCard />
 
       <ExemptNetworks />
     </section>

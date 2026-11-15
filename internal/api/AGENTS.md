@@ -126,6 +126,11 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 
 - Sender and instance byte admission include bounded future cancellation capacity for admitted organizer meetings. Ordinary writes cannot spend it; cancelling converts it into the existing asynchronous queue, including at full ordinary usable capacity. The existing 507 `quota` response covers insufficient admission; no route, setting or response field is added.
 
+- Booking pages (`booking.go`; spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`):
+  - `GET /api/admin/booking` (admin) `{allowed, available, reason, prerequisite}`; `PUT` (admin + step-up) `{allowed}`, 409 `kypost_unpaired`/`scheduling_off` when turning on, audits `admin.booking_pages` `from= to=` on a change.
+  - `GET /api/booking-types` (everyday) `{available, reason, reason_text, types}`; `POST` creates (400 `invalid`, 409 `limit` at 20, 409 `<reason>` when enabling while unavailable); `PUT /{id}`, `POST /{id}/rotate`, `DELETE /{id}` reach only the caller's own types (404 otherwise).
+  - Public, no session: `GET /api/book/{slug}` (60/min per IP, 600/min per type; issues the pre-session CSRF token to a signed-out browser), `POST /api/book/{slug}/hold` (5 per IP per 15 min, 20 per type per hour; 202, 409 `slot_unavailable`/`too_many_holds`, 503 `mail_failed`), `POST /api/book/confirm/view`, `/confirm` (409 `already_confirmed`, 410 `expired`), `/manage`, `/manage/cancel`, `/manage/reschedule` (30 per IP per 15 min). Every public POST needs `ValidatePreSessionCSRF` from any client and refuses cross-site (`publicBookingRoute` in `server.go`); bodies are strict JSON of at most 8 KiB. Unavailable, unknown, disabled and rotated all answer the same 404. Logs carry booking and type IDs only.
+
 ## Verification
 - `go test -v ./internal/api/...` (`authz_matrix_test.go` is the route-complete authorization matrix; `authz_test.go` pins the per-role exposure of every privileged route; `backup_test.go` the backup routes, on SQLite only because a run snapshots the database)
 - `scripts/smoke-test.sh` asserts the same boundaries against a running binary

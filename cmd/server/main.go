@@ -157,6 +157,7 @@ func runServer() {
 			case <-ticker.C:
 			}
 			srv.RefreshDueSubscriptions(ctx)
+			srv.PruneBookings(ctx)
 		}
 	}()
 	// Scheduling deliveries. An interrupted delivery stays pending and runs again: each one is

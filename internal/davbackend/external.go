@@ -15,9 +15,9 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// kypostUser is who KyPost knows the sender as: their KyIdentity subject and issuer URL. Local
+// KyPostUser is who KyPost knows the sender as: their KyIdentity subject and issuer URL. Local
 // accounts have none, so their external invitations cannot be mailed.
-func kypostUser(u *store.User) (kypost.User, bool) {
+func KyPostUser(u *store.User) (kypost.User, bool) {
 	_, issuer, ok := strings.Cut(u.SSOIssuer, " ") // "<kind> <issuer>"
 	if u.SSOSubject == "" || !ok || issuer == "" {
 		return kypost.User{}, false
@@ -36,7 +36,7 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 	if s.KyPost == nil {
 		return errNoTransport
 	}
-	who, ok := kypostUser(sender)
+	who, ok := KyPostUser(sender)
 	if !ok {
 		return errPermanent{"no_kypost_account"}
 	}

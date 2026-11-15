@@ -79,6 +79,8 @@ type world struct {
 	doomed  *store.Calendar  // the group calendar the admin row deletes
 	spare   *store.Calendar  // a personal calendar of the owner, deleted by the owner row
 	sub     *store.Calendar  // a subscribed calendar of the owner; its link never opens, so no row fetches
+	// bookingType is the owner's booking type the edit rows change; doomedType the one deleted.
+	bookingType, doomedType string
 }
 
 func newWorld(t *testing.T) *world {
@@ -161,6 +163,13 @@ func newWorld(t *testing.T) *world {
 	if err := st.Calendars().CreateSubscribedCalendar(ctx, w.sub, &store.Subscription{URLSealed: "unopenable", URLHost: "matrix.invalid", NextCheckAt: time.Now().Add(time.Hour)}, 0, 0); err != nil {
 		t.Fatal(err)
 	}
+	for _, id := range []string{"bt_matrix", "bt_doomed"} {
+		if err := st.Bookings().CreateType(ctx, &store.BookingType{ID: id, UserID: "usr_owner", Slug: id + strings.Repeat("0", 32-len(id)),
+			Title: "Matrix", DurationMin: 30, Zone: "UTC", Windows: `[{"day":1,"start":"09:00","end":"17:00"}]`, NoticeMin: 240, HorizonDays: 30, CalendarID: w.spare.ID}, 20); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.bookingType, w.doomedType = "bt_matrix", "bt_doomed"
 	return w
 }
 
@@ -256,8 +265,24 @@ func apiRows(w *world) map[string]apiRow {
 		"GET /api/freebusy":                 {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
 		"GET /api/suite/people":             {method: "GET", path: "/api/suite/people?q=al", want: everyday},
 		"POST /api/suite/chat":              {method: "POST", path: "/api/suite/chat", body: `{}`, want: everyday}, // 400 before any lookup
-		"POST /api/itip/inbound":            {method: "POST", path: "/api/itip/inbound", body: `{}`, want: kypostOnly},
-		"POST /api/itip/respond":            {method: "POST", path: "/api/itip/respond", body: `{}`, want: kypostOnly},
+		"GET /api/admin/booking":            {method: "GET", path: "/api/admin/booking", want: adminOnly},
+		"PUT /api/admin/booking":            {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
+		"GET /api/booking-types":            {method: "GET", path: "/api/booking-types", want: everyday},
+		"POST /api/booking-types":           {method: "POST", path: "/api/booking-types", body: `{}`, want: everyday}, // 400 before any write
+		// A booking type is its owner's alone: anyone else's request is answered as if it were missing.
+		"PUT /api/booking-types/{id}":         {method: "PUT", path: "/api/booking-types/" + w.bookingType, body: `{}`, want: ownerOnly},
+		"POST /api/booking-types/{id}/rotate": {method: "POST", path: "/api/booking-types/" + w.bookingType + "/rotate", want: ownerOnly},
+		"DELETE /api/booking-types/{id}":      {method: "DELETE", path: "/api/booking-types/" + w.doomedType, want: ownerOnly},
+		// Public by design: visitors have no account. TestBooking* pin their switch, CSRF and limits.
+		"GET /api/book/{slug}":             {want: public},
+		"POST /api/book/{slug}/hold":       {want: public},
+		"POST /api/book/confirm/view":      {want: public},
+		"POST /api/book/confirm":           {want: public},
+		"POST /api/book/manage":            {want: public},
+		"POST /api/book/manage/cancel":     {want: public},
+		"POST /api/book/manage/reschedule": {want: public},
+		"POST /api/itip/inbound":           {method: "POST", path: "/api/itip/inbound", body: `{}`, want: kypostOnly},
+		"POST /api/itip/respond":           {method: "POST", path: "/api/itip/respond", body: `{}`, want: kypostOnly},
 		// http:// links are refused before any fetch, so the allowed cells never reach the network.
 		"POST /api/subscriptions":          {method: "POST", path: "/api/subscriptions", body: `{"url":"http://matrix.invalid/x.ics","name":"M"}`, want: everyday},
 		"PATCH /api/subscriptions/{id}":    {method: "PATCH", path: "/api/subscriptions/" + w.sub.ID, body: `{"url":"http://matrix.invalid/x.ics"}`, want: ownerOnly},

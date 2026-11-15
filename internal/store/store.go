@@ -66,6 +66,7 @@ type Store interface {
 	Devices() DeviceStore
 	Groups() GroupStore
 	Calendars() CalendarStore
+	Bookings() BookingStore
 	AppPasswords() AppPasswordStore
 	Audit() AuditStore
 	Settings() SettingsStore
