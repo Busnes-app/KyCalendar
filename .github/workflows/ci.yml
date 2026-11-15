@@ -108,7 +108,7 @@ jobs:
       - run: go build ./...
 
       - name: Tests with race detector and coverage
-        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+        run: go test -race -timeout 20m -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Vendored go-webdav tests
         run: go -C third_party/go-webdav test ./...
@@ -141,7 +141,7 @@ jobs:
       - name: Strong-key profile (SQLite)
         env:
           GODEBUG: fips140=on
-        run: go test -race -count=1 ./...
+        run: go test -race -timeout 20m -count=1 ./...
 
   go:
     name: Go build, vet & tests (SQLite)
@@ -183,14 +183,14 @@ jobs:
         if: matrix.profile == 'normal'
         env:
           KY_TEST_POSTGRES_DSN: postgres://ci:ci@127.0.0.1:5432/ci_test?sslmode=disable
-        run: go test -race -count=1 ./...
+        run: go test -race -timeout 20m -count=1 ./...
 
       - name: Strong-key profile (PostgreSQL)
         if: matrix.profile == 'fips'
         env:
           KY_TEST_POSTGRES_DSN: postgres://ci:ci@127.0.0.1:5432/ci_test?sslmode=disable
           GODEBUG: fips140=on
-        run: go test -race -count=1 ./...
+        run: go test -race -timeout 20m -count=1 ./...
 
   postgres:
     name: Go tests (PostgreSQL)

@@ -270,7 +270,7 @@ Inherited from the scaffold; these rules apply to the server code.
 CI (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `make lint` equivalent: gofmt, `go vet`, `go mod tidy`/`verify`
 - The release binary is repeatable: two `git archive` builds with the Dockerfile's flags (`-trimpath`) in different directories must be byte-identical
-- `go test -race` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17
+- `go test -race -timeout 20m` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17 (`internal/api` alone runs close to Go's default 10 minutes under race and FIPS on CI runners)
 - Frontend vitest suite, then typecheck/build plus a check that committed `web/dist` matches source (it is embedded in the binary)
 - `govulncheck` (pinned version in `ci.yml`, bumped by hand) and `npm audit --audit-level=high`
 - The authorization matrix (`internal/api/authz_matrix_test.go`) runs inside `go test` and fails when a registered route has no row.
