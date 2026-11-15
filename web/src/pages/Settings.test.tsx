@@ -9,6 +9,13 @@ afterEach(() => {
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const ROUTE = '/api/settings/rate-limit-networks';
+const BOOKING = '/api/admin/booking';
+
+// Every Settings render also loads the booking page switch; answer it off, then defer to mock.
+function mockFetch(mock: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) =>
+    String(input) === BOOKING && !init?.method ? json({ allowed: false, available: false, prerequisite: '' }) : mock(input, init));
+}
 
 describe('Settings', () => {
   it('shows the version the server reports', () => {
@@ -17,7 +24,7 @@ describe('Settings', () => {
   });
 
   it('shows the stored networks one per line and saves an edited list', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    mockFetch(async (input, init) => {
       expect(String(input)).toBe(ROUTE);
       if (init?.method === 'PUT') {
         expect(JSON.parse(String(init.body))).toEqual({ networks: '203.0.113.0/24,198.51.100.7' });
@@ -38,7 +45,7 @@ describe('Settings', () => {
   });
 
   it('shows why the server refused a list and keeps what was typed', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+    mockFetch(async (_input, init) =>
       init?.method === 'PUT'
         ? json({ error: '"10.0.0.0/8" is too broad; the widest IPv4 range allowed is /16' }, 400)
         : json({ networks: '', environment: '', exempted: 0 }),
@@ -54,7 +61,7 @@ describe('Settings', () => {
   });
 
   it('asks for a fresh sign-in when the session is too old to save', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+    mockFetch(async (_input, init) =>
       init?.method === 'PUT'
         ? json({ error: 'Sign in again to change office networks', code: 'reauth_required' }, 403)
         : json({ networks: '', environment: '', exempted: 0 }),
@@ -66,8 +73,37 @@ describe('Settings', () => {
   });
 
   it('reports an unexpected reply instead of failing', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => json({}));
+    mockFetch(async () => json({}));
     render(<Settings settings={{}} />);
     expect((await screen.findByRole('alert')).textContent).toBe('Could not load the networks.');
+  });
+
+  it('keeps the booking switch off with the reason while KyPost is unpaired', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
+      String(input) === BOOKING ? json({ allowed: false, available: false, prerequisite: 'kypost_unpaired' }) : json({ networks: '', environment: '', exempted: 0 }));
+    render(<Settings settings={{}} />);
+    expect((await screen.findByRole('note')).textContent).toMatch(/not paired with KyPost/);
+    expect((screen.getByRole('switch', { name: 'Allow booking pages' }) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('turns booking pages on and asks for a fresh sign-in when needed', async () => {
+    const puts: unknown[] = [];
+    let reauth = true;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input) !== BOOKING) return json({ networks: '', environment: '', exempted: 0 });
+      if (init?.method !== 'PUT') return json({ allowed: false, available: false, prerequisite: '' });
+      puts.push(JSON.parse(String(init.body)));
+      if (reauth) return json({ error: 'x', code: 'reauth_required' }, 403);
+      return json({ allowed: true, available: true, prerequisite: '' });
+    });
+    render(<Settings settings={{}} />);
+    const sw = (await screen.findByRole('switch', { name: 'Allow booking pages' })) as HTMLInputElement;
+    await vi.waitFor(() => expect(sw.disabled).toBe(false));
+    fireEvent.click(sw);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/sign in again/i);
+    reauth = false;
+    fireEvent.click(sw);
+    await vi.waitFor(() => expect(sw.checked).toBe(true));
+    expect(puts).toEqual([{ allowed: true }, { allowed: true }]);
   });
 });
