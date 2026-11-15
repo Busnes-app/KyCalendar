@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,7 +26,9 @@ import (
 const (
 	EventPut   = "kycalendar.meeting.put"   // PUT /api/meetings/{id}: create or reconcile the room
 	EventClose = "kycalendar.meeting.close" // DELETE /api/meetings/{id}: close it for good
+	EventChat  = "kycalendar.chat.open"     // POST /api/suite/chat: a link to chat with someone
 	MeetPath   = "/api/meetings/"
+	ChatPath   = "/api/suite/chat"
 	MaxMembers = 100
 	MaxTitle   = 255
 	maxReply   = 64 << 10
@@ -68,6 +71,12 @@ type PutRequest struct {
 type PutResult struct {
 	MemberURL   string   `json:"member_url"`
 	SkippedSubs []string `json:"skipped_subs"`
+}
+
+// ChatRequest asks for a link to chat with TargetSub, as User.
+type ChatRequest struct {
+	User
+	TargetSub string `json:"target_sub"`
 }
 
 // Peer is one KyMessages console: its https base URL (no trailing slash) and the pair secret.
@@ -123,7 +132,10 @@ func Title(s string) string {
 // replayed one with {"outcome":"duplicate"} and no link.
 func (l *Link) Put(ctx context.Context, id, eventID string, req PutRequest) (PutResult, error) {
 	var out PutResult
-	reply, err := l.do(ctx, http.MethodPut, EventPut, id, eventID, req)
+	if !ValidID(id) {
+		return out, Refused{Code: "bad_id"}
+	}
+	reply, err := l.do(ctx, http.MethodPut, EventPut, MeetPath+id, eventID, req)
 	if err != nil {
 		return out, err
 	}
@@ -135,17 +147,33 @@ func (l *Link) Put(ctx context.Context, id, eventID string, req PutRequest) (Put
 
 // Close closes meeting id; an unknown or already closed ID is success too.
 func (l *Link) Close(ctx context.Context, id, eventID string, u User) error {
-	_, err := l.do(ctx, http.MethodDelete, EventClose, id, eventID, u)
+	if !ValidID(id) {
+		return Refused{Code: "bad_id"}
+	}
+	_, err := l.do(ctx, http.MethodDelete, EventClose, MeetPath+id, eventID, u)
 	return err
 }
 
-func (l *Link) do(ctx context.Context, method, eventType, id, eventID string, v any) ([]byte, error) {
+// Chat asks for Element's view of req.TargetSub, which offers a direct chat. KyMessages creates
+// nothing. A link that is not ValidChatURL is Refused{bad_reply}.
+func (l *Link) Chat(ctx context.Context, eventID string, req ChatRequest) (string, error) {
+	reply, err := l.do(ctx, http.MethodPost, EventChat, ChatPath, eventID, req)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		URL string `json:"url"`
+	}
+	if json.Unmarshal(reply, &out) != nil || !ValidChatURL(out.URL) {
+		return "", Refused{Code: "bad_reply"}
+	}
+	return out.URL, nil
+}
+
+func (l *Link) do(ctx context.Context, method, eventType, path, eventID string, v any) ([]byte, error) {
 	p := l.Peer()
 	if p == nil {
 		return nil, ErrNotConnected
-	}
-	if !ValidID(id) {
-		return nil, Refused{Code: "bad_id"}
 	}
 	body, err := json.Marshal(v)
 	if err != nil {
@@ -155,7 +183,7 @@ func (l *Link) do(ctx context.Context, method, eventType, id, eventID string, v 
 	if err != nil {
 		return nil, err
 	}
-	hr, err := http.NewRequestWithContext(ctx, method, p.URL+MeetPath+id, bytes.NewReader(body))
+	hr, err := http.NewRequestWithContext(ctx, method, p.URL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -210,4 +238,19 @@ func ValidURL(s string) bool {
 	}
 	u, err := url.Parse(s)
 	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil
+}
+
+// matrixUser is a Matrix user ID: @localpart:server, the server a host name with an optional port.
+var matrixUser = regexp.MustCompile(`^@[a-z0-9._=/+-]{1,255}:[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$`)
+
+// ValidChatURL admits only Element's user view, https://<host>/#/user/@bob:example: a
+// ValidURL with no path beyond "/", no query and that fragment. The pairing names the console,
+// not Element's host, so the host itself cannot be checked here.
+func ValidChatURL(s string) bool {
+	if !ValidURL(s) {
+		return false
+	}
+	u, _ := url.Parse(s)
+	id, ok := strings.CutPrefix(u.Fragment, "/user/")
+	return ok && (u.Path == "" || u.Path == "/") && u.RawQuery == "" && !u.ForceQuery && u.RawFragment == "" && matrixUser.MatchString(id)
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, browserZone, canAddEvents, createEvent, deleteEvent, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, chatLink, createEvent, deleteEvent, orgEmails, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { linkify } from '../linkify';
 import { FreeBusyStrip } from './FreeBusyStrip';
@@ -13,7 +13,7 @@ interface Props {
   onDone: () => void;
   onClose: () => void;
   scheduling?: boolean; // server sends invitations
-  meetings?: boolean; // KyMessages is paired and in the user's suite apps
+  meetings?: boolean; // KyMessages is paired and in the user's suite apps: video meetings and Chat
   me?: string; // signed-in user's email
 }
 
@@ -34,6 +34,13 @@ const MEETING_ERRORS: Record<string, string> = {
   no_user: 'The video meeting could not be set up: you have no KyMessages account yet.',
   no_account: 'The video meeting could not be set up: your account did not sign in through KyIdentity.',
 };
+const CHAT_ERRORS: Record<string, string> = {
+  no_target: "This person isn't on KyMessages yet.",
+  no_user: 'You have no KyMessages account yet.',
+  rate_limited: 'Too many chats opened; wait a minute.',
+};
+const chatError = (e: unknown) => (e instanceof ApiError && CHAT_ERRORS[e.code]) || 'Could not open the chat. Try again in a moment.';
+
 const meetingError = (code: string) => MEETING_ERRORS[code] ?? `The video meeting could not be set up (${code}).`;
 
 function message(e: unknown, fallback: string): string {
@@ -63,6 +70,17 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
   const meeting = meetingChoice ?? people.length > 0;
   const canMeet = meetings && !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
   const [suggestions, setSuggestions] = useState<Person[]>([]);
+  // Chat (contract H): offered on the organisation people of a saved event, asked once.
+  const [chatty, setChatty] = useState<string[]>([]);
+  useEffect(() => {
+    if (!meetings || !event) return;
+    const emails = [event.organizer, ...(event.attendees ?? []).map((a) => a.email)].filter((e): e is string => !!e && !sameEmail(e, me));
+    let live = true;
+    void orgEmails([...new Set(emails)].slice(0, 100)).then((found) => { if (live) setChatty(found); });
+    return () => {
+      live = false;
+    };
+  }, [event, meetings, me]);
   // Organisation people for the Invite field, after a short pause in typing; free text still works.
   useEffect(() => {
     const q = invitee.trim();
@@ -136,6 +154,20 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
     if (!sameEmail(email, me) && !people.some((p) => sameEmail(p.email, email))) setPeople([...people, { email, status: 'NEEDS-ACTION' }]);
   }
 
+  async function chat(email: string) {
+    setError(null);
+    try {
+      window.open(await chatLink(email), '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setError(chatError(e));
+    }
+  }
+
+  const chatButton = (email: string, push = false) =>
+    chatty.some((e) => sameEmail(e, email)) && (
+      <button type="button" className={`btn-ghost btn-sm${push ? ' kc-push' : ''}`} aria-label={`Chat with ${email}`} onClick={() => void chat(email)}>Chat</button>
+    );
+
   function answer(partstat: Answer) {
     if (!event) return;
     // An occurrence answer only where the user can pick "This event"; otherwise the series.
@@ -160,9 +192,9 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
 
   const invitation = invited && (
     <>
-      {event!.organizer && <p>Organized by {event!.organizer}</p>}
+      {event!.organizer && <p>Organized by {event!.organizer} {chatButton(event!.organizer)}</p>}
       <ul className="kc-people">
-        {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span></li>)}
+        {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>{chatButton(p.email, true)}</li>)}
       </ul>
       {!event!.cancelled && <div className="kc-actions" role="group" aria-label="Your answer">
         {BUTTONS.map(([value, label]) => (
@@ -257,7 +289,8 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
                   {people.map((p) => (
                     <li key={p.email}>
                       <span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
-                      <button type="button" className="btn-ghost btn-danger btn-sm kc-push" aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
+                      {chatButton(p.email, true)}
+                      <button type="button" className={`btn-ghost btn-danger btn-sm${chatty.some((e) => sameEmail(e, p.email)) ? '' : ' kc-push'}`} aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
                     </li>
                   ))}
                 </ul>
