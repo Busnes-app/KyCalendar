@@ -1,7 +1,8 @@
 // Captures the booking page screens: Server settings (the switch), Settings → Booking pages and
 // its editor as walter, and the public page a visitor sees, then the details form.
-// Usage (from web/): node browser/booking-shots.mjs <server-binary> <out-dir> [before]
-// (not a spec: CI skips it). "before" captures only the screens that exist without the feature.
+// Usage (from web/): node browser/booking-shots.mjs <server-binary> <out-dir> [before|room]
+// (not a spec: CI skips it). "before" captures only the screens that exist without the feature;
+// "room" captures the editor of a type with a meeting room (set in the disposable database).
 // Starts its own throwaway server on 127.0.0.1:5391 (scheduling on, KyPost named but never
 // reached, relays empty) and removes its data afterwards. No mail is sent: no hold is made.
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -12,6 +13,7 @@ import { chromium, request } from '@playwright/test';
 
 const [binary, out] = process.argv.slice(2, 4).map((p) => resolve(p));
 const before = process.argv[4] === 'before';
+const room = process.argv[4] === 'room';
 const base = 'http://127.0.0.1:5391';
 const dir = await mkdtemp(join(tmpdir(), 'ky-booking-shots-'));
 await writeFile(join(dir, 'kypost.secret'), 'booking-shots-secret-0123456789abcdef\n', { mode: 0o600 });
@@ -60,6 +62,10 @@ try {
       enabled: true, title: 'Project intro call', duration_min: 30, zone: 'America/New_York', windows, buffer_after_min: 10, calendar_id: cal,
     })).json();
     slug = t.slug;
+    if (room) {
+      const set = `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("UPDATE booking_types SET meeting_room=1"); c.commit()`;
+      if (spawnSync('python3', ['-I', '-c', set, join(dir, 'data', 'kycalendar.db')], { stdio: 'inherit' }).status !== 0) throw new Error('set room');
+    }
   }
 
   await mkdir(out, { recursive: true });
@@ -95,6 +101,12 @@ try {
         await shoot(w, 'member-list', width, colorScheme);
         await w.getByRole('button', { name: 'Edit' }).click();
         await w.getByRole('dialog').waitFor();
+        if (room) {
+          await w.getByLabel('Add a KyMessages meeting room').scrollIntoViewIfNeeded();
+          await shoot(w, 'member-editor-room', width, colorScheme);
+          await ctx.close();
+          continue;
+        }
         await shoot(w, 'member-editor', width, colorScheme);
       } else {
         await shoot(w, 'settings-tabs', width, colorScheme);

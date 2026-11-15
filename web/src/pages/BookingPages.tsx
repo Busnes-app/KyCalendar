@@ -23,12 +23,14 @@ export interface BookingType {
   horizon_days: number;
   daily_cap: number;
   calendar_id: string;
+  meeting_room: boolean;
 }
 
 interface Listing {
   available: boolean;
   reason: string;
   reason_text: string;
+  meetings?: boolean;
   types: BookingType[];
 }
 
@@ -70,6 +72,7 @@ export function blankType(calendarId: string): Omit<BookingType, 'id' | 'url'> {
     horizon_days: 30,
     daily_cap: 0,
     calendar_id: calendarId,
+    meeting_room: false,
   };
 }
 
@@ -90,10 +93,11 @@ type Draft = Omit<BookingType, 'id' | 'url'>;
 const num = (v: string) => (v === '' ? 0 : Number(v));
 
 /** The editor: every rule of one booking type. One window per weekday. */
-function TypeForm({ draft, calendars, available, onSave, onCancel, saving, error }: {
+function TypeForm({ draft, calendars, available, meetings, onSave, onCancel, saving, error }: {
   draft: Draft;
   calendars: Calendar[];
   available: boolean;
+  meetings: boolean;
   onSave: (d: Draft) => void;
   onCancel: () => void;
   saving: boolean;
@@ -181,6 +185,18 @@ function TypeForm({ draft, calendars, available, onSave, onCancel, saving, error
           <span className="field-hint" id="bt-cap-hint">0 means no limit.</span>
         </div>
       </div>
+      {(meetings || d.meeting_room) && (
+        <div className="field">
+          <label className="check-row">
+            <input type="checkbox" checked={d.meeting_room} onChange={(e) => set('meeting_room', e.target.checked)} aria-describedby="bt-room-hint" />
+            Add a KyMessages meeting room
+          </label>
+          <span className="field-hint" id="bt-room-hint">
+            Each booking gets a video room. The person booking joins as a guest with their own link, when KyMessages lets guests join;
+            otherwise the room is for your organisation only and their invitation says nothing about it.
+          </span>
+        </div>
+      )}
       <label className="check-row">
         <input type="checkbox" role="switch" checked={d.enabled} disabled={!available && !d.enabled} onChange={(e) => set('enabled', e.target.checked)} />
         Take bookings at this page's link
@@ -298,7 +314,7 @@ export default function BookingPages() {
       </div>
       {editing && (
         <Modal wide title={editing.id ? 'Edit booking page' : 'New booking page'} onClose={() => setEditing(null)}>
-          <TypeForm draft={editing.draft} calendars={calendars} available={listing.available} onSave={(d) => void save(d)} onCancel={() => setEditing(null)} saving={saving} error={formError} />
+          <TypeForm draft={editing.draft} calendars={calendars} available={listing.available} meetings={!!listing.meetings} onSave={(d) => void save(d)} onCancel={() => setEditing(null)} saving={saving} error={formError} />
         </Modal>
       )}
     </>

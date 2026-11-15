@@ -9,6 +9,7 @@ import (
 
 	"github.com/emersion/go-ical"
 
+	"github.com/Busnes-app/kycalendar/internal/booking"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
@@ -40,7 +41,12 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 	if !ok {
 		return errPermanent{"no_kypost_account"}
 	}
-	ics := string(m.Body)
+	ics, changed := string(m.Body), false
+	// A booking's booker is never a member: the member-only room link is not theirs to see.
+	if booking.IsBooked(msg) && calendar.Conference(firstEvent(msg)) != "" {
+		calendar.SetConference(msg, "")
+		changed = true
+	}
 	if m.Method == itip.MethodRequest && s.GuestLink != nil {
 		url, wait, err := s.GuestLink(ctx, sender, uid, to.Email(), m.CreatedAt)
 		switch {
@@ -50,12 +56,15 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 			return errGuestPending
 		case url != "":
 			calendar.AddGuestLine(msg, url)
-			var b strings.Builder
-			if err := ical.NewEncoder(&b).Encode(msg); err != nil {
-				return errPermanent{"bad_body"}
-			}
-			ics = b.String()
+			changed = true
 		}
+	}
+	if changed {
+		var b strings.Builder
+		if err := ical.NewEncoder(&b).Encode(msg); err != nil {
+			return errPermanent{"bad_body"}
+		}
+		ics = b.String()
 	}
 	err := s.KyPost.Send(ctx, m.DedupeKey, kypost.SendRequest{User: who, From: from.Email(), Recipients: []string{to.Email()},
 		Method: m.Method, ICS: ics})
@@ -67,6 +76,15 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 		return errPermanent{"kypost_" + refused.Code}
 	}
 	return err // nil, or a retry
+}
+
+func firstEvent(cal *ical.Calendar) *ical.Component {
+	for _, c := range cal.Children {
+		if c.Name == ical.CompEvent {
+			return c
+		}
+	}
+	return &ical.Component{}
 }
 
 // Inbound outcomes.

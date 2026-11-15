@@ -12,7 +12,7 @@ const cal = { id: 'cal1', name: 'Calendar', kind: 'personal', components: ['VEVE
 const type = {
   id: 't1', enabled: true, url: 'https://cal.example/book/abc', title: 'Intro', duration_min: 30, zone: 'Europe/London',
   windows: [{ day: 1, start: '09:00', end: '17:00' }, { day: 2, start: '09:00', end: '17:00' }],
-  buffer_before_min: 0, buffer_after_min: 0, notice_min: 240, horizon_days: 30, daily_cap: 0, calendar_id: 'cal1',
+  buffer_before_min: 0, buffer_after_min: 0, notice_min: 240, horizon_days: 30, daily_cap: 0, calendar_id: 'cal1', meeting_room: false,
 };
 
 describe('hoursText', () => {
@@ -49,5 +49,17 @@ describe('BookingPages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toMatchObject({ title: 'Chat', duration_min: 30, notice_min: 240, horizon_days: 30, calendar_id: 'cal1', enabled: true });
+  });
+
+  it('offers the meeting room only when video meetings are available', async () => {
+    for (const meetings of [false, true]) {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
+        String(input) === '/api/calendars' ? json([cal]) : json({ available: true, reason: '', reason_text: '', meetings, types: [type] }));
+      render(<BookingPages />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+      expect(!!screen.queryByLabelText('Add a KyMessages meeting room')).toBe(meetings);
+      cleanup();
+      vi.restoreAllMocks();
+    }
   });
 });
