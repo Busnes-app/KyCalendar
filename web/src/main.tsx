@@ -2,6 +2,7 @@ import './theme';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import { BookingPublic } from './pages/BookingPublic';
 import { watchForUpdate } from './ky-ui/update.js';
 import { NEW_LINK_KEY } from './eventForm';
 
@@ -21,8 +22,11 @@ if (location.pathname === '/new') {
   history.replaceState(null, '', '/#/calendar');
 }
 
+// Booking pages are for visitors without an account: no sign-in, no app shell.
+const booking = location.pathname.startsWith('/book/');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {booking ? <BookingPublic path={location.pathname} /> : <App />}
   </React.StrictMode>
 );

@@ -393,6 +393,16 @@ Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
 - A user imports an Outlook or Google Calendar CSV once, into a calendar they can edit events in, or into a new personal calendar created for it (the web deletes that calendar again if the import fails). Imported events are ordinary editable events. Nothing stays linked to the file.
 - Rows are written one at a time through the normal event write path (`saveEvent`, so quota and the CalDAV checks apply). The same row imported again has the same UID and is counted as a duplicate, not added twice. A quota or server failure stops the import, and earlier rows stay.
 
+#### Booking page contracts
+
+Spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`.
+
+- Off by default: the admin switch "Allow booking pages" (Server settings, setting `booking_pages_allowed`, step-up, audited `admin.booking_pages`) cannot be turned on while scheduling is off or KyPost is unpaired (409 `scheduling_off`, `kypost_unpaired`). Available only while all three hold; otherwise every `/api/book/*` route is 404, like an unknown slug. A member also needs an email of their own and a KyIdentity binding.
+- A member's booking types (at most 20) live at `/book/<32 hex>`; rotating the slug or turning the type off kills the old link at once. The public page shows the member's display name, the type's title and length, and free slot instants only.
+- A visitor's hold lasts 15 minutes and is mailed from the member's mailbox through KyPost (`Scheduler.KyPost`, the external-invitation sender) with no visitor-written text. The booking exists only after the visitor presses Confirm on the mailed link (a POST; tokens ride in the URL fragment, SHA-256 stored). It is then an ordinary event written as the member through the scheduled path, so the booker gets a normal invitation with a manage link (cancel, reschedule).
+- Hold, confirm and reschedule recheck the member's events and open holds inside one transaction under `calendar-total`; holds and bookings never overlap. Limits: 5 holds per IP per 15 minutes, 20 per type per hour, 2 open holds per address. Expired holds and bookings ended 30 days ago are pruned every minute (`api.PruneBookings`).
+- Public POSTs need the pre-session CSRF token from every client and refuse cross-site requests.
+
 #### Installer setup
 
 - Container-local `kycalendar apply-setup` uses `ky.product-setup/1` and private `<DataDir>/installer/setup.sock`; `--check` inspects without migrations, key creation or writes. First setup atomically creates exact issuer/subject accounts, immutable ownership, sign-in binding and audit under the native `local-admins`, then `user-names` locks. Existing identities and sign-in settings are refused. Activation uses the normal graceful restart and drain.
@@ -419,6 +429,7 @@ Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
 - [internal/csvimport/AGENTS.md](internal/csvimport/AGENTS.md): Outlook and Google Calendar CSV files read into event rows for a one-time import.
+- [internal/booking/AGENTS.md](internal/booking/AGENTS.md): Booking pages' pure rules: slot grid, busy scans, visitor text, hold and booked objects.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 - [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.
 

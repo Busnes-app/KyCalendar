@@ -9,13 +9,13 @@ const menu = () => document.getElementById('m') as HTMLElement;
 const labels = () => [...menu().querySelectorAll('[role="menuitem"]')].map((a) => a.textContent);
 
 describe('SettingsMenu', () => {
-  it('lists Account, Phones & apps and Appearance for everyday users', () => {
+  it('lists Account, Phones & apps, Booking pages and Appearance for everyday users', () => {
     render(<SettingsMenu id="m" user={{ role: 'user' }} />);
-    expect(labels()).toEqual(['Account', 'Phones & apps', 'Appearance']);
-    expect([...menu().querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['#/settings/account', '#/settings/devices', '#/settings/appearance']);
+    expect(labels()).toEqual(['Account', 'Phones & apps', 'Booking pages', 'Appearance']);
+    expect([...menu().querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['#/settings/account', '#/settings/devices', '#/settings/booking', '#/settings/appearance']);
   });
 
-  it('leaves Phones & apps out for administrators', () => {
+  it('leaves Phones & apps and Booking pages out for administrators', () => {
     render(<SettingsMenu id="m" user={{ role: 'admin' }} />);
     expect(labels()).toEqual(['Account', 'Appearance']);
   });
@@ -51,13 +51,14 @@ describe('SettingsMenu', () => {
     expect(document.activeElement).toBe(items[0]);
     fireEvent.keyDown(items[0], { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]);
+    const last = items[items.length - 1];
     fireEvent.keyDown(items[1], { key: 'End' });
-    expect(document.activeElement).toBe(items[2]);
-    fireEvent.keyDown(items[2], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[0]);
     fireEvent.keyDown(items[0], { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(items[2]);
-    fireEvent.keyDown(items[2], { key: 'Home' });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'Home' });
     expect(document.activeElement).toBe(items[0]);
   });
 

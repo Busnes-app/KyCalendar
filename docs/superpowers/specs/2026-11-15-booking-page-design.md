@@ -87,9 +87,10 @@ someone who can read the database can do no more with it than any visitor.
 - `calendar_id`, `object_name`, `uid`: the event, once confirmed
 
 Retention: a hold past `expires_at` is inactive at once and deleted, with its name, email and
-note, by the 5-second scheduling loop's hourly prune. A cancelled booking loses name, email and
-note at once. Confirmed rows are deleted 30 days after the booking ends, after which the manage
-link answers 404. Deleting a type deletes its rows. Its events stay as ordinary events, and their
+note, by a prune that runs every minute. A booking the booker cancels is deleted at once, and one
+the member cancelled (its event is gone) is deleted the next time its manage link opens.
+Confirmed rows are deleted 30 days after the booking ends, after which the manage link answers
+404. Deleting a type deletes its rows. Its events stay as ordinary events, and their
 manage links stop working.
 
 The confirmed booking **is an ordinary event** in the type's calendar, written as the member

@@ -198,3 +198,23 @@ code.code-field { flex: 1; min-width: 0; padding: .55rem .75rem; border: 1px sol
   .appearance-pair:has(:checked) { border-color: Highlight; }
   .appearance-mode:has(:checked) { outline: 2px solid Highlight; outline-offset: -3px; }
 }
+
+/* ---------- Booking pages ---------- */
+.book-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.book-types { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); }
+.book-types > li { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.book-type-main { display: grid; gap: var(--space-2); min-width: 0; flex: 1 1 18rem; justify-items: start; }
+.book-link { display: flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.book-link code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.book-hours { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.book-hours > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.book-hours .kc-check { flex: 0 0 9rem; }
+.book-hours-times { display: inline-flex; align-items: center; gap: var(--space-2); }
+.book-hours-times input { width: auto; }
+/* The public page: the sign-in layout, wide enough for a day of times. */
+.book-public .ky-auth-body { max-width: 34rem; padding-block: 3rem; }
+.book-days { display: grid; gap: var(--space-4); }
+.book-days h2 { font-size: var(--ky-type-body); font-weight: 600; margin: 0 0 var(--space-2); }
+.book-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr)); gap: var(--space-2); }
+.book-done { display: grid; gap: var(--space-2); justify-items: start; }
+.book-done h2 { margin: 0; }
