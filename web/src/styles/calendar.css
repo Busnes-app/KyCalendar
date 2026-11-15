@@ -43,8 +43,13 @@ button.kc-icon.btn-danger:hover:not(:disabled), button.kc-icon.btn-danger:focus-
 .kc-push { margin-left: auto; }
 .kc-layout p[role='alert'] { margin-bottom: var(--ky-space-3); }
 .kc-description { white-space: pre-wrap; }
-.kc-people { list-style: none; padding: 0; display: grid; }
-.kc-people li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-2); min-height: var(--ky-control-size); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.kc-people { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.kc-people li { display: flex; align-items: center; gap: var(--ky-space-2); min-height: var(--ky-control-size); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+/* One line: the address gives way first, down to 8 characters, then (on phones) the answer, each with
+   an ellipsis (the text, and the address's title, stay whole); the buttons keep their size. */
+.kc-people li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kc-people li > span:first-child { min-width: 8ch; flex-shrink: 1000; }
+.kc-people li > :is(.kc-hint, button) { flex-shrink: 0; }
 .kc-invite { display: flex; gap: var(--ky-space-2); }
 .kc-invite input { flex: 1; min-width: 0; }
 button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink-strong); }
@@ -183,6 +188,8 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 .kc-week-hint { display: none; }
 @media (max-width: 720px) {
   .ky-content:has(> .kc-layout) { padding-bottom: 0; }
+  .kc-people li > button { min-height: 2.75rem; }
+  .kc-people li > .kc-hint { flex-shrink: 1; }
   .kc-picker > summary { display: flex; align-items: center; gap: var(--ky-space-1); min-height: var(--ky-control-size); padding: 0 var(--ky-space-2) 0 var(--ky-space-3); border-radius: var(--ky-control-radius); color: var(--ink); font-size: var(--ky-type-nav); font-weight: 500; white-space: nowrap; cursor: pointer; list-style: none; }
   .kc-picker > summary::-webkit-details-marker { display: none; }
   .kc-picker > summary:hover { background: var(--panel-hover); color: var(--ink-strong); }

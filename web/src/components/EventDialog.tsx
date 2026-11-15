@@ -225,7 +225,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
     <>
       {event!.organizer && <p>Organized by {event!.organizer} {chatButton(event!.organizer)}</p>}
       <ul className="kc-people">
-        {(event!.attendees ?? []).map((p) => <li key={p.email}><span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>{chatButton(p.email, true)}</li>)}
+        {(event!.attendees ?? []).map((p) => <li key={p.email}><span title={p.email}>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>{chatButton(p.email, true)}</li>)}
       </ul>
       {!event!.cancelled && <div className="kc-actions" role="group" aria-label="Your answer">
         {BUTTONS.map(([value, label]) => (
@@ -341,7 +341,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
                 <ul className="kc-people">
                   {people.map((p) => (
                     <li key={p.email}>
-                      <span>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
+                      <span title={p.email}>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
                       {chatButton(p.email, true)}
                       <button type="button" className={`btn-ghost btn-danger btn-sm${chatty.some((e) => sameEmail(e, p.email)) ? '' : ' kc-push'}`} aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
                     </li>
