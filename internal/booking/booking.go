@@ -213,6 +213,9 @@ func (r Rules) Busy(objs [][]byte, typeID string, span Interval, deadline time.T
 	return busy, perDay, nil
 }
 
+// IsBooked reports cal is a booking's event (or a message about one).
+func IsBooked(cal *ical.Calendar) bool { return bookedAs(cal) != "" }
+
 func bookedAs(cal *ical.Calendar) string {
 	for _, c := range cal.Children {
 		if c.Name == ical.CompEvent {

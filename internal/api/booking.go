@@ -128,6 +128,7 @@ type bookingTypeBody struct {
 	HorizonDays     *int             `json:"horizon_days"`
 	DailyCap        int              `json:"daily_cap"`
 	CalendarID      string           `json:"calendar_id"`
+	MeetingRoom     bool             `json:"meeting_room"`
 }
 
 type bookingTypeView struct {
@@ -145,6 +146,7 @@ type bookingTypeView struct {
 	HorizonDays     int              `json:"horizon_days"`
 	DailyCap        int              `json:"daily_cap"`
 	CalendarID      string           `json:"calendar_id"`
+	MeetingRoom     bool             `json:"meeting_room"`
 }
 
 func (s *Server) appURL(path string) string {
@@ -156,7 +158,7 @@ func (s *Server) bookingTypeView(t *store.BookingType) bookingTypeView {
 	_ = json.Unmarshal([]byte(t.Windows), &ws)
 	return bookingTypeView{ID: t.ID, Enabled: t.Enabled, Slug: t.Slug, URL: s.appURL("/book/" + t.Slug), Title: t.Title,
 		DurationMin: t.DurationMin, Zone: t.Zone, Windows: ws, BufferBeforeMin: t.BufferBeforeMin, BufferAfterMin: t.BufferAfterMin,
-		NoticeMin: t.NoticeMin, HorizonDays: t.HorizonDays, DailyCap: t.DailyCap, CalendarID: t.CalendarID}
+		NoticeMin: t.NoticeMin, HorizonDays: t.HorizonDays, DailyCap: t.DailyCap, CalendarID: t.CalendarID, MeetingRoom: t.MeetingRoom}
 }
 
 func between(v, lo, hi int) bool { return v >= lo && v <= hi }
@@ -165,6 +167,9 @@ func between(v, lo, hi int) bool { return v >= lo && v <= hi }
 func (s *Server) applyBookingType(ctx context.Context, u *store.User, b bookingTypeBody, t *store.BookingType) *apiError {
 	bad := func(msg string) *apiError {
 		return &apiError{status: http.StatusBadRequest, msg: msg, code: "invalid"}
+	}
+	if b.MeetingRoom && !t.MeetingRoom && !s.meetingsFor(u) {
+		return &apiError{status: http.StatusConflict, msg: "Video meetings are not available to you, so a booking cannot get a meeting room", code: "meetings_off"}
 	}
 	title, err := booking.CleanTitle(b.Title)
 	if err != nil {
@@ -211,6 +216,7 @@ func (s *Server) applyBookingType(ctx context.Context, u *store.User, b bookingT
 	ws, _ := json.Marshal(b.Windows)
 	t.Enabled, t.Title, t.DurationMin, t.Zone, t.Windows = b.Enabled, title, b.DurationMin, b.Zone, string(ws)
 	t.BufferBeforeMin, t.BufferAfterMin, t.NoticeMin, t.HorizonDays, t.DailyCap, t.CalendarID = b.BufferBeforeMin, b.BufferAfterMin, notice, horizon, b.DailyCap, c.ID
+	t.MeetingRoom = b.MeetingRoom
 	return nil
 }
 
@@ -241,7 +247,7 @@ func (s *Server) handleListBookingTypes(w http.ResponseWriter, r *http.Request) 
 	for _, t := range list {
 		views = append(views, s.bookingTypeView(t))
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"available": reason == "", "reason": reason, "reason_text": bookingWords(reason), "types": views})
+	s.writeJSON(w, http.StatusOK, map[string]any{"available": reason == "", "reason": reason, "reason_text": bookingWords(reason), "meetings": s.meetingsFor(u), "types": views})
 }
 
 func decodeBookingType(w http.ResponseWriter, r *http.Request) (bookingTypeBody, bool) {
@@ -723,6 +729,11 @@ func (s *Server) handleBookingConfirm(w http.ResponseWriter, r *http.Request) {
 	if apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
+	}
+	// The room opens through the meetings outbox like any event's; the booker, outside the
+	// organisation, joins only through their own guest link (Scheduler.GuestLink).
+	if h.t.MeetingRoom && s.meetingsFor(h.owner) {
+		o.Meeting = &store.MeetingSwitch{Open: true, NewID: newMeetingID()}
 	}
 	from, to := h.checkSpan(slot)
 	err := s.store.Bookings().Confirm(ctx, b.ID, now.Unix(), from, to, h.heldCheck(now, slot), o, crypto.SHA256Hex([]byte(token)), s.objectLimits(), s.sched.Plan(ctx, h.owner, cal))
