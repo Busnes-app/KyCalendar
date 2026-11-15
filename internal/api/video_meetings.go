@@ -160,12 +160,15 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 			return nil
 		}
 		url = res.MemberURL
-		if len(res.SkippedSubs) > 0 {
+		skipped := len(res.SkippedSubs) > 0
+		if skipped {
+			// Offered again on the daily refresh while an occurrence is to come (saveGuests).
 			log.Printf("[KYMESSAGES] meeting %s: %d members have no KyMessages account yet", m.ID, len(res.SkippedSubs))
 		}
 		s.auditMeeting(ctx, m, "meeting.put", "")
 		if resolved {
-			missing, err := s.saveGuests(ctx, m, cal, guests, res.GuestURLs, guestsErr)
+			retry := skipped && len(meetingWindows(cal, meetingNow())) > 0
+			missing, err := s.saveGuests(ctx, m, cal, guests, res.GuestURLs, guestsErr, retry)
 			if err != nil {
 				return err
 			}
@@ -228,8 +231,9 @@ func guestKeys(stored []store.MeetingGuest, outside []string) []store.MeetingGue
 // saveGuests stores what KyMessages answered for guests: each new link sealed. A guest whose
 // key got no link and who has none stored gets a fresh key (missing), since KyMessages only
 // returns a link for a key new in that call. Refused guests keep their addresses (the editor
-// names them) with fresh keys and no link. Guests are offered again daily.
-func (s *Server) saveGuests(ctx context.Context, m *store.VideoMeeting, cal *ical.Calendar, guests []store.MeetingGuest, links map[string]string, guestsErr string) (missing bool, err error) {
+// names them) with fresh keys and no link. Guests are offered again daily, and so is the
+// whole PUT when retry (members skipped).
+func (s *Server) saveGuests(ctx context.Context, m *store.VideoMeeting, cal *ical.Calendar, guests []store.MeetingGuest, links map[string]string, guestsErr string, retry bool) (missing bool, err error) {
 	for i := range guests {
 		g := &guests[i]
 		switch link, ok := links[g.Key]; {
@@ -244,7 +248,7 @@ func (s *Server) saveGuests(ctx context.Context, m *store.VideoMeeting, cal *ica
 		}
 	}
 	var refresh *time.Time
-	if len(guests) > 0 && (guestsErr != "" || calendar.Recurring(cal)) {
+	if retry || len(guests) > 0 && (guestsErr != "" || calendar.Recurring(cal)) {
 		at := meetingNow().Add(24 * time.Hour)
 		refresh = &at
 	}
