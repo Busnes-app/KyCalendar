@@ -10,6 +10,8 @@ What KyCalendar sends KyMessages about video meetings, and its client. The wire 
   `kycalendar.meeting.put` (`PUT /api/meetings/{id}`), `kycalendar.meeting.close`
   (`DELETE /api/meetings/{id}`). The caller passes a fresh event ID per attempt.
 - **IDs** are `ValidID` (`[A-Za-z0-9_-]{16,64}`); anything else is refused before a request.
+  Both signed bodies carry the ID as `"id"` too (`{"id","sub","issuer",...}`), because the
+  signature does not cover the path.
 - **Outcomes:** 2xx success; 429, 5xx, the network and `kycalendar_off` are `ErrRetry`; a 401 on
   a `kyidentity` peer calls `Rotated` and is `ErrRetry`; anything else is `Refused{Code}` (a
   valid `[a-z0-9_]{1,64}` code, else `status_<n>`). At most 64 KiB of a reply is read.
