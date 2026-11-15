@@ -402,6 +402,7 @@ Spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`.
 - A visitor's hold lasts 15 minutes and is mailed from the member's mailbox through KyPost (`Scheduler.KyPost`, the external-invitation sender) with no visitor-written text. The booking exists only after the visitor presses Confirm on the mailed link (a POST; tokens ride in the URL fragment, SHA-256 stored). It is then an ordinary event written as the member through the scheduled path, so the booker gets a normal invitation with a manage link (cancel, reschedule).
 - Hold, confirm and reschedule recheck the member's events and open holds inside one transaction under `calendar-total`; holds and bookings never overlap. Limits: 5 holds per IP per 15 minutes, 20 per type per hour, 2 open holds per address. Expired holds and bookings ended 30 days ago are pruned every minute (`api.PruneBookings`).
 - Public POSTs need the pre-session CSRF token from every client and refuse cross-site requests.
+- A type may add a KyMessages meeting room (`meeting_room`, only while `meetingsFor` the member; an existing room survives edits): the confirmed booking's event is written with the meeting switch on (wave 1 PUT), the booker joins only through the wave 2 guest line in their own copy, and `davbackend.sendExternal` strips the member-only CONFERENCE and `Join:` line from a booking's mail to anyone outside, so with `guests_off`/`guests_unsupported` the invitation says nothing about joining.
 
 #### Installer setup
 
