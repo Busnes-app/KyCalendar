@@ -225,7 +225,7 @@ func TestMeetingIsCreatedThenLinkedIntoTheEvent(t *testing.T) {
 		t.Fatalf("calls %+v", calls)
 	}
 	b := calls[0].Body
-	if b.Sub != "sub-org" || b.Issuer != r.org.SSOIssuer || b.Title != "Weekly sync" || len(b.MemberSubs) != 0 {
+	if b.Sub != "sub-org" || !strings.HasPrefix(b.Issuer, "https://") || sso.KindKyIdentity+" "+b.Issuer != r.org.SSOIssuer || b.Title != "Weekly sync" || len(b.MemberSubs) != 0 {
 		t.Fatalf("body %+v", b)
 	}
 	data := string(r.object(t, uid).Data)
