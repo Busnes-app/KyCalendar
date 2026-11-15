@@ -1,7 +1,9 @@
 package kymessages
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -28,6 +30,7 @@ func peer(t *testing.T, status int, body string) (*Link, *[]*http.Request) {
 		if _, err := syncauth.Verify(secret, h, b, syncauth.Options{}); err != nil || h.EventType != want {
 			t.Errorf("%s %s: event %q, signature %v", r.Method, r.URL.Path, h.EventType, err)
 		}
+		r.Body = io.NopCloser(bytes.NewReader(b)) // for the test to read
 		seen = append(seen, r)
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, body)
@@ -52,6 +55,13 @@ func TestPutSignsAndReadsTheLink(t *testing.T) {
 	}
 	if r := (*seen)[1]; r.Method != http.MethodDelete || r.URL.Path != "/api/meetings/"+meetingID {
 		t.Fatalf("request %s %s", r.Method, r.URL.Path)
+	}
+	// Both signed bodies name the path's meeting.
+	for _, r := range *seen {
+		var b struct{ ID, Sub string }
+		if raw, _ := io.ReadAll(r.Body); json.Unmarshal(raw, &b) != nil || b.ID != meetingID || b.Sub != "s1" {
+			t.Errorf("%s body %+v", r.Method, b)
+		}
 	}
 }
 
