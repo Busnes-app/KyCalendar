@@ -13,7 +13,8 @@ interface Props {
   onDone: () => void;
   onClose: () => void;
   scheduling?: boolean; // server sends invitations
-  meetings?: boolean; // KyMessages is paired and in the user's suite apps: video meetings and Chat
+  meetings?: boolean; // KyMessages is paired and in the user's suite apps
+  chat?: boolean; // the same, with Element (kymessage-chat) in the suite apps: the Chat action
   me?: string; // signed-in user's email
 }
 
@@ -57,7 +58,7 @@ function message(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, me = '' }: Props) {
+export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, chat: chatOn = false, me = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
@@ -82,14 +83,14 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
   // Chat (contract H): offered on the organisation people of a saved event, asked once.
   const [chatty, setChatty] = useState<string[]>([]);
   useEffect(() => {
-    if (!meetings || !event) return;
+    if (!chatOn || !event) return;
     const emails = [event.organizer, ...(event.attendees ?? []).map((a) => a.email)].filter((e): e is string => !!e && !sameEmail(e, me));
     let live = true;
     void orgEmails([...new Set(emails)].slice(0, 100)).then((found) => { if (live) setChatty(found); });
     return () => {
       live = false;
     };
-  }, [event, meetings, me]);
+  }, [event, chatOn, me]);
   // Organisation people for the Invite field, after a short pause in typing; free text still works.
   useEffect(() => {
     const q = invitee.trim();

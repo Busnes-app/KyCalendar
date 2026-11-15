@@ -376,7 +376,7 @@ describe('EventDialog', () => {
     it('offers Chat on organisation people only, never the user, and opens the link', async () => {
       const asked = suite({ status: 200, body: { url: 'https://chat.example/#/user/@ann:example' } });
       const open = vi.spyOn(window, 'open').mockReturnValue(null);
-      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
       await screen.findByRole('button', { name: 'Chat with ann@example.com' });
       expect(screen.getByRole('button', { name: 'Chat with boss@example.com' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Chat with eve@elsewhere.test' })).toBeNull();
@@ -390,21 +390,21 @@ describe('EventDialog', () => {
     it('says who is not on KyMessages, and never opens anything but https', async () => {
       suite({ status: 404, body: { error: 'x', code: 'no_target' } });
       const open = vi.spyOn(window, 'open').mockReturnValue(null);
-      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
       fireEvent.click(await screen.findByRole('button', { name: 'Chat with ann@example.com' }));
       expect((await screen.findByRole('alert')).textContent).toBe("This person isn't on KyMessages yet.");
       cleanup();
       vi.restoreAllMocks();
       suite({ status: 200, body: { url: 'javascript:alert(1)' } });
       const open2 = vi.spyOn(window, 'open').mockReturnValue(null);
-      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
       fireEvent.click(await screen.findByRole('button', { name: 'Chat with ann@example.com' }));
       expect((await screen.findByRole('alert')).textContent).toMatch(/Could not open the chat/);
       expect(open).not.toHaveBeenCalled();
       expect(open2).not.toHaveBeenCalled();
     });
 
-    it('offers nothing and asks nothing without KyMessages', async () => {
+    it('offers nothing and asks nothing without Element in the suite apps', async () => {
       const asked = suite({ status: 200, body: {} });
       render(<EventDialog calendars={cals} event={invite} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling me="me@example.com" />);
       await new Promise((r) => setTimeout(r, 10));
@@ -415,7 +415,7 @@ describe('EventDialog', () => {
     it('offers Chat in the organizer\'s People list', async () => {
       suite({ status: 200, body: {} });
       const mine: EventInfo = { ...invite, organizer: 'me@example.com', my_status: undefined };
-      render(<EventDialog calendars={cals} event={mine} initial={formFromEvent(mine, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
+      render(<EventDialog calendars={cals} event={mine} initial={formFromEvent(mine, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling chat me="me@example.com" />);
       await screen.findByRole('button', { name: 'Chat with ann@example.com' });
       expect(screen.getByRole('button', { name: 'Remove ann@example.com' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Chat with eve@elsewhere.test' })).toBeNull();

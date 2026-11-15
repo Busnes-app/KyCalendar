@@ -36,6 +36,7 @@ func newChatRig(t *testing.T) *chatRig {
 	s.signin.Store(p)
 	r := &chatRig{s: s, ann: ssoUser("usr_ann", "sub-ann", p), reply: `{"url":"https://chat.example/#/user/@bob:example"}`, code: 200}
 	r.ann.Email = "ann@example.com"
+	s.suiteApps.put(r.ann.ID, p.ID, []suitedir.App{{ID: "kymessage-chat", Name: "Chat", URL: "https://chat.example/"}})
 	km := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		b, _ := io.ReadAll(req.Body)
 		h := syncauth.FromRequest(req)
@@ -131,6 +132,8 @@ func TestChatRefusals(t *testing.T) {
 		{503, `{"code":"unavailable"}`, 503, "unavailable", true},
 		{200, `{"url":"https://evil.example/login"}`, 502, "refused", true},
 		{200, `{"url":"javascript:alert(1)"}`, 502, "refused", true},
+		{200, `{"url":"https://evil.example/#/user/@bob:example"}`, 502, "refused", true}, // Element's shape, another host
+		{200, `{"url":"https://chat.example.evil.test/#/user/@bob:example"}`, 502, "refused", true},
 	} {
 		r.mu.Lock()
 		r.code, r.reply = c.code, c.reply
@@ -150,6 +153,11 @@ func TestChatNeedsKyMessagesAndAKyIdentityAccount(t *testing.T) {
 		if status, out := r.chat(u, `{"email":"bob@example.com"}`); status != 404 || out["code"] != "chat_off" {
 			t.Errorf("%s: %d %v", u.ID, status, out)
 		}
+	}
+	r.s.suiteApps.put("usr_nochat", r.s.signin.Load().ID, []suitedir.App{{ID: "kymessage", URL: "https://km.example/"}})
+	noChat := ssoUser("usr_nochat", "sub-ann", r.s.signin.Load()) // Element not in their suite apps
+	if status, out := r.chat(noChat, `{"email":"bob@example.com"}`); status != 404 || out["code"] != "chat_off" {
+		t.Fatalf("no Element: %d %v", status, out)
 	}
 	r.s.kymessages.Set(nil) // unpaired
 	if status, out := r.chat(r.ann, `{"email":"bob@example.com"}`); status != 404 || out["code"] != "chat_off" {
@@ -172,6 +180,7 @@ func TestChatIsRateLimitedPerUser(t *testing.T) {
 		t.Fatalf("limited %d, calls %d", limited, len(r.calls()))
 	}
 	bob := ssoUser("usr_bob", "sub-ann", r.s.signin.Load()) // another account keeps its own budget
+	r.s.suiteApps.put(bob.ID, r.s.signin.Load().ID, []suitedir.App{{ID: "kymessage-chat", URL: "https://chat.example/"}})
 	if status, _ := r.chat(bob, `{"email":"cy@example.com"}`); status != 200 {
 		t.Fatalf("another user limited: %d", status)
 	}

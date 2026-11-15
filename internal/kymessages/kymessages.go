@@ -274,8 +274,8 @@ func ValidURL(s string) bool {
 var matrixUser = regexp.MustCompile(`^@[a-z0-9._=/+-]{1,255}:[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$`)
 
 // ValidChatURL admits only Element's user view, https://<host>/#/user/@bob:example: a
-// ValidURL with no path beyond "/", no query and that fragment. The pairing names the console,
-// not Element's host, so the host itself cannot be checked here.
+// ValidURL with no path beyond "/", no query and that fragment. The host is the caller's to
+// check: the pairing names the console, not Element.
 func ValidChatURL(s string) bool {
 	if !ValidURL(s) {
 		return false
