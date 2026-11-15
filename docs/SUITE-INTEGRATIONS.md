@@ -98,8 +98,11 @@ Closes the room as the console's Close does (blocked, members out, history kept)
 - **Issuer.** `issuer` is the KyIdentity issuer URL the organizer signed in with: the account's
   `sso_issuer` binding (`kyidentity <issuer URL>`) without its kind, so KyMessages can match it
   against its own issuer.
-- **DELETE body.** The contract names none; KyCalendar signs `{"sub","issuer"}` of the organizer,
-  like every other body. KyMessages may ignore it.
+- **DELETE body.** The contract names none; KyCalendar signs `{"id","sub","issuer"}` of the
+  organizer, like every other body.
+- **`id` in both bodies.** The signature does not cover the URL, so both bodies also carry the
+  path's meeting ID as `"id"`; KyMessages answers 400 `bad_body` when they differ (its
+  `docs/KYCALENDAR.md`). A KyMessages that predates the check ignores the field.
 - **Event IDs.** Every attempt carries a fresh `X-KySignOn-Event-ID`, so a retry is a new event,
   not a replay: a `duplicate` answer would carry no `member_url`. PUT and DELETE are idempotent
   on the receiver, so this is safe.

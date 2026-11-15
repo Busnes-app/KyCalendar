@@ -60,9 +60,11 @@ type User struct {
 	Issuer string `json:"issuer"`
 }
 
-// PutRequest names the room and who may join it. Guests and Windows are left out when empty,
-// so a KyMessages without guests (wave 1) sees the body it knows.
+// PutRequest names the room and who may join it. Put sets ID, the path's meeting ID: the path
+// is not signed, so KyMessages refuses a body naming another meeting. Guests and Windows are
+// left out when empty, so a KyMessages without guests (wave 1) sees the body it knows.
 type PutRequest struct {
+	ID string `json:"id"`
 	User
 	Title      string   `json:"title"`
 	MemberSubs []string `json:"member_subs"`
@@ -160,6 +162,7 @@ func (l *Link) Put(ctx context.Context, id, eventID string, req PutRequest) (Put
 	if !ValidID(id) {
 		return out, Refused{Code: "bad_id"}
 	}
+	req.ID = id
 	reply, err := l.do(ctx, http.MethodPut, EventPut, MeetPath+id, eventID, req)
 	if err != nil {
 		return out, err
@@ -180,7 +183,10 @@ func (l *Link) Close(ctx context.Context, id, eventID string, u User) error {
 	if !ValidID(id) {
 		return Refused{Code: "bad_id"}
 	}
-	_, err := l.do(ctx, http.MethodDelete, EventClose, MeetPath+id, eventID, u)
+	_, err := l.do(ctx, http.MethodDelete, EventClose, MeetPath+id, eventID, struct {
+		ID string `json:"id"`
+		User
+	}{id, u})
 	return err
 }
 
