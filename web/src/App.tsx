@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
 import { LicenseFooter } from './components/LicenseFooter';
 import { AppRail, loadSuiteApps, type SuiteApp } from './components/AppRail';
+import { driveOrigin } from './drivePicker';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
@@ -168,7 +169,7 @@ export const App: React.FC = () => {
       />
 
       <main className="ky-content">
-        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} chat={settings?.meetings === true && apps.some((a) => a.id === 'kymessage-chat')} me={user.email ?? ''} sidebarSlot={sidebarSlot} /></Suspense>}
+        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} chat={settings?.meetings === true && apps.some((a) => a.id === 'kymessage-chat')} me={user.email ?? ''} drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab.startsWith('settings/') && (
           <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onPasswordChanged={passwordChanged} />
         )}

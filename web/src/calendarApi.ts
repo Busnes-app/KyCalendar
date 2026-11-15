@@ -34,6 +34,7 @@ export interface EventInfo {
   meeting_url?: string; meeting?: boolean; meeting_error?: string;
   // Meeting guests (organizer only): attendees outside the organisation; guests_error is why KyMessages took none.
   guests?: string[]; guests_error?: string;
+  files?: { name: string; url: string; type?: string }[]; // KyDrive links (contract I); the description omits their File: lines
 }
 export interface Attendee { email: string; status: string }
 export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
@@ -42,6 +43,7 @@ export interface EventBody {
   zone?: string; repeat: RepeatInfo; scope?: 'all' | 'this'; recurrence_id?: string;
   attendees?: string[]; // absent keeps the list; [] removes everyone
   meeting?: boolean; // the video meeting switch; absent keeps it
+  files?: { name: string; url: string; type?: string }[]; // absent keeps the file links; [] removes them
 }
 
 export class ApiError extends Error {

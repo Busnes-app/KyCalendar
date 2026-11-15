@@ -422,6 +422,50 @@ describe('EventDialog', () => {
     });
   });
 
+  describe('files from KyDrive', () => {
+    const single: EventInfo = { ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' }, description: '' };
+    const linked: EventInfo = { ...single, files: [{ name: 'Report.pdf', url: 'https://drive.example/l/#a' }] };
+
+    it('adds picked files and sends the list only when it changed', async () => {
+      const calls = capture();
+      const popup = { closed: false } as unknown as Window;
+      const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+      const onDone = vi.fn();
+      render(<EventDialog calendars={cals} event={linked} initial={formFromEvent(linked, 'all')} onDone={onDone} onClose={vi.fn()} drive="https://drive.example" />);
+      expect(screen.getByText(/outside your organisation see the file/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Add file from KyDrive' }));
+      expect(String(open.mock.calls[0][0])).toMatch(/^https:\/\/drive\.example\/pick\?origin=.+&mode=link$/);
+      window.dispatchEvent(new MessageEvent('message', { origin: 'https://drive.example', source: popup, data: { type: 'kydrive.picked', files: [{ name: 'Budget', size: 1, url: 'https://drive.example/l/#b' }] } }));
+      await screen.findByRole('link', { name: 'Budget' });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+      expect(calls[0].body).toMatchObject({ files: [{ name: 'Report.pdf', url: 'https://drive.example/l/#a' }, { name: 'Budget', url: 'https://drive.example/l/#b' }] });
+    });
+
+    it('keeps files untouched on a save that did not change them, and removes on Remove', async () => {
+      const calls = capture();
+      const onDone = vi.fn();
+      render(<EventDialog calendars={cals} event={linked} initial={formFromEvent(linked, 'all')} onDone={onDone} onClose={vi.fn()} />);
+      expect(screen.queryByRole('button', { name: 'Add file from KyDrive' })).toBeNull(); // no KyDrive in the suite
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).not.toHaveProperty('files');
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Report.pdf' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[1].body).toMatchObject({ files: [] });
+    });
+
+    it('lists files in the event view, linking https only', () => {
+      const shown: EventInfo = { ...linked, editable: false, files: [...linked.files!, { name: 'Bad', url: 'javascript:alert(1)' }] };
+      render(<EventDialog calendars={cals} event={shown} initial={formFromEvent(shown, 'all')} onDone={vi.fn()} onClose={vi.fn()} />);
+      const link = screen.getByRole('link', { name: 'Report.pdf' });
+      expect(link.getAttribute('href')).toBe('https://drive.example/l/#a');
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+      expect(screen.queryByText('Bad')).toBeNull();
+    });
+  });
+
   it('prefills guests from a New meeting link and saves them only on Save', async () => {
     const calls = capture();
     const onDone = vi.fn();

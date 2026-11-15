@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, browserZone, canAddEvents, chatLink, createEvent, deleteEvent, orgEmails, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
+import { pickFromDrive, type DriveFile } from '../drivePicker';
 import { linkify } from '../linkify';
 import { FreeBusyStrip } from './FreeBusyStrip';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
@@ -16,6 +17,7 @@ interface Props {
   meetings?: boolean; // KyMessages is paired and in the user's suite apps
   chat?: boolean; // the same, with Element (kymessage-chat) in the suite apps: the Chat action
   me?: string; // signed-in user's email
+  drive?: string; // KyDrive's https origin when it is in the user's suite apps
 }
 
 const PRESETS: { value: Freq; label: string }[] = [
@@ -58,7 +60,7 @@ function message(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, chat: chatOn = false, me = '' }: Props) {
+export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, chat: chatOn = false, me = '', drive = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
@@ -91,6 +93,9 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
       live = false;
     };
   }, [event, chatOn, me]);
+  // Linked files (contract I): kept by the server unless Save sends a changed list.
+  const [files, setFiles] = useState<DriveFile[]>(() => event?.files ?? []);
+  const filesChanged = files.length !== (event?.files ?? []).length || files.some((f, i) => f.url !== event!.files![i].url);
   // Organisation people for the Invite field, after a short pause in typing; free text still works.
   useEffect(() => {
     const q = invitee.trim();
@@ -150,6 +155,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
     }
     if (organizes && scope === 'all' && (people.length !== loaded.length || people.some((p, i) => p.email !== loaded[i].email))) body.attendees = people.map((p) => p.email);
     if (canMeet && scope === 'all' && meeting !== !!event?.meeting) body.meeting = meeting;
+    if (scope === 'all' && filesChanged) body.files = files;
     void act(() => (event ? updateEvent(event, body) : createEvent(form.calendarId, body)), 'Could not save the event');
   }
 
@@ -178,6 +184,11 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
       <button type="button" className={`btn-ghost btn-sm${push ? ' kc-push' : ''}`} aria-label={`Chat with ${email}`} onClick={() => void chat(email)}>Chat</button>
     );
 
+  async function addFiles() {
+    const picked = await pickFromDrive(drive);
+    setFiles((now) => [...now, ...picked.filter((p) => !now.some((f) => f.url === p.url))].slice(0, 20));
+  }
+
   function answer(partstat: Answer) {
     if (!event) return;
     // An occurrence answer only where the user can pick "This event"; otherwise the series.
@@ -197,6 +208,16 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
       {event?.meeting_url?.startsWith('https://') && <p><button type="button" className="btn-secondary" onClick={() => window.open(event.meeting_url, '_blank', 'noopener,noreferrer')}>Join video meeting</button></p>}
       {canMeet && event?.meeting && !event.meeting_url && !event.meeting_error && <p className="kc-hint" role="status">Meeting link pending</p>}
       {canMeet && event?.meeting && event.meeting_error && <p role="alert">{meetingError(event.meeting_error)}</p>}
+    </>
+  );
+
+  // Only https links are ever made clickable; the name is text.
+  const fileList = (event?.files?.length ?? 0) > 0 && (
+    <>
+      <h3 className="kc-label">Files</h3>
+      <ul className="kc-people">
+        {event!.files!.filter((f) => f.url.startsWith('https://')).map((f) => <li key={f.url}><a href={f.url} target="_blank" rel="noopener noreferrer">{f.name}</a></li>)}
+      </ul>
     </>
   );
 
@@ -224,6 +245,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
+          {fileList}
           {room}
           {invitation}
           <div className="modal-actions">
@@ -259,6 +281,27 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           <input id="kc-location" value={form.location} maxLength={1000} onChange={(e) => set({ location: e.target.value })} />
           <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
+          {scope === 'all' && (files.length > 0 || drive) && (
+            <>
+              <h3 className="kc-label" id="kc-files">Files</h3>
+              {files.length > 0 && (
+                <ul className="kc-people" aria-labelledby="kc-files">
+                  {files.map((f) => (
+                    <li key={f.url}>
+                      <a href={f.url.startsWith('https://') ? f.url : undefined} target="_blank" rel="noopener noreferrer">{f.name}</a>
+                      <button type="button" className="btn-ghost btn-danger btn-sm kc-push" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((x) => x !== f))}>Remove</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {drive && files.length < 20 && (
+                <>
+                  <p><button type="button" className="btn-secondary" onClick={() => void addFiles()}>Add file from KyDrive</button></p>
+                  <p className="kc-hint">People outside your organisation see the file&apos;s name and link but cannot open it.</p>
+                </>
+              )}
+            </>
+          )}
           {!event && (
             <>
               <label htmlFor="kc-calendar">Calendar</label>

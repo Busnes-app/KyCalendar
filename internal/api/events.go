@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
 	"github.com/google/uuid"
@@ -77,6 +79,15 @@ type eventView struct {
 	// L), each sent their own link unless GuestsError says why KyMessages took none.
 	Guests      []string `json:"guests,omitempty"`
 	GuestsError string   `json:"guests_error,omitempty"`
+	// Files are the event's file links (KyDrive, contract I); the description omits their
+	// "File:" lines.
+	Files []fileView `json:"files,omitempty"`
+}
+
+type fileView struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Type string `json:"type,omitempty"`
 }
 
 type attendeeView struct {
@@ -135,6 +146,13 @@ func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView,
 	}
 	if u := calendar.Conference(in.Event); kymessages.ValidURL(u) {
 		v.MeetingURL, v.Description = u, calendar.StripJoin(v.Description, u)
+	}
+	files := calendar.Files(in.Event)
+	v.Description = calendar.StripFiles(v.Description, files)
+	for _, f := range files {
+		if kymessages.ValidURL(f.URL) {
+			v.Files = append(v.Files, fileView(f))
+		}
 	}
 	if in.AllDay {
 		v.Start, v.End = in.Start.In(viewer).Format(time.DateOnly), in.End.In(viewer).Format(time.DateOnly)
@@ -363,6 +381,36 @@ type eventBody struct {
 	Attendees *[]string `json:"attendees"`
 	// Meeting is the video meeting switch; absent keeps it.
 	Meeting *bool `json:"meeting"`
+	// Files replaces the event's file links; absent keeps them, [] removes them.
+	Files *[]fileView `json:"files"`
+}
+
+const maxFiles = 20
+
+// fileType is a MIME type as FMTTYPE carries it: type/subtype of token characters.
+var fileType = regexp.MustCompile(`^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$`)
+
+// eventFiles checks a body's file links at the boundary: at most maxFiles, each a name of 1 to
+// 255 bytes without control characters or a double quote (iCalendar parameters cannot carry
+// one), a ValidURL link and an optional lower-case MIME type. nil: keep them.
+func eventFiles(files *[]fileView) ([]calendar.File, *apiError) {
+	if files == nil {
+		return nil, nil
+	}
+	bad := &apiError{status: http.StatusBadRequest, msg: "Each file needs a name and an https link", code: "bad_files"}
+	if len(*files) > maxFiles {
+		return nil, &apiError{status: http.StatusBadRequest, msg: fmt.Sprintf("An event can link at most %d files", maxFiles), code: "bad_files"}
+	}
+	out := []calendar.File{}
+	for _, f := range *files {
+		name := strings.TrimSpace(f.Name)
+		if name == "" || len(name) > 255 || !utf8.ValidString(name) || strings.ContainsFunc(name, func(r rune) bool { return r == '"' || unicode.IsControl(r) }) ||
+			!kymessages.ValidURL(f.URL) || f.Type != "" && !fileType.MatchString(f.Type) {
+			return nil, bad
+		}
+		out = append(out, calendar.File{Name: name, URL: f.URL, Type: f.Type})
+	}
+	return out, nil
 }
 
 var errBadEvent = errors.New("bad event")
@@ -549,6 +597,14 @@ func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, apiErr)
 		return
 	}
+	files, apiErr := eventFiles(b.Files)
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	if files != nil {
+		calendar.SetFiles(cal, files)
+	}
 	sw, apiErr := s.meetingSwitch(r.Context(), c, nil, cal, b.Meeting)
 	if apiErr != nil {
 		s.writeAPIError(w, apiErr)
@@ -632,13 +688,21 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	// Who is invited is one list for the whole series: the scheduler sends each person the
 	// series, so a per-occurrence change would reach every occurrence.
-	if b.Scope == "this" && (b.Attendees != nil || b.Meeting != nil) {
-		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests and the video meeting can only be changed for all events", code: "attendees_series_only"})
+	if b.Scope == "this" && (b.Attendees != nil || b.Meeting != nil || b.Files != nil) {
+		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests, files and the video meeting can only be changed for all events", code: "attendees_series_only"})
+		return
+	}
+	files, apiErr := eventFiles(b.Files)
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
 		return
 	}
 	if apiErr := applyEdit(cal, b); apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
+	}
+	if files != nil {
+		calendar.SetFiles(cal, files)
 	}
 	if apiErr := s.applyAttendees(r.Context(), cal, b.Attendees); apiErr != nil {
 		s.writeAPIError(w, apiErr)

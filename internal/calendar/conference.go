@@ -50,21 +50,17 @@ func SetConference(cal *ical.Calendar, url string) {
 		} else {
 			ev.Props[propConference] = keep
 		}
-		desc, _ := ev.Props.Text(ical.PropDescription)
-		setText(ev, ical.PropDescription, withJoin(StripJoin(desc, old), url))
+		relink(ev, Files(ev), old)
 	}
 }
 
-// KeepJoin puts the "Join:" line back on every VEVENT that has a room link: a web or agent
-// edit replaces the description with text that never shows it (StripJoin).
+// KeepJoin puts the "File:" and "Join:" lines back on every VEVENT with file or room links: a
+// web or agent edit replaces the description with text that never shows them (StripJoin,
+// StripFiles).
 func KeepJoin(cal *ical.Calendar) {
 	for _, ev := range cal.Children {
-		if ev.Name != ical.CompEvent {
-			continue
-		}
-		if url := Conference(ev); url != "" {
-			desc, _ := ev.Props.Text(ical.PropDescription)
-			setText(ev, ical.PropDescription, withJoin(StripJoin(desc, url), url))
+		if ev.Name == ical.CompEvent && (Conference(ev) != "" || len(Files(ev)) > 0) {
+			relink(ev, Files(ev), Conference(ev))
 		}
 	}
 }

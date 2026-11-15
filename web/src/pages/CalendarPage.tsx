@@ -118,7 +118,7 @@ export function zoneAbbr(date: Date): string {
 // scheduling and me (the user's email) let the event dialog offer invitations, meetings a video
 // meeting (KyMessages paired and in the user's suite apps). sidebarSlot is the
 // app sidebar's slot: the calendar list always renders there, never as a second column.
-export function CalendarPage({ scheduling = false, meetings = false, chat = false, me = '', sidebarSlot = null }: { scheduling?: boolean; meetings?: boolean; chat?: boolean; me?: string; sidebarSlot?: HTMLElement | null }) {
+export function CalendarPage({ scheduling = false, meetings = false, chat = false, me = '', drive = '', sidebarSlot = null }: { scheduling?: boolean; meetings?: boolean; chat?: boolean; me?: string; drive?: string; sidebarSlot?: HTMLElement | null }) {
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(loadHidden);
   const [error, setError] = useState<string | null>(null);
@@ -438,6 +438,7 @@ export function CalendarPage({ scheduling = false, meetings = false, chat = fals
             meetings={meetings}
             chat={chat}
             me={me}
+            drive={drive}
           />
         )}
       </div>
