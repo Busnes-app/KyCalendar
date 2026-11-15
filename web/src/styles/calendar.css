@@ -31,7 +31,7 @@ button.kc-icon.btn-danger:hover:not(:disabled), button.kc-icon.btn-danger:focus-
 
 /* Label to its field 8px, field to the next label 16px; groups are titled, not boxed. */
 .kc-form { display: grid; gap: var(--ky-space-2); }
-.kc-form > label:not(.kc-check), .kc-form .field > label, .kc-form fieldset > legend { margin-top: var(--ky-space-2); font-size: var(--ky-type-meta); font-weight: 600; color: var(--ink-strong); }
+.kc-form > label:not(.kc-check), .kc-label, .kc-form .field > label, .kc-form fieldset > legend { margin-top: var(--ky-space-2); font-size: var(--ky-type-meta); font-weight: 600; color: var(--ink-strong); }
 .kc-form .field > label { margin-top: 0; }
 .kc-form fieldset { display: flex; flex-wrap: wrap; gap: 0 var(--ky-space-4); padding: 0; border: 0; }
 .kc-form fieldset > legend { float: left; width: 100%; padding: 0; margin-bottom: 0; }

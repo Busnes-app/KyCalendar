@@ -32,6 +32,7 @@ export interface EventInfo {
   // Video meetings: meeting_url is the KyMessages room (Join); meeting is the organizer's switch,
   // on with no meeting_url while the room is pending; meeting_error is KyMessages' refusal code.
   meeting_url?: string; meeting?: boolean; meeting_error?: string;
+  files?: { name: string; url: string; type?: string }[]; // KyDrive links (contract I); the description omits their File: lines
 }
 export interface Attendee { email: string; status: string }
 export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
@@ -40,6 +41,7 @@ export interface EventBody {
   zone?: string; repeat: RepeatInfo; scope?: 'all' | 'this'; recurrence_id?: string;
   attendees?: string[]; // absent keeps the list; [] removes everyone
   meeting?: boolean; // the video meeting switch; absent keeps it
+  files?: { name: string; url: string; type?: string }[]; // absent keeps the file links; [] removes them
 }
 
 export class ApiError extends Error {

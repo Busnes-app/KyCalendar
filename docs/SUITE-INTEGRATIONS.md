@@ -4,7 +4,12 @@ KyCalendar's copy of the wave 1 wire contracts (owner decisions 2026-11-14; sour
 `ky-redesign/integrations/suite-integrations-contracts.md`). This copy is the durable one for
 this repository: change it together with the peer's copy. Sections implemented here: shared
 rules, B (KyCalendar → KyMessages meetings), D (people picker, KyCalendar's part) and E (the
-`/new` deep link, receiver) and F (the free/busy strip).
+`/new` deep link, receiver) and F (the free/busy strip); from wave 2
+(`ky-redesign/integrations/suite-integrations-wave2.md`), I (the KyDrive picker, as a caller).
+
+Wave 2 compatibility rule: each side must keep working against the other side's wave 1 `main`
+until both have merged. A new request field the old receiver refuses means: retry without it
+and show the feature as unavailable.
 
 ## Shared rules
 
@@ -147,3 +152,51 @@ takes up to 50 addresses, so no new backend); rows only for people the server kn
 `unknown`); busy and tentative blocks across the day, the chosen time outlined, and "Busy at
 this time" when a block overlaps it (an all-day event is the whole day). Any failure shows no
 strip. It appears with the People section, so only where invitations are on.
+
+## I. KyDrive picker (KyCalendar is a caller, in the browser)
+
+`https://<kydrive-origin>/pick?origin=<caller origin>&mode=link|copy`, opened as a popup on a
+user click.
+
+- KyDrive serves it only to a signed-in everyday user, and only when `origin` is exactly the
+  origin of an app in that user's suite app list (from KyIdentity) and is `https://`. Otherwise
+  it shows a plain refusal and sends nothing.
+- The user picks one or more files they may share under KyDrive's own rules and confirms. Only
+  that confirming click sends anything.
+- `mode=link` (default): KyDrive creates an organisation link per file in the user's own session
+  (role reader, the same expiry choice as contract C), then
+  `window.opener.postMessage({type:"kydrive.picked", files:[{name,size,url,expires}]}, origin)`
+  and closes. The target origin is the validated `origin`, never `*`.
+- `mode=copy` is for the paired KyPost only.
+- The picker page keeps `frame-ancestors 'none'`.
+- Callers listen for exactly `kydrive.picked` from exactly the KyDrive origin, and treat every
+  field as untrusted text.
+
+KyCalendar event editor: "Add file from KyDrive" (`mode=link`). The event stores each link as
+`ATTACH;FMTTYPE=<type if known>;FILENAME=<name>:<url>` (RFC 7986 / Outlook style) and as a
+description line `File: <name> <url>`; the event view lists them. Attendees outside the
+organisation see the line but cannot open it; say so beside the button.
+
+### How KyCalendar implements it
+
+- **Where KyDrive is.** The origin of the `kydrive` app in `GET /api/suite/apps`, only when it is
+  `https`; without one there is no button (existing links still show and can be removed).
+- **The listener** (`web/src/drivePicker.ts`) reads only a `message` whose `origin` is exactly
+  that origin, whose `source` is the popup it opened, and whose `type` is `kydrive.picked`. Each
+  file needs a name (1 to 255 bytes, no control characters or `"`) and a `url` of at most 2048
+  characters on that same origin, without credentials or spaces; anything else is dropped.
+  `size` and `expires` are not stored (the link's own page says when it expires). A closed popup
+  ends the pick with nothing. KyCalendar sends no `Cross-Origin-Opener-Policy`, so `opener` survives.
+- **Events API.** Create and update take `files: [{name, url, type?}]` (absent keeps, `[]`
+  removes; series only, else 400 `attendees_series_only`); at most 20, each a trimmed name of 1
+  to 255 bytes without control characters or `"`, an `https` link without credentials, spaces
+  or controls (at most 2048 bytes), and an optional lower-case `type/subtype`; else 400
+  `bad_files`. The KyDrive origin is not checked server-side: the browser does that, and the
+  server's rule is only that nothing but a safe `https` link is ever written.
+- **Stored form.** Every VEVENT gets the `ATTACH` properties and one `File:` line per file, in a
+  block after the user's text and before the `Join:` line (`calendar.SetFiles`). Only URI
+  `ATTACH`es with `https` and `FILENAME` are KyCalendar's; other `ATTACH`es (inline files from
+  other clients) are kept untouched. Every web, agent and import save puts the block back
+  (`calendar.KeepJoin`).
+- **View.** `files: [{name, url, type?}]` (https links only); the description omits the block.
+  The web lists them as links opened with `noopener noreferrer`.
