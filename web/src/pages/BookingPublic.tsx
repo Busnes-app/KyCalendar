@@ -81,21 +81,30 @@ function Problem({ text }: { text: string }) {
   );
 }
 
+/** Day buttons, then the chosen day's times: one day at a time keeps a month of slots short. */
 function SlotPicker({ slots, onPick }: { slots: Slot[]; onPick: (s: Slot) => void }) {
-  if (!slots.length) return <p className="field-hint">No free times in the coming weeks. Try again later.</p>;
+  const days = byDay(slots);
+  const [open, setOpen] = useState(0);
+  if (!days.length) return <p className="field-hint">No free times in the coming weeks. Try again later.</p>;
+  const [day, list] = days[Math.min(open, days.length - 1)];
   return (
     <div className="book-days">
       <p className="field-hint">Times are in your time zone, {visitorZone()}.</p>
-      {byDay(slots).map(([day, list]) => (
-        <section key={day} aria-label={day}>
-          <h2>{day}</h2>
-          <div className="book-slots">
-            {list.map((s) => (
-              <button key={s.start} type="button" className="btn-secondary btn-sm" onClick={() => onPick(s)}>{timeLabel(s.start)}</button>
-            ))}
-          </div>
-        </section>
-      ))}
+      <div className="book-dayrow" role="group" aria-label="Days with free times">
+        {days.map(([d], i) => (
+          <button key={d} type="button" className="btn-secondary btn-sm" aria-pressed={d === day} onClick={() => setOpen(i)}>
+            {new Date(days[i][1][0].start).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+          </button>
+        ))}
+      </div>
+      <section aria-label={day}>
+        <h2>{day}</h2>
+        <div className="book-slots">
+          {list.map((s) => (
+            <button key={s.start} type="button" className="btn-secondary btn-sm" onClick={() => onPick(s)}>{timeLabel(s.start)}</button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

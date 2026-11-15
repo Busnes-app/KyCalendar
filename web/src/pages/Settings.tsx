@@ -169,7 +169,7 @@ const BookingPagesCard: React.FC = () => {
         email, and get an ordinary invitation sent from the member's mailbox through KyPost.
       </p>
       <div className="form form-wide">
-        <label className="kc-check">
+        <label className="check-row">
           <input
             type="checkbox"
             role="switch"

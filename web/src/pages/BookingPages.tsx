@@ -137,7 +137,7 @@ function TypeForm({ draft, calendars, available, onSave, onCancel, saving, error
             const w = windowFor(day);
             return (
               <li key={day}>
-                <label className="kc-check">
+                <label className="check-row">
                   <input type="checkbox" checked={!!w} onChange={(e) => setWindow(day, e.target.checked ? { day, start: '09:00', end: '17:00' } : null)} />
                   {DAYS[day]}
                 </label>
@@ -181,7 +181,7 @@ function TypeForm({ draft, calendars, available, onSave, onCancel, saving, error
           <span className="field-hint" id="bt-cap-hint">0 means no limit.</span>
         </div>
       </div>
-      <label className="kc-check">
+      <label className="check-row">
         <input type="checkbox" role="switch" checked={d.enabled} disabled={!available && !d.enabled} onChange={(e) => set('enabled', e.target.checked)} />
         Take bookings at this page's link
       </label>
