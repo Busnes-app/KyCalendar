@@ -293,7 +293,7 @@ describe('EventDialog', () => {
       render(<EventDialog calendars={cals} initial={newForm()} onDone={onDone} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
       const toggle = screen.getByRole('switch', { name: 'Video meeting' }) as HTMLInputElement;
       expect(toggle.checked).toBe(false);
-      expect(screen.getByText('People outside your organisation cannot join yet.')).toBeTruthy();
+      expect(screen.getByText(/get their own guest link in their invitation when KyMessages lets guests join/)).toBeTruthy();
       fireEvent.change(screen.getByLabelText('People'), { target: { value: 'ann@example.com' } });
       fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
       expect(toggle.checked).toBe(true);
@@ -338,6 +338,21 @@ describe('EventDialog', () => {
       cleanup();
       render(<EventDialog calendars={cals} event={{ ...invite, meeting_url: 'javascript:alert(1)' }} initial={formFromEvent(invite, 'all')} onDone={vi.fn()} onClose={vi.fn()} scheduling meetings me="me@example.com" />);
       expect(screen.queryByRole('button', { name: 'Join video meeting' })).toBeNull();
+    });
+  });
+
+  describe('meeting guests', () => {
+    const single: EventInfo = { ...recurring, recurring: false, recurrence_id: undefined, repeat: { freq: '' }, description: '', meeting: true };
+    const line = (ev: EventInfo) => {
+      render(<EventDialog calendars={cals} event={ev} initial={formFromEvent(ev, 'all')} onDone={vi.fn()} onClose={vi.fn()} meetings me="me@example.com" />);
+      const text = screen.getByRole('switch', { name: 'Video meeting' }).closest('form')!.textContent!;
+      cleanup();
+      return text;
+    };
+    it('says which attendees cannot join and why, or that they get their own link', () => {
+      expect(line({ ...single, guests: ['out@x.test'], guests_error: 'guests_off' })).toContain('out@x.test cannot join: KyMessages does not let people outside the organisation join meetings.');
+      expect(line({ ...single, guests: ['out@x.test', 'eve@y.test'], guests_error: 'guests_unsupported' })).toContain('out@x.test, eve@y.test cannot join: this KyMessages cannot take guests yet.');
+      expect(line({ ...single, guests: ['out@x.test'] })).toContain('out@x.test can join as guests, each with their own link sent only in their invitation.');
     });
   });
 

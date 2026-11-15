@@ -193,3 +193,30 @@ func TestChatOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPutSendsGuestsOnlyWhenThereAreAny(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_, _ = io.WriteString(w, `{"member_url":"https://chat.example/#/room/!a:x","guest_urls":{"g1key0123456789ab":"https://chat.example/meet/t1","other":"https://evil.example/x","g2key0123456789ab":"javascript:x"}}`)
+	}))
+	t.Cleanup(srv.Close)
+	l := &Link{HTTP: srv.Client()}
+	l.Set(&Peer{URL: srv.URL, Secret: secret, Source: SourceEnvironment})
+	if _, err := l.Put(context.Background(), meetingID, "e1", PutRequest{Title: "T", MemberSubs: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(bodies[0], "guests") || strings.Contains(bodies[0], "windows") {
+		t.Fatalf("wave 1 body carries guests: %s", bodies[0])
+	}
+	res, err := l.Put(context.Background(), meetingID, "e2", PutRequest{Title: "T", MemberSubs: []string{},
+		Guests:  []Guest{{Key: "g1key0123456789ab"}, {Key: "g2key0123456789ab"}},
+		Windows: []Window{{Start: "2026-11-16T08:50:00Z", End: "2026-11-16T10:00:00Z"}}})
+	if err != nil || len(res.GuestURLs) != 1 || res.GuestURLs["g1key0123456789ab"] != "https://chat.example/meet/t1" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if !strings.Contains(bodies[1], `"guests":[{"key":"g1key0123456789ab"},{"key":"g2key0123456789ab"}],"windows":[{"start":"2026-11-16T08:50:00Z","end":"2026-11-16T10:00:00Z"}]`) {
+		t.Fatalf("body %s", bodies[1])
+	}
+}

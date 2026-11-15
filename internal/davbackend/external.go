@@ -25,9 +25,14 @@ func kypostUser(u *store.User) (kypost.User, bool) {
 	return kypost.User{Sub: u.SSOSubject, Issuer: issuer}, true
 }
 
+// errGuestPending holds an invitation while KyMessages has not yet answered for its meeting,
+// so a guest's first invitation can carry their own link.
+var errGuestPending = errors.New("guest link pending")
+
 // sendExternal hands one message for a recipient outside the instance to KyPost, which mails it
-// from the sender's mailbox.
-func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, sender *store.User, from, to itip.Address) error {
+// from the sender's mailbox. It is the only place a guest link is added: to this recipient's
+// copy of a REQUEST, never to the stored event or the queued body.
+func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, sender *store.User, from, to itip.Address, uid string, msg *ical.Calendar) error {
 	if s.KyPost == nil {
 		return errNoTransport
 	}
@@ -35,8 +40,25 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 	if !ok {
 		return errPermanent{"no_kypost_account"}
 	}
+	ics := string(m.Body)
+	if m.Method == itip.MethodRequest && s.GuestLink != nil {
+		url, wait, err := s.GuestLink(ctx, sender, uid, to.Email(), m.CreatedAt)
+		switch {
+		case err != nil:
+			return err
+		case wait:
+			return errGuestPending
+		case url != "":
+			calendar.AddGuestLine(msg, url)
+			var b strings.Builder
+			if err := ical.NewEncoder(&b).Encode(msg); err != nil {
+				return errPermanent{"bad_body"}
+			}
+			ics = b.String()
+		}
+	}
 	err := s.KyPost.Send(ctx, m.DedupeKey, kypost.SendRequest{User: who, From: from.Email(), Recipients: []string{to.Email()},
-		Method: m.Method, ICS: string(m.Body)})
+		Method: m.Method, ICS: ics})
 	var refused kypost.Refused
 	if errors.Is(err, kypost.ErrNotConnected) {
 		return errNoTransport

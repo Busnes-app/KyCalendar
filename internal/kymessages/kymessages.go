@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -60,19 +61,43 @@ type User struct {
 }
 
 // PutRequest names the room and who may join it. Put sets ID, the path's meeting ID: the path
-// is not signed, so KyMessages refuses a body naming another meeting.
+// is not signed, so KyMessages refuses a body naming another meeting. Guests and Windows are
+// left out when empty, so a KyMessages without guests (wave 1) sees the body it knows.
 type PutRequest struct {
 	ID string `json:"id"`
 	User
 	Title      string   `json:"title"`
 	MemberSubs []string `json:"member_subs"`
+	Guests     []Guest  `json:"guests,omitempty"`
+	Windows    []Window `json:"windows,omitempty"`
 }
 
-// PutResult is KyMessages' answer: the room's link for members, and the subjects it skipped
-// because they have no KyMessages account yet.
+// Guest is an attendee outside the organisation, known to KyMessages only by an opaque key.
+type Guest struct {
+	Key string `json:"key"`
+}
+
+// Window is when guests may join: RFC 3339 UTC.
+type Window struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+// Guest refusals: the administrator switch is off, or this KyMessages takes no guests at all.
+const (
+	CodeGuestsOff         = "guests_off"
+	CodeGuestsUnsupported = "guests_unsupported"
+	MaxGuests             = 100
+	MaxWindows            = 400
+)
+
+// PutResult is KyMessages' answer: the room's link for members, the subjects it skipped
+// because they have no KyMessages account yet, and the guest links for keys new in this call
+// or re-issued. Each guest link is a secret for one attendee.
 type PutResult struct {
-	MemberURL   string   `json:"member_url"`
-	SkippedSubs []string `json:"skipped_subs"`
+	MemberURL   string            `json:"member_url"`
+	SkippedSubs []string          `json:"skipped_subs"`
+	GuestURLs   map[string]string `json:"guest_urls"`
 }
 
 // ChatRequest asks for a link to chat with TargetSub, as User.
@@ -144,6 +169,11 @@ func (l *Link) Put(ctx context.Context, id, eventID string, req PutRequest) (Put
 	}
 	if json.Unmarshal(reply, &out) != nil || !ValidURL(out.MemberURL) {
 		return PutResult{}, Refused{Code: "bad_reply"}
+	}
+	for key, u := range out.GuestURLs { // only links for keys this call sent, and safe ones
+		if !ValidURL(u) || !slices.ContainsFunc(req.Guests, func(g Guest) bool { return g.Key == key }) {
+			delete(out.GuestURLs, key)
+		}
 	}
 	return out, nil
 }
