@@ -32,6 +32,8 @@ export interface EventInfo {
   // Video meetings: meeting_url is the KyMessages room (Join); meeting is the organizer's switch,
   // on with no meeting_url while the room is pending; meeting_error is KyMessages' refusal code.
   meeting_url?: string; meeting?: boolean; meeting_error?: string;
+  // Meeting guests (organizer only): attendees outside the organisation; guests_error is why KyMessages took none.
+  guests?: string[]; guests_error?: string;
 }
 export interface Attendee { email: string; status: string }
 export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';

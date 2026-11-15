@@ -86,7 +86,7 @@ func (s *Server) newKyPost() {
 }
 
 func (s *Server) startScheduling() {
-	s.sched = &davbackend.Scheduler{Store: s.store, Limits: s.objectLimits(), KyPost: s.kypost}
+	s.sched = &davbackend.Scheduler{Store: s.store, Limits: s.objectLimits(), KyPost: s.kypost, GuestLink: s.guestLink}
 	s.kypostReplay = &kypostReplay{seen: map[string]time.Time{}}
 }
 

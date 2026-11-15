@@ -593,6 +593,22 @@ CREATE TABLE sso_logouts (
 	{Version: 23, Name: "invitation_sponsorship", SQLite: invitationSponsorship, Postgres: invitationSponsorship},
 	{Version: 24, Name: "cancellation_reservations", SQLite: cancellationReservations, Postgres: cancellationReservations},
 	{Version: 25, Name: "video_meetings", SQLite: videoMeetings("DATETIME"), Postgres: videoMeetings("TIMESTAMPTZ")},
+	{Version: 26, Name: "meeting_guests", SQLite: meetingGuests("DATETIME"), Postgres: meetingGuests("TIMESTAMPTZ")},
+}
+
+// meetingGuests: one row per attendee outside the organisation on a meeting, with the opaque
+// key KyMessages knows them by and their guest link, sealed. guests_error is why KyMessages
+// took no guests last time; refresh_at is when the guest windows are sent again.
+func meetingGuests(ts string) string {
+	return `CREATE TABLE meeting_guests (
+ meeting_id TEXT NOT NULL REFERENCES video_meetings(id) ON DELETE CASCADE,
+ email TEXT NOT NULL,
+ guest_key TEXT NOT NULL,
+ sealed_url TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY (meeting_id, email)
+);
+ALTER TABLE video_meetings ADD COLUMN guests_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE video_meetings ADD COLUMN refresh_at ` + ts + `;`
 }
 
 // videoMeetings: one row per KyMessages room, which is also its outbox. A write to the event

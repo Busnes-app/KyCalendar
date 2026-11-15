@@ -89,3 +89,21 @@ func withJoin(desc, url string) string {
 	}
 	return desc + "\n\nJoin: " + url
 }
+
+// GuestLabel starts the line that carries one guest's own link in their copy of an invitation.
+const GuestLabel = "Join as a guest: "
+
+// AddGuestLine appends a guest's own link as a final description line on every VEVENT of cal,
+// a copy for that guest only (suite contract L): never a stored event, never CONFERENCE.
+func AddGuestLine(cal *ical.Calendar, url string) {
+	for _, ev := range cal.Children {
+		if ev.Name != ical.CompEvent {
+			continue
+		}
+		desc, _ := ev.Props.Text(ical.PropDescription)
+		if desc != "" {
+			desc += "\n\n"
+		}
+		setText(ev, ical.PropDescription, desc+GuestLabel+url)
+	}
+}

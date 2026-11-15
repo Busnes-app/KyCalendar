@@ -326,6 +326,15 @@ type CalendarStore interface {
 	FinishOutbox(ctx context.Context, id, status string, next time.Time, lastError string) error
 	// PruneOutbox deletes finished messages created before before.
 	PruneOutbox(ctx context.Context, before time.Time) error
+	// MeetingGuests lists a meeting's guests by email.
+	MeetingGuests(ctx context.Context, meetingID string) ([]MeetingGuest, error)
+	// SetMeetingGuests replaces them and records guestsError and the next refresh (nil: none).
+	SetMeetingGuests(ctx context.Context, meetingID string, guests []MeetingGuest, guestsError string, refreshAt *time.Time) error
+	// RefreshMeetings makes open meetings whose refresh time has come due again.
+	RefreshMeetings(ctx context.Context, now time.Time) error
+	// GuestLink is email's sealed guest link on senderID's open meeting for uid (ErrNotFound:
+	// none); pending reports a change KyMessages has not answered yet.
+	GuestLink(ctx context.Context, senderID, uid, email string) (sealed string, pending bool, err error)
 	// OpenMeeting is the object's open video meeting (ErrNotFound when none).
 	OpenMeeting(ctx context.Context, calendarID, name string) (*VideoMeeting, error)
 	// OpenMeetings maps object names in calendarID to their open video meeting.

@@ -15,6 +15,7 @@ type VideoMeeting struct {
 	MemberURL                           string // the room link, "" until a PUT answered
 	Synced                              string // digest of the last PUT KyMessages accepted
 	LastError                           string // a fixed code, never a message
+	GuestsError                         string // why KyMessages took no guests last time, or ""
 	Rev, DoneRev                        int64
 	Attempts                            int
 	NextAttempt, CreatedAt              time.Time
@@ -27,11 +28,11 @@ type MeetingSwitch struct {
 	NewID string
 }
 
-const meetingCols = `id, user_id, calendar_id, name, state, member_url, synced, last_error, rev, done_rev, attempts, next_attempt_at, created_at`
+const meetingCols = `id, user_id, calendar_id, name, state, member_url, synced, last_error, guests_error, rev, done_rev, attempts, next_attempt_at, created_at`
 
 func scanMeeting(row interface{ Scan(...any) error }) (*VideoMeeting, error) {
 	var m VideoMeeting
-	err := row.Scan(&m.ID, &m.UserID, &m.CalendarID, &m.Name, &m.State, &m.MemberURL, &m.Synced, &m.LastError,
+	err := row.Scan(&m.ID, &m.UserID, &m.CalendarID, &m.Name, &m.State, &m.MemberURL, &m.Synced, &m.LastError, &m.GuestsError,
 		&m.Rev, &m.DoneRev, &m.Attempts, &m.NextAttempt, &m.CreatedAt)
 	return &m, err
 }
@@ -123,4 +124,72 @@ func (c *calendarStore) FailedMeeting(ctx context.Context, id string, rev int64,
 	_, err := c.store.db.ExecContext(ctx, c.q(`UPDATE video_meetings SET done_rev = CASE WHEN done_rev > ? THEN done_rev ELSE ? END,
 last_error = ?, attempts = 0 WHERE id = ?`), rev, rev, lastError, id)
 	return err
+}
+
+// MeetingGuest is an attendee outside the organisation on a meeting: Key is all KyMessages
+// knows of them; SealedURL their guest link, sealed by the caller, "" until KyMessages gave one.
+type MeetingGuest struct{ Email, Key, SealedURL string }
+
+func (c *calendarStore) MeetingGuests(ctx context.Context, meetingID string) ([]MeetingGuest, error) {
+	rows, err := c.store.db.QueryContext(ctx, c.q(`SELECT email, guest_key, sealed_url FROM meeting_guests WHERE meeting_id = ? ORDER BY email`), meetingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MeetingGuest
+	for rows.Next() {
+		var g MeetingGuest
+		if err := rows.Scan(&g.Email, &g.Key, &g.SealedURL); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// SetMeetingGuests replaces the meeting's guests and records guestsError and refreshAt (nil:
+// no daily refresh) in one transaction.
+func (c *calendarStore) SetMeetingGuests(ctx context.Context, meetingID string, guests []MeetingGuest, guestsError string, refreshAt *time.Time) error {
+	tx, err := c.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM meeting_guests WHERE meeting_id = ?`), meetingID); err != nil {
+		return err
+	}
+	for _, g := range guests {
+		if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO meeting_guests (meeting_id, email, guest_key, sealed_url) VALUES (?, ?, ?, ?)`), meetingID, g.Email, g.Key, g.SealedURL); err != nil {
+			return err
+		}
+	}
+	var at any
+	if refreshAt != nil {
+		at = refreshAt.UTC()
+	}
+	if _, err := tx.ExecContext(ctx, c.q(`UPDATE video_meetings SET guests_error = ?, refresh_at = ? WHERE id = ?`), guestsError, at, meetingID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RefreshMeetings makes every open meeting whose refresh time has come due again.
+func (c *calendarStore) RefreshMeetings(ctx context.Context, now time.Time) error {
+	_, err := c.store.db.ExecContext(ctx, c.q(`UPDATE video_meetings SET rev = rev + 1, attempts = 0, next_attempt_at = ?, refresh_at = NULL
+WHERE state = 'open' AND refresh_at IS NOT NULL AND refresh_at <= ?`), now.UTC(), now.UTC())
+	return err
+}
+
+// GuestLink finds email's sealed guest link on the open meeting senderID runs for event uid.
+// pending: that meeting has a change KyMessages has not answered yet. ErrNotFound: no meeting.
+func (c *calendarStore) GuestLink(ctx context.Context, senderID, uid, email string) (sealed string, pending bool, err error) {
+	var due int
+	err = c.store.db.QueryRowContext(ctx, c.q(`SELECT COALESCE(g.sealed_url, ''), CASE WHEN m.rev > m.done_rev THEN 1 ELSE 0 END
+FROM video_meetings m JOIN calendar_objects o ON o.calendar_id = m.calendar_id AND o.name = m.name
+LEFT JOIN meeting_guests g ON g.meeting_id = m.id AND g.email = ?
+WHERE m.user_id = ? AND m.state = 'open' AND o.uid = ?`), email, senderID, uid).Scan(&sealed, &due)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, ErrNotFound
+	}
+	return sealed, due == 1, err
 }

@@ -41,6 +41,15 @@ const CHAT_ERRORS: Record<string, string> = {
 };
 const chatError = (e: unknown) => (e instanceof ApiError && CHAT_ERRORS[e.code]) || 'Could not open the chat. Try again in a moment.';
 
+// The line beside the Video meeting switch says what people outside the organisation get (contract L).
+function guestsText(event?: EventInfo): string {
+  const who = (event?.guests ?? []).join(', ');
+  if (who && event?.guests_error === 'guests_off') return `${who} cannot join: KyMessages does not let people outside the organisation join meetings.`;
+  if (who && event?.guests_error) return `${who} cannot join: this KyMessages cannot take guests yet.`;
+  if (who) return `${who} can join as guests, each with their own link sent only in their invitation.`;
+  return 'People outside your organisation get their own guest link in their invitation when KyMessages lets guests join.';
+}
+
 const meetingError = (code: string) => MEETING_ERRORS[code] ?? `The video meeting could not be set up (${code}).`;
 
 function message(e: unknown, fallback: string): string {
@@ -308,7 +317,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {canMeet && scope === 'all' && (
             <>
               <label className="kc-check"><input type="checkbox" role="switch" checked={meeting} onChange={(e) => setMeetingChoice(e.target.checked)} /> Video meeting</label>
-              <p className="kc-hint">People outside your organisation cannot join yet.</p>
+              <p className="kc-hint">{guestsText(event)}</p>
             </>
           )}
           <div className="modal-actions">
