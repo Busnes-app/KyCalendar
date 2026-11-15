@@ -17,7 +17,7 @@ function picked(data: unknown, origin: string): DriveFile[] | null {
   const d = data as { type?: unknown; files?: unknown } | null;
   if (d?.type !== 'kydrive.picked' || !Array.isArray(d.files)) return null;
   const out: DriveFile[] = [];
-  for (const f of d.files.slice(0, 20) as { name?: unknown; url?: unknown }[]) {
+  for (const f of d.files.slice(0, 20) as { name?: unknown; url?: unknown; mime?: unknown }[]) {
     const name = typeof f?.name === 'string' ? f.name.trim() : '';
     let url: URL | null = null;
     try {
@@ -28,7 +28,9 @@ function picked(data: unknown, origin: string): DriveFile[] | null {
     // eslint-disable-next-line no-control-regex
     if (!name || new TextEncoder().encode(name).length > 255 || /["\u0000-\u001f\u007f-\u009f]/.test(name)) continue;
     if (!url || url.origin !== origin || url.username || url.password || /\s/.test(String(f.url))) continue;
-    out.push({ name, url: String(f.url) });
+    // The optional type (FMTTYPE): kept only when plain, else dropped; the server checks it again.
+    const type = typeof f.mime === 'string' && f.mime.length <= 127 && /^[a-z0-9]+\/[a-z0-9.+-]+$/.test(f.mime) ? f.mime : '';
+    out.push(type ? { name, url: String(f.url), type } : { name, url: String(f.url) });
   }
   return out;
 }

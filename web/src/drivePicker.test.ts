@@ -53,6 +53,29 @@ describe('pickFromDrive', () => {
     await expect(result).resolves.toEqual([{ name: 'Report.pdf', url: `${DRIVE}/l/#tok` }]);
   });
 
+  it('keeps a plain mime as the type and drops any other', async () => {
+    const { post } = standIn();
+    const result = pickFromDrive(DRIVE);
+    const f = (name: string, mime: unknown) => ({ name, size: 1, url: `${DRIVE}/l/#${name}`, mime });
+    post({
+      type: 'kydrive.picked',
+      files: [
+        f('pdf', 'application/pdf'),
+        { name: 'none', size: 1, url: `${DRIVE}/l/#none` },
+        f('quote', 'text/plain"x'),
+        f('semi', 'text/html;charset=utf-8'),
+        f('colon', 'text/x:evil'),
+        f('crlf', 'text/plain\r\nATTACH:https://evil.example'),
+        f('upper', 'Text/Plain'),
+        f('long', 'application/' + 'x'.repeat(116)),
+        f('obj', { toString: () => 'text/plain' }),
+      ],
+    });
+    const got = await result;
+    expect(got[0]).toEqual({ name: 'pdf', url: `${DRIVE}/l/#pdf`, type: 'application/pdf' });
+    expect(got.slice(1).map((x) => x.type)).toEqual(Array(8).fill(undefined));
+  });
+
   it('resolves empty when the user closes the picker, or it never opened', async () => {
     vi.useFakeTimers();
     const { popup } = standIn();

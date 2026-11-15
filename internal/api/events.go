@@ -387,12 +387,13 @@ type eventBody struct {
 
 const maxFiles = 20
 
-// fileType is a MIME type as FMTTYPE carries it: type/subtype of token characters.
-var fileType = regexp.MustCompile(`^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$`)
+// fileType is a MIME type FMTTYPE may carry (contract I): no quote, semicolon, colon or space.
+var fileType = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9.+-]+$`)
 
 // eventFiles checks a body's file links at the boundary: at most maxFiles, each a name of 1 to
 // 255 bytes without control characters or a double quote (iCalendar parameters cannot carry
-// one), a ValidURL link and an optional lower-case MIME type. nil: keep them.
+// one) and a ValidURL link. A type other than fileType of at most 127 bytes is dropped, never
+// refused. nil: keep them.
 func eventFiles(files *[]fileView) ([]calendar.File, *apiError) {
 	if files == nil {
 		return nil, nil
@@ -405,8 +406,11 @@ func eventFiles(files *[]fileView) ([]calendar.File, *apiError) {
 	for _, f := range *files {
 		name := strings.TrimSpace(f.Name)
 		if name == "" || len(name) > 255 || !utf8.ValidString(name) || strings.ContainsFunc(name, func(r rune) bool { return r == '"' || unicode.IsControl(r) }) ||
-			!kymessages.ValidURL(f.URL) || f.Type != "" && !fileType.MatchString(f.Type) {
+			!kymessages.ValidURL(f.URL) {
 			return nil, bad
+		}
+		if len(f.Type) > 127 || !fileType.MatchString(f.Type) {
+			f.Type = ""
 		}
 		out = append(out, calendar.File{Name: name, URL: f.URL, Type: f.Type})
 	}

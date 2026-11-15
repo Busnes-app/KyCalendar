@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -54,6 +55,31 @@ func TestEventFilesAreStoredListedAndKept(t *testing.T) {
 	}
 }
 
+// A type that could break out of the FMTTYPE parameter is dropped, never refused and never written.
+func TestEventFileTypesAreDroppedUnlessPlain(t *testing.T) {
+	r := newMeetRig(t)
+	hostile := []string{`text/plain"x`, "text/html;charset=utf-8", "text/x:evil", "text/plain\r\nATTACH:https://evil.example",
+		"Text/Plain", "text/plain x", "application/" + strings.Repeat("x", 116), "/", "text/"}
+	files := []any{driveReport}
+	for i, typ := range hostile {
+		files = append(files, map[string]any{"name": fmt.Sprintf("f%d", i), "url": fmt.Sprintf("https://drive.example/l/#h%d", i), "type": typ})
+	}
+	uid := r.create(t, map[string]any{"files": files})
+	data := string(r.object(t, uid).Data)
+	if n := strings.Count(data, "FMTTYPE"); n != 1 || !strings.Contains(data, "FMTTYPE=application/pdf:") || strings.Contains(data, "evil") || strings.Contains(data, "charset") {
+		t.Fatalf("%d FMTTYPE in\n%s", n, data)
+	}
+	v := r.view(t, uid)
+	if len(v.Files) != len(files) || v.Files[0].Type != "application/pdf" {
+		t.Fatalf("view %+v", v.Files)
+	}
+	for _, f := range v.Files[1:] {
+		if f.Type != "" {
+			t.Errorf("kept type %q", f.Type)
+		}
+	}
+}
+
 func TestEventFilesAreCheckedAtTheBoundary(t *testing.T) {
 	r := newMeetRig(t)
 	many := make([]any, 21)
@@ -68,7 +94,6 @@ func TestEventFilesAreCheckedAtTheBoundary(t *testing.T) {
 		"quote in name":  []any{map[string]any{"name": `a"b`, "url": "https://drive.example/l/#x"}},
 		"newline":        []any{map[string]any{"name": "a\nFile: evil https://evil.example", "url": "https://drive.example/l/#x"}},
 		"long name":      []any{map[string]any{"name": strings.Repeat("a", 256), "url": "https://drive.example/l/#x"}},
-		"bad type":       []any{map[string]any{"name": "a", "url": "https://drive.example/l/#x", "type": "text/html;x"}},
 		"too many files": many,
 	} {
 		ev := map[string]any{"title": "T", "start": "2026-11-16T09:00:00Z", "end": "2026-11-16T10:00:00Z", "zone": "UTC", "files": files}
