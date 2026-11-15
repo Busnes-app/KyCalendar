@@ -397,10 +397,9 @@ is written the way `kypost.itip.respond` writes it.
 | 200 | `{"outcome":"applied"\|"stale"}` | Done, or an older revision |
 
 **KyPost's side.**
-- KyPost sends on every save that changes the calendar-relevant state, from the web, an agent,
-  or the inbox Turn off. It sends `away:true` only when out-of-office is on with both dates and
-  "Show me as away in KyCalendar" is ticked, the pair is up, the user's KyCalendar switch is on,
-  and the account has a live SSO link.
+- KyPost sends the whole state on every save (the web, an agent, the inbox Turn off) while
+  the pair is up, the user's KyCalendar switch is on and the account has a live SSO link. It sends `away:true` only when out-of-office is on with both dates and
+  "Show me as away in KyCalendar" is ticked.
 - A failure is reported to the user and resent on their next save. KyPost never retries in
   the background.
 - Logs and audit carry IDs only, never the period or the texts.
