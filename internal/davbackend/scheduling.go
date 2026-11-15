@@ -338,7 +338,16 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	}
 	switch method {
 	case itip.MethodRequest, itip.MethodCancel:
-		return s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg, m.ID)
+		fresh := method == itip.MethodRequest && s.autoTentativeDue(ctx, recipient)
+		if fresh {
+			_, _, _, err := s.find(ctx, recipient, uid, org)
+			fresh = errors.Is(err, store.ErrNotFound)
+		}
+		if err := s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg, m.ID); err != nil || !fresh {
+			return err
+		}
+		s.autoTentative(ctx, recipient, uid, msg) // best effort: the invitation is delivered either way
+		return nil
 	default: // REPLY
 		return s.deliverReply(ctx, recipient, to, uid, from, msg, m.ID)
 	}
