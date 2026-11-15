@@ -70,7 +70,8 @@ type BookingStore interface {
 	Hold(ctx context.Context, b *Booking, now, from, to int64, maxPerEmail int, check BookingCheck) error
 	DeleteHold(ctx context.Context, id string) error
 	// Confirm turns hold id, open at now, into a booking: check (other holds only), then o is
-	// written through plan as a new object and the row records it with manageHash.
+	// written through plan as a new object and the row records it with manageHash. The row
+	// forgets the visitor's email, name and note: the event holds them now.
 	Confirm(ctx context.Context, id string, now, from, to int64, check BookingCheck, o *CalendarObject, manageHash string, lim OwnerLimits, plan Planner) error
 	// Reschedule moves confirmed booking id to [start, end): check (without its own event), then o
 	// replaces its event against ifMatch.
@@ -326,7 +327,7 @@ func (s *bookingStore) Confirm(ctx context.Context, id string, now, from, to int
 	if _, err := s.c.putObjectPlanned(ctx, o, "", true, lim, plan, tx); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, s.q(`UPDATE bookings SET status = 'confirmed', expires_at = 0, manage_hash = ?,
+	if _, err := tx.ExecContext(ctx, s.q(`UPDATE bookings SET status = 'confirmed', expires_at = 0, email = '', name = '', note = '', manage_hash = ?,
 calendar_id = ?, object_name = ?, uid = ? WHERE id = ?`), manageHash, o.CalendarID, o.Name, o.UID, id); err != nil {
 		return err
 	}

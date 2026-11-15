@@ -638,3 +638,16 @@ func TestBookingTypeValidationAndOwnership(t *testing.T) {
 		t.Fatalf("local member: %s", r.Body.String())
 	}
 }
+
+func TestBookingRowForgetsTheVisitorOnceConfirmed(t *testing.T) {
+	w := newBookingWorld(t)
+	v := newVisitor()
+	id, token := w.hold(t, v, v.page(t, w, w.slug).Slots[0].Start)
+	if r := v.do(t, w.srv, "POST", "/api/book/confirm", linkJSON(id, token)); r.Code != 200 {
+		t.Fatalf("confirm: %d", r.Code)
+	}
+	b, err := w.st.Bookings().Get(context.Background(), id)
+	if err != nil || b.Email != "" || b.Name != "" || b.Note != "" {
+		t.Fatalf("row after confirm %+v %v", b, err)
+	}
+}

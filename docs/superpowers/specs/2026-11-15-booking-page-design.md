@@ -86,7 +86,7 @@ someone who can read the database can do no more with it than any visitor.
 - `confirm_hash`, `manage_hash`: SHA-256 of the tokens
 - `calendar_id`, `object_name`, `uid`: the event, once confirmed
 
-Retention: a hold past `expires_at` is inactive at once and deleted, with its name, email and
+Retention: confirming clears the row's email, name and note (the event holds them). A hold past `expires_at` is inactive at once and deleted, with its name, email and
 note, by a prune that runs every minute. A booking the booker cancels is deleted at once, and one
 the member cancelled (its event is gone) is deleted the next time its manage link opens.
 Confirmed rows are deleted 30 days after the booking ends, after which the manage link answers
