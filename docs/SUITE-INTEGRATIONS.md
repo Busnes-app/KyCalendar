@@ -1,10 +1,15 @@
 # Suite integrations (KyCalendar's half)
 
-KyCalendar's copy of the wave 1 wire contracts (owner decisions 2026-11-14; source:
-`ky-redesign/integrations/suite-integrations-contracts.md`). This copy is the durable one for
-this repository: change it together with the peer's copy. Sections implemented here: shared
-rules, B (KyCalendar → KyMessages meetings), D (people picker, KyCalendar's part) and E (the
-`/new` deep link, receiver) and F (the free/busy strip).
+KyCalendar's copy of the wave 1 and wave 2 wire contracts (owner decisions 2026-11-14; source:
+`ky-redesign/integrations/suite-integrations-contracts.md` and `suite-integrations-wave2.md`).
+This copy is the durable one for this repository: change it together with the peer's copy.
+Sections implemented here: shared rules, B (KyCalendar → KyMessages meetings), D (people picker,
+KyCalendar's part), E (the `/new` deep link, receiver), F (the free/busy strip) and, from wave 2,
+H (chat from the event view, KyCalendar's part).
+
+Wave 2 compatibility rule: each side must keep working against the other side's wave 1 `main`
+until both have merged. A new request field the old receiver refuses means: retry without it
+and show the feature as unavailable.
 
 ## Shared rules
 
@@ -153,3 +158,62 @@ takes up to 50 addresses, so no new backend); rows only for people the server kn
 `unknown`); busy and tentative blocks across the day, the chosen time outlined, and "Busy at
 this time" when a block overlaps it (an all-day event is the whole day). Any failure shows no
 strip. It appears with the People section, so only where invitations are on.
+
+## H. Chat from the event view (KyCalendar → KyMessages)
+
+| Event type | Route on KyMessages console |
+|---|---|
+| `kycalendar.chat.open` | `POST /api/suite/chat` |
+
+One route serves KyPost (`kypost.chat.open`) and KyCalendar; the receiver accepts each type only
+from its own pair secret. Pair: `kycalendar`↔`kymessage`, the meetings pair.
+
+```json
+{"sub":"<caller>","issuer":"https://id.example","target_sub":"<person to chat with>"}
+```
+
+200 `{"url":"https://chat.example/#/user/@bob:example"}`: Element's user view, which offers
+"Message" and reuses an existing direct chat. The console creates nothing.
+
+| Status | Code | When |
+|---|---|---|
+| 404 | `kycalendar_off` | Not paired. |
+| 404 | `no_user` | Caller has no active KyMessages account. |
+| 404 | `no_target` | Target has no active KyMessages account, is the caller, or is an administrator identity. |
+| 400 | `bad_body` | |
+| 429 | `rate_limited` | |
+
+Caller: a "Chat" action on each organisation attendee in the event view, shown only when
+KyMessages is in the user's suite app list and `suitedir.Resolve` places the address in the
+organisation. Clicking asks KyCalendar's own session route, which calls the console and opens
+the answer in a new tab. `no_target` shows "This person isn't on KyMessages yet." The answer's
+URL must be `https://` on the paired KyMessages origin's Element host, else it is dropped.
+
+### Where Element is (shared with KyPost)
+
+The pairing names the KyMessages console's URL, not Element's host, so KyCalendar reads Element's
+origin from the user's suite app list, entry `kymessage-chat` (as KyPost does, KyPost #613). Chat
+shows only when that entry is there with an `https` URL, and the answer must be on exactly that
+origin and also pass `kymessages.ValidChatURL`: no credentials, path empty or `/`, no query,
+fragment exactly `/user/@<localpart>:<server>`. Anything else is `bad_reply` and never reaches the
+browser. KyMessages answers `ChatHost + "/#/user/@bob:example"`; `KY_MATRIX_CHAT_HOST` must equal
+the `kymessage-chat` launch URL's origin.
+
+### How KyCalendar implements it
+
+- **Session routes.** `POST /api/suite/chat {"email"}` (everyday, CSRF) → 200 `{"url"}`,
+  `Cache-Control: no-store`. It resolves the address with `suitedir.Resolve` as the caller; no
+  match, or the caller themself, is 404 `no_target` without asking KyMessages. Refusals: 400
+  `bad_body` (not one address, body over 1 KiB), 429 `rate_limited` (20 per user per minute),
+  404 `chat_off` (KyMessages not linked, the account did not sign in through the live
+  KyIdentity binding, or no `kymessage-chat` in the user's suite apps), 404 `no_target`/`no_user` (passed on from
+  KyMessages), 502 `refused` (any other refusal or a bad link), 503 `unavailable` (the people
+  lookup, the network, 429/5xx or `kycalendar_off` from KyMessages; never retried for the user).
+- **Who gets the action.** `GET /api/suite/people?email=…` (repeated, 1 to 100 addresses) answers
+  which addresses are organisation people, with the search's rate limit, minute cache and
+  empty-list-on-failure rules. The event view asks it once for the organizer and attendees but
+  the user, and shows Chat beside each match.
+- **Body.** `issuer` is the issuer URL: the account's `sso_issuer` binding without its
+  `kyidentity ` prefix. Every attempt carries a fresh event ID.
+- **Audit.** `chat.open`, or `chat.refused` with `code=`, by user ID only: never the address,
+  the subject or the link.

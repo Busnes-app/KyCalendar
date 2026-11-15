@@ -40,15 +40,15 @@ var meetingNow = time.Now
 
 var errPeopleUnavailable = errors.New("suite people lookup unavailable")
 
-// resolvePeople turns attendee emails into KyIdentity subjects (suite contract A3, Resolve);
+// resolvePeople turns attendee emails into organisation people (suite contract A3, Resolve);
 // unmatched addresses are absent. A variable so tests can stand in for KyIdentity.
-var resolvePeople = func(ctx context.Context, dir *suitedir.Client, sub string, emails []string) ([]string, error) {
-	people, err := dir.Resolve(ctx, sub, emails)
-	subs := make([]string, 0, len(people))
-	for _, p := range people {
-		subs = append(subs, p.Sub)
+var resolvePeople = func(ctx context.Context, dir *suitedir.Client, sub string, emails []string) ([]person, error) {
+	found, err := dir.Resolve(ctx, sub, emails)
+	people := make([]person, 0, len(found))
+	for _, p := range found {
+		people = append(people, person{Sub: p.Sub, Name: p.Name, Email: p.Email})
 	}
-	return subs, err
+	return people, err
 }
 
 // newMeetingID is a fresh opaque room ID, never derived from the event: 32 base64url characters.
@@ -90,8 +90,7 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	}
 	var who kymessages.User
 	if owner != nil {
-		// sso_issuer is the binding "kyidentity <issuer URL>"; the wire carries the URL.
-		who = kymessages.User{Sub: owner.SSOSubject, Issuer: strings.TrimPrefix(owner.SSOIssuer, sso.KindKyIdentity+" ")}
+		who = kymessages.User{Sub: owner.SSOSubject, Issuer: issuerURL(owner)}
 	}
 	if m.State == "closing" {
 		return s.closeMeeting(ctx, m, who)
@@ -223,6 +222,21 @@ func meetingEmails(cal *ical.Calendar, self string) []string {
 }
 
 func (s *Server) meetingMembers(ctx context.Context, owner *store.User, emails []string) ([]string, error) {
+	people, err := s.resolveAs(ctx, owner, emails)
+	if err != nil {
+		return nil, err
+	}
+	subs := []string{}
+	for _, p := range people {
+		if p.Sub != owner.SSOSubject {
+			subs = append(subs, p.Sub)
+		}
+	}
+	return subs[:min(len(subs), kymessages.MaxMembers)], nil
+}
+
+// resolveAs asks KyIdentity, as u, which of emails belong to organisation people.
+func (s *Server) resolveAs(ctx context.Context, u *store.User, emails []string) ([]person, error) {
 	p := s.signin.Load()
 	if p == nil || p.Kind != sso.KindKyIdentity {
 		return nil, errPeopleUnavailable
@@ -233,12 +247,7 @@ func (s *Server) meetingMembers(ctx context.Context, owner *store.User, emails [
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	subs, err := resolvePeople(ctx, dir, owner.SSOSubject, emails)
-	if err != nil {
-		return nil, err
-	}
-	subs = slices.DeleteFunc(subs, func(sub string) bool { return sub == owner.SSOSubject })
-	return subs[:min(len(subs), kymessages.MaxMembers)], nil
+	return resolvePeople(ctx, dir, u.SSOSubject, emails)
 }
 
 // writeMeetingLink puts url into the organizer's event through the scheduled write path, so

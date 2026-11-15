@@ -425,6 +425,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/admin/kymessages", s.requireAdmin(s.handleKyMessagesStatus))
 	s.handle("GET /api/suite/apps", s.requireSession(s.handleSuiteApps))
 	s.handle("GET /api/suite/people", s.requireEveryday(s.handleSuitePeople))
+	s.handle("POST /api/suite/chat", s.requireEveryday(s.handleSuiteChat))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))

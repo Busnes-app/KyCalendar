@@ -115,20 +115,25 @@ func newMeetRig(t *testing.T) *meetRig {
 	old := meetingNow
 	meetingNow = func() time.Time { return rig.clock }
 	oldResolve := resolvePeople
-	resolvePeople = func(_ context.Context, _ *suitedir.Client, sub string, emails []string) ([]string, error) {
+	resolvePeople = func(_ context.Context, _ *suitedir.Client, sub string, emails []string) ([]person, error) {
 		if sub != "sub-org" {
 			t.Errorf("resolved as %q", sub)
 		}
-		var subs []string
-		for _, e := range emails {
-			if name, ok := strings.CutSuffix(e, "@example.com"); ok {
-				subs = append(subs, "sub-"+name)
-			}
-		}
-		return subs, nil
+		return orgPeople(emails), nil
 	}
 	t.Cleanup(func() { meetingNow, resolvePeople = old, oldResolve })
 	return rig
+}
+
+// orgPeople is the test organisation: every @example.com address, subject sub-<local part>.
+func orgPeople(emails []string) []person {
+	var out []person
+	for _, e := range emails {
+		if name, ok := strings.CutSuffix(e, "@example.com"); ok {
+			out = append(out, person{Sub: "sub-" + name, Email: e})
+		}
+	}
+	return out
 }
 
 // sync runs the worker once, later than any backoff so far.
@@ -596,7 +601,7 @@ func TestFailedPeopleLookupNeverShrinksTheRoom(t *testing.T) {
 	if calls := r.km.seen(); len(calls) != 1 || fmt.Sprint(calls[0].Body.MemberSubs) != "[sub-ann]" {
 		t.Fatalf("calls %+v", calls)
 	}
-	resolvePeople = func(context.Context, *suitedir.Client, string, []string) ([]string, error) {
+	resolvePeople = func(context.Context, *suitedir.Client, string, []string) ([]person, error) {
 		return nil, errPeopleUnavailable
 	}
 	r.update(t, uid, map[string]any{"title": "Renamed"})
@@ -647,9 +652,9 @@ func TestResolvePeopleAsksKyIdentityAsTheOrganizer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subs, err := resolvePeople(context.Background(), dir, "sub-org", []string{"ann@example.com", "nobody@example.com"})
-	if err != nil || fmt.Sprint(subs) != "[sub-ann]" {
-		t.Fatalf("subs %v err %v", subs, err)
+	people, err := resolvePeople(context.Background(), dir, "sub-org", []string{"ann@example.com", "nobody@example.com"})
+	if err != nil || len(people) != 1 || people[0] != (person{Sub: "sub-ann", Name: "Ann", Email: "ann@example.com"}) {
+		t.Fatalf("people %v err %v", people, err)
 	}
 	if got.Get("sub") != "sub-org" || fmt.Sprint(got["email"]) != "[ann@example.com nobody@example.com]" {
 		t.Fatalf("query %v", got)

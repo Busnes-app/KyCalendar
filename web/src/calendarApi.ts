@@ -137,3 +137,21 @@ export const freeBusy = (emails: string[], start: Date, end: Date) =>
   send(`/api/freebusy?users=${encodeURIComponent(emails.join(','))}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`)
     .then((r) => parse<{ people: PersonBusy[] }>(r))
     .then((b) => (Array.isArray(b?.people) ? b.people : []));
+
+/** Which of these addresses are organisation people (`GET /api/suite/people?email=`); `[]` on any failure. */
+export const orgEmails = (emails: string[]): Promise<string[]> =>
+  emails.length === 0
+    ? Promise.resolve([])
+    : fetch(`/api/suite/people?${emails.map((e) => `email=${encodeURIComponent(e)}`).join('&')}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => (Array.isArray(b?.people) ? b.people.map((p: Person) => p?.email).filter((e: unknown): e is string => typeof e === 'string') : []))
+        .catch(() => []);
+
+/** KyMessages' link for chatting with an organisation person (`POST /api/suite/chat`); throws `ApiError`. */
+export const chatLink = (email: string) =>
+  send('/api/suite/chat', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ email }) })
+    .then((r) => parse<{ url?: unknown }>(r))
+    .then((b) => {
+      if (typeof b?.url !== 'string' || !b.url.startsWith('https://')) throw new ApiError(502, 'refused', 'KyMessages refused to open the chat');
+      return b.url;
+    });
