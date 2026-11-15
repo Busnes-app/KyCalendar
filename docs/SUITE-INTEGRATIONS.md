@@ -53,7 +53,9 @@ Pairing is the suite pair `kycalendar`↔`kymessage`.
   members no longer listed removed. The organizer is always a member.
 - `member_subs` holds KyIdentity subjects (KyCalendar resolves attendee addresses with
   `suitedir.Resolve`). A subject with no KyMessages account yet is skipped, not refused, and
-  reported back; a later PUT picks it up.
+  reported back; a later PUT picks it up. KyCalendar repeats the PUT on its daily refresh
+  (`refresh_at`) while the last one skipped someone and the event has an occurrence still to
+  come; one that skipped nobody, an ended event and a cancelled (closed) one get no refresh.
 - A `guests` field that is present and non-empty: 422 `guests_unsupported` (wave 1 KyMessages;
   section L replaces this).
 - Room state: join rule `invite`, history visibility `joined`, encryption on, power levels
@@ -231,8 +233,10 @@ user click.
   that confirming click sends anything.
 - `mode=link` (default): KyDrive creates an organisation link per file in the user's own session
   (role reader, the same expiry choice as contract C), then
-  `window.opener.postMessage({type:"kydrive.picked", files:[{name,size,url,expires}]}, origin)`
-  and closes. The target origin is the validated `origin`, never `*`.
+  `window.opener.postMessage({type:"kydrive.picked", files:[{name,size,url,expires,mime?}]}, origin)`
+  and closes. The target origin is the validated `origin`, never `*`. `mime` (added
+  2026-11-15) is the file's media type as KyDrive serves it, set by KyDrive's server, present
+  only when it matches `^[a-z0-9]+/[a-z0-9.+-]+$` and is at most 127 bytes.
 - `mode=copy` is for the paired KyPost only.
 - The picker page keeps `frame-ancestors 'none'`.
 - Callers listen for exactly `kydrive.picked` from exactly the KyDrive origin, and treat every
@@ -251,13 +255,15 @@ organisation see the line but cannot open it; say so beside the button.
   that origin, whose `source` is the popup it opened, and whose `type` is `kydrive.picked`. Each
   file needs a name (1 to 255 bytes, no control characters or `"`) and a `url` of at most 2048
   characters on that same origin, without credentials or spaces; anything else is dropped.
-  `size` and `expires` are not stored (the link's own page says when it expires). A closed popup
+  A `mime` that passes the same rule becomes the file's `type`; any other is dropped and the
+  file kept. `size` and `expires` are not stored (the link's own page says when it expires). A closed popup
   ends the pick with nothing. KyCalendar sends no `Cross-Origin-Opener-Policy`, so `opener` survives.
 - **Events API.** Create and update take `files: [{name, url, type?}]` (absent keeps, `[]`
   removes; series only, else 400 `attendees_series_only`); at most 20, each a trimmed name of 1
   to 255 bytes without control characters or `"`, an `https` link without credentials, spaces
-  or controls (at most 2048 bytes), and an optional lower-case `type/subtype`; else 400
-  `bad_files`. The KyDrive origin is not checked server-side: the browser does that, and the
+  or controls (at most 2048 bytes); else 400 `bad_files`. An optional `type` is written as
+  `FMTTYPE` only when it matches `^[a-z0-9]+/[a-z0-9.+-]+$` and is at most 127 bytes; any other
+  is dropped, never refused, so no quote, semicolon, colon or line break reaches the line. The KyDrive origin is not checked server-side: the browser does that, and the
   server's rule is only that nothing but a safe `https` link is ever written.
 - **Stored form.** Every VEVENT gets the `ATTACH` properties and one `File:` line per file, in a
   block after the user's text and before the `Join:` line (`calendar.SetFiles`). Only URI
