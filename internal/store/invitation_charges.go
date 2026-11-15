@@ -77,6 +77,9 @@ func (c *calendarStore) invitationCharge(ctx context.Context, tx *sql.Tx, o *Cal
 		if _, err := tx.ExecContext(ctx, c.q(`UPDATE scheduling_outbox SET status = 'delivered', attempts = attempts + 1, body = ?, last_error = '' WHERE id = ?`), []byte{}, o.DeliveryID); err != nil {
 			return err
 		}
+	} else if !exists && o.DeliveryRecipient != "" {
+		// No queued delivery: the recipient's own answer (KyPost card) made this copy. It is theirs.
+		o.InvitationRecipient = o.DeliveryRecipient
 	}
 
 	// Delivery can establish sponsorship but can never prove an attendee's response.
