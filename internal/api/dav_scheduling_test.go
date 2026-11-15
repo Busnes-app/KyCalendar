@@ -335,8 +335,8 @@ func TestSchedulingOutboxCountsAgainstQuota(t *testing.T) {
 	}
 }
 
-// An answered copy is kept, cancelled, with the attendee's own reminders once each.
-func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
+// An answered copy is kept, cancelled, and its reminders go: nothing reminds of a called-off meeting.
+func TestSchedulingCancelDropsAlarms(t *testing.T) {
 	w := newSchedWorld(t, true)
 	if code, _ := w.put("alice", "m-alarm.ics", meeting("m-alarm", "alice", "ATTENDEE:mailto:bob@example.com"), ""); code != 201 {
 		t.Fatalf("invite PUT %d", code)
@@ -356,7 +356,7 @@ func TestSchedulingCancelKeepsAlarmsOnce(t *testing.T) {
 		t.Fatalf("delete %d", r.StatusCode)
 	}
 	w.deliver()
-	if got, _ := w.copyOf("bob", "m-alarm"); !strings.Contains(got, "STATUS:CANCELLED") || strings.Count(got, "BEGIN:VALARM") != 1 {
+	if got, _ := w.copyOf("bob", "m-alarm"); !strings.Contains(got, "STATUS:CANCELLED") || strings.Contains(got, "BEGIN:VALARM") {
 		t.Fatalf("bob's copy after the cancel:\n%s", got)
 	}
 }

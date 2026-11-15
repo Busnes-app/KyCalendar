@@ -194,17 +194,37 @@ func cancellationCopy(o *store.CalendarObject, existing *ical.Calendar, self iti
 	if !keep {
 		return nil, errDeleteCopy
 	}
-	seq := 0
-	if m, err := calendar.Master(msg); err == nil {
-		seq = sequenceOf(m)
+	from, err := calendar.Master(msg)
+	if err != nil {
+		from = ical.NewComponent(ical.CompEvent)
 	}
 	for _, ev := range existing.Children {
 		if ev.Name == ical.CompEvent {
-			ev.Props.SetText(ical.PropStatus, "CANCELLED")
-			setOrganizerSequence(ev, seq)
+			markCancelled(ev, from)
 		}
 	}
 	return existing, nil
+}
+
+// markCancelled marks ev, a copy's VEVENT, cancelled as the organizer's from says: STATUS,
+// SEQUENCE and DTSTAMP. Its alarms go: nothing reminds anyone of a meeting called off.
+func markCancelled(ev, from *ical.Component) {
+	seq := sequenceOf(from)
+	ev.Props.SetText(ical.PropStatus, "CANCELLED")
+	setOrganizerSequence(ev, seq)
+	if seq > sequenceOf(ev) {
+		ev.Props.Set(&ical.Prop{Name: ical.PropSequence, Params: ical.Params{}, Value: strconv.Itoa(seq)})
+	}
+	if p := from.Props.Get(ical.PropDateTimeStamp); p != nil {
+		ev.Props.Set(&ical.Prop{Name: p.Name, Params: ical.Params{}, Value: p.Value})
+	}
+	var kept []*ical.Component
+	for _, c := range ev.Children {
+		if c.Name != ical.CompAlarm {
+			kept = append(kept, c)
+		}
+	}
+	ev.Children = kept
 }
 
 // organizerSequence is kept on each VEVENT of a delivered copy: the organizer's SEQUENCE it last
@@ -396,8 +416,7 @@ func deliverOccurrences(existing *ical.Calendar, self itip.Address, method strin
 				continue
 			}
 			if o := occurrence(c); o != nil {
-				o.Props.SetText(ical.PropStatus, "CANCELLED")
-				setOrganizerSequence(o, sequenceOf(c))
+				markCancelled(o, c)
 				cancelled = true
 			}
 		}
