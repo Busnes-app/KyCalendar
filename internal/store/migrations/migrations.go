@@ -594,6 +594,54 @@ CREATE TABLE sso_logouts (
 	{Version: 24, Name: "cancellation_reservations", SQLite: cancellationReservations, Postgres: cancellationReservations},
 	{Version: 25, Name: "video_meetings", SQLite: videoMeetings("DATETIME"), Postgres: videoMeetings("TIMESTAMPTZ")},
 	{Version: 26, Name: "meeting_guests", SQLite: meetingGuests("DATETIME"), Postgres: meetingGuests("TIMESTAMPTZ")},
+	{Version: 27, Name: "booking_pages", SQLite: bookingPages("DATETIME"), Postgres: bookingPages("TIMESTAMPTZ")},
+}
+
+// bookingPages: a member's booking types, each with its public slug, and one row per hold or
+// booking. A hold is status held until expires_at; a confirmed booking's event is an ordinary
+// calendar object (calendar_id, object_name). Times are unix seconds.
+func bookingPages(ts string) string {
+	return `CREATE TABLE booking_types (
+ id TEXT PRIMARY KEY,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ slug TEXT NOT NULL UNIQUE,
+ enabled BOOLEAN NOT NULL DEFAULT FALSE,
+ title TEXT NOT NULL,
+ duration_min INTEGER NOT NULL,
+ zone TEXT NOT NULL,
+ windows TEXT NOT NULL,
+ buffer_before_min INTEGER NOT NULL DEFAULT 0,
+ buffer_after_min INTEGER NOT NULL DEFAULT 0,
+ notice_min INTEGER NOT NULL,
+ horizon_days INTEGER NOT NULL,
+ daily_cap INTEGER NOT NULL DEFAULT 0,
+ calendar_id TEXT NOT NULL,
+ meeting_room BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at ` + ts + ` NOT NULL,
+ updated_at ` + ts + ` NOT NULL
+);
+CREATE INDEX booking_types_user ON booking_types(user_id);
+CREATE TABLE bookings (
+ id TEXT PRIMARY KEY,
+ type_id TEXT NOT NULL REFERENCES booking_types(id) ON DELETE CASCADE,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ status TEXT NOT NULL,
+ start_at BIGINT NOT NULL,
+ end_at BIGINT NOT NULL,
+ expires_at BIGINT NOT NULL DEFAULT 0,
+ email TEXT NOT NULL DEFAULT '',
+ email_hash TEXT NOT NULL DEFAULT '',
+ name TEXT NOT NULL DEFAULT '',
+ note TEXT NOT NULL DEFAULT '',
+ confirm_hash TEXT NOT NULL DEFAULT '',
+ manage_hash TEXT NOT NULL DEFAULT '',
+ calendar_id TEXT NOT NULL DEFAULT '',
+ object_name TEXT NOT NULL DEFAULT '',
+ uid TEXT NOT NULL,
+ created_at ` + ts + ` NOT NULL
+);
+CREATE INDEX bookings_user_time ON bookings(user_id, status, start_at);
+CREATE INDEX bookings_email ON bookings(email_hash, status);`
 }
 
 // meetingGuests: one row per attendee outside the organisation on a meeting, with the opaque

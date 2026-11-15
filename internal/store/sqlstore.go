@@ -23,6 +23,7 @@ type SQLStore struct {
 	devices      *deviceStore
 	groups       *groupStore
 	calendars    *calendarStore
+	bookings     *bookingStore
 	appPasswords *appPasswordStore
 	audit        *auditStore
 	settings     *settingsStore
@@ -49,6 +50,7 @@ func newSQLStore(ctx context.Context, db *sql.DB, driver string) (*SQLStore, err
 	s.devices = &deviceStore{store: s}
 	s.groups = &groupStore{store: s}
 	s.calendars = &calendarStore{store: s}
+	s.bookings = &bookingStore{c: s.calendars}
 	s.appPasswords = &appPasswordStore{store: s}
 	s.audit = &auditStore{store: s}
 	s.settings = &settingsStore{store: s}
@@ -61,6 +63,7 @@ func (s *SQLStore) Sessions() SessionStore         { return s.sessions }
 func (s *SQLStore) Devices() DeviceStore           { return s.devices }
 func (s *SQLStore) Groups() GroupStore             { return s.groups }
 func (s *SQLStore) Calendars() CalendarStore       { return s.calendars }
+func (s *SQLStore) Bookings() BookingStore         { return s.bookings }
 func (s *SQLStore) AppPasswords() AppPasswordStore { return s.appPasswords }
 func (s *SQLStore) Audit() AuditStore              { return s.audit }
 func (s *SQLStore) Settings() SettingsStore        { return s.settings }

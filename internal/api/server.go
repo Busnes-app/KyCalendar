@@ -443,6 +443,23 @@ func (s *Server) routes() {
 	s.handle("POST /api/events/{cal}/{uid}/rsvp", s.requireEveryday(s.handleRSVP))
 	s.handle("GET /api/freebusy", s.requireEveryday(s.handleFreeBusy))
 
+	// Booking pages (booking.go). Members manage their own types; the /api/book routes are
+	// public, need the pre-session CSRF token on every POST, and answer 404 while unavailable.
+	s.handle("GET /api/admin/booking", s.requireAdmin(s.handleGetBookingAdmin))
+	s.handle("PUT /api/admin/booking", s.requireAdmin(s.handleSetBookingAdmin))
+	s.handle("GET /api/booking-types", s.requireEveryday(s.handleListBookingTypes))
+	s.handle("POST /api/booking-types", s.requireEveryday(s.handleCreateBookingType))
+	s.handle("PUT /api/booking-types/{id}", s.requireEveryday(s.handleUpdateBookingType))
+	s.handle("POST /api/booking-types/{id}/rotate", s.requireEveryday(s.handleRotateBookingType))
+	s.handle("DELETE /api/booking-types/{id}", s.requireEveryday(s.handleDeleteBookingType))
+	s.handle("GET /api/book/{slug}", http.HandlerFunc(s.handleBookingPage))
+	s.handle("POST /api/book/{slug}/hold", http.HandlerFunc(s.handleBookingHold))
+	s.handle("POST /api/book/confirm/view", http.HandlerFunc(s.handleBookingConfirmView))
+	s.handle("POST /api/book/confirm", http.HandlerFunc(s.handleBookingConfirm))
+	s.handle("POST /api/book/manage", http.HandlerFunc(s.handleBookingManage))
+	s.handle("POST /api/book/manage/cancel", http.HandlerFunc(s.handleBookingCancel))
+	s.handle("POST /api/book/manage/reschedule", http.HandlerFunc(s.handleBookingReschedule))
+
 	// KyPost, server to server: syncauth-signed under the shared secret, never a session. 404
 	// unless scheduling is on and KyPost linked.
 	s.handle("POST /api/itip/inbound", http.HandlerFunc(s.handleITIPInbound))
@@ -566,8 +583,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Login runs before a session (and its CSRF token) exists; a cross-site form posting
-	// there would plant the attacker's session in the victim's browser.
-	if isUnsafeMethod(r.Method) && strings.HasPrefix(r.URL.Path, "/api/auth/") && crossSite(r) {
+	// there would plant the attacker's session in the victim's browser. Booking forms are
+	// for visitors, who have no session either.
+	if isUnsafeMethod(r.Method) && (strings.HasPrefix(r.URL.Path, "/api/auth/") || publicBookingRoute(r.URL.Path)) && crossSite(r) {
 		s.writeError(w, http.StatusForbidden, "Cross-site request refused")
 		return
 	}
@@ -624,11 +642,18 @@ func (s *Server) csrfValid(r *http.Request) bool {
 	switch {
 	case credentialRoute(r.URL.Path):
 		return !browserRequest(r) || s.sessions.ValidatePreSessionCSRF(r)
+	case publicBookingRoute(r.URL.Path):
+		return s.sessions.ValidatePreSessionCSRF(r) // every client: the page's GET hands out the token
 	case r.URL.Path == "/api/sso/kysignon/sync" || !hasSessionCookie(r):
 		return true
 	default:
 		return s.sessions.ValidateCSRF(r)
 	}
+}
+
+// publicBookingRoute is a booking page's form, posted by visitors with no session.
+func publicBookingRoute(path string) bool {
+	return strings.HasPrefix(path, "/api/book/")
 }
 
 // credentialRoute is the pre-session sign-in step.
