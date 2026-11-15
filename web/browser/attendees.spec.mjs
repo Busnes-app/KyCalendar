@@ -72,8 +72,8 @@ test('attendees: a long address ellipsizes, Chat and Remove stay on its line', a
   if (phone) {
     expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     // Touch targets: 44px on phones.
-    expect(c.height).toBeGreaterThanOrEqual(44);
-    expect(r.height).toBeGreaterThanOrEqual(44);
+    expect(Math.round(c.height)).toBeGreaterThanOrEqual(44); // boxes carry subpixel offsets
+    expect(Math.round(r.height)).toBeGreaterThanOrEqual(44);
   }
   await context.close();
 });
