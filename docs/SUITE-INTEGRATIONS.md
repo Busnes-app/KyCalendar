@@ -94,6 +94,9 @@ Closes the room as the console's Close does (blocked, members out, history kept)
 
 ### How KyCalendar implements it, and where it is more specific than the contract
 
+- **Issuer.** `issuer` is the KyIdentity issuer URL the organizer signed in with: the account's
+  `sso_issuer` binding (`kyidentity <issuer URL>`) without its kind, so KyMessages can match it
+  against its own issuer.
 - **DELETE body.** The contract names none; KyCalendar signs `{"sub","issuer"}` of the organizer,
   like every other body. KyMessages may ignore it.
 - **Event IDs.** Every attempt carries a fresh `X-KySignOn-Event-ID`, so a retry is a new event,
