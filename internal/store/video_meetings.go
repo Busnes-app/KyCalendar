@@ -13,7 +13,7 @@ import (
 type VideoMeeting struct {
 	ID, UserID, CalendarID, Name, State string
 	MemberURL                           string // the room link, "" until a PUT answered
-	Synced                              string // digest of the last PUT KyMessages accepted
+	Synced                              string // digest of the last PUT KyMessages accepted; "" repeats it
 	LastError                           string // a fixed code, never a message
 	GuestsError                         string // why KyMessages took no guests last time, or ""
 	Rev, DoneRev                        int64
@@ -173,9 +173,10 @@ func (c *calendarStore) SetMeetingGuests(ctx context.Context, meetingID string, 
 	return tx.Commit()
 }
 
-// RefreshMeetings makes every open meeting whose refresh time has come due again.
+// RefreshMeetings makes every open meeting whose refresh time has come due again, its PUT
+// repeated even if unchanged.
 func (c *calendarStore) RefreshMeetings(ctx context.Context, now time.Time) error {
-	_, err := c.store.db.ExecContext(ctx, c.q(`UPDATE video_meetings SET rev = rev + 1, attempts = 0, next_attempt_at = ?, refresh_at = NULL
+	_, err := c.store.db.ExecContext(ctx, c.q(`UPDATE video_meetings SET rev = rev + 1, attempts = 0, next_attempt_at = ?, refresh_at = NULL, synced = ''
 WHERE state = 'open' AND refresh_at IS NOT NULL AND refresh_at <= ?`), now.UTC(), now.UTC())
 	return err
 }

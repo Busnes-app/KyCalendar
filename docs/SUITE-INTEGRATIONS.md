@@ -53,7 +53,9 @@ Pairing is the suite pair `kycalendar`↔`kymessage`.
   members no longer listed removed. The organizer is always a member.
 - `member_subs` holds KyIdentity subjects (KyCalendar resolves attendee addresses with
   `suitedir.Resolve`). A subject with no KyMessages account yet is skipped, not refused, and
-  reported back; a later PUT picks it up.
+  reported back; a later PUT picks it up. KyCalendar repeats the PUT on its daily refresh
+  (`refresh_at`) while the last one skipped someone and the event has an occurrence still to
+  come; one that skipped nobody, an ended event and a cancelled (closed) one get no refresh.
 - A `guests` field that is present and non-empty: 422 `guests_unsupported` (wave 1 KyMessages;
   section L replaces this).
 - Room state: join rule `invite`, history visibility `joined`, encryption on, power levels

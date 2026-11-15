@@ -707,3 +707,101 @@ func TestRevokedAccessClosesTheRoom(t *testing.T) {
 		}
 	}
 }
+
+// skipRig answers every PUT skipping the subjects in *skip. Its clock is now: the store
+// stamps due times with the real clock.
+func skipRig(t *testing.T) (*meetRig, *[]string) {
+	r := newMeetRig(t)
+	r.s.startScheduling()
+	skip := &[]string{"sub-bob"}
+	r.km.answer(func(method, id string) (int, string) {
+		if method != http.MethodPut {
+			return 200, `{"outcome":"closed"}`
+		}
+		b, _ := json.Marshal(map[string]any{"member_url": roomURL(id), "skipped_subs": *skip})
+		return 200, string(b)
+	})
+	return r, skip
+}
+
+// meetingAt is a one-hour video meeting starting in from, with attendees.
+func meetingAt(from time.Duration, attendees ...string) map[string]any {
+	start := time.Now().UTC().Add(from).Truncate(time.Minute)
+	return map[string]any{"meeting": true, "attendees": attendees, "start": start.Format(time.RFC3339), "end": start.Add(time.Hour).Format(time.RFC3339)}
+}
+
+// later runs the worker a day and an hour on: past any daily refresh.
+func (r *meetRig) later() {
+	r.clock = r.clock.Add(25 * time.Hour)
+	r.s.SyncMeetings(context.Background())
+}
+
+func TestSkippedMembersAreOfferedAgainDaily(t *testing.T) {
+	r, skip := skipRig(t)
+	r.create(t, meetingAt(72*time.Hour, "ann@example.com", "bob@example.com"))
+	r.sync()
+	r.sync() // before the daily refresh: nothing
+	if calls := r.km.seen(); len(calls) != 1 {
+		t.Fatalf("calls %s", methods(calls))
+	}
+	*skip = []string{} // bob made a KyMessages account
+	r.later()
+	calls := r.km.seen()
+	if len(calls) != 2 || fmt.Sprint(calls[1].Body.MemberSubs) != "[sub-ann sub-bob]" {
+		t.Fatalf("calls %+v", calls)
+	}
+	r.later() // nothing skipped any more: no refresh
+	if calls := r.km.seen(); len(calls) != 2 {
+		t.Fatalf("re-PUT with nothing skipped: %s", methods(calls))
+	}
+}
+
+func TestNothingSkippedNoRefresh(t *testing.T) {
+	r, skip := skipRig(t)
+	*skip = []string{}
+	r.create(t, meetingAt(72*time.Hour, "ann@example.com"))
+	r.sync()
+	r.later()
+	if calls := r.km.seen(); len(calls) != 1 {
+		t.Fatalf("calls %s", methods(calls))
+	}
+}
+
+func TestSkippedMembersStopWhenTheMeetingEnds(t *testing.T) {
+	r, _ := skipRig(t)
+	r.create(t, meetingAt(-72*time.Hour, "bob@example.com"))
+	r.sync()
+	r.later()
+	if calls := r.km.seen(); len(calls) != 1 {
+		t.Fatalf("past meeting re-PUT: %s", methods(calls))
+	}
+
+	// Ends while retrying: the refresh already set runs once, then none.
+	r, _ = skipRig(t)
+	r.create(t, meetingAt(12*time.Hour, "bob@example.com"))
+	r.sync()
+	for range 3 {
+		r.later()
+	}
+	if calls := r.km.seen(); len(calls) != 2 {
+		t.Fatalf("ended meeting kept retrying: %s", methods(calls))
+	}
+}
+
+func TestSkippedMembersStopWhenCancelled(t *testing.T) {
+	r, _ := skipRig(t)
+	uid := r.create(t, meetingAt(72*time.Hour, "bob@example.com"))
+	r.sync()
+	o := r.object(t, uid)
+	cal, _ := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	master, _ := calendar.Master(cal)
+	master.Props.SetText(ical.PropStatus, "CANCELLED")
+	if _, apiErr := r.s.saveEvent(context.Background(), r.org, r.cal, o.Name, cal, o.ETag, false); apiErr != nil {
+		t.Fatal(apiErr.msg)
+	}
+	r.sync()
+	r.later()
+	if calls := r.km.seen(); methods(calls) != "PUT DELETE" {
+		t.Fatalf("calls %s", methods(calls))
+	}
+}
