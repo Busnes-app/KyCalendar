@@ -143,8 +143,8 @@ screens read the day's events from the existing `GET /api/events`.
   drag to place; placed tasks move and resize; the suggestion line with Place it and a 1/N
   stepper; the header "Xh planned of Yh free", Add task and Done. Phones: two tabs, Plan and
   Candidates.
-- **Task row:** checkbox, title, relative due (red and the word "Overdue" when late), priority
-  marker with a text label, tags, subtask count, repeat icon.
+- **Task row:** checkbox, title, relative due (red and the word "Overdue" when late), a "High"
+  label as the only priority mark, tags, subtask count, repeat icon.
 - **Task detail:** the existing `Modal` pattern with every field from the mapping table and
   inline subtasks.
 - **Keyboard:** `n` new, `x` complete, `e` edit, `/` search, `j`/`k` move; each has a visible
@@ -325,3 +325,14 @@ Sources: Tasks.org `main` at `8f84221` (2026-11-15), jtx Board `main` the same d
   descriptions. Tool calls audit `mcp.task_create` and `mcp.task_update` with IDs only.
 - Negative tests: wrong scope, another user's task, a write-own token on a task it did not
   create, a `dav` token refused, a group list missing, oversize input.
+
+## Owner review of the screens (2026-11-15)
+
+The first screens were rejected as "a busy mess". The cuts, in force for every Tasks screen:
+one way to add per screen (the capture box and quick add; no header New task, no Plan Add task);
+search, filters and sort only on list views; no subtitles; one priority signal, a "High" label;
+the accent only for the primary action and the now-line; on Plan a quiet suggestion line above
+the candidates and none on Today; a checkbox per task on Today (status lives in the detail);
+compact 24-hour times that never wrap; candidates with one meta line and a duration only when
+set; Plan's only way out is "Back to Today"; "Push to later" is a text button. Planned tasks are
+a calm solid card with a thin accent edge and a check mark; events are quiet and dashed.
