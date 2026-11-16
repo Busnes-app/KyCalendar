@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarClock, CalendarDays, CheckCircle2, ChevronDown, Inbox, Layers, ListTodo, Mail, Plus, Repeat, Search,
-  SlidersHorizontal, Star, CornerDownLeft, Flame, Target, BarChart3, Sun, Hourglass, AlertCircle, Bookmark,
+  SlidersHorizontal, Star, CornerDownLeft, BarChart3, Sun, Bookmark,
 } from 'lucide-react';
 import { MoreMenu } from '../components/MoreMenu';
 import { EmptyState, Modal } from '../components/ui';
 import { TaskDialog, estimateText } from '../components/TaskDialog';
 import { TaskBoard } from '../components/TaskBoard';
 import { GoalsView, HabitsView, InsightsView } from '../components/TaskInsights';
+import { calendarColors } from '../calendarColors';
 import { ApiError, createCalendar, deleteCalendar, listCalendars, patchCalendar, type CalendarInfo } from '../calendarApi';
 import {
   createTask, createView, deleteView, inbox, listAreas, listTasks, listViews, patchTask, saveAreas,
@@ -25,22 +26,22 @@ import { PlanView, TodayView, useDay, useModel } from './TaskDay';
 export { TASKS_CHANGED } from '../components/CaptureBox';
 import { TASKS_CHANGED } from '../components/CaptureBox';
 
-type Smart = 'today' | 'upcoming' | 'overdue' | 'someday' | 'flagged' | 'completed' | 'habits' | 'goals' | 'insights';
+type Smart = 'today' | 'upcoming' | 'all' | 'overdue' | 'someday' | 'flagged' | 'completed' | 'habits' | 'goals' | 'insights';
 export type TaskView = { kind: 'smart'; id: Smart } | { kind: 'list' | 'area' | 'view'; id: string };
-const SMART: { id: Smart; label: string; icon: typeof Sun }[] = [
-  { id: 'today', label: 'Today', icon: Sun },
-  { id: 'upcoming', label: 'Upcoming', icon: CalendarDays },
-  { id: 'overdue', label: 'Overdue', icon: AlertCircle },
-  { id: 'someday', label: 'Someday', icon: Hourglass },
-  { id: 'flagged', label: 'Flagged from mail', icon: Mail },
-  { id: 'completed', label: 'Completed', icon: CheckCircle2 },
+// The sidebar keeps Inbox and these four rows; the other views are tabs on the page of the row they belong to.
+const ALL: { id: Smart; label: string }[] = [
+  { id: 'all', label: 'Open' }, { id: 'overdue', label: 'Overdue' }, { id: 'someday', label: 'Someday' },
+  { id: 'flagged', label: 'Flagged from mail' }, { id: 'completed', label: 'Completed' },
 ];
 // Review views: not task lists, so no quick add, tools or board.
-const REVIEW: { id: Smart; label: string; icon: typeof Sun }[] = [
-  { id: 'habits', label: 'Habits', icon: Flame },
-  { id: 'goals', label: 'Goals', icon: Target },
-  { id: 'insights', label: 'Insights', icon: BarChart3 },
+const REVIEW: { id: Smart; label: string }[] = [{ id: 'habits', label: 'Habits' }, { id: 'goals', label: 'Goals' }, { id: 'insights', label: 'Insights' }];
+const SMART: { id: Smart; label: string; icon: typeof Sun; tabs?: typeof ALL }[] = [
+  { id: 'today', label: 'Today', icon: Sun },
+  { id: 'upcoming', label: 'Upcoming', icon: CalendarDays },
+  { id: 'all', label: 'All tasks', icon: CheckCircle2, tabs: ALL },
+  { id: 'habits', label: 'Progress', icon: BarChart3, tabs: REVIEW },
 ];
+const rowOf = (id: Smart) => SMART.find((s) => s.id === id || s.tabs?.some((t) => t.id === id))!;
 const VIEW_KEY = 'kycalendar.tasksView';
 const LAYOUT_KEY = 'kycalendar.tasksLayout'; // view key -> 'board', for views shown as a board
 const SORTS = [{ v: 'smart', label: 'Smart (overdue, due, priority)' }, { v: 'due', label: 'Due date' }, { v: 'priority', label: 'Priority' }, { v: 'created', label: 'Newest' }, { v: 'title', label: 'Title' }] as const;
@@ -105,6 +106,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const listEl = useRef<HTMLUListElement>(null);
 
   const lists = useMemo(() => calendars.filter(isTasks), [calendars]);
+  const colors = useMemo(() => calendarColors(calendars), [calendars]);
   const listName = (id: string) => (id === inboxId ? 'Inbox' : lists.find((c) => c.id === id)?.name ?? '');
 
   const loadMeta = useCallback(async () => {
@@ -166,7 +168,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const today = dateOnly(new Date());
   const rows = useMemo(() => {
     const base = shown ?? open;
-    return view.kind === 'smart' && !['completed', 'flagged', 'habits', 'goals', 'insights'].includes(view.id) ? base.filter((t) => inView(t, view.id as Smart, today)) : base;
+    return view.kind === 'smart' && !['all', 'completed', 'flagged', 'habits', 'goals', 'insights'].includes(view.id) ? base.filter((t) => inView(t, view.id as Smart, today)) : base;
   }, [shown, open, view, today]);
   // Subtasks list under their parent when it is shown; the rest are top level.
   const ordered = useMemo(() => {
@@ -199,7 +201,8 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   }, [ordered, view]);
   const flat = groups.flatMap((g) => g.items);
 
-  const title = view.kind === 'smart' ? [...SMART, ...REVIEW].find((s) => s.id === view.id)!.label
+  const row = view.kind === 'smart' ? rowOf(view.id) : undefined;
+  const title = row ? row.label
     : view.kind === 'list' ? listName(view.id) : view.kind === 'area' ? areas.find((a) => a.id === view.id)?.name ?? 'Area'
       : views.find((v) => v.id === view.id)?.name ?? 'View';
   const writable = lists.filter((c) => c.role !== 'reader' && !c.subscription);
@@ -245,11 +248,17 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     c.flagged = top.filter((t) => t.source === 'kypost').length;
     return c;
   }, [open, today]);
+  // The chosen tab is centred in its row, which scrolls sideways on phones.
+  useEffect(() => {
+    const t = document.querySelector<HTMLElement>('.tk-tabs [aria-current="page"]');
+    const n = t?.parentElement;
+    if (t && n) n.scrollLeft += t.getBoundingClientRect().left - n.getBoundingClientRect().left - (n.clientWidth - t.offsetWidth) / 2;
+  }, [view, counts]); // counts widen the tabs once they load
   const named = lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c));
 
   const go = (v: TaskView) => { setView(v); setQ(''); setFilter({}); setPicker(false); setPlanning(false); };
   const navItem = (v: TaskView, label: string, Icon: typeof Sun, count?: number, extra?: string) => {
-    const current = v.kind === view.kind && v.id === view.id;
+    const current = v.kind === view.kind && (v.id === view.id || (v.kind === 'smart' && row?.id === v.id));
     return (
       <li key={`${v.kind}:${v.id}`}>
         <button type="button" className="ky-nav-item tk-nav" aria-current={current ? 'page' : undefined} onClick={() => go(v)}>
@@ -278,8 +287,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       </div>
       <ul className="tk-navlist">
         {inboxId && navItem({ kind: 'list', id: inboxId }, 'Inbox', Inbox, counts[inboxId])}
-        {SMART.map((s) => navItem({ kind: 'smart', id: s.id }, s.label, s.icon, s.id === 'today' || s.id === 'overdue' || s.id === 'flagged' ? counts[s.id] : undefined))}
-        {REVIEW.map((s) => navItem({ kind: 'smart', id: s.id }, s.label, s.icon))}
+        {SMART.map((s) => navItem({ kind: 'smart', id: s.id }, s.label, s.icon, s.id === 'today' ? counts.today : undefined))}
       </ul>
       {areas.map((a) => (
         <div key={a.id} className="tk-group">
@@ -347,7 +355,6 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           )}
         </div>
         <div className="tk-head-actions">
-          {review === 'goals' && <button type="button" className="btn-secondary btn-sm" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> New goal</button>}
           {(view.kind === 'view' || (currentList && currentList.kind === 'personal' && currentList.id !== inboxId && currentList.role === 'owner')) && (
             <MoreMenu label={`${title} options`}>
               {(close) => view.kind === 'view' ? (
@@ -362,8 +369,19 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           )}
         </div>
       </header>
+      {row?.tabs && (<div className="tk-tabrow">
+        <nav className="ky-settings-tabs tk-tabs" aria-label={`${row.label} views`}>
+          {row.tabs.map((t) => (
+            <button key={t.id} type="button" className="ky-nav-item" aria-current={view.kind === 'smart' && view.id === t.id ? 'page' : undefined} onClick={() => go({ kind: 'smart', id: t.id })}>
+              {t.label}{t.id === 'overdue' && !!counts.overdue && <span className="tk-count" aria-label={`${counts.overdue} overdue`}>{counts.overdue}</span>}
+              {t.id === 'flagged' && !!counts.flagged && <span className="tk-count" aria-label={`${counts.flagged} open`}>{counts.flagged}</span>}
+            </button>
+          ))}
+        </nav>
+        {review === 'goals' && <button type="button" className="btn-secondary btn-sm tk-new-goal" aria-label="New goal" title="New goal" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> <span>New goal</span></button>}
+      </div>)}
 
-      {!(isToday && planning) && !review && <form className="tk-quick" onSubmit={quickAdd}>
+      {!(isToday && planning) && !review && !(view.kind === 'smart' && (view.id === 'flagged' || view.id === 'completed')) && <form className="tk-quick" onSubmit={quickAdd}>
         <Plus aria-hidden="true" />
         <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder={isNarrow ? 'Add a task' : 'Add a task: “Call Ana tomorrow 3pm !high #home”'}
           value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!targetList} />
@@ -434,16 +452,16 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       {isToday && model && day.data && (planning
         ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onDone={() => setPlanning(false)} reload={() => void load()} />
         : <TodayView m={model} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
-      {review === 'insights' && <InsightsView lists={named} open={(id) => counts[id] ?? 0} overdue={(id) => counts[`overdue:${id}`] ?? 0} />}
-      {review === 'goals' && <GoalsView lists={named} areas={areas} open={(id) => counts[id] ?? 0} creating={newGoal} onCreated={() => setNewGoal(false)} />}
-      {review === 'habits' && <HabitsView tasks={open} onOpen={(t) => setDialog({ task: t })} />}
+      {review === 'insights' && <InsightsView lists={named} colors={colors} open={(id) => counts[id] ?? 0} overdue={(id) => counts[`overdue:${id}`] ?? 0} />}
+      {review === 'goals' && <GoalsView lists={named} colors={colors} areas={areas} open={(id) => counts[id] ?? 0} creating={newGoal} onCreated={() => setNewGoal(false)} />}
+      {review === 'habits' && <HabitsView tasks={open} colors={colors} onOpen={(t) => setDialog({ task: t })} />}
       {!isToday && !review && flat.length === 0 && !error && (
-        <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>
-          {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}
+        <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : view.kind === 'smart' && view.id === 'flagged' ? 'No flagged mail' : 'Nothing here'}>
+          {q ? 'Try fewer words or another view.' : view.kind === 'smart' && view.id === 'flagged' ? 'Tasks you flag in KyPost appear here.' : view.kind === 'smart' && view.id === 'completed' ? 'Tasks you complete appear here.' : 'Add one above, or press n anywhere.'}
         </EmptyState>
       )}
       {board && !review && <TaskBoard tasks={topLevel(shown ?? [])} listName={view.kind === 'list' ? () => '' : listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
-      {!isToday && !board && !review && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
+      {!isToday && !board && !review && flat.length > 0 && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
         {groups.map((g) => (
           <li key={g.label || 'all'} className="tk-day">
             {g.label && <h2 className="tk-day-head">{g.label}</h2>}
@@ -498,7 +516,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       )}
 
       {dialog && (
-        <TaskDialog key={dialog.task ? dialog.task.etag : 'new'} task={dialog.task} lists={lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c))} defaultList={targetList}
+        <TaskDialog key={dialog.task ? dialog.task.etag : 'new'} task={dialog.task} lists={lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c))} defaultList={targetList} color={dialog.task ? colors.get(dialog.task.calendar_id) : undefined}
           subtasks={dialog.task ? subtasksOf(dialog.task) : []} drive={drive} initial={dialog.initial}
           onClose={() => setDialog(null)} onChanged={() => void load()} />
       )}

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Trash2 } from 'lucide-react';
 import { EmptyState, Modal } from './ui';
 import type { CalendarInfo } from '../calendarApi';
 import {
@@ -8,61 +8,76 @@ import {
 } from '../tasksApi';
 import { dateOnly } from '../taskParse';
 import { rangeOf } from '../taskRepeat';
-import { useNarrow } from '../useNarrow';
 import { hm } from '../dayPlan';
+import { habitGrid, type HabitState } from '../habitGrid';
 
 const workday = () => { const d = new Date(); return rangeOf(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8), new Date(d.getFullYear(), d.getMonth(), d.getDate(), 18)); };
 const shortDate = (d: string) => new Date(`${d}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
-// InsightsView: completions per week, open and overdue per list, planned against free hours.
-// Each chart has a table view; the bars carry their numbers in a tooltip and the table.
-export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; open: (id: string) => number; overdue: (id: string) => number }) {
+// InsightsView: completions per week, planned against free hours, open and overdue per list.
+// Marks use the accent (this week and today in full) and each list's colour; every figure is
+// also in words or a table, so nothing is told by colour alone.
+export function InsightsView({ lists, colors, open, overdue }: { lists: CalendarInfo[]; colors: Map<string, string>; open: (id: string) => number; overdue: (id: string) => number }) {
   const [data, setData] = useState<Insights | null>(null);
   const [error, setError] = useState('');
   const [table, setTable] = useState(false);
-  const narrow = useNarrow();
+  const [W, setW] = useState(560); // the chart's width in pixels, so its text stays 12px
+  const plot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = plot.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(Math.max(240, Math.round(el.clientWidth))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [data, table]);
   useEffect(() => { void insights().then(setData, (e) => setError(e instanceof Error ? e.message : 'Insights could not be loaded.')); }, []);
   if (error) return <p role="alert">{error}</p>;
   if (!data) return <p className="td-empty">Loading…</p>;
   const maxDone = Math.max(1, ...data.weeks.map((w) => w.done));
   const total = data.weeks.reduce((n, w) => n + w.done, 0);
-  const W = 560, H = 140, gap = 6, bw = (W - gap * (data.weeks.length - 1)) / data.weeks.length;
+  const last = data.weeks.length - 1;
+  const H = 160, top = 18, gap = W < 480 ? 4 : 8, bw = (W - gap * last) / data.weeks.length;
+  const today = dateOnly(new Date());
+  const maxOpen = Math.max(1, ...lists.map((l) => open(l.id)));
   return (
     <div className="ti">
-      <section aria-labelledby="ti-weeks">
+      <section className="card ti-card" aria-labelledby="ti-weeks">
         <div className="ti-head">
           <h2 id="ti-weeks">Completed per week</h2>
           <button type="button" className="btn-ghost btn-sm" aria-pressed={table} onClick={() => setTable(!table)}>{table ? 'Show chart' : 'Show table'}</button>
         </div>
-        <p className="ti-sum">{total} in 12 weeks · {data.weeks[data.weeks.length - 1].done} this week</p>
+        <p className="ti-sum"><strong>{data.weeks[last].done}</strong> this week · {total} in 12 weeks</p>
         {table ? (
           <table className="ti-table"><thead><tr><th scope="col">Week of</th><th scope="col">Done</th></tr></thead>
-            <tbody>{data.weeks.map((w) => <tr key={w.start}><td>{shortDate(w.start)}</td><td>{w.done}</td></tr>)}</tbody></table>
+            <tbody>{data.weeks.map((w, i) => <tr key={w.start} data-now={i === last || undefined}><td>{shortDate(w.start)}{i === last && ' (this week)'}</td><td>{w.done}</td></tr>)}</tbody></table>
         ) : (
-          <svg className="ti-bars" viewBox={`0 0 ${W} ${H + (narrow ? 32 : 20)}`} role="img" aria-label={`Tasks completed per week: ${data.weeks.map((w) => `${shortDate(w.start)} ${w.done}`).join(', ')}`}>
-            <line x1="0" x2={W} y1={H} y2={H} className="ti-base" />
+          <div className="ti-plot" ref={plot}><svg className="ti-bars" viewBox={`0 0 ${W} ${top + H + 22}`} role="img" aria-label={`Tasks completed per week: ${data.weeks.map((w) => `${shortDate(w.start)} ${w.done}`).join(', ')}`}>
+            <line x1="0" x2={W} y1={top + H} y2={top + H} className="ti-base" />
             {data.weeks.map((w, i) => {
-              const h = Math.max(w.done ? 4 : 0, (w.done / maxDone) * (H - 16));
+              const h = w.done ? Math.max(4, (w.done / maxDone) * (H - 4)) : 3; // a zero week is a stub on the baseline
+              const x = i * (bw + gap);
               return (
                 <g key={w.start}>
-                  <rect x={i * (bw + gap)} y={0} width={bw} height={H} className="ti-hit"><title>{`Week of ${shortDate(w.start)}: ${w.done} done`}</title></rect>
-                  <rect x={i * (bw + gap)} y={H - h} width={bw} height={h} rx="4" className="ti-bar" />
-                  {(narrow ? i % 5 === 0 : i % 3 === 0 || i === data.weeks.length - 1) && <text x={i === 0 ? 0 : i * (bw + gap) + bw / 2} y={H + (narrow ? 26 : 15)} className="ti-label" style={{ fontSize: narrow ? 19 : 11, textAnchor: i === 0 ? 'start' : undefined }}>{shortDate(w.start)}</text>}
+                  <rect x={x} y={0} width={bw} height={top + H} className="ti-hit"><title>{`Week of ${shortDate(w.start)}: ${w.done} done`}</title></rect>
+                  <rect x={x} y={top + H - h} width={bw} height={h} rx={w.done ? 4 : 1} className={i === last ? 'ti-bar ti-bar-now' : w.done ? 'ti-bar' : 'ti-bar ti-bar-zero'} />
+                  {!!w.done && <text x={x + bw / 2} y={top + H - h - 5} className="ti-value">{w.done}</text>}
+                  {i % (W < 480 ? 4 : 3) === 0 && i < last - 2 && <text x={i === 0 ? 0 : x + bw / 2} y={top + H + 17} className={i === 0 ? 'ti-label ti-label-start' : 'ti-label'}>{shortDate(w.start)}</text>}
+                  {i === last && <text x={W} y={top + H + 17} className="ti-label ti-label-now">This week</text>}
                 </g>
               );
             })}
-          </svg>
+          </svg></div>
         )}
       </section>
-      <section aria-labelledby="ti-days">
+      <section className="card ti-card" aria-labelledby="ti-days">
         <h2 id="ti-days">This week: planned of free</h2>
         <p className="ti-key"><span className="ti-swatch ti-swatch-planned" aria-hidden="true" /> Planned <span className="ti-swatch ti-swatch-free" aria-hidden="true" /> Free ({workday()}, less events)</p>
         <table className="ti-table ti-days">
           <thead><tr><th scope="col">Day</th><th scope="col">Planned of free</th><th scope="col"><span className="sr-only">Bar</span></th></tr></thead>
           <tbody>
             {data.days.map((d) => (
-              <tr key={d.date}>
-                <td>{new Date(`${d.date}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</td>
+              <tr key={d.date} data-now={d.date === today || undefined}>
+                <td>{new Date(`${d.date}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}{d.date === today && <span className="ti-today"> Today</span>}</td>
                 <td>{hm(d.planned_min)} of {hm(d.free_min)}</td>
                 <td><span className="ti-bullet" aria-hidden="true"><span style={{ width: `${d.free_min ? Math.min(100, (d.planned_min / d.free_min) * 100) : 0}%` }} /></span></td>
               </tr>
@@ -70,61 +85,78 @@ export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; 
           </tbody>
         </table>
       </section>
-      <section aria-labelledby="ti-lists">
+      <section className="card ti-card" aria-labelledby="ti-lists">
         <h2 id="ti-lists">Open and overdue by list</h2>
-        <table className="ti-table">
-          <thead><tr><th scope="col">List</th><th scope="col">Open</th><th scope="col">Overdue</th></tr></thead>
-          <tbody>{lists.map((l) => <tr key={l.id}><td>{l.name}</td><td>{open(l.id)}</td><td className={overdue(l.id) ? 'tk-late' : ''}>{overdue(l.id)}</td></tr>)}</tbody>
+        <table className="ti-table ti-lists">
+          <thead><tr><th scope="col">List</th><th scope="col">Open</th><th scope="col"><span className="sr-only">Open bar</span></th><th scope="col">Overdue</th></tr></thead>
+          <tbody>{lists.map((l) => {
+            const c = colors.get(l.id) ?? 'var(--accent)';
+            const late = overdue(l.id);
+            return (
+              <tr key={l.id}>
+                <td><span className="ti-list" style={{ '--list': c } as React.CSSProperties}><span className="ti-swatch" aria-hidden="true" />{l.name}</span></td>
+                <td>{open(l.id)}</td>
+                <td><span className="ti-meter" style={{ '--list': c } as React.CSSProperties} aria-hidden="true"><span style={{ width: `${(open(l.id) / maxOpen) * 100}%` }} /></span></td>
+                <td>{late ? <span className="ti-late"><AlertCircle size={14} aria-hidden="true" />{late} overdue</span> : <span className="ti-none">0</span>}</td>
+              </tr>
+            );
+          })}</tbody>
         </table>
       </section>
     </div>
   );
 }
 
-// HabitPanel: a habit's streaks and 12 weeks of days, one column per week (Monday on top), with
-// the same facts in words so nothing is told by colour alone.
-export function HabitPanel({ task }: { task: Task }) {
+// HabitPanel: a habit's numbers and its grid (`habitGrid`; Monday on top, one column per week,
+// a weekly habit one cell per week). Done cells take the habit's colour, missed ones a tint of it
+// inside a full-colour edge, the current day or week while open only the edge, and days of the
+// first week before the habit began a dashed outline. The same facts are in words.
+export function HabitPanel({ task, color = 'var(--accent)' }: { task: Task; color?: string }) {
   const [h, setH] = useState<Habit | null>(null);
   useEffect(() => { void habit(task).then(setH, () => setH(null)); }, [task]);
   if (!h) return null;
-  const done = new Set(h.days);
-  const today = new Date();
-  const todayKey = dateOnly(today);
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
-  const first = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * 11);
-  const days = Array.from({ length: 84 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
-  const past = days.filter((d) => dateOnly(d) <= todayKey);
-  const hits = past.filter((d) => done.has(dateOnly(d))).length;
-  const unit = h.freq === 'weekly' ? 'week' : 'day';
-  const summary = `${hits} of ${past.length} days, streak ${h.current} ${unit}${h.current === 1 ? '' : 's'}, longest ${h.longest}`;
-  const range = `${shortDate(dateOnly(first))} – ${shortDate(todayKey)}`;
+  const g = habitGrid(h, task.created, new Date());
+  const unit = g.weekly ? 'week' : 'day';
+  const plural = (n: number) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  const summary = `${g.hits} of ${plural(g.counted)}, streak ${plural(h.current)}, longest ${h.longest}`;
+  const range = `${shortDate(dateOnly(g.first))} – ${shortDate(dateOnly(new Date()))}`;
+  const words: Record<HabitState, string> = { done: 'done', missed: 'missed', now: g.weekly ? 'this week, not done yet' : 'today, not done yet', before: 'before the habit began', future: 'to come' };
+  const has = (st: HabitState) => g.cells.some((c) => c.state === st);
   return (
-    <section className="th" aria-label={`${task.title}: habit`}>
-      <p className="th-streaks"><strong>{h.current}-{unit} streak</strong> · longest {h.longest} · {hits} of {past.length} days</p>
-      <div className="th-chart">
-        <span className="th-weekdays" aria-hidden="true"><span>M</span><span /><span>W</span><span /><span>F</span><span /><span /></span>
-        <div className="th-grid" role="img" aria-label={`${task.title}, ${range}: ${summary}`}>
-          {days.map((d) => {
-            const k = dateOnly(d);
-            return <span key={k} className="th-day" data-done={done.has(k) || undefined} data-future={k > todayKey || undefined} title={`${d.toLocaleDateString()}: ${k > todayKey ? 'to come' : done.has(k) ? 'done' : 'missed'}`} />;
-          })}
+    <section className="th" aria-label={`${task.title}: habit`} style={{ '--habit': color, '--weeks': g.weeks } as React.CSSProperties}>
+      <div className="th-body" data-weekly={g.weekly || undefined}>
+        <dl className="th-stats">
+          <div><dt>Current streak</dt><dd>{plural(h.current)}</dd></div>
+          <div><dt>Longest</dt><dd>{plural(h.longest)}</dd></div>
+          <div><dt>Completion</dt><dd>{g.rate}%</dd></div>
+          <div><dt>This week</dt><dd>{g.week}</dd></div>
+        </dl>
+        <div className="th-chart">
+          <div className="th-plot" data-weekly={g.weekly || undefined}>
+            {!g.weekly && <span className="th-weekdays" aria-hidden="true"><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span /><span>Sun</span></span>}
+            <div className="th-grid" data-weekly={g.weekly || undefined} role="img" aria-label={`${task.title}, ${range}: ${summary}`}>
+              {g.cells.map((c) => <span key={c.key} className="th-day" data-state={c.state} title={`${g.weekly ? `Week of ${c.start.toLocaleDateString()}` : c.start.toLocaleDateString()}: ${words[c.state]}`} />)}
+            </div>
+          </div>
+          <p className="th-key"><span>{range}</span><span><span className="th-day th-key-swatch" data-state="done" aria-hidden="true" /> Done</span><span><span className="th-day th-key-swatch" data-state="missed" aria-hidden="true" /> Missed</span>
+            {has('now') && <span><span className="th-day th-key-swatch" data-state="now" aria-hidden="true" /> {g.weekly ? 'This week' : 'Today'}</span>}
+            {has('before') && <span><span className="th-day th-key-swatch" data-state="before" aria-hidden="true" /> Before it began</span>}</p>
         </div>
       </div>
-      <p className="th-key"><span>{range}</span><span><span className="th-day th-key-swatch" data-done aria-hidden="true" /> Done</span><span><span className="th-day th-key-swatch" aria-hidden="true" /> Missed</span></p>
     </section>
   );
 }
 
-// HabitsView lists the habits among open tasks with their streaks.
-export function HabitsView({ tasks, onOpen }: { tasks: Task[]; onOpen: (t: Task) => void }) {
+// HabitsView: one card per habit among the open tasks, in its list's colour.
+export function HabitsView({ tasks, colors, onOpen }: { tasks: Task[]; colors: Map<string, string>; onOpen: (t: Task) => void }) {
   const habits = tasks.filter((t) => t.habit);
-  if (habits.length === 0) return <EmptyState title="No habits yet">Open a repeating task and turn on “Track as a habit”.</EmptyState>;
+  if (habits.length === 0) return <EmptyState title="No habits yet">Open a daily or weekly repeating task and turn on “Track as a habit”.</EmptyState>;
   return (
     <ul className="th-list">
       {habits.map((t) => (
-        <li key={`${t.calendar_id}/${t.uid}`}>
-          <button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}</button>
-          <HabitPanel task={t} />
+        <li key={`${t.calendar_id}/${t.uid}`} className="card th-card">
+          <h2><button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}</button></h2>
+          <HabitPanel task={t} color={colors.get(t.calendar_id)} />
         </li>
       ))}
     </ul>
@@ -132,12 +164,11 @@ export function HabitsView({ tasks, onOpen }: { tasks: Task[]; onOpen: (t: Task)
 }
 
 // GoalsView: the user's goals, each with how its lists are moving; add, edit and delete.
-export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: CalendarInfo[]; areas: Area[]; open: (id: string) => number; creating: boolean; onCreated: () => void }) {
+export function GoalsView({ lists, colors, areas, open, creating, onCreated }: { lists: CalendarInfo[]; colors: Map<string, string>; areas: Area[]; open: (id: string) => number; creating: boolean; onCreated: () => void }) {
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [progress, setProgress] = useState<Record<string, GoalProgress>>({});
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
   const [error, setError] = useState('');
-  const narrow = useNarrow();
   const load = () => listGoals().then(async (gs) => {
     setGoals(gs);
     const entries = await Promise.all(gs.map(async (g) => [g.id, await goalProgress(g.id)] as const));
@@ -149,8 +180,8 @@ export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: 
     <div className="tg">
       {error && <p role="alert">{error}</p>}
       {goals?.length === 0 && <EmptyState title="No goals yet">A goal follows the lists and areas behind it over a season, quarter or year.</EmptyState>}
-      {goals?.map((g) => (
-        <section key={g.id} className="tg-goal" aria-labelledby={`goal-${g.id}`}>
+      {goals?.map((g) => { const rows = progress[g.id]?.lists ?? []; return (
+        <section key={g.id} className="card ti-card" aria-labelledby={`goal-${g.id}`}>
           <div className="ti-head">
             <div>
               <h2 id={`goal-${g.id}`}><button type="button" className="td-task-title" onClick={() => setEditing(g)}>{g.title}</button></h2>
@@ -158,11 +189,15 @@ export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: 
             </div>
           </div>
           <table className="ti-table">
-            <thead><tr><th scope="col">List</th><th scope="col">{narrow ? 'Done' : 'Done in period'}</th><th scope="col">Open</th><th scope="col">{narrow ? 'Last' : 'Last done'}</th></tr></thead>
+            <thead><tr><th scope="col">List</th><th scope="col">Done</th><th scope="col">Open</th><th scope="col">Last done</th></tr></thead>
             <tbody>
-              {(progress[g.id]?.lists ?? []).map((l) => (
+              {rows.map((l) => (
                 <tr key={l.list_id}>
-                  <td>{lists.find((c) => c.id === l.list_id)?.name ?? l.name}{l.stalled && <span className="tg-stalled"> · No progress in 14 days</span>}</td>
+                  <td><span className="tg-list" style={{ '--list': colors.get(l.list_id) ?? 'var(--accent)' } as React.CSSProperties}>
+                    <span className="ti-list"><span className="ti-swatch" aria-hidden="true" />{lists.find((c) => c.id === l.list_id)?.name ?? l.name}</span>
+                    <span className="ti-meter tg-meter" aria-hidden="true"><span style={{ width: `${(l.done / Math.max(1, l.done + open(l.list_id))) * 100}%` }} /></span>
+                    {l.stalled && <span className="tg-stalled">No progress in 14 days</span>}
+                  </span></td>
                   <td>{l.done}</td><td>{open(l.list_id)}</td>
                   <td>{l.last_done ? new Date(l.last_done).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'}</td>
                 </tr>
@@ -170,7 +205,7 @@ export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: 
             </tbody>
           </table>
         </section>
-      ))}
+      ); })}
       {editing && <GoalDialog goal={editing === 'new' ? null : editing} lists={lists} areas={areas} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />}
     </div>
   );
