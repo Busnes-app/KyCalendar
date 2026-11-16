@@ -11,7 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emersion/go-ical"
+
 	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/resource"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -550,5 +553,111 @@ func TestRoomCalDAVClientGetsTheAnswer(t *testing.T) {
 		if strings.Contains(m.Recipient, resource.Domain) {
 			t.Fatalf("queued a message to a resource: %s", m.Recipient)
 		}
+	}
+}
+
+// putRaw writes ics as object name of calendar cal through the store's write path, as writer
+// (empty: the scheduler's delivery).
+func putRaw(t *testing.T, st store.Store, cal, name, ics, writer string) {
+	t.Helper()
+	parsed, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := davbackend.Prepare(cal, name, parsed, []byte(ics))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.WriterID = writer
+	if _, err := st.Calendars().PutObjectPlanned(context.Background(), o, "", false, store.OwnerLimits{}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func icsTime(v string) string {
+	tt, _ := time.Parse(time.RFC3339, v)
+	return tt.UTC().Format("20060102T150405Z")
+}
+
+func roomICS(uid, room string, comps ...string) string {
+	out := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\n"
+	for _, c := range comps {
+		out += "BEGIN:VEVENT\r\nUID:" + uid + "\r\nDTSTAMP:20261101T000000Z\r\n" + c +
+			"ORGANIZER:mailto:alice@example.com\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com\r\n" +
+			"ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com\r\nATTENDEE:" + string(resource.Address(room)) + "\r\nEND:VEVENT\r\n"
+	}
+	return out + "END:VCALENDAR\r\n"
+}
+
+func TestRoomKeptWhenAnAttendeeAnswersOneOccurrence(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	room := makeResource(t, st, resource.Resource{Name: "Fjord"})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "weekly.ics", roomICS("weekly", room, master), "usr_alice")
+	if st, _, _ := roomStatus(t, srv, alice, "weekly"); st != "accepted" {
+		t.Fatalf("series: %s", st)
+	}
+	// The scheduler applies bob's answer to the second occurrence: an override, same times.
+	s2, e2 := slot(8, 9)
+	override := "RECURRENCE-ID:" + icsTime(s2) + "\r\nDTSTART:" + icsTime(s2) + "\r\nDTEND:" + icsTime(e2) + "\r\nSUMMARY:Weekly\r\n"
+	answered := strings.Replace(roomICS("weekly", room, master, override), "PARTSTAT=NEEDS-ACTION:mailto:bob", "PARTSTAT=ACCEPTED:mailto:bob", 1)
+	putRaw(t, st, aliceCal, "weekly.ics", answered, "")
+	if st, reason, _ := roomStatus(t, srv, alice, "weekly"); st != "accepted" {
+		t.Fatalf("an attendee's answer released the room: %s %s", st, reason)
+	}
+	for _, sl := range [][2]string{{s, e}, {s2, e2}} {
+		if free := finderFree(t, srv, bob, sl[0], sl[1], "", ""); free[room] {
+			t.Fatalf("slot %s is free after the answer", sl[0])
+		}
+	}
+	// Moving that occurrence is a change the booking does not hold: decided again, and an
+	// unknown writer may not book.
+	s3, e3 := slot(8, 13)
+	moved := "RECURRENCE-ID:" + icsTime(s2) + "\r\nDTSTART:" + icsTime(s3) + "\r\nDTEND:" + icsTime(e3) + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "weekly.ics", roomICS("weekly", room, master, moved), "")
+	if st, reason, _ := roomStatus(t, srv, alice, "weekly"); st != "declined" || reason != "not_allowed" {
+		t.Fatalf("moved occurrence by no writer: %s %s", st, reason)
+	}
+}
+
+func TestRoomConflictReachesTheLongestOccurrence(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, bobCal := webUser(t, srv, st, "bob")
+	room := makeResource(t, st, resource.Resource{Name: "Fjord", MaxMinutes: 2000})
+	// Bob holds day 3, 15:00. Alice's two-occurrence series: day 2 09:00 stretched to day 3
+	// 18:00 by an override, and day 3 09:00-10:00.
+	bs, be := slot(3, 15)
+	createEvent(t, srv, bob, bobCal, bookBody("Bob", bs, be, "", room))
+	s, e := slot(2, 9)
+	_, long := slot(3, 17)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:Long\r\n"
+	override := "RECURRENCE-ID:" + icsTime(s) + "\r\nDTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(long) + "\r\nSUMMARY:Long\r\n"
+	putRaw(t, st, aliceCal, "long.ics", roomICS("long", room, master, override), "usr_alice")
+	if st, reason, _ := roomStatus(t, srv, alice, "long"); st != "declined" || reason != "busy" {
+		t.Fatalf("overlap with an earlier, longer occurrence: %s %s", st, reason)
+	}
+}
+
+func TestRoomOversizedFutureOverrideIsTooLong(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	room := makeResource(t, st, resource.Resource{Name: "Fjord", MaxMinutes: 120, HorizonDays: 30})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	fs, _ := slot(1+7*20, 9)
+	_, fe := slot(1+7*20, 17)
+	far := "RECURRENCE-ID:" + icsTime(fs) + "\r\nDTSTART:" + icsTime(fs) + "\r\nDTEND:" + icsTime(fe) + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "far.ics", roomICS("far", room, master, far), "usr_alice")
+	if st, reason, _ := roomStatus(t, srv, alice, "far"); st != "declined" || reason != "too_long" {
+		t.Fatalf("oversized override past the horizon: %s %s", st, reason)
+	}
+	period := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nRDATE;VALUE=PERIOD:" + icsTime(fs) + "/PT8H\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "period.ics", roomICS("period", room, period), "usr_alice")
+	if st, reason, _ := roomStatus(t, srv, alice, "period"); st != "declined" || reason != "too_long" {
+		t.Fatalf("oversized RDATE period: %s %s", st, reason)
 	}
 }

@@ -18,7 +18,7 @@ the routes (`internal/api/admin_resources.go`) belong to their packages; nothing
   (1-20 approvers); 5-20160 minutes; 1-730 days. Text holds no control, format or separator
   character and no `"`. Groups or approvers an unused policy names are dropped.
 - A resource is never deleted; disabling keeps its history.
-- Booking rules (`settle.go`): `IDs` (resource attendees, first seen), `Fingerprint` (DTSTART, DTEND, DURATION, RRULE, RDATE, EXDATE, RECURRENCE-ID and STATUS of every VEVENT), `Plan` (unknown, disabled, past, beyond the horizon, more than 1000 occurrences, too long; spans to reserve from now, `OpenAfter` for a series that runs past the horizon), `Conflicts`, `OpenSpans`, `SetAnswers` (PARTSTAT, CUTYPE ROOM/RESOURCE, CN, ROLE=NON-PARTICIPANT, no RSVP) and `SetList` (the web's list; fills an empty LOCATION with the rooms; sets the writer as organizer when there is none).
+- Booking rules (`settle.go`): `IDs` (resource attendees, first seen), `Fingerprint` (DTSTART, DTEND, DURATION, RRULE, RDATE, EXDATE, RECURRENCE-ID and STATUS of every VEVENT), `Plan` (unknown, disabled, past, beyond the horizon, more than 1000 occurrences, too long, including any override or RDATE period past the horizon; spans to reserve from now, `OpenAfter` for a series that runs past the horizon), `SeriesFingerprint` and `Decision.Covered` (an unchanged rule whose occurrences the booking already holds keeps its answer, whoever writes), `Conflicts`, `OpenSpans`, `SetAnswers` (PARTSTAT, CUTYPE ROOM/RESOURCE, CN, ROLE=NON-PARTICIPANT, no RSVP) and `SetList` (the web's list; fills an empty LOCATION with the rooms; sets the writer as organizer when there is none).
 
 ## Verification
 - `go test ./internal/resource/ ./internal/api/ -run 'Resource'`

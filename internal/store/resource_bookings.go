@@ -23,6 +23,7 @@ import (
 type ResourceBooking struct {
 	ID, ResourceID, CalendarID, ObjectName, BookedBy string
 	Status, Reason, Detail                           string
+	OpenAfter                                        int64
 }
 
 // BusySpan is one reserved interval of a resource (unix seconds), never what it is for.
@@ -67,7 +68,7 @@ WHERE rg.resource_id = ? AND gm.user_id = ?`), r.ID, userID).Scan(&n)
 }
 
 func (c *calendarStore) objectBookings(ctx context.Context, q txQuerier, calendarID, name string) (map[string]*ResourceBooking, map[string]string, error) {
-	rows, err := q.QueryContext(ctx, c.q(`SELECT id, resource_id, booked_by, status, reason, detail, fingerprint FROM resource_bookings
+	rows, err := q.QueryContext(ctx, c.q(`SELECT id, resource_id, booked_by, status, reason, detail, fingerprint, open_after FROM resource_bookings
 WHERE calendar_id = ? AND object_name = ?`), calendarID, name)
 	if err != nil {
 		return nil, nil, err
@@ -77,7 +78,7 @@ WHERE calendar_id = ? AND object_name = ?`), calendarID, name)
 	for rows.Next() {
 		b := &ResourceBooking{CalendarID: calendarID, ObjectName: name}
 		var fp string
-		if err := rows.Scan(&b.ID, &b.ResourceID, &b.BookedBy, &b.Status, &b.Reason, &b.Detail, &fp); err != nil {
+		if err := rows.Scan(&b.ID, &b.ResourceID, &b.BookedBy, &b.Status, &b.Reason, &b.Detail, &fp, &b.OpenAfter); err != nil {
 			return nil, nil, err
 		}
 		out[b.ResourceID], prints[b.ResourceID] = b, fp
@@ -136,7 +137,18 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 	if err != nil {
 		return nil, err
 	}
-	fp := resource.Fingerprint(cal)
+	fp, series := resource.Fingerprint(cal), resource.SeriesFingerprint(cal)
+	prevSeries := ""
+	if len(existing) > 0 {
+		var prev []byte
+		err := tx.QueryRowContext(ctx, c.q(`SELECT data FROM calendar_objects WHERE calendar_id = ? AND name = ?`), o.CalendarID, o.Name).Scan(&prev)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if pc, err := ical.NewDecoder(bytes.NewReader(prev)).Decode(); err == nil && prev != nil {
+			prevSeries = resource.SeriesFingerprint(pc)
+		}
+	}
 	now := resourceNow()
 	answers := map[string]string{}
 	type change struct {
@@ -156,6 +168,20 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 		}
 		r := defs[id]
 		d := resource.Plan(cal, r, o.LastEnd, now)
+		// The same rule and no occurrence outside what the booking holds (an attendee's answer
+		// to one occurrence, a cancelled one): the answer stands, whoever writes it.
+		if b := existing[id]; b != nil && r != nil && d.Status != resource.Declined && b.Status != resource.Declined && prevSeries == series {
+			held, err := c.heldSpans(ctx, tx, b.ID)
+			if err != nil {
+				return nil, err
+			}
+			if d.Covered(held, b.OpenAfter) {
+				d.Status = b.Status
+				answers[id] = d.Status
+				changes = append(changes, change{r, d})
+				continue
+			}
+		}
 		if d.Status != resource.Declined {
 			ok, err := c.store.mayBook(ctx, tx, r, o.WriterID)
 			if err != nil {
@@ -166,7 +192,11 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 			}
 		}
 		if d.Status != resource.Declined && len(d.Spans) > 0 {
-			busy, err := c.busyOf(ctx, tx, id, d.Spans[0].Start, d.Spans[len(d.Spans)-1].End, o.CalendarID, o.Name)
+			last := int64(0)
+			for _, sp := range d.Spans {
+				last = max(last, sp.End)
+			}
+			busy, err := c.busyOf(ctx, tx, id, d.Spans[0].Start, last, o.CalendarID, o.Name)
 			if err != nil {
 				return nil, err
 			}
@@ -237,6 +267,24 @@ fingerprint, open_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,
 		}
 		return nil
 	}, nil
+}
+
+// heldSpans is the busy spans booking id holds.
+func (c *calendarStore) heldSpans(ctx context.Context, q txQuerier, id string) (map[resource.Span]bool, error) {
+	rows, err := q.QueryContext(ctx, c.q(`SELECT start_at, end_at FROM resource_busy WHERE booking_id = ?`), id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[resource.Span]bool{}
+	for rows.Next() {
+		var sp resource.Span
+		if err := rows.Scan(&sp.Start, &sp.End); err != nil {
+			return nil, err
+		}
+		out[sp] = true
+	}
+	return out, rows.Err()
 }
 
 // busyOf is resource id's busy spans overlapping [from, to): the stored spans of accepted and

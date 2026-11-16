@@ -92,6 +92,8 @@ type Decision struct {
 	// OpenAfter, when not 0, is where Spans stop although the series goes on (unix seconds): its
 	// later occurrences are reserved too, and later bookings are checked against them.
 	OpenAfter int64
+	// Moved are the spans of Spans that a RECURRENCE-ID component gives, not the rule.
+	Moved map[Span]bool
 }
 
 // Plan decides what r's booking of cal needs at now: the spans to reserve, or a declined
@@ -128,7 +130,10 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 		}
 		return Decision{Status: Declined, Reason: ReasonPast}
 	}
-	d := Decision{Status: Accepted}
+	if tooLong(cal, time.Duration(r.MaxMinutes)*time.Minute) {
+		return Decision{Status: Declined, Reason: ReasonTooLong, Detail: strconv.Itoa(r.MaxMinutes)}
+	}
+	d := Decision{Status: Accepted, Moved: map[Span]bool{}}
 	if r.Approval == Approvers {
 		d.Status = Pending
 	}
@@ -145,9 +150,99 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 		if in.End.Sub(in.Start) > time.Duration(r.MaxMinutes)*time.Minute {
 			return Decision{Status: Declined, Reason: ReasonTooLong, Detail: strconv.Itoa(r.MaxMinutes)}
 		}
-		d.Spans = append(d.Spans, Span{in.Start.Unix(), in.End.Unix()})
+		sp := Span{in.Start.Unix(), in.End.Unix()}
+		d.Spans = append(d.Spans, sp)
+		if in.Override {
+			d.Moved[sp] = true
+		}
 	}
 	return d
+}
+
+// tooLong reports a RECURRENCE-ID component or an RDATE period longer than max anywhere in the
+// series: an open series reserves them past the horizon, where Plan does not expand.
+func tooLong(cal *ical.Calendar, max time.Duration) bool {
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		if c.Props.Get(ical.PropRecurrenceID) != nil {
+			if l, ok := componentLength(c); ok && l > max {
+				return true
+			}
+		}
+		for _, p := range c.Props[ical.PropRecurrenceDates] {
+			if !strings.EqualFold(p.Params.Get(ical.ParamValue), "PERIOD") {
+				continue
+			}
+			for _, v := range strings.Split(p.Value, ",") {
+				from, to, ok := strings.Cut(v, "/")
+				start := ical.Prop{Name: ical.PropDateTimeStart, Value: from, Params: ical.Params{}}
+				if tz := p.Params.Get(ical.ParamTimezoneID); tz != "" {
+					start.Params.Set(ical.ParamTimezoneID, tz)
+				}
+				s, err := start.DateTime(time.UTC)
+				if !ok || err != nil {
+					return true // a period we cannot read could be any length
+				}
+				var l time.Duration
+				if strings.ContainsAny(to, "Pp") {
+					d := ical.Prop{Name: ical.PropDuration, Value: to, Params: ical.Params{}}
+					l, err = d.Duration()
+				} else {
+					end := start
+					end.Value = to
+					var e time.Time
+					e, err = end.DateTime(time.UTC)
+					l = e.Sub(s)
+				}
+				if err != nil || l > max {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// componentLength is a VEVENT's own length from DTSTART and DTEND or DURATION.
+func componentLength(c *ical.Component) (time.Duration, bool) {
+	start, err := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
+	if err != nil {
+		return 0, false
+	}
+	if p := c.Props.Get(ical.PropDuration); p != nil {
+		d, err := p.Duration()
+		return d, err == nil
+	}
+	if c.Props.Get(ical.PropDateTimeEnd) != nil {
+		end, err := c.Props.DateTime(ical.PropDateTimeEnd, time.UTC)
+		return end.Sub(start), err == nil
+	}
+	return 0, true
+}
+
+// SeriesFingerprint hashes the timing of the components without RECURRENCE-ID: the rule itself.
+// An attendee's answer to one occurrence adds an override but leaves it alone.
+func SeriesFingerprint(cal *ical.Calendar) string {
+	masters := &ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar, Props: cal.Props}}
+	for _, c := range cal.Children {
+		if c.Name == ical.CompEvent && c.Props.Get(ical.PropRecurrenceID) == nil {
+			masters.Children = append(masters.Children, c)
+		}
+	}
+	return Fingerprint(masters)
+}
+
+// Covered reports whether d asks for nothing a booking does not already hold: every span is one
+// of held, or a rule occurrence at or after the booking's openAfter (which its series reserves).
+func (d Decision) Covered(held map[Span]bool, openAfter int64) bool {
+	for _, sp := range d.Spans {
+		if !held[sp] && (d.Moved[sp] || openAfter == 0 || sp.Start < openAfter) {
+			return false
+		}
+	}
+	return true
 }
 
 // Cancelled reports STATUS:CANCELLED: such an occurrence needs no resource.

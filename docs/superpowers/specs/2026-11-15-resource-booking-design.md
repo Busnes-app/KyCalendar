@@ -54,12 +54,16 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    properties (DTSTART, DTEND, DURATION, RRULE, RDATE, EXDATE, RECURRENCE-ID, STATUS of every
    VEVENT). An existing booking with the same fingerprint keeps an accepted, pending or
    approver-rejected answer; any other decline holds nothing and is decided again, so a freed
-   room is booked at the next save. Editing the title,
+   room is booked at the next save. An accepted or pending booking also stands, whoever writes,
+   when the series rule (the components without RECURRENCE-ID) is unchanged and every occurrence
+   is one the booking already holds or a rule occurrence past its `open_after`: an attendee's
+   answer to one occurrence adds an override and must not release the organizer's room. Editing the title,
    description or other attendees never re-decides the room, and never re-declines a past one.
 3. Otherwise decide, in order: unknown resource (`unknown`) or disabled (`disabled`); the event
    is over (`past`); a single event ending after now + horizon, or a series whose first
    occurrence is past it (`beyond_horizon`); more than 1000 occurrences within the horizon
-   (`too_many_occurrences`); an occurrence longer than the maximum (`too_long`); the writer may
+   (`too_many_occurrences`); an occurrence, an override or an RDATE period anywhere in the series
+   longer than the maximum (`too_long`); the writer may
    not book it (`not_allowed`); an occurrence overlapping another booking (`busy`, with the
    conflicting dates). Cancelled occurrences (STATUS:CANCELLED) need no room. Passing all:
    `accepted`, or `pending` under the approver policy.
