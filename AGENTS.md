@@ -386,6 +386,12 @@ Spec `docs/superpowers/specs/2026-10-15-kycalendar-ics-subscriptions-design.md`.
 - The link is a bearer secret: sealed under a derived key, never returned, logged or audited (the host only).
 - The server fetches public addresses only (`feed.RefusePrivate`, checked at dial time on every redirect hop); 10 link tries per user per 15 minutes; 10 subscriptions per user, counted in the calendar cap and the storage quota.
 
+#### Room and equipment contracts
+
+Spec `docs/superpowers/specs/2026-11-15-resource-booking-design.md`. Code says resource; the UI says Room or Equipment.
+
+- Administrators define resources on Rooms and equipment (`GET`/`POST /api/admin/resources`, `PUT /api/admin/resources/{id}`, audited `admin.resource_create`/`admin.resource_update` with kind, enabled, audience and approval only): kind, name (unique ignoring case), location, capacity, tags, who may book (everyone or groups), approval (auto or active everyday approvers), longest booking and days ahead (`internal/resource`). A resource is never deleted; disabling keeps its history. Its calendar user address is `mailto:resource-<id>@kycalendar.invalid`.
+
 #### CSV import contracts
 
 Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
@@ -430,6 +436,7 @@ Spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
 - [internal/csvimport/AGENTS.md](internal/csvimport/AGENTS.md): Outlook and Google Calendar CSV files read into event rows for a one-time import.
+- [internal/resource/AGENTS.md](internal/resource/AGENTS.md): Pure rules for rooms and equipment: the definition, its bounds and the resource address.
 - [internal/booking/AGENTS.md](internal/booking/AGENTS.md): Booking pages' pure rules: slot grid, busy scans, visitor text, hold and booked objects.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 - [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.

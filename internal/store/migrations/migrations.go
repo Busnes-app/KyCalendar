@@ -595,6 +595,41 @@ CREATE TABLE sso_logouts (
 	{Version: 25, Name: "video_meetings", SQLite: videoMeetings("DATETIME"), Postgres: videoMeetings("TIMESTAMPTZ")},
 	{Version: 26, Name: "meeting_guests", SQLite: meetingGuests("DATETIME"), Postgres: meetingGuests("TIMESTAMPTZ")},
 	{Version: 27, Name: "booking_pages", SQLite: bookingPages("DATETIME"), Postgres: bookingPages("TIMESTAMPTZ")},
+	{Version: 28, Name: "resources", SQLite: resources("DATETIME"), Postgres: resources("TIMESTAMPTZ")},
+}
+
+// resources: rooms and equipment an administrator defines. Tags is a JSON list. A resource is
+// never deleted: disabling keeps its history. Groups who may book (audience groups) and
+// approvers (approval approvers) are their own tables.
+func resources(ts string) string {
+	return `CREATE TABLE resources (
+ id TEXT PRIMARY KEY,
+ kind TEXT NOT NULL CHECK (kind IN ('room', 'equipment')),
+ name TEXT NOT NULL,
+ location TEXT NOT NULL DEFAULT '',
+ capacity INTEGER NOT NULL DEFAULT 0,
+ tags TEXT NOT NULL DEFAULT '[]',
+ audience TEXT NOT NULL CHECK (audience IN ('everyone', 'groups')),
+ approval TEXT NOT NULL CHECK (approval IN ('auto', 'approvers')),
+ max_minutes INTEGER NOT NULL,
+ horizon_days INTEGER NOT NULL,
+ enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ created_at ` + ts + ` NOT NULL,
+ updated_at ` + ts + ` NOT NULL
+);
+CREATE UNIQUE INDEX resources_name ON resources(lower(name));
+CREATE TABLE resource_groups (
+ resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+ group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+ PRIMARY KEY (resource_id, group_id)
+);
+CREATE INDEX resource_groups_group ON resource_groups(group_id);
+CREATE TABLE resource_approvers (
+ resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ PRIMARY KEY (resource_id, user_id)
+);
+CREATE INDEX resource_approvers_user ON resource_approvers(user_id);`
 }
 
 // bookingPages: a member's booking types, each with its public slug, and one row per hold or
