@@ -131,8 +131,9 @@ screens read the day's events from the existing `GET /api/events`.
   smart views render in the existing sidebar slot (the same portal the calendar list uses), so
   there is still one left column.
 - **Smart views:** Today (the planner and the day list, below), Upcoming (14 days, grouped by
-  day), Someday (no due date), Flagged from mail, Completed. Inbox and the user's lists, grouped
-  by area; group lists under "Shared" with the group role.
+  day), and under All tasks: Open, Overdue, Someday (no due date), Flagged from mail, Completed.
+  Inbox and the user's lists, grouped by area; group lists under "Shared" with the group role.
+  The sidebar shows five rows before the lists (see "Owner review of the sidebar", below).
 - **Today:** progress ("3 of 9 done · 3h left"), the Next card (Push to later, Mark done), then
   the day in time order: events as plain rows with a calendar icon, tasks with a status menu
   (Not started, In progress, Done) and a left priority edge plus a text label. Replan re-places
@@ -393,3 +394,34 @@ spacing on Plan.
   with a table view; every other figure is a table.
 - No new data leaves the instance; insights and goals are the caller's own, computed from their
   own log and readable lists.
+
+## Owner review of the sidebar, Habits and Insights (2026-11-16)
+
+The owner rejected the Tasks sidebar as too long ("make this side not as long") and Habits and
+Insights for wasted space and no colour. The change is presentation only: no route, query,
+stored field or figure changes.
+
+- **Sidebar:** five rows before the lists: Inbox, Today, Upcoming, All tasks, Progress (was ten).
+  Overdue folds into Today, whose count already includes overdue tasks. All tasks carries Open,
+  Overdue, Someday, Flagged from mail and Completed as tabs; Progress carries Habits, Goals and
+  Insights. The tabs are the Settings page's `ky-settings-tabs`, horizontal under the page head,
+  so there is still one left navigation region and no tab rail beside it. At 1280×800 the
+  user's first list is in view.
+- **Old addresses:** task views never had their own URL; the only stored address is the
+  browser's saved view (`kycalendar.tasksView`). Its shape is unchanged, so a view saved by the
+  old sidebar opens on its tab, with the row that holds it marked. `#/tasks` is unchanged.
+- **Habits:** one card per habit across the content column: current streak, longest, completion
+  rate and this week as large figures, beside a 12-week grid whose cells grow to the space (the
+  API keeps returning 12 weeks). Done cells use the habit's list colour (accent by default),
+  lightened on dark themes; missed cells a tint of it; days before the habit began (its
+  creation or first completion) are outlined only and left out of the rate. A weekly habit is
+  one cell per week, so a week with one completion is not shown as six missed days.
+- **Insights:** three cards. Completed per week in the accent: earlier weeks a tint, this week
+  full and labelled, zero weeks a baseline stub, counts above bars; the chart is drawn at its
+  box's pixel width so its text stays 12px. Planned in the accent on a tinted track, today's row
+  marked and labelled. Each list with its colour as a swatch and a bar; overdue above zero in the
+  danger colour with an icon and the word "overdue".
+- **Contrast:** done cells against the card and against missed cells, and every bar against the
+  card, hold 3:1 in light and dark for the accent and every palette colour
+  (`web/browser/insights.spec.mjs`). Text stays on the existing ink tokens.
+- **Not changed:** Goals, the streak logic, the completion log and the insight queries.
