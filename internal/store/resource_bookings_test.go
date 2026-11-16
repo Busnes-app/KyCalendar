@@ -126,6 +126,9 @@ func TestRoomNeutralReplyBetweenYearlyWindows(t *testing.T) {
 		if tc.name == "conflict" {
 			other := strings.ReplaceAll(master, "UID:yearly", "UID:other")
 			other = strings.ReplaceAll(other, "20261120", "20271120")
+			// The competing hold is one occurrence; a second infinite yearly rule
+			// would itself conflict with this reservation in later years.
+			other = strings.ReplaceAll(other, "RRULE:FREQ=YEARLY\r\n", "")
 			put(other, "alice", "other.ics")
 		}
 		put(master, tc.writer, "yearly.ics")

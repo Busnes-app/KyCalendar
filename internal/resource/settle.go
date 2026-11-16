@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
+	"github.com/teambition/rrule-go"
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
@@ -389,6 +390,133 @@ func ExplicitFutureSpans(cal *ical.Calendar, after int64) ([]Span, bool) {
 		}
 	}
 	return spans, true
+}
+
+// FutureRuleConflicts proves rule separation or fully expands both calendars within the
+// occurrence bound. A finite sample of an unbounded rule is never evidence of non-overlap.
+// Explicit dates/overrides still require their separate admission windows.
+func FutureRuleConflicts(a, b *ical.Calendar, after int64) ([]Span, bool) {
+	hasRule := func(cal *ical.Calendar) bool {
+		for _, c := range cal.Children {
+			if c.Name == ical.CompEvent && c.Props.Get(ical.PropRecurrenceID) == nil &&
+				!Cancelled(c) && len(c.Props[ical.PropRecurrenceRule]) > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasRule(a) || !hasRule(b) {
+		return nil, true
+	}
+	clockSpan := func(cal *ical.Calendar) (Span, bool) {
+		var master *ical.Component
+		for _, c := range cal.Children {
+			if c.Name != ical.CompEvent {
+				continue
+			}
+			if p := c.Props.Get(ical.PropRecurrenceID); p != nil {
+				if p.Params.Get("RANGE") != "" {
+					return Span{}, false
+				}
+				continue
+			}
+			if master != nil {
+				return Span{}, false
+			}
+			master = c
+		}
+		if master == nil || len(master.Props[ical.PropRecurrenceRule]) != 1 {
+			return Span{}, false
+		}
+		start := master.Props.Get(ical.PropDateTimeStart)
+		if start == nil || start.Params.Get(ical.ParamTimezoneID) != "" {
+			return Span{}, false
+		}
+		dt, err := time.Parse("20060102T150405Z", start.Value)
+		if err != nil {
+			return Span{}, false
+		}
+		if end := master.Props.Get(ical.PropDateTimeEnd); end != nil {
+			if _, err := time.Parse("20060102T150405Z", end.Value); err != nil || end.Params.Get(ical.ParamTimezoneID) != "" {
+				return Span{}, false
+			}
+		}
+		rule, err := master.Props.RecurrenceRule()
+		if err != nil || rule == nil || rule.Freq > rrule.DAILY || len(rule.Byhour)+len(rule.Byminute)+len(rule.Bysecond) > 0 {
+			return Span{}, false
+		}
+		length, ok := componentLength(master)
+		if !ok {
+			return Span{}, false
+		}
+		startClock := int64(dt.Hour()*3600 + dt.Minute()*60 + dt.Second())
+		endClock := startClock + int64(length/time.Second)
+		if endClock > 24*3600 {
+			return Span{}, false
+		}
+		return Span{startClock, endClock}, true
+	}
+	// Fixed, same-day UTC clock ranges cannot meet, regardless of the rule's dates.
+	x, okA := clockSpan(a)
+	y, okB := clockSpan(b)
+	if okA && okB && (x.End <= y.Start || y.End <= x.Start) {
+		return nil, true
+	}
+	expand := func(cal *ical.Calendar) ([]Span, bool) {
+		info, err := calendar.Inspect(cal)
+		if err != nil || info.LastEnd == nil {
+			return nil, false
+		}
+		end := time.Unix(*info.LastEnd, 0).Add(time.Second)
+		probe := *cal.Component
+		probe.Children = nil
+		for _, c := range cal.Children {
+			if c.Name == ical.CompEvent {
+				if c.Props.Get(ical.PropRecurrenceID) != nil {
+					continue
+				}
+			}
+			probe.Children = append(probe.Children, c)
+		}
+		// Check completeness without overrides: otherwise an override of DTSTART can hide
+		// the engine's Partial fallback. Never infer completeness from the remaining rows.
+		checked, err := calendar.Expand(&ical.Calendar{Component: &probe}, time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), end, time.UTC, MaxOccurrences)
+		if err != nil {
+			return nil, false
+		}
+		for _, in := range checked {
+			if in.Partial {
+				return nil, false
+			}
+		}
+		// Include DTSTART so an engine fallback flagged Partial cannot disappear before `after`.
+		insts, err := calendar.Expand(cal, time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), end, time.UTC, MaxOccurrences)
+		if err != nil {
+			return nil, false
+		}
+		var out []Span
+		for _, in := range insts {
+			if in.Partial {
+				return nil, false
+			}
+			if !Cancelled(in.Event) && in.End.Unix() > after {
+				out = append(out, Span{in.Start.Unix(), in.End.Unix()})
+			}
+		}
+		return out, true
+	}
+	want, okA := expand(a)
+	held, okB := expand(b)
+	if !okA || !okB {
+		return nil, false
+	}
+	var hits []Span
+	for _, sp := range want {
+		if len(Conflicts([]Span{sp}, held)) > 0 {
+			hits = append(hits, sp)
+		}
+	}
+	return hits, true
 }
 
 // OpenSpans are cal's occurrences in [from, to) at or after openAfter: what an accepted series

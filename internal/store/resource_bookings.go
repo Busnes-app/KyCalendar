@@ -204,7 +204,7 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 				}
 				// Existing exceptions can meet the incoming rule even when its own explicit
 				// dates do not. Check both directions without expanding the intervening years.
-				held, checkable, err := c.explicitResourceSpans(ctx, tx, id, o.CalendarID, o.Name)
+				held, checkable, err := c.futureResourceWindows(ctx, tx, id, o.CalendarID, o.Name, cal, d.OpenAfter)
 				if err != nil {
 					return nil, err
 				}
@@ -304,11 +304,12 @@ fingerprint, open_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,
 	}, nil
 }
 
-// explicitResourceSpans returns the finite future reservations of other live bookings.
-func (c *calendarStore) explicitResourceSpans(ctx context.Context, q txQuerier, id, skipCal, skipName string) ([]resource.Span, bool, error) {
+// futureResourceWindows checks future rules and returns the explicit/finite conflict windows
+// of other live bookings, including stored reservations beyond a shortened horizon.
+func (c *calendarStore) futureResourceWindows(ctx context.Context, q txQuerier, id, skipCal, skipName string, incoming *ical.Calendar, from int64) ([]resource.Span, bool, error) {
 	rows, err := q.QueryContext(ctx, c.q(`SELECT b.open_after, o.data FROM resource_bookings b
 JOIN calendar_objects o ON o.calendar_id = b.calendar_id AND o.name = b.object_name
-WHERE b.resource_id = ? AND b.status <> 'declined' AND b.open_after > 0 AND NOT (b.calendar_id = ? AND b.object_name = ?)`), id, skipCal, skipName)
+WHERE b.resource_id = ? AND b.status <> 'declined' AND (o.last_end IS NULL OR o.last_end > ?) AND NOT (b.calendar_id = ? AND b.object_name = ?)`), id, from, skipCal, skipName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -324,7 +325,12 @@ WHERE b.resource_id = ? AND b.status <> 'declined' AND b.open_after > 0 AND NOT 
 		if err != nil {
 			return nil, false, nil
 		}
-		spans, ok := resource.ExplicitFutureSpans(cal, after)
+		ruleHits, checkable := resource.FutureRuleConflicts(incoming, cal, from)
+		if !checkable {
+			return nil, false, nil
+		}
+		out = append(out, ruleHits...)
+		spans, ok := resource.ExplicitFutureSpans(cal, max(after, from))
 		if !ok {
 			return nil, false, nil
 		}

@@ -238,3 +238,33 @@ func TestExplicitFutureSpansRefusesExcessDates(t *testing.T) {
 		t.Fatal("uncheckable future dates admitted")
 	}
 }
+
+func TestFutureRuleConflictsRequiresProof(t *testing.T) {
+	after := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC).Unix()
+	a := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=DAILY;INTERVAL=31\n"))
+	b := parse(t, event("20261121T090000Z", "20261121T100000Z", "RRULE:FREQ=DAILY;INTERVAL=32\n"))
+	if _, ok := FutureRuleConflicts(a, b, after); ok {
+		t.Fatal("infinite future was treated as a checked sample")
+	}
+	late := parse(t, event("20261121T140000Z", "20261121T150000Z", "RRULE:FREQ=DAILY;INTERVAL=32\n"))
+	if hits, ok := FutureRuleConflicts(a, late, after); !ok || len(hits) != 0 {
+		t.Fatalf("separate UTC clocks: %v %v", hits, ok)
+	}
+	variable := parse(t, event("20261121T140000Z", "20261121T150000Z", "RRULE:FREQ=DAILY;INTERVAL=32;BYHOUR=9,14\n"))
+	if _, ok := FutureRuleConflicts(a, variable, after); ok {
+		t.Fatal("variable clock was treated as fixed")
+	}
+	finiteA := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=DAILY;INTERVAL=31;COUNT=3\n"))
+	finiteB := parse(t, event("20261121T090000Z", "20261121T100000Z", "RRULE:FREQ=DAILY;INTERVAL=32;COUNT=3\n"))
+	if hits, ok := FutureRuleConflicts(finiteA, finiteB, after); !ok || len(hits) != 0 {
+		t.Fatalf("complete finite expansion: %v %v", hits, ok)
+	}
+	collision := parse(t, event("20261221T090000Z", "20261221T100000Z", "RRULE:FREQ=DAILY;COUNT=1\n"))
+	if hits, ok := FutureRuleConflicts(finiteA, collision, after); !ok || len(hits) != 1 {
+		t.Fatalf("finite collision: %v %v", hits, ok)
+	}
+	excluded := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=DAILY;INTERVAL=31;COUNT=3\nEXDATE:20261221T090000Z\n"))
+	if hits, ok := FutureRuleConflicts(excluded, collision, after); !ok || len(hits) != 0 {
+		t.Fatalf("exclusion lost: %v %v", hits, ok)
+	}
+}

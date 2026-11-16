@@ -81,7 +81,10 @@ RDATEs beyond the horizon are also checked against stored and open bookings in t
 windows; incoming rules are also checked in existing accepted or pending bookings’ explicit
 future windows, so insertion order cannot bypass the reservation. Both preserve EXDATE and
 cancellation. An explicit expansion that cannot be checked
-within the occurrence bound is declined. A series may run past
+within the occurrence bound is declined. Rule-only future intersections are checked too: a complete
+finite expansion must fit the occurrence bound, or fixed same-day UTC clock ranges must prove
+separation. Otherwise the second booking is declined, including complex unbounded rules whose
+non-overlap cannot be proved; a finite sample never clears an infinite reservation. A series may run past
 the horizon, and with no end (the web's repeats have none): once accepted it reserves every later
 occurrence too. Its busy rows stop at the horizon, and the booking records where (`open_after`);
 every later check and the finder expand such a series past that point, so a later booking that

@@ -946,3 +946,54 @@ func TestRoomFutureExplicitOccurrencesMustBeFree(t *testing.T) {
 
 	}
 }
+
+func TestRoomRuleIntersectionBeyondHorizonIsDeclined(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%t", reverse), func(t *testing.T) {
+			srv, st, _ := setupTestServer(t)
+			alice, cal := webUser(t, srv, st, "alice")
+			room := makeResource(t, st, resource.Resource{Name: "Distant", HorizonDays: 30})
+			rules := []string{"FREQ=DAILY;INTERVAL=31", "FREQ=DAILY;INTERVAL=32"}
+			days := []int{1, 2}
+			if reverse {
+				rules[0], rules[1] = rules[1], rules[0]
+				days[0], days[1] = days[1], days[0]
+			}
+			for i := range rules {
+				start, end := slot(days[i], 9)
+				uid := fmt.Sprintf("rule-%d", i)
+				text := "DTSTART:" + icsTime(start) + "\r\nDTEND:" + icsTime(end) + "\r\nRRULE:" + rules[i] + "\r\nSUMMARY:Distant\r\n"
+				putRaw(t, st, cal, uid+".ics", roomICS(uid, room, text), "usr_alice")
+				status, _, _ := roomStatus(t, srv, alice, uid)
+				if i == 0 && status != resource.Accepted {
+					t.Fatalf("first series: %s", status)
+				}
+				if i == 1 && status != resource.Declined {
+					t.Fatalf("future rule intersection accepted: %s", status)
+				}
+			}
+		})
+	}
+}
+
+func TestRoomNewRuleChecksStoredFutureBookingAfterHorizonShortens(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, cal := webUser(t, srv, st, "alice")
+	bob, bobCal := webUser(t, srv, st, "bob")
+	room := makeResource(t, st, resource.Resource{Name: "Distant hold", HorizonDays: 120})
+	start, end := slot(60, 9)
+	createEvent(t, srv, bob, bobCal, bookBody("Held", start, end, "", room))
+	r, err := st.Resources().GetResource(context.Background(), room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.HorizonDays = 30
+	if err := st.Resources().UpdateResource(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	start, end = slot(4, 9)
+	uid := createEvent(t, srv, alice, cal, bookBody("Weekly", start, end, `,"repeat":{"freq":"weekly"}`, room))
+	if status, reason, _ := roomStatus(t, srv, alice, uid); status != resource.Declined || reason != resource.ReasonBusy {
+		t.Fatalf("stored future booking missed: %s %s", status, reason)
+	}
+}
