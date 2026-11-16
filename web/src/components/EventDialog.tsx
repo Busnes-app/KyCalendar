@@ -6,6 +6,7 @@ import { linkify } from '../linkify';
 import { FreeBusyStrip } from './FreeBusyStrip';
 import { StatusLabel, statusText } from './StatusLabel';
 import { RoomList, RoomPicker } from './RoomPicker';
+import { timeRange } from '../timeRange';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
 
 interface Props {
@@ -117,6 +118,8 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
   // Rooms and equipment: the organizer's (or anyone's, before there is one) to change, for the whole series.
   const canRoom = !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
   const [rooms, setRooms] = useState(() => event?.resources ?? []);
+  // Location filled from a room that was then declined would send people to a room the event does not have.
+  const declinedPlace = rooms.find((r) => r.status === 'declined' && form.location.trim() === [r.name, r.location].filter(Boolean).join(', '));
   const roomsChanged = rooms.length !== (event?.resources ?? []).length || rooms.some((r, i) => r.id !== event!.resources![i].id);
   const filesChanged = files.length !== (event?.files ?? []).length || files.some((f, i) => f.url !== event!.files![i].url);
   // Organisation people for the Invite field, after a short pause in typing; free text still works.
@@ -266,15 +269,15 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
       {event?.cancelled && <p role="note"><strong>Cancelled.</strong> This event was called off.</p>}
       {readOnly ? (
         <div>
-          <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
+          <p>{event!.all_day ? `${form.start} – ${form.end}` : timeRange(event!)}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
           {fileList}
-          <RoomList rooms={event!.resources ?? []} />
+          <RoomList rooms={event!.resources ?? []} place={form.location} series={event!.recurring} />
           {room}
           {invitation}
           <div className="modal-actions">
-            <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
+            <button type="button" className="btn-secondary" ref={closeBtn} onClick={onClose}>Close</button>
           </div>
         </div>
       ) : (
@@ -289,7 +292,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {event?.recurring && scope === 'all' && <p role="note">{MOVE_ALL_WARNING}</p>}
           {room}
           {invitation}
-          {invited && <RoomList rooms={event!.resources ?? []} />}
+          {invited && <RoomList rooms={event!.resources ?? []} place={form.location} series={event!.recurring} />}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
@@ -305,6 +308,12 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           </div>
           <label htmlFor="kc-location">Location <span className="field-optional">(optional)</span></label>
           <input id="kc-location" value={form.location} maxLength={1000} onChange={(e) => set({ location: e.target.value })} />
+          {declinedPlace && (
+            <p role="note" className="kc-declined-place">
+              Location names {declinedPlace.name}, which is declined.{' '}
+              <button type="button" className="btn-secondary btn-sm" onClick={() => set({ location: '' })}>Clear location</button>
+            </p>
+          )}
           {canRoom && scope === 'all' && (
             <RoomPicker
               rooms={rooms}
@@ -317,9 +326,15 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
               end={form.allDay ? addDays(parseLocal(form.end.slice(0, 10)), 1) : parseLocal(form.end)}
               event={event}
               repeats={form.freq !== ''}
+              place={form.location}
             />
           )}
-          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} />}
+          {canRoom && scope === 'this' && rooms.length > 0 && (
+            <>
+              <RoomList rooms={rooms} place={form.location} series />
+              <p className="kc-hint">Rooms apply to all events in the series.</p>
+            </>
+          )}
           <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
           {scope === 'all' && (files.length > 0 || drive) && (

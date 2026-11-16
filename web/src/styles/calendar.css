@@ -220,8 +220,33 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw - 2rem); }
 /* Free/busy strip in the event form: one row per guest across the chosen day. */
 .kc-freebusy { display: grid; gap: var(--ky-space-2); }
-.kc-room-finder { display: grid; gap: var(--ky-space-2); padding: var(--ky-space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
-.kc-room-finder .kc-people li > span:first-child { white-space: normal; }
+/* Event dialog: the title and the actions stay in view while the body scrolls. */
+dialog.kc-dialog > h2 { position: sticky; top: calc(var(--space-5) * -1); z-index: 2; margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) var(--space-3); padding: var(--space-5) var(--space-5) var(--space-3); border-bottom: 1px solid var(--line); background: var(--panel); }
+dialog.kc-dialog .modal-actions { position: sticky; bottom: calc(var(--space-5) * -1); z-index: 2; margin: var(--space-5) calc(var(--space-5) * -1) calc(var(--space-5) * -1); padding: var(--space-4) var(--space-5) var(--space-5); background: var(--panel); }
+@media (max-width: 720px) {
+  dialog.kc-dialog > h2 { top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-3); padding: var(--space-4) var(--space-4) var(--space-3); }
+  dialog.kc-dialog .modal-actions { bottom: calc(var(--space-4) * -1); margin: var(--space-4) calc(var(--space-4) * -1) calc(var(--space-4) * -1); padding: var(--space-3) var(--space-4) var(--space-4); }
+}
+/* Rooms on an event: the whole name, its answer beside it (under it on phones), Remove on the right. */
+.kc-people li.kc-room { display: grid; grid-template-columns: minmax(0, 1fr) max-content max-content; align-items: center; align-content: center; gap: 0 var(--ky-space-3); padding-block: var(--ky-space-2); }
+.kc-people li.kc-room > span { white-space: normal; overflow: visible; }
+.kc-room-state { font-size: var(--ky-type-meta); line-height: 1.5; color: var(--ink); }
+.kc-room > button { grid-column: 3; min-height: var(--ky-control-size); }
+@media (max-width: 720px) {
+  .kc-people li.kc-room { grid-template-columns: minmax(0, 1fr) max-content; }
+  .kc-room > .kc-room-state { grid-column: 1; grid-row: 2; }
+  .kc-room > button { grid-column: 2; grid-row: 1 / span 2; }
+}
+.kc-room-finder { display: grid; gap: var(--ky-space-2); padding: var(--ky-space-3) var(--ky-space-4) var(--ky-space-4); border: 1px solid var(--line); border-radius: var(--radius-md); }
+@media (max-width: 720px) { .kc-room-finder { padding: var(--ky-space-3); } }
+.kc-declined-place { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-2); }
+dialog.kc-dialog > div > h3.kc-label { margin-top: var(--ky-space-3); }
+.kc-finder-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-2); }
+.kc-finder-title { font-size: var(--ky-type-body); font-weight: 600; color: var(--ink-strong); }
+.kc-room-finder .kc-pair { align-items: start; }
+.kc-room-finder fieldset > legend { margin-top: 0; }
+.kc-finder li { padding-block: var(--ky-space-3); }
+.kc-finder li > span:first-child { display: grid; gap: 2px; white-space: normal; }
 .kc-fb-row { display: grid; gap: var(--ky-space-1); overflow-wrap: anywhere; }
 .kc-fb-track { width: 100%; height: 12px; border: 1px solid var(--field-border); border-radius: var(--radius-sm); background: var(--bg); }
 .kc-fb-busy { fill: var(--ink); opacity: 0.55; }
