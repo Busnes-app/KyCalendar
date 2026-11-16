@@ -36,6 +36,9 @@ It rides the existing KyPost↔KyCalendar pair: same pairing, same shared secret
 - KyCalendar: the task itself (VTODO in the Inbox list) with `X-KY-SOURCE:kypost`,
   `X-KY-REF:<ref>` and `URL:<https KyPost link>`; one row per user in a new
   `task_prefs (user_id, kypost_flags)` (absent = on). No mail content beyond the subject.
+  The switch shows on the Tasks + menu's "Flagged from mail…" only while KyPost is linked;
+  unlinked, the dialog shows only a note saying what happens once it is, since the switch
+  would do nothing (council round 8).
 - KyPost: the flag (its existing per-message `Flagged` state, written to IMAP `\Flagged`) and
   its due choice; nothing about the task beyond its UID for the clear path.
 

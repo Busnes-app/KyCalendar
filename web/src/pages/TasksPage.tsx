@@ -8,11 +8,12 @@ import { MoreMenu } from '../components/MoreMenu';
 import { EmptyState, Modal } from '../components/ui';
 import { TaskDialog, estimateText } from '../components/TaskDialog';
 import { TaskBoard } from '../components/TaskBoard';
+import { FlaggedMailDialog } from '../components/FlaggedMailDialog';
 import { GoalsView, HabitsView, InsightsView } from '../components/TaskInsights';
 import { calendarColors } from '../calendarColors';
 import { ApiError, createCalendar, deleteCalendar, listCalendars, patchCalendar, type CalendarInfo } from '../calendarApi';
 import {
-  createTask, createView, deleteView, inbox, saveTaskPrefs, taskPrefs, type TaskPrefs, listAreas, listTasks, listViews, patchTask, saveAreas,
+  createTask, createView, deleteView, inbox, listAreas, listTasks, listViews, patchTask, saveAreas,
   type Area, type PriorityName, type SavedView, type Task, type TaskBody, type TaskFilter,
 } from '../tasksApi';
 import { dateOnly, parseQuick } from '../taskParse';
@@ -282,7 +283,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             <>
               <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setNaming('list'); }}><ListTodo size={16} aria-hidden="true" /> New list</button>
               <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setManaging(true); }}><Layers size={16} aria-hidden="true" /> Areas…</button>
-              <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setPrefsOpen(true); }}><Mail size={16} aria-hidden="true" /> Flagged mail…</button>
+              <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setPrefsOpen(true); }}><Mail size={16} aria-hidden="true" /> Flagged from mail…</button>
             </>
           )}
         </MoreMenu>
@@ -536,33 +537,10 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             }
           }} />
       )}
-      {prefsOpen && <PrefsDialog onClose={() => setPrefsOpen(false)} />}
+      {prefsOpen && <FlaggedMailDialog onClose={() => setPrefsOpen(false)} />}
       {managing && <AreasDialog areas={areas} lists={lists.filter((c) => c.id !== inboxId)} onClose={() => setManaging(false)} onSaved={(a) => { setAreas(a); setManaging(false); }} />}
       {sidebarSlot && createPortal(sidebar, sidebarSlot)}
     </section>
-  );
-}
-
-// PrefsDialog is the user's switch, on KyCalendar's side, for tasks made from flagged KyPost mail.
-function PrefsDialog({ onClose }: { onClose: () => void }) {
-  const [prefs, setPrefs] = useState<TaskPrefs | null>(null);
-  const [error, setError] = useState('');
-  useEffect(() => { void taskPrefs().then(setPrefs, () => setError('Settings could not be loaded.')); }, []);
-  return (
-    <Modal title="Flagged mail" description="Flagging a message in KyPost adds it to your Inbox list here, with a link back to the message. Finishing the task clears the flag." onClose={onClose}>
-      <div className="kc-form">
-        {prefs && (
-          <label className="kc-check">
-            <input type="checkbox" role="switch" checked={prefs.kypost_flags}
-              onChange={(e) => void saveTaskPrefs(e.target.checked).then(setPrefs, () => setError('The setting could not be saved.'))} />
-            Make tasks from flagged mail
-          </label>
-        )}
-        {prefs && !prefs.kypost_linked && <p className="kc-hint" role="note">KyPost is not connected to KyCalendar, so flags stay in KyPost for now.</p>}
-        {error && <p role="alert">{error}</p>}
-        <div className="modal-actions"><button type="button" onClick={onClose}>Done</button></div>
-      </div>
-    </Modal>
   );
 }
 
