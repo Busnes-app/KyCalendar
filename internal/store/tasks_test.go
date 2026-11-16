@@ -63,12 +63,13 @@ func TestTaskCompletionsLogAndUndo(t *testing.T) {
 	st, c := taskStore(t)
 	ts := st.Tasks()
 	day := time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)
-	for _, h := range []int{-30, 9, 10} {
-		if err := ts.LogCompletion(ctx, store.TaskCompletion{UserID: "usr_a", CalendarID: c.ID, UID: "t1", At: day.Add(time.Duration(h) * time.Hour)}); err != nil {
+	for i, h := range []int{-30, 9, 10, 10} {
+		occ := []string{"a", "b", "c", "c"}[i] // the last repeats an occurrence: ignored
+		if err := ts.LogCompletion(ctx, store.TaskCompletion{UserID: "usr_a", CalendarID: c.ID, UID: "t1", Occurrence: occ, At: day.Add(time.Duration(h) * time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := ts.UndoCompletion(ctx, "usr_a", c.ID, "t1", day); err != nil {
+	if err := ts.UndoCompletion(ctx, "usr_a", c.ID, "t1", "c"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ts.Completions(ctx, "usr_a", day.AddDate(0, 0, -7))

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -30,9 +31,10 @@ type TaskStore interface {
 	Areas(ctx context.Context, userID string) (string, error)
 	SetAreas(ctx context.Context, userID, data string) error
 
+	// LogCompletion records c once per user, task and occurrence; a repeat is ignored.
 	LogCompletion(ctx context.Context, c TaskCompletion) error
-	// UndoCompletion deletes the newest completion of uid at or after since.
-	UndoCompletion(ctx context.Context, userID, calendarID, uid string, since time.Time) error
+	// UndoCompletion deletes the completion of that occurrence.
+	UndoCompletion(ctx context.Context, userID, calendarID, uid, occurrence string) error
 	// Completions are the user's completions at or after since, oldest first.
 	Completions(ctx context.Context, userID string, since time.Time) ([]TaskCompletion, error)
 
@@ -54,8 +56,8 @@ type TaskStore interface {
 }
 
 type TaskCompletion struct {
-	UserID, CalendarID, UID string
-	At                      time.Time
+	UserID, CalendarID, UID, Occurrence string
+	At                                  time.Time
 }
 
 type TaskView struct {
@@ -88,20 +90,20 @@ ON CONFLICT (user_id) DO UPDATE SET data = excluded.data`), userID, data)
 }
 
 func (t *taskStore) LogCompletion(ctx context.Context, c TaskCompletion) error {
-	_, err := t.store.db.ExecContext(ctx, t.q(`INSERT INTO task_completions (user_id, calendar_id, uid, completed_at) VALUES (?, ?, ?, ?)`),
-		c.UserID, c.CalendarID, c.UID, c.At.Unix())
+	_, err := t.store.db.ExecContext(ctx, t.q(`INSERT INTO task_completions (user_id, calendar_id, uid, occurrence, completed_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (user_id, calendar_id, uid, occurrence) DO NOTHING`),
+		c.UserID, c.CalendarID, c.UID, c.Occurrence, c.At.Unix())
 	return err
 }
 
-func (t *taskStore) UndoCompletion(ctx context.Context, userID, calendarID, uid string, since time.Time) error {
-	_, err := t.store.db.ExecContext(ctx, t.q(`DELETE FROM task_completions WHERE user_id = ? AND calendar_id = ? AND uid = ? AND completed_at = (
- SELECT MAX(completed_at) FROM task_completions WHERE user_id = ? AND calendar_id = ? AND uid = ? AND completed_at >= ?)`),
-		userID, calendarID, uid, userID, calendarID, uid, since.Unix())
+func (t *taskStore) UndoCompletion(ctx context.Context, userID, calendarID, uid, occurrence string) error {
+	_, err := t.store.db.ExecContext(ctx, t.q(`DELETE FROM task_completions WHERE user_id = ? AND calendar_id = ? AND uid = ? AND occurrence = ?`),
+		userID, calendarID, uid, occurrence)
 	return err
 }
 
 func (t *taskStore) Completions(ctx context.Context, userID string, since time.Time) ([]TaskCompletion, error) {
-	rows, err := t.store.db.QueryContext(ctx, t.q(`SELECT calendar_id, uid, completed_at FROM task_completions WHERE user_id = ? AND completed_at >= ? ORDER BY completed_at`), userID, since.Unix())
+	rows, err := t.store.db.QueryContext(ctx, t.q(`SELECT calendar_id, uid, occurrence, completed_at FROM task_completions WHERE user_id = ? AND completed_at >= ? ORDER BY completed_at`), userID, since.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +112,7 @@ func (t *taskStore) Completions(ctx context.Context, userID string, since time.T
 	for rows.Next() {
 		c := TaskCompletion{UserID: userID}
 		var at int64
-		if err := rows.Scan(&c.CalendarID, &c.UID, &at); err != nil {
+		if err := rows.Scan(&c.CalendarID, &c.UID, &c.Occurrence, &at); err != nil {
 			return nil, err
 		}
 		c.At = time.Unix(at, 0).UTC()
@@ -291,4 +293,80 @@ func (t *taskStore) PruneTasks(ctx context.Context, before time.Time) error {
 	}
 	_, err := t.store.db.ExecContext(ctx, `DELETE FROM task_search WHERE calendar_id NOT IN (SELECT id FROM calendars)`)
 	return err
+}
+
+// TaskGoal is a user's goal over a period, linked to areas and lists (KyCalendar-only).
+type TaskGoal struct {
+	ID, UserID, Title, Period, Starts, Ends string
+	Areas, Lists                            []string
+	CreatedAt                               time.Time
+}
+
+// TaskGoalStore is the goals part of TaskStore.
+type TaskGoalStore interface {
+	Goals(ctx context.Context, userID string) ([]TaskGoal, error)
+	// CreateGoal inserts g unless the user already has max goals (ErrQuotaExceeded).
+	CreateGoal(ctx context.Context, g *TaskGoal, max int) error
+	// UpdateGoal and DeleteGoal reach only the user's own goal (ErrNotFound otherwise).
+	UpdateGoal(ctx context.Context, g *TaskGoal) error
+	DeleteGoal(ctx context.Context, userID, id string) error
+}
+
+func (s *SQLStore) TaskGoals() TaskGoalStore { return &taskStore{s} }
+
+func (t *taskStore) Goals(ctx context.Context, userID string) ([]TaskGoal, error) {
+	rows, err := t.store.db.QueryContext(ctx, t.q(`SELECT id, title, period, starts, ends, areas, lists, created_at FROM task_goals WHERE user_id = ? ORDER BY created_at, id`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TaskGoal
+	for rows.Next() {
+		g := TaskGoal{UserID: userID}
+		var areas, lists string
+		var at int64
+		if err := rows.Scan(&g.ID, &g.Title, &g.Period, &g.Starts, &g.Ends, &areas, &lists, &at); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(areas), &g.Areas)
+		_ = json.Unmarshal([]byte(lists), &g.Lists)
+		g.CreatedAt = time.Unix(at, 0).UTC()
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (t *taskStore) CreateGoal(ctx context.Context, g *TaskGoal, max int) error {
+	tx, err := t.store.lockedTx(ctx, "task-goals:"+g.UserID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRowContext(ctx, t.q(`SELECT COUNT(*) FROM task_goals WHERE user_id = ?`), g.UserID).Scan(&n); err != nil {
+		return err
+	}
+	if n >= max {
+		return ErrQuotaExceeded
+	}
+	areas, _ := json.Marshal(g.Areas)
+	lists, _ := json.Marshal(g.Lists)
+	if _, err := tx.ExecContext(ctx, t.q(`INSERT INTO task_goals (id, user_id, title, period, starts, ends, areas, lists, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		g.ID, g.UserID, g.Title, g.Period, g.Starts, g.Ends, string(areas), string(lists), g.CreatedAt.Unix()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (t *taskStore) UpdateGoal(ctx context.Context, g *TaskGoal) error {
+	areas, _ := json.Marshal(g.Areas)
+	lists, _ := json.Marshal(g.Lists)
+	res, err := t.store.db.ExecContext(ctx, t.q(`UPDATE task_goals SET title = ?, period = ?, starts = ?, ends = ?, areas = ?, lists = ? WHERE user_id = ? AND id = ?`),
+		g.Title, g.Period, g.Starts, g.Ends, string(areas), string(lists), g.UserID, g.ID)
+	return affected(res, err)
+}
+
+func (t *taskStore) DeleteGoal(ctx context.Context, userID, id string) error {
+	res, err := t.store.db.ExecContext(ctx, t.q(`DELETE FROM task_goals WHERE user_id = ? AND id = ?`), userID, id)
+	return affected(res, err)
 }

@@ -402,3 +402,141 @@ func TestTaskCompleteUnreachableRule(t *testing.T) {
 		t.Fatal("the stored task changed")
 	}
 }
+
+// Completions from any client feed the log once (owner answer, 2026-11-15): a phone's completion
+// over CalDAV counts, the web's completion synced back from the phone does not count again, and
+// un-completing on the phone removes it.
+func TestTaskCompletionsFromEveryClient(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	token := ssoUser(t, st, "dana")
+	dana, _ := st.Users().GetUserByID(context.Background(), "usr_dana")
+	cookie := sessionFor(t, st, dana)
+	list := taskList(t, srv, cookie)
+	cals, _ := st.Calendars().ListCalendarsByOwner(context.Background(), "user", "usr_dana")
+	var slug string
+	for _, c := range cals {
+		if c.ID == list {
+			slug = c.Slug
+		}
+	}
+	path := "/dav/usr_dana/calendars/" + slug + "/phone.ics"
+	open := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VTODO\r\nUID:phone\r\nDTSTAMP:20261101T000000Z\r\nCREATED:20261101T000000Z\r\nSUMMARY:Run\r\nDUE;VALUE=DATE:20261110\r\nSTATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+	done := strings.Replace(open, "STATUS:NEEDS-ACTION", "STATUS:COMPLETED\r\nCOMPLETED:20261112T080000Z", 1)
+	put := func(body string) {
+		t.Helper()
+		if r := rawDAV(t, ts, "PUT", path, "dana", token, body, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode >= 300 {
+			t.Fatalf("PUT %d", r.StatusCode)
+		}
+	}
+	count := func() int {
+		got, err := st.Tasks().Completions(context.Background(), "usr_dana", time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(got)
+	}
+	put(open)
+	put(done)
+	if n := count(); n != 1 {
+		t.Fatalf("phone completion: %d rows", n)
+	}
+	put(done) // the same completion synced again
+	if n := count(); n != 1 {
+		t.Fatalf("repeated sync: %d rows", n)
+	}
+	put(open) // un-completed on the phone
+	if n := count(); n != 0 {
+		t.Fatalf("un-complete: %d rows", n)
+	}
+	// Web completion, then the phone syncs it back: one row.
+	o, _ := st.Calendars().GetObjectByUID(context.Background(), list, "phone")
+	if w := taskReq(t, srv, "PATCH", "/api/tasks/"+list+"/phone", o.ETag, cookie, map[string]any{"status": "COMPLETED"}); w.Code != http.StatusOK {
+		t.Fatalf("web complete %d", w.Code)
+	}
+	after, _ := st.Calendars().GetObjectByUID(context.Background(), list, "phone")
+	put(string(after.Data))
+	if n := count(); n != 1 {
+		t.Fatalf("web then phone: %d rows", n)
+	}
+}
+
+func TestGoalsHabitsInsights(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice := loginAs(t, srv, st, "alice", "user")
+	bob := loginAs(t, srv, st, "bob", "user")
+	list := taskList(t, srv, alice)
+	bobs := taskList(t, srv, bob)
+	goal := func(cookie *http.Cookie, lists []string) *httptest.ResponseRecorder {
+		return taskReq(t, srv, "POST", "/api/tasks/goals", "", cookie, map[string]any{"title": "Ship the relaunch", "period": "quarter", "starts": "2026-10-01", "ends": "2026-12-31", "lists": lists})
+	}
+	if w := goal(alice, []string{bobs}); w.Code != http.StatusNotFound {
+		t.Errorf("goal on bob's list: %d", w.Code)
+	}
+	for name, b := range map[string]map[string]any{
+		"long period": {"title": "x", "period": "custom", "starts": "2026-01-01", "ends": "2027-06-01"},
+		"bad period":  {"title": "x", "period": "decade", "starts": "2026-01-01", "ends": "2026-02-01"},
+		"no title":    {"title": " ", "period": "year", "starts": "2026-01-01", "ends": "2026-12-31"},
+	} {
+		if w := taskReq(t, srv, "POST", "/api/tasks/goals", "", alice, b); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	w := goal(alice, []string{list})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("goal %d %s", w.Code, w.Body)
+	}
+	var g struct{ ID string }
+	_ = json.Unmarshal(w.Body.Bytes(), &g)
+	if w := taskReq(t, srv, "GET", "/api/tasks/goals/"+g.ID+"/progress?tz=UTC", "", bob, ""); w.Code != http.StatusNotFound {
+		t.Errorf("bob read alice's goal: %d", w.Code)
+	}
+	done := createTask(t, srv, alice, list, map[string]any{"title": "Done one"})
+	if w := taskReq(t, srv, "PATCH", "/api/tasks/"+list+"/"+done.UID, done.ETag, alice, map[string]any{"status": "COMPLETED"}); w.Code != http.StatusOK {
+		t.Fatal(w.Code)
+	}
+	createTask(t, srv, alice, list, map[string]any{"title": "Open one", "due": "2020-01-01"})
+	var prog struct {
+		Lists []struct {
+			Done, Open int
+			Stalled    bool
+		}
+	}
+	_ = json.Unmarshal(taskReq(t, srv, "GET", "/api/tasks/goals/"+g.ID+"/progress?tz=UTC", "", alice, "").Body.Bytes(), &prog)
+	if len(prog.Lists) != 1 || prog.Lists[0].Open != 1 || prog.Lists[0].Stalled {
+		t.Errorf("progress %+v", prog)
+	}
+	// Habits: a plain task is refused; a daily habit answers its streak.
+	if w := taskReq(t, srv, "GET", "/api/tasks/"+list+"/"+done.UID+"/habit?tz=UTC", "", alice, ""); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("not a habit: %d", w.Code)
+	}
+	h := createTask(t, srv, alice, list, map[string]any{"title": "Stretch", "due": time.Now().Format(time.DateOnly), "rrule": "FREQ=DAILY", "habit": true})
+	if w := taskReq(t, srv, "PATCH", "/api/tasks/"+list+"/"+h.UID, h.ETag, alice, map[string]any{"status": "COMPLETED"}); w.Code != http.StatusOK {
+		t.Fatal(w.Code)
+	}
+	var hv struct{ Current, Longest int }
+	_ = json.Unmarshal(taskReq(t, srv, "GET", "/api/tasks/"+list+"/"+h.UID+"/habit?tz=UTC", "", alice, "").Body.Bytes(), &hv)
+	if hv.Current != 1 || hv.Longest != 1 {
+		t.Errorf("habit %+v", hv)
+	}
+	// Insights: 12 weeks, the list's open and overdue, 7 days.
+	var in struct {
+		Weeks []struct{ Done int }
+		Lists []struct{ Open, Overdue int }
+		Days  []struct {
+			FreeMin int `json:"free_min"`
+		}
+	}
+	_ = json.Unmarshal(taskReq(t, srv, "GET", "/api/tasks/insights?tz=UTC", "", alice, "").Body.Bytes(), &in)
+	if len(in.Weeks) != 12 || in.Weeks[11].Done != 2 || len(in.Days) != 7 || in.Days[0].FreeMin != 600 {
+		t.Errorf("insights %+v", in)
+	}
+	found := false
+	for _, l := range in.Lists {
+		found = found || l.Overdue == 1
+	}
+	if !found {
+		t.Errorf("no overdue list %+v", in.Lists)
+	}
+}

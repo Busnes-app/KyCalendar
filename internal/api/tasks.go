@@ -844,8 +844,7 @@ func (s *Server) patchTask(ctx context.Context, user *store.User, c *store.Calen
 		p.Zone = viewer
 	}
 	now := time.Now()
-	res, err := tasks.Apply(cal, p, now, viewer)
-	if err != nil {
+	if _, err := tasks.Apply(cal, p, now, viewer); err != nil {
 		return taskView{}, badTask(strings.TrimPrefix(err.Error(), "tasks: invalid task: "))
 	}
 	if files != nil {
@@ -854,14 +853,6 @@ func (s *Server) patchTask(ctx context.Context, user *store.User, c *store.Calen
 	saved, apiErr := s.saveEvent(ctx, user, c, o.Name, cal, etag, false)
 	if apiErr != nil {
 		return taskView{}, apiErr
-	}
-	// The log feeds streaks and insights; a failed log never undoes the user's write.
-	switch {
-	case res.Completed:
-		_ = s.store.Tasks().LogCompletion(ctx, store.TaskCompletion{UserID: user.ID, CalendarID: c.ID, UID: uid, At: now})
-	case res.Reopened:
-		d := now.In(viewer)
-		_ = s.store.Tasks().UndoCompletion(ctx, user.ID, c.ID, uid, time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, viewer))
 	}
 	t, err := tasks.Read(cal, viewer)
 	if err != nil {

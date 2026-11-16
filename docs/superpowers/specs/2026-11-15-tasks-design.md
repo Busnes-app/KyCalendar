@@ -296,7 +296,7 @@ Sources: Tasks.org `main` at `8f84221` (2026-11-15), jtx Board `main` the same d
    but every client tested still reads. Default: allowed; the alternative is moving DUE.
 3. Completing a repeating task follows Tasks.org (the same VTODO moves on) rather than RFC 5545
    per-occurrence completion, which Tasks.org and Apple Reminders do not use. Default: Tasks.org.
-4. Habit streaks and Insights count completions made in the web app only; a completion made in
+4. (Answered 2026-11-15: count every client's completions; see PR 1d.) Habit streaks and Insights count completions made in the web app only; a completion made in
    Tasks.org or Apple Reminders moves the task on without a record KyCalendar can trust. Default:
    web completions only; the alternative is inferring completions from DUE moves.
 5. The "Note" hand-off needs a KyNotes capture route (`#/capture?text=`). Default: hidden until
@@ -373,3 +373,23 @@ task"); no resting tint on a row; short Plan blocks show their range without pri
 progress fill in secondary ink; Done cards without strikethrough or High; the segment ring only
 on keyboard focus; a neutral quick-add plus; Add reminder aligned with the labels; tighter phone
 spacing on Plan.
+## PR 1d: goals, habits and insights
+
+- **Completions from every client** (owner answer, 2026-11-15): the log is written in the one
+  write path, so a task completed in Tasks.org, Apple Reminders or Thunderbird counts like one
+  completed on the web or over MCP. One row per writer, task and occurrence (the DUE, else
+  DTSTART, value): the web's completion synced back from a phone counts once; un-completing
+  removes it; a repeating task moved to the rule's next occurrence counts as completing the one it
+  left; a COMPLETED time in the future or before CREATED becomes the receive time, an older one
+  is kept (migration 33). Owner question 4 is answered; the web-only default is retired.
+- **Goals:** `task_goals` per user, at most 50; a goal links areas and lists over a season,
+  quarter, year or custom period (at most a year). Progress per linked list: done in the period,
+  open, last done, and "No progress in 14 days".
+- **Habits:** `X-KY-HABIT:TRUE` on a daily or weekly repeating task ("Track as a habit" in the
+  detail). Streaks count consecutive days or weeks (from Monday) with a completion, ending today
+  or the period before; the grid shows 12 weeks of days.
+- **Insights:** completions per week (12 weeks), open and overdue per list, and planned against
+  free time this week (08:00 to 18:00 less personal busy times). The chart is one neutral series
+  with a table view; every other figure is a table.
+- No new data leaves the instance; insights and goals are the caller's own, computed from their
+  own log and readable lists.
