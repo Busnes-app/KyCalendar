@@ -88,8 +88,8 @@
 .tk-segmented > label { display: inline-flex; align-items: center; min-height: var(--ky-control-size); padding: 0 .75rem; border: 1px solid var(--line-strong); margin-left: -1px; color: var(--ink-strong); font-size: var(--ky-type-nav); cursor: pointer; }
 .tk-segmented > label:first-of-type { margin-left: 0; border-radius: var(--ky-control-radius) 0 0 var(--ky-control-radius); }
 .tk-segmented > label:last-of-type { border-radius: 0 var(--ky-control-radius) var(--ky-control-radius) 0; }
-.tk-segmented > label[data-checked] { position: relative; background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
-.tk-segmented > label:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tk-segmented > label[data-checked] { position: relative; z-index: 1; background: var(--panel-hover); border-color: var(--ink-strong); font-weight: 600; }
+.tk-segmented > label:focus-within { outline: 2px solid var(--ink-strong); outline-offset: 1px; }
 .tk-segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .tk-line { display: flex; align-items: center; gap: var(--ky-space-2); }
 .tk-line > input, .tk-line > select, .tk-line > span { flex: 1; min-width: 0; }
