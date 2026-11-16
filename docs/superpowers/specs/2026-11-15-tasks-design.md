@@ -89,7 +89,7 @@ repeating VTODO no longer says COMPLETED once it has moved on.
 ## Data stored
 
 - Task content: VTODO objects (existing `calendar_objects`).
-- Migration 28 adds, each cascading with its user (and the completion log with its calendar):
+- Migration 30 adds, each cascading with its user (and the completion log with its calendar):
   - `task_areas`: `user_id` primary key, `data` JSON `[{"id","name","lists":[calendar IDs]}]`.
     Calendar IDs the user can no longer read are dropped when read.
   - `task_completions`: one row per completion `(user_id, calendar_id, uid, completed_at)`, for
