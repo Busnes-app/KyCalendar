@@ -40,7 +40,7 @@ describe('RoomPicker', () => {
     expect(new URL(finder.url, 'http://x').searchParams.get('start')).toBe('2026-12-07T09:00:00.000Z');
     expect(screen.queryByText('Busy one')).toBeNull();
     expect(screen.getByText('1 more is busy then.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Add Harbour' }).previousElementSibling!.querySelector('.kc-hint')!.firstElementChild!.textContent).toBe('Needs approval');
+    expect(screen.getByRole('button', { name: 'Request Harbour' }).previousElementSibling!.querySelector('.kc-hint')!.firstElementChild!.textContent).toBe('Needs approval');
     fireEvent.change(screen.getByLabelText('People'), { target: { value: '10' } });
     expect(screen.queryByRole('button', { name: 'Add Fjord' })).toBeNull();
     fireEvent.change(screen.getByLabelText('People'), { target: { value: '500' } });
@@ -72,7 +72,9 @@ describe('RoomPicker', () => {
     };
     const onDone = vi.fn();
     render(<EventDialog calendars={cals} event={ev} initial={emptyForm(new Date(), new Date(), false, 'cal_p')} onDone={onDone} onClose={vi.fn()} />);
-    expect(screen.getByText('Declined: already booked on 2026-12-07')).toBeTruthy();
+    // A single event's conflict is its own date: the answer leads with Declined in weight and names no date.
+    expect(screen.getByText('Declined').tagName).toBe('STRONG');
+    expect(screen.getByText('Declined').parentElement!.textContent).toBe('Declined · already booked');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(calls.find((c) => c.method === 'PUT')!.body).not.toHaveProperty('resources');
@@ -89,6 +91,18 @@ describe('RoomPicker', () => {
     expect(screen.getByText('Harbour, Floor 4')).toBeTruthy();
     expect(screen.getByText('Waiting for approval')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Add room' })).toBeNull();
+  });
+
+  it('names the conflicting dates of a declined series', () => {
+    capture();
+    const ev: EventInfo = {
+      calendar_id: 'cal_p', uid: 'u1', etag: 'e1', title: 'Review', start: '2026-12-07T09:00:00Z', end: '2026-12-07T10:00:00Z',
+      series_start: '2026-12-07T09:00:00Z', series_end: '2026-12-07T10:00:00Z', all_day: false, recurring: true, repeat: { freq: 'weekly' }, editable: false,
+      resources: [{ id: 'r1', name: 'Fjord', kind: 'room', location: 'Floor 2', status: 'declined', reason: 'busy', detail: '2026-12-14, 2026-12-21' }],
+    };
+    render(<EventDialog calendars={cals} event={ev} initial={emptyForm(new Date(), new Date(), false, 'cal_p')} onDone={vi.fn()} onClose={vi.fn()} />);
+    const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' });
+    expect(screen.getByText('Declined').parentElement!.textContent).toBe(`Declined · already booked on ${day('2026-12-14')}, ${day('2026-12-21')}`);
   });
 });
 
@@ -109,6 +123,7 @@ describe('RoomRequests', () => {
     expect(screen.getByText('Requested by Ann')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
     await screen.findByText('No requests waiting.');
+    expect(screen.getByRole('status').textContent).toMatch(/^Accepted: Harbour, /);
     expect(posted).toEqual(['/api/resources/requests/rbk_1 {"decision":"accept"}']);
   });
 });

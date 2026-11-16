@@ -10,25 +10,33 @@ function minutes(detail?: string): string {
   return m % 60 === 0 ? `${m / 60} h` : `${m} min`;
 }
 
-/** What KyCalendar answered for a room, in words. */
-export function answerText(r: ResourceRef): string {
-  if (r.status === 'accepted') return 'Booked';
-  if (r.status === 'pending') return 'Waiting for approval';
+const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' });
+
+/** Why KyCalendar declined a room, in words. A single event's conflict is its own date, so only a series names dates. */
+function reason(r: ResourceRef, series: boolean): string {
   switch (r.reason) {
-    case 'busy': return `Declined: already booked on ${r.detail}`;
-    case 'not_allowed': return 'Declined: you may not book it';
-    case 'disabled': return 'Declined: it cannot be booked now';
-    case 'beyond_horizon': return `Declined: it can be booked only until ${r.detail}`;
-    case 'too_long': return `Declined: bookings last at most ${minutes(r.detail)}`;
-    case 'past': return 'Declined: the event is over';
-    case 'too_many_occurrences': return 'Declined: too many occurrences to check';
-    case 'rejected': return 'Declined by an approver';
-    default: return 'Declined';
+    case 'busy': return series && r.detail ? `already booked on ${r.detail.split(', ').map(day).join(', ')}` : 'already booked';
+    case 'not_allowed': return 'you may not book it';
+    case 'disabled': return 'it cannot be booked now';
+    case 'beyond_horizon': return r.detail ? `it can be booked only until ${day(r.detail)}` : 'too far ahead';
+    case 'too_long': return `bookings last at most ${minutes(r.detail)}`;
+    case 'past': return 'the event is over';
+    case 'too_many_occurrences': return 'too many occurrences to check';
+    case 'rejected': return 'by an approver';
+    default: return '';
   }
 }
 
+/** What KyCalendar answered for a room: "Declined" in weight, so it never reads as booked. */
+function Answer({ r, series }: { r: ResourceRef; series: boolean }) {
+  if (r.status === 'accepted') return <>Booked</>;
+  if (r.status === 'pending') return <>Waiting for approval</>;
+  const why = reason(r, series);
+  return <><strong>Declined</strong>{why && ` · ${why}`}</>;
+}
+
 /** One chosen room: its name (whole), the event's place only when Location does not already say it, and the answer. */
-function RoomRow({ r, place, state, children }: { r: ResourceRef; place: string; state: string; children?: ReactNode }) {
+function RoomRow({ r, place, state, children }: { r: ResourceRef; place: string; state: ReactNode; children?: ReactNode }) {
   const where = r.location && !place.toLowerCase().includes(r.location.toLowerCase()) ? `, ${r.location}` : '';
   return (
     <li className="kc-room">
@@ -40,13 +48,13 @@ function RoomRow({ r, place, state, children }: { r: ResourceRef; place: string;
 }
 
 /** The event's rooms, read only: on an invitation or an event the user cannot edit. */
-export function RoomList({ rooms, place = '' }: { rooms: ResourceRef[]; place?: string }) {
+export function RoomList({ rooms, place = '', series = false }: { rooms: ResourceRef[]; place?: string; series?: boolean }) {
   if (rooms.length === 0) return null;
   return (
     <>
       <h3 className="kc-label" id="kc-rooms-view">Rooms and equipment</h3>
       <ul className="kc-people" aria-labelledby="kc-rooms-view">
-        {rooms.map((r) => <RoomRow key={r.id} r={r} place={place} state={answerText(r)} />)}
+        {rooms.map((r) => <RoomRow key={r.id} r={r} place={place} state={<Answer r={r} series={series} />} />)}
       </ul>
     </>
   );
@@ -104,8 +112,8 @@ export function RoomPicker({ rooms, onChange, start, end, event, repeats, place 
       {rooms.length > 0 && (
         <ul className="kc-people" aria-labelledby="kc-rooms">
           {rooms.map((r) => (
-            <RoomRow key={r.id} r={r} place={place} state={event?.resources?.some((x) => x.id === r.id) ? answerText(r) : 'Checked when you save'}>
-              <button type="button" className="btn-ghost btn-danger" aria-label={`Remove ${r.name ?? 'room'}`} onClick={() => onChange(rooms.filter((x) => x !== r))}>Remove</button>
+            <RoomRow key={r.id} r={r} place={place} state={event?.resources?.some((x) => x.id === r.id) ? <Answer r={r} series={!!event?.recurring} /> : 'Checked when you save'}>
+              <button type="button" className="btn-ghost" aria-label={`Remove ${r.name ?? 'room'}`} onClick={() => onChange(rooms.filter((x) => x !== r))}>Remove</button>
             </RoomRow>
           ))}
         </ul>
@@ -115,7 +123,7 @@ export function RoomPicker({ rooms, onChange, start, end, event, repeats, place 
       ) : (
         <div className="kc-room-finder" role="group" aria-labelledby="kc-finder-title">
           <div className="kc-finder-head">
-            <span className="kc-label" id="kc-finder-title">Find a room</span>
+            <h4 className="kc-finder-title" id="kc-finder-title">Find a room</h4>
             <button type="button" className="ky-icon-button" aria-label="Close room finder" title="Close room finder" onClick={() => setOpen(false)}><X aria-hidden="true" /></button>
           </div>
           <div className="kc-pair">
@@ -137,7 +145,7 @@ export function RoomPicker({ rooms, onChange, start, end, event, repeats, place 
           {failed && <p role="alert">Could not load rooms. Try again in a moment.</p>}
           {!failed && found === null && <p className="kc-hint" role="status">Finding free rooms…</p>}
           {found !== null && (free.length === 0 ? (
-            <p className="kc-hint" role="status">{found.length === 0 ? 'There are no rooms or equipment you can book.' : filtered && matches.length === 0 ? 'Nothing matches these filters.' : 'Nothing that matches is free at this time.'}</p>
+            <p className="kc-hint" role="status">{found.length === 0 ? 'There are no rooms or equipment you can book.' : filtered && matches.length === 0 ? 'Nothing matches these filters.' : filtered ? 'Nothing that matches is free at this time.' : 'Nothing is free at this time.'}</p>
           ) : (
             <ul className="kc-people kc-finder" aria-label="Free rooms and equipment">
               {free.map((r) => (
@@ -149,12 +157,14 @@ export function RoomPicker({ rooms, onChange, start, end, event, repeats, place 
                       {[KIND[r.kind], r.location, r.capacity > 0 ? `${r.capacity} people` : '', r.tags.join(', ')].filter(Boolean).join(' · ')}
                     </span>
                   </span>
-                  <button type="button" className="btn-secondary btn-sm kc-push" aria-label={`Add ${r.name}`} onClick={() => add(r)}>Add</button>
+                  {r.approval === 'approvers'
+                    ? <button type="button" className="btn-secondary btn-sm kc-push" aria-label={`Request ${r.name}`} onClick={() => add(r)}>Request</button>
+                    : <button type="button" className="btn-secondary btn-sm kc-push" aria-label={`Add ${r.name}`} onClick={() => add(r)}>Add</button>}
                 </li>
               ))}
             </ul>
           ))}
-          {busy > 0 && <p className="kc-hint">{busy === 1 ? '1 more is busy then.' : `${busy} more are busy then.`}</p>}
+          {busy > 0 && <p className="kc-hint">{`${busy}${free.length > 0 ? ' more' : ''} ${busy === 1 ? 'is' : 'are'} busy then.`}</p>}
           {repeats && <p className="kc-hint">For a repeating event, KyCalendar checks every occurrence when you save.</p>}
         </div>
       )}

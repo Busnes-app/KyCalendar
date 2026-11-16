@@ -6,6 +6,7 @@ import { linkify } from '../linkify';
 import { FreeBusyStrip } from './FreeBusyStrip';
 import { StatusLabel, statusText } from './StatusLabel';
 import { RoomList, RoomPicker } from './RoomPicker';
+import { timeRange } from '../timeRange';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
 
 interface Props {
@@ -266,11 +267,11 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
       {event?.cancelled && <p role="note"><strong>Cancelled.</strong> This event was called off.</p>}
       {readOnly ? (
         <div>
-          <p>{event!.all_day ? `${form.start} – ${form.end}` : `${new Date(event!.start).toLocaleString()} – ${new Date(event!.end).toLocaleString()}`}</p>
+          <p>{event!.all_day ? `${form.start} – ${form.end}` : timeRange(event!)}</p>
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
           {fileList}
-          <RoomList rooms={event!.resources ?? []} place={form.location} />
+          <RoomList rooms={event!.resources ?? []} place={form.location} series={event!.recurring} />
           {room}
           {invitation}
           <div className="modal-actions">
@@ -289,7 +290,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {event?.recurring && scope === 'all' && <p role="note">{MOVE_ALL_WARNING}</p>}
           {room}
           {invitation}
-          {invited && <RoomList rooms={event!.resources ?? []} place={form.location} />}
+          {invited && <RoomList rooms={event!.resources ?? []} place={form.location} series={event!.recurring} />}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
@@ -320,7 +321,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
               place={form.location}
             />
           )}
-          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} place={form.location} />}
+          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} place={form.location} series />}
           <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
           {scope === 'all' && (files.length > 0 || drive) && (

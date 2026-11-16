@@ -1,7 +1,8 @@
 // Captures the room and equipment screens: the administrator's Rooms and equipment list and
 // editor, and as members the room finder (busy count, filters matching nothing, no free room,
 // scrolled to the end), events with rooms (booked room and equipment, pending, declined, a long
-// name, read only) and Room requests (several with a repeating one, and none). Usage (from web/): node browser/resource-shots.mjs <server-binary> <out-dir> [mode]
+// name, read only, a repeating request) and Room requests (several with a repeating one, after an
+// answer, and none). Usage (from web/): node browser/resource-shots.mjs <server-binary> <out-dir> [mode]
 // (not a spec: CI skips it). Modes: admin (default), before (the admin navigation without the
 // feature), booking (the member screens), booking-before (the event editor without the feature).
 // Starts its own throwaway server on 127.0.0.1:5391 (relays empty, scheduling off) and removes
@@ -89,9 +90,9 @@ try {
     const ev = (title, from, to, rooms, extra = {}) => walter.call('POST', '/api/calendars/' + cal + '/events', { title, start: from, end: to, zone: 'UTC', resources: rooms.map((n) => byName[n]), ...extra });
     await ev('All hands prep', at(8), at(9), Object.keys(byName));
     await ev('Quarterly review', at(10), at(11), ['Fjord', 'Portable screen'], { location: 'Fjord, Floor 2, east wing' });
-    await ev('Budget check', at(10, 30), at(11, 30), ['Fjord']);
     await ev('Board meeting', at(12), at(13), ['Boardroom at the Old Customs House, Harbourside']);
     await ev('Standup sync', at(14), at(15), ['Fjord']);
+    await ev('Budget check', at(14, 30), at(15), ['Fjord', 'Portable screen']);
     await ev('Workshop', at(16), at(17), ['Harbour']);
     await ev('Weekly planning', at(17, 30), at(18, 30), ['Harbour'], { repeat: { freq: 'weekly' } });
     const team = (await (await annAPI.call('GET', '/api/calendars')).json()).find((c) => c.name === 'Studio').id;
@@ -102,7 +103,8 @@ try {
   const browser = await chromium.launch();
   const shoot = async (page, name, width, scheme) => {
     await page.waitForTimeout(300);
-    await page.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`), fullPage: width !== 390 });
+    // Viewport only: the sidebar is sticky at viewport height, so a stitched full page shows it ending mid-page.
+    await page.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`) });
   };
   for (const colorScheme of ['light', 'dark']) {
     for (const width of [1280, 390]) {
@@ -127,7 +129,7 @@ try {
           };
           await setTime(at(14), at(15));
           await dialog.getByRole('button', { name: 'Add room' }).click();
-          await dialog.getByRole('button', { name: 'Add Harbour' }).waitFor();
+          await dialog.getByRole('button', { name: 'Request Harbour' }).waitFor();
           await reveal(dialog.getByLabel('People'));
           await shoot(page, 'room-finder', width, colorScheme);
           await reveal(dialog.getByText(/busy then/));
@@ -137,10 +139,11 @@ try {
           await shoot(page, 'room-finder-no-match', width, colorScheme);
           await dialog.getByLabel('People').fill('');
           await setTime(at(8), at(9));
-          await reveal(dialog.getByText('Nothing that matches is free at this time.'));
+          await dialog.locator('#kc-end').blur();
+          await reveal(dialog.getByText('Nothing is free at this time.'));
           await shoot(page, 'room-finder-none-free', width, colorScheme);
           await setTime(at(14), at(15));
-          await dialog.getByRole('button', { name: 'Add Harbour' }).click();
+          await dialog.getByRole('button', { name: 'Request Harbour' }).click();
           await dialog.getByRole('button', { name: 'Save', exact: true }).click();
           await dialog.waitFor({ state: 'hidden' });
           await page.locator('.fc-listWeek-button').click();
@@ -155,9 +158,10 @@ try {
             await d.waitFor({ state: 'hidden' });
           };
           await open('Quarterly review', 'Rooms and equipment', 'event-with-room');
-          await open('Budget check', 'Declined: already booked', 'event-declined-room');
+          await open('Budget check', 'Declined', 'event-declined-room');
           await open('Board meeting', 'Rooms and equipment', 'event-long-room');
           await open('Studio offsite', 'Rooms and equipment', 'event-read-only');
+          await open('Weekly planning', 'Waiting for approval', 'event-repeating-pending');
           const pending = page.locator('.fc-list-event', { hasText: 'Design review' });
           await pending.click();
           await reveal(page.getByRole('dialog').getByText('Waiting for approval'));
@@ -170,7 +174,12 @@ try {
         }
         await ctx.close();
         if (mode === 'booking') {
-      for (const [who, name, ready] of [['ann', 'room-requests', 'Harbour'], ['noor', 'room-requests-empty', 'No requests waiting.']]) {
+          // A fresh request each pass for ann to answer on screen; the times differ so passes never collide.
+          const n = (colorScheme === 'dark' ? 2 : 0) + (width === 390 ? 1 : 0);
+          const cal = (await (await walterAPI.call('GET', '/api/calendars')).json()).find((c) => c.kind === 'personal').id;
+          const harbour = (await (await walterAPI.call('GET', '/api/resources')).json()).resources.find((r) => r.name === 'Harbour').id;
+          await walterAPI.call('POST', '/api/calendars/' + cal + '/events', { title: 'Retro', start: at(20, n * 10), end: at(20, n * 10 + 10), zone: 'UTC', resources: [harbour] });
+          for (const [who, name, ready] of [['ann', 'room-requests', 'Harbour'], ['noor', 'room-requests-empty', 'No requests waiting.']]) {
             const actx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, timezoneId: 'UTC', extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.85' } });
             const ap = await actx.newPage();
             await ap.goto('/');
@@ -181,6 +190,14 @@ try {
             await ap.goto('/#/room-requests');
             await ap.getByText(ready).first().waitFor();
             await shoot(ap, name, width, colorScheme);
+            if (who === 'ann') {
+              await ap.getByText('Repeats').first().evaluate((e) => e.scrollIntoView({ block: 'center' }));
+              await shoot(ap, 'room-requests-repeating', width, colorScheme);
+              await ap.getByRole('button', { name: 'Accept' }).last().click();
+              await ap.getByText(/^Accepted: Harbour/).waitFor();
+              await ap.evaluate(() => window.scrollTo(0, 0));
+              await shoot(ap, 'room-requests-after-accept', width, colorScheme);
+            }
             await actx.close();
           }
         }
