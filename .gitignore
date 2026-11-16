@@ -32,3 +32,6 @@ web/playwright-report/
 coverage.out
 .env.*
 !.env.example
+
+# Generated mdBook manual
+/docs/book/

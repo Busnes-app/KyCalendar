@@ -225,6 +225,8 @@ When the user requests a durable behavior change, record it here or in the relev
 
 ## Child DOX Index
 
+- `docs/AGENTS.md` — mdBook manual, chapter ownership and documentation checks.
+
 - `KyDrive-server/` — general drive backend, NAS/container packaging, Euro-Office integration and local acceptance evidence.
 
 - `ky-kubernetes/` — Ky stack migration from admin02 to K80/K81, isolated networking, persistent storage and HTTPS routing.
