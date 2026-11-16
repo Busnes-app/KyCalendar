@@ -20,7 +20,9 @@ func OutOfOfficeUID(userID string) string {
 }
 
 // ApplyOutOfOffice makes u's calendar match o: one busy, out-of-office event over the period
-// while o.Away, none otherwise. The event is found by its UID wherever u moved it.
+// while o.Away, none otherwise. The event is found by its UID in u's own calendars only: a
+// calendar shared to u is never searched, so another editor cannot plant the UID there and
+// have the private period published to that calendar's readers.
 func (s *Scheduler) ApplyOutOfOffice(ctx context.Context, u *store.User, o *store.OutOfOffice) error {
 	uid := OutOfOfficeUID(u.ID)
 	cals, err := s.writable(ctx, u)
@@ -30,6 +32,9 @@ func (s *Scheduler) ApplyOutOfOffice(ctx context.Context, u *store.User, o *stor
 	var c *store.Calendar
 	var obj *store.CalendarObject
 	for _, cal := range cals {
+		if cal.OwnerKind != ownerUser || cal.OwnerID != u.ID {
+			continue
+		}
 		if found, err := s.Store.Calendars().GetObjectByUID(ctx, cal.ID, uid); err == nil {
 			c, obj = cal, found
 			break

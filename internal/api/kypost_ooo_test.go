@@ -245,3 +245,35 @@ func TestKyPostOutOfOfficeUnpaired(t *testing.T) {
 		t.Fatalf("unpaired: %d %s", r.Code, r.Body.String())
 	}
 }
+
+// An object carrying the out-of-office UID in a calendar shared to bob is never adopted: the
+// period goes to bob's own calendar and the shared object stays as it was.
+func TestKyPostOutOfOfficeIgnoresSharedCalendars(t *testing.T) {
+	w := newOOOWorld(t)
+	ctx := context.Background()
+	team := groupCalendar(t, w.st, "Team")
+	grantRole(t, w.st, team, "editor", "usr_bob")
+	uid := davbackend.OutOfOfficeUID("usr_bob")
+	planted := []byte(eventICS(uid))
+	o := &store.CalendarObject{CalendarID: team.ID, Name: "planted.ics", Component: "VEVENT", UID: uid, Data: planted}
+	if _, err := w.st.Calendars().PutObject(ctx, o, "", false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	period := kypost.OutOfOfficeRequest{Revision: 1, Away: true, Start: "2026-12-01T09:00:00Z", End: "2026-12-01T17:00:00Z"}
+	if r := w.set(t, period); r.Code != 200 {
+		t.Fatalf("set: %d %s", r.Code, r.Body.String())
+	}
+	if w.event(t) == nil {
+		t.Fatal("no event in bob's own calendar")
+	}
+	got, err := w.st.Calendars().GetObjectByUID(ctx, team.ID, uid)
+	if err != nil || !bytes.Equal(got.Data, planted) {
+		t.Fatalf("the shared object changed: %v", err)
+	}
+	if r := w.set(t, kypost.OutOfOfficeRequest{Revision: 2}); r.Code != 200 || w.event(t) != nil {
+		t.Fatalf("off: %d", r.Code)
+	}
+	if _, err := w.st.Calendars().GetObjectByUID(ctx, team.ID, uid); err != nil {
+		t.Fatalf("turning off removed the shared object: %v", err)
+	}
+}
