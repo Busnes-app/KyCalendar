@@ -49,6 +49,7 @@ try {
   const json = async (r) => (await r).json();
   const list = async (name) => (await json(walter.call('POST', '/api/calendars', { name, components: ['VTODO'] }))).id;
   const add = async (cal, b) => (await json(walter.call('POST', `/api/calendars/${cal}/tasks`, { zone: 'UTC', ...b }))).uid;
+  await walter.call('GET', '/api/calendars'); // the default calendar, as the app's first load makes it
   const work = await list('Website relaunch');
   const home = await list('Home');
   const health = await list('Health');
@@ -95,7 +96,7 @@ try {
       if (before) {
         await page.goto('/#/calendar');
         await page.locator('.fc').waitFor();
-        if (width === 390) await page.getByText('Calendars', { exact: true }).click();
+        if (width === 390) await page.locator('.kc-picker > summary').click();
         await shoot(page, 'calendar-sidebar', width, colorScheme);
         await ctx.close();
         continue;

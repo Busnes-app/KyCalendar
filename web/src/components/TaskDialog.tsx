@@ -128,8 +128,8 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
     <Modal title={task ? (readOnly ? 'Task' : 'Edit task') : 'New task'} onClose={onClose} wide>
       <form className="kc-form tk-form" onSubmit={save}>
         {readOnly && <p className="kc-hint" role="note">This list is read-only for you.</p>}
-        <label htmlFor="tk-title">Title</label>
-        <input id="tk-title" value={title} maxLength={1000} required disabled={readOnly} autoFocus={!task} onChange={(e) => setTitle(e.target.value)} />
+        <label htmlFor="tk-title-input">Title</label>
+        <input id="tk-title-input" value={title} maxLength={1000} required disabled={readOnly} autoFocus={!task} onChange={(e) => setTitle(e.target.value)} />
         {!task && (
           <>
             <label htmlFor="tk-list">List</label>
