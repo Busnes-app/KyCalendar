@@ -1,10 +1,11 @@
+import { formatDate, formatRange } from '@fullcalendar/core';
 // The repeat choices in the task form, as RFC 5545 RRULEs, and the words a task row shows.
 
-// The one time format in Tasks, the calendar's: the browser's locale, hours and minutes. Ranges
-// use Intl's range form ("12:30 – 1:15 PM"), with its en dash.
-const TIME = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-export const clockOf = (d: Date) => TIME.format(d);
-export const rangeOf = (a: Date, b: Date) => TIME.formatRange(a, b);
+// Times in Tasks come from the calendar's own formatter (FullCalendar's, in its default locale,
+// as its List view shows them: "9:30am", "9:30am – 10:00am"), so the two never drift.
+export const clockOf = (d: Date) => formatDate(d, { hour: 'numeric', minute: '2-digit', meridiem: 'short' });
+export const hourOf = (d: Date) => formatDate(d, { hour: 'numeric', meridiem: 'short' });
+export const rangeOf = (a: Date, b: Date) => formatRange(a, b, { hour: 'numeric', minute: '2-digit', meridiem: 'short', separator: ' – ' });
 
 export type Preset = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'monthly-nth' | 'monthly-last' | 'yearly' | 'custom';
 export interface Rule { preset: Preset; interval: number; until?: string; count?: number; raw?: string }

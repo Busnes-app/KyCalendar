@@ -10,7 +10,7 @@
 /* Quick add: a field that reads as the list's first row. */
 .tk-quick { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--ky-space-2); padding: var(--ky-space-2) var(--ky-space-2) var(--ky-space-2) var(--ky-space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel); }
 .tk-quick:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.tk-quick > svg { width: 1.125rem; height: 1.125rem; color: var(--accent); }
+.tk-quick > svg { width: 1.125rem; height: 1.125rem; color: var(--ink); }
 .tk-quick input { border: 0; background: transparent; box-shadow: none; padding-inline: 0; font-size: var(--ky-type-body); color: var(--ink-strong); }
 .tk-quick input:focus { outline: none; box-shadow: none; }
 .tk-quick .tk-chips { grid-column: 1 / -1; }
@@ -39,7 +39,7 @@
 .tk-row:last-child { border-bottom: 0; }
 .tk-row[data-depth='1'] { padding-left: calc(var(--ky-space-3) + 1.75rem); }
 .tk-row[data-depth='2'] { padding-left: calc(var(--ky-space-3) + 3.5rem); }
-.tk-row[aria-selected='true'] { background: var(--panel-hover); }
+.tk-row:has(.tk-open:focus-visible) { background: var(--panel-hover); }
 .tk-row:hover { background: var(--panel-hover); }
 .tk-check { width: 1.25rem; height: 1.25rem; margin: .125rem 0 0; accent-color: var(--ink-strong); cursor: pointer; }
 .tk-open { display: grid; justify-content: stretch; justify-items: start; gap: .1875rem; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
@@ -89,7 +89,7 @@
 .tk-segmented > label:first-of-type { margin-left: 0; border-radius: var(--ky-control-radius) 0 0 var(--ky-control-radius); }
 .tk-segmented > label:last-of-type { border-radius: 0 var(--ky-control-radius) var(--ky-control-radius) 0; }
 .tk-segmented > label[data-checked] { position: relative; z-index: 1; background: var(--panel-hover); border-color: var(--ink-strong); font-weight: 600; }
-.tk-segmented > label:focus-within { outline: 2px solid var(--ink-strong); outline-offset: 1px; }
+.tk-segmented > label:has(:focus-visible) { outline: 2px solid var(--ink-strong); outline-offset: 1px; }
 .tk-segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .tk-line { display: flex; align-items: center; gap: var(--ky-space-2); }
 .tk-line > input, .tk-line > select, .tk-line > span { flex: 1; min-width: 0; }
@@ -117,7 +117,7 @@
 .tk-quick input { padding-inline-start: .25rem; }
 /* The task dialog's actions stay in view while its fields scroll. */
 .tk-sticky-actions { position: sticky; bottom: calc(var(--space-6, 1.5rem) * -1); z-index: 1; margin-bottom: calc(var(--space-6, 1.5rem) * -1); padding-bottom: var(--space-6, 1.5rem); background: var(--panel); }
-.tk-add-reminder { justify-self: start; }
+.tk-add-reminder { justify-self: start; padding-inline: 0; }
 @media (max-width: 720px) {
   .tk-sticky-actions { bottom: calc(var(--space-4) * -1); margin-bottom: calc(var(--space-4) * -1); padding-bottom: var(--space-4); }
   /* Phones: list rows are borderless, like Today's. */
