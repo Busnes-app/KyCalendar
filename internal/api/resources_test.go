@@ -762,3 +762,27 @@ func TestRoomImplicitAllDayOverrideIsMeasured(t *testing.T) {
 		t.Fatalf("implicit one-day override past the horizon: %s %s", st, reason)
 	}
 }
+
+func TestRoomOverlongMasterOutsideHorizonIsDeclined(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	bob, _ := webUser(t, srv, st, "bob")
+	room := makeResource(t, st, resource.Resource{Name: "Fjord", MaxMinutes: 120, HorizonDays: 10})
+	// A five-hour weekly master whose only occurrences within the horizon are short overrides.
+	s, _ := slot(2, 9)
+	_, long := slot(2, 14)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(long) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	var comps []string
+	for _, d := range []int{2, 9} {
+		os, oe := slot(d, 9)
+		comps = append(comps, "RECURRENCE-ID:"+icsTime(os)+"\r\nDTSTART:"+icsTime(os)+"\r\nDTEND:"+icsTime(oe)+"\r\nSUMMARY:Weekly\r\n")
+	}
+	putRaw(t, st, aliceCal, "master.ics", roomICS("master", room, append([]string{master}, comps...)...), "usr_alice")
+	if st, reason, _ := roomStatus(t, srv, alice, "master"); st != "declined" || reason != "too_long" {
+		t.Fatalf("overlong master: %s %s", st, reason)
+	}
+	ls, le := slot(16, 9)
+	if free := finderFree(t, srv, bob, ls, le, "", ""); !free[room] {
+		t.Fatal("a declined series reserves its later occurrences")
+	}
+}

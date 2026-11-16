@@ -190,17 +190,15 @@ func ambiguous(cal *ical.Calendar) bool {
 	return false
 }
 
-// tooLong reports a RECURRENCE-ID component or an RDATE period longer than max anywhere in the
-// series: an open series reserves them past the horizon, where Plan does not expand.
+// tooLong reports a VEVENT (master or override) or an RDATE period longer than max anywhere in
+// the series: an open series reserves them past the horizon, where Plan does not expand.
 func tooLong(cal *ical.Calendar, max time.Duration) bool {
 	for _, c := range cal.Children {
 		if c.Name != ical.CompEvent {
 			continue
 		}
-		if c.Props.Get(ical.PropRecurrenceID) != nil {
-			if l, ok := componentLength(c); !ok || l > max {
-				return true // a length expansion cannot tell could be any
-			}
+		if l, ok := componentLength(c); !ok || l > max {
+			return true // a length expansion cannot tell could be any
 		}
 		for _, p := range c.Props[ical.PropRecurrenceDates] {
 			// A period is known by its value: expansion reads one whatever VALUE says.

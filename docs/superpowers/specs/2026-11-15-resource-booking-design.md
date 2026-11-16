@@ -64,7 +64,7 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    is over (`past`); an object that could be read two ways, a VEVENT with both DTEND and
    DURATION or two components for one occurrence (`ambiguous`); a single event ending after now + horizon, or a series whose first
    occurrence is past it (`beyond_horizon`); more than 1000 occurrences within the horizon
-   (`too_many_occurrences`); an occurrence, an override or an RDATE period anywhere in the series
+   (`too_many_occurrences`); an occurrence, a master, an override or an RDATE period anywhere in the series
    longer than the maximum (`too_long`); the writer may
    not book it (`not_allowed`); an occurrence overlapping another booking (`busy`, with the
    conflicting dates). Cancelled occurrences (STATUS:CANCELLED) need no room. Passing all:
