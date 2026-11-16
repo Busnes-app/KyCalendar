@@ -72,3 +72,6 @@ export const deleteView = (id: string) => send(`/api/tasks/views/${encodeURIComp
 export const zoneName = zone;
 export const imageURL = (t: Pick<Task, 'calendar_id' | 'uid'>, n: number) => `${taskPath(t)}/images/${n}`;
 export const MAX_IMAGE_BYTES = 512 << 10;
+
+export interface TaskStats { done_today: number; done_this_week: number; streak: number }
+export const taskStats = () => send(`/api/tasks/stats?tz=${encodeURIComponent(zone())}`).then((r) => parse<TaskStats>(r));

@@ -297,6 +297,7 @@ func apiRows(w *world) map[string]apiRow {
 		"PATCH /api/tasks/{cal}/{uid}":          {method: "PATCH", path: "/api/tasks/" + w.tasks.ID + "/seed-task", body: `{"status":"COMPLETED"}`, want: groupWrite},
 		"DELETE /api/tasks/{cal}/{uid}":         {method: "DELETE", path: "/api/tasks/" + w.tasks.ID + "/doomed-task", want: groupWrite},
 		"POST /api/tasks/inbox":                 {method: "POST", path: "/api/tasks/inbox", want: everyday},
+		"GET /api/tasks/stats":                  {method: "GET", path: "/api/tasks/stats?tz=UTC", want: everyday},
 		"GET /api/tasks/areas":                  {method: "GET", path: "/api/tasks/areas", want: everyday},
 		"PUT /api/tasks/areas":                  {method: "PUT", path: "/api/tasks/areas", body: `[]`, want: everyday},
 		"GET /api/tasks/views":                  {method: "GET", path: "/api/tasks/views", want: everyday},

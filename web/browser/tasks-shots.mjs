@@ -25,6 +25,7 @@ const run = (args, pw) => {
 run(['init-admin'], 'ShotsInitial123!');
 run(['create-user', '-username', 'walter'], 'ShotsInitial123!');
 const server = spawn(binary, [], { cwd: dir, env, stdio: 'inherit' });
+const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const pad = (n) => String(n).padStart(2, '0');
 const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const at = (n, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, m, 0, 0); return d.toISOString(); };
@@ -72,10 +73,20 @@ try {
     await add(inbox, { title: 'Renew passport', due: day(10), priority: 1 });
     await add(home, { title: 'Water the plants', due: day(2), rrule: 'FREQ=WEEKLY;INTERVAL=2' });
     const staging = await add(work, { title: 'Set up staging server' });
-    for (const uid of [outline, staging]) {
-      const t = (await json(walter.call('GET', `/api/tasks?status=completed,needs-action&tz=UTC`))).tasks.find((x) => x.uid === uid);
-      await walter.fetch(`/api/tasks/${t.calendar_id}/${uid}?tz=UTC`, { method: 'PATCH', data: { status: 'COMPLETED' }, headers: { 'If-Match': `"${t.etag}"`, 'X-CSRF-Token': (await walter.storageState()).cookies.find((c) => c.name === 'ky_csrf')?.value } });
+    const patch = async (title, data) => {
+      const t = (await json(walter.call('GET', `/api/tasks?status=completed,needs-action&tz=UTC`))).tasks.find((x) => x.title === title);
+      const r = await walter.fetch(`/api/tasks/${t.calendar_id}/${t.uid}?tz=${zone}`, { method: 'PATCH', data, headers: { 'If-Match': `"${t.etag}"`, 'X-CSRF-Token': (await walter.storageState()).cookies.find((c) => c.name === 'ky_csrf')?.value } });
+      if (!r.ok()) throw new Error(`patch ${title}: ${r.status()} ${await r.text()}`);
+    };
+    // The day as tududi's owner shots show it: events, some tasks placed, some done.
+    const cal = (await json(walter.call('GET', '/api/calendars'))).find((c) => c.components.includes('VEVENT')).id;
+    for (const [title, h, m, len] of [['Team standup', 9, 30, 30], ['Lunch with Maria', 12, 30, 45], ['Design review', 15, 0, 45], ['Call with the architect', 17, 15, 30]]) {
+      await walter.call('POST', `/api/calendars/${cal}/events`, { title, start: at(0, h, m), end: at(0, h, m + len), zone });
     }
+    await patch('Compress the hero images', { start: at(0, 8, 30), duration_min: 15, zone });
+    await patch('Fix contact form validation', { start: at(0, 10, 0), duration_min: 90, zone });
+    await patch('Write launch announcement', { start: at(0, 13, 30), duration_min: 45, zone });
+    for (const title of ['Compress the hero images', 'Fix contact form validation', 'Draft outline', 'Set up staging server']) await patch(title, { status: 'COMPLETED' });
   }
 
   await mkdir(out, { recursive: true });
@@ -88,6 +99,9 @@ try {
     for (const width of [1280, 390]) {
       const ctx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone, extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.81' } });
       const page = await ctx.newPage();
+      // The browser's clock at 13:24 today, as in the owner's tududi shots; the server keeps real time.
+      const noon = new Date(); noon.setHours(13, 24, 0, 0);
+      if (!before) await page.clock.setFixedTime(noon);
       await page.goto('/');
       await page.getByLabel('Username', { exact: true }).fill('walter');
       await page.locator('input[type=password]').fill('ShotsUpdated456!');
@@ -111,8 +125,24 @@ try {
         await page.mouse.move(2, 2); // no hover tint in the shot
       };
       await view('Today');
-      await page.getByText('Compress the hero images').waitFor();
+      await page.getByText('Write launch announcement').first().waitFor();
       await shoot(page, 'today', width, colorScheme);
+      const plan = page.getByRole('button', { name: 'Plan my day' }).first();
+      if (await plan.count()) {
+      await plan.click();
+      await page.getByText('What could you do today?').or(page.getByRole('tab', { name: /Candidates/ })).first().waitFor();
+      await shoot(page, 'plan', width, colorScheme);
+      if (width === 390) {
+        await page.getByRole('tab', { name: /Candidates/ }).click();
+        await shoot(page, 'plan-candidates', width, colorScheme);
+      }
+      }
+      await page.goto('/#/calendar');
+      await page.locator('.fc').waitFor();
+      await page.waitForTimeout(600);
+      if (width !== 390) await page.getByRole('button', { name: 'day', exact: true }).click().catch(() => {});
+      await shoot(page, 'calendar', width, colorScheme);
+      await page.goto('/#/tasks');
       await view('Upcoming');
       await shoot(page, 'upcoming', width, colorScheme);
       await view('Website relaunch');
