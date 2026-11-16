@@ -336,7 +336,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         <div>
           <h1 id="tk-title" className="ky-page-title">{isToday && planning ? `Plan ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}` : title}
             {isToday && !planning && <span className="tk-date"> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>}</h1>
-          {!isToday && (
+          {!isToday && !review && (
             <p className="tk-meta">
               {(() => { const n = topLevel(board ? shown ?? [] : rows).filter((t) => view.kind === 'smart' && view.id === 'completed' ? true : isOpen(t)).length; const word = view.kind === 'smart' && view.id === 'completed' ? 'done' : 'open'; return `${n} ${word} task${n === 1 ? '' : 's'}`; })()}
               {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}

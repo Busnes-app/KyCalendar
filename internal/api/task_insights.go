@@ -440,15 +440,16 @@ func (s *Server) handleInsights(w http.ResponseWriter, r *http.Request) {
 			Overdue int    `json:"overdue"`
 		}{ID: c.ID, Name: c.Name}
 		for _, t := range ts {
+			// Planned time counts every placed task, done or not.
+			if st := t.task.Start; st != nil && !st.AllDay && c.OwnerKind == "user" && t.task.Status != tasks.Cancelled {
+				planned[st.T.In(viewer).Format(time.DateOnly)] += int(t.task.Length() / time.Minute)
+			}
 			if t.task.Status != tasks.NeedsAction && t.task.Status != tasks.InProcess {
 				continue
 			}
 			row.Open++
 			if d := t.task.Due; d != nil && (d.AllDay && d.T.Format(time.DateOnly) < today.Format(time.DateOnly) || !d.AllDay && d.T.Before(now)) {
 				row.Overdue++
-			}
-			if st := t.task.Start; st != nil && !st.AllDay && c.OwnerKind == "user" {
-				planned[st.T.In(viewer).Format(time.DateOnly)] += int(t.task.Length() / time.Minute)
 			}
 		}
 		out.Lists = append(out.Lists, row)
