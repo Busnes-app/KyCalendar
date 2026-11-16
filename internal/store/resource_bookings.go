@@ -139,6 +139,7 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 	}
 	fp, series := resource.Fingerprint(cal), resource.SeriesFingerprint(cal)
 	prevSeries := ""
+	var prevCal *ical.Calendar
 	if len(existing) > 0 {
 		var prev []byte
 		err := tx.QueryRowContext(ctx, c.q(`SELECT data FROM calendar_objects WHERE calendar_id = ? AND name = ?`), o.CalendarID, o.Name).Scan(&prev)
@@ -146,7 +147,7 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 			return nil, err
 		}
 		if pc, err := ical.NewDecoder(bytes.NewReader(prev)).Decode(); err == nil && prev != nil {
-			prevSeries = resource.SeriesFingerprint(pc)
+			prevSeries, prevCal = resource.SeriesFingerprint(pc), pc
 		}
 	}
 	now := resourceNow()
@@ -175,7 +176,9 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 			if err != nil {
 				return nil, err
 			}
-			if d.Covered(held, b.OpenAfter) {
+			// Past the horizon nothing was expanded: the overrides there must be as they were.
+			later := b.OpenAfter == 0 || resource.LaterOverrides(cal, b.OpenAfter) == resource.LaterOverrides(prevCal, b.OpenAfter)
+			if later && d.Covered(held, b.OpenAfter) {
 				d.Status = b.Status
 				answers[id] = d.Status
 				changes = append(changes, change{r, d})

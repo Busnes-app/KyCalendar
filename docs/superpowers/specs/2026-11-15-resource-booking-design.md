@@ -56,7 +56,8 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    approver-rejected answer; any other decline holds nothing and is decided again, so a freed
    room is booked at the next save. An accepted or pending booking also stands, whoever writes,
    when the series rule (the components without RECURRENCE-ID) is unchanged and every occurrence
-   is one the booking already holds or a rule occurrence past its `open_after`: an attendee's
+   is one the booking already holds or a rule occurrence past its `open_after`, and no override
+   past `open_after` changed: an attendee's
    answer to one occurrence adds an override and must not release the organizer's room. Editing the title,
    description or other attendees never re-decides the room, and never re-declines a past one.
 3. Otherwise decide, in order: unknown resource (`unknown`) or disabled (`disabled`); the event

@@ -172,17 +172,18 @@ func tooLong(cal *ical.Calendar, max time.Duration) bool {
 			}
 		}
 		for _, p := range c.Props[ical.PropRecurrenceDates] {
-			if !strings.EqualFold(p.Params.Get(ical.ParamValue), "PERIOD") {
-				continue
-			}
+			// A period is known by its value: expansion reads one whatever VALUE says.
 			for _, v := range strings.Split(p.Value, ",") {
 				from, to, ok := strings.Cut(v, "/")
+				if !ok {
+					continue
+				}
 				start := ical.Prop{Name: ical.PropDateTimeStart, Value: from, Params: ical.Params{}}
 				if tz := p.Params.Get(ical.ParamTimezoneID); tz != "" {
 					start.Params.Set(ical.ParamTimezoneID, tz)
 				}
 				s, err := start.DateTime(time.UTC)
-				if !ok || err != nil {
+				if err != nil {
 					return true // a period we cannot read could be any length
 				}
 				var l time.Duration
@@ -232,6 +233,23 @@ func SeriesFingerprint(cal *ical.Calendar) string {
 		}
 	}
 	return Fingerprint(masters)
+}
+
+// LaterOverrides hashes the timing of the RECURRENCE-ID components that start, or replace an
+// occurrence, at or after after (unix seconds): the overrides a series reserves past its horizon.
+func LaterOverrides(cal *ical.Calendar, after int64) string {
+	later := &ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar, Props: cal.Props}}
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent || c.Props.Get(ical.PropRecurrenceID) == nil {
+			continue
+		}
+		rid, err1 := c.Props.DateTime(ical.PropRecurrenceID, time.UTC)
+		start, err2 := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
+		if err1 != nil || err2 != nil || rid.Unix() >= after || start.Unix() >= after {
+			later.Children = append(later.Children, c)
+		}
+	}
+	return Fingerprint(later)
 }
 
 // Covered reports whether d asks for nothing a booking does not already hold: every span is one

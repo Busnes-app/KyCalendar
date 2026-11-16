@@ -655,9 +655,42 @@ func TestRoomOversizedFutureOverrideIsTooLong(t *testing.T) {
 	if st, reason, _ := roomStatus(t, srv, alice, "far"); st != "declined" || reason != "too_long" {
 		t.Fatalf("oversized override past the horizon: %s %s", st, reason)
 	}
-	period := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nRDATE;VALUE=PERIOD:" + icsTime(fs) + "/PT8H\r\nSUMMARY:Weekly\r\n"
-	putRaw(t, st, aliceCal, "period.ics", roomICS("period", room, period), "usr_alice")
-	if st, reason, _ := roomStatus(t, srv, alice, "period"); st != "declined" || reason != "too_long" {
-		t.Fatalf("oversized RDATE period: %s %s", st, reason)
+	for i, rdate := range []string{"RDATE;VALUE=PERIOD:", "RDATE:"} {
+		uid := fmt.Sprintf("period%d", i)
+		period := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\n" + rdate + icsTime(fs) + "/PT8H\r\nSUMMARY:Weekly\r\n"
+		putRaw(t, st, aliceCal, uid+".ics", roomICS(uid, room, period), "usr_alice")
+		if st, reason, _ := roomStatus(t, srv, alice, uid); st != "declined" || reason != "too_long" {
+			t.Fatalf("oversized period %q: %s %s", rdate, st, reason)
+		}
+	}
+}
+
+func TestRoomChangedLaterOverrideNeedsApprovalAgain(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	carol, _ := webUser(t, srv, st, "carol")
+	room := makeResource(t, st, resource.Resource{Name: "Hall", HorizonDays: 30, Approval: resource.Approvers, Approvers: []string{"usr_carol"}})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	fs, fe := slot(1+7*20, 9)
+	far := "RECURRENCE-ID:" + icsTime(fs) + "\r\nDTSTART:" + icsTime(fs) + "\r\nDTEND:" + icsTime(fe) + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "w.ics", roomICS("w", room, master, far), "usr_alice")
+	var reqs struct{ Requests []struct{ ID string } }
+	_ = json.Unmarshal(call(t, srv, "GET", "/api/resources/requests", "", carol).Body.Bytes(), &reqs)
+	if len(reqs.Requests) != 1 {
+		t.Fatalf("requests %+v", reqs)
+	}
+	if w := call(t, srv, "POST", "/api/resources/requests/"+reqs.Requests[0].ID, `{"decision":"accept"}`, carol); w.Code != http.StatusNoContent {
+		t.Fatalf("accept %d", w.Code)
+	}
+	if st, _, _ := roomStatus(t, srv, alice, "w"); st != "accepted" {
+		t.Fatalf("approved: %s", st)
+	}
+	// Moving that far occurrence to another hour asks the approvers again.
+	ms, me := slot(1+7*20, 14)
+	moved := "RECURRENCE-ID:" + icsTime(fs) + "\r\nDTSTART:" + icsTime(ms) + "\r\nDTEND:" + icsTime(me) + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "w.ics", roomICS("w", room, master, moved), "usr_alice")
+	if st, _, _ := roomStatus(t, srv, alice, "w"); st != "pending" {
+		t.Fatalf("a moved occurrence past the horizon kept the approval: %s", st)
 	}
 }
