@@ -46,8 +46,8 @@ export function TaskBoard({ tasks, listName, onOpen, onMove }: {
                     </span>
                     {t.editable && (
                       <span className="tb-move">
-                        {ci > 0 && <button type="button" className="btn-ghost kc-icon" aria-label={`Move ${t.title} to ${COLUMNS[ci - 1].label}`} onClick={() => onMove(t, COLUMNS[ci - 1].status)}><ChevronLeft size={14} aria-hidden="true" /></button>}
-                        {ci < COLUMNS.length - 1 && <button type="button" className="btn-ghost kc-icon" aria-label={`Move ${t.title} to ${COLUMNS[ci + 1].label}`} onClick={() => onMove(t, COLUMNS[ci + 1].status)}><ChevronRight size={14} aria-hidden="true" /></button>}
+                        {ci > 0 && <button type="button" className="btn-ghost kc-icon" aria-label={`Move ${t.title} to ${COLUMNS[ci - 1].label}`} title={`Move to ${COLUMNS[ci - 1].label}`} onClick={() => onMove(t, COLUMNS[ci - 1].status)}><ChevronLeft size={14} aria-hidden="true" /></button>}
+                        {ci < COLUMNS.length - 1 && <button type="button" className="btn-ghost kc-icon" aria-label={`Move ${t.title} to ${COLUMNS[ci + 1].label}`} title={`Move to ${COLUMNS[ci + 1].label}`} onClick={() => onMove(t, COLUMNS[ci + 1].status)}><ChevronRight size={14} aria-hidden="true" /></button>}
                       </span>
                     )}
                   </li>
