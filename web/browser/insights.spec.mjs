@@ -30,6 +30,8 @@ test('goals, habits and insights', async ({ browser }, testInfo) => {
 
   await open('Habits');
   await expect(page.locator('.th-list li', { hasText: title }).getByText(/1-day streak/)).toBeVisible();
+  // The grid says in words what its colours show.
+  await expect(page.getByRole('img', { name: new RegExp(`^${title}, .+: 1 of \\d+ days, streak 1 day`) })).toBeVisible();
 
   await open('Goals');
   await page.getByRole('button', { name: 'New goal' }).click();

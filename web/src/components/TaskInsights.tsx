@@ -8,6 +8,7 @@ import {
 } from '../tasksApi';
 import { dateOnly } from '../taskParse';
 import { rangeOf } from '../taskRepeat';
+import { useNarrow } from '../useNarrow';
 import { hm } from '../dayPlan';
 
 const workday = () => { const d = new Date(); return rangeOf(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8), new Date(d.getFullYear(), d.getMonth(), d.getDate(), 18)); };
@@ -19,6 +20,7 @@ export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; 
   const [data, setData] = useState<Insights | null>(null);
   const [error, setError] = useState('');
   const [table, setTable] = useState(false);
+  const narrow = useNarrow();
   useEffect(() => { void insights().then(setData, (e) => setError(e instanceof Error ? e.message : 'Insights could not be loaded.')); }, []);
   if (error) return <p role="alert">{error}</p>;
   if (!data) return <p className="td-empty">Loading…</p>;
@@ -37,7 +39,7 @@ export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; 
           <table className="ti-table"><thead><tr><th scope="col">Week of</th><th scope="col">Done</th></tr></thead>
             <tbody>{data.weeks.map((w) => <tr key={w.start}><td>{shortDate(w.start)}</td><td>{w.done}</td></tr>)}</tbody></table>
         ) : (
-          <svg className="ti-bars" viewBox={`0 0 ${W} ${H + 20}`} role="img" aria-label={`Tasks completed per week: ${data.weeks.map((w) => `${shortDate(w.start)} ${w.done}`).join(', ')}`}>
+          <svg className="ti-bars" viewBox={`0 0 ${W} ${H + (narrow ? 32 : 20)}`} role="img" aria-label={`Tasks completed per week: ${data.weeks.map((w) => `${shortDate(w.start)} ${w.done}`).join(', ')}`}>
             <line x1="0" x2={W} y1={H} y2={H} className="ti-base" />
             {data.weeks.map((w, i) => {
               const h = Math.max(w.done ? 4 : 0, (w.done / maxDone) * (H - 16));
@@ -45,7 +47,7 @@ export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; 
                 <g key={w.start}>
                   <rect x={i * (bw + gap)} y={0} width={bw} height={H} className="ti-hit"><title>{`Week of ${shortDate(w.start)}: ${w.done} done`}</title></rect>
                   <rect x={i * (bw + gap)} y={H - h} width={bw} height={h} rx="4" className="ti-bar" />
-                  {(i === data.weeks.length - 1 || i % 3 === 0) && <text x={i * (bw + gap) + bw / 2} y={H + 15} className="ti-label">{shortDate(w.start)}</text>}
+                  {(narrow ? i % 5 === 0 : i % 3 === 0 || i === data.weeks.length - 1) && <text x={i * (bw + gap) + bw / 2} y={H + (narrow ? 26 : 15)} className="ti-label" style={{ fontSize: narrow ? 19 : 11 }}>{shortDate(w.start)}</text>}
                 </g>
               );
             })}
@@ -135,6 +137,7 @@ export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: 
   const [progress, setProgress] = useState<Record<string, GoalProgress>>({});
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
   const [error, setError] = useState('');
+  const narrow = useNarrow();
   const load = () => listGoals().then(async (gs) => {
     setGoals(gs);
     const entries = await Promise.all(gs.map(async (g) => [g.id, await goalProgress(g.id)] as const));
@@ -155,7 +158,7 @@ export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: 
             </div>
           </div>
           <table className="ti-table">
-            <thead><tr><th scope="col">List</th><th scope="col">Done in period</th><th scope="col">Open</th><th scope="col">Last done</th></tr></thead>
+            <thead><tr><th scope="col">List</th><th scope="col">{narrow ? 'Done' : 'Done in period'}</th><th scope="col">Open</th><th scope="col">{narrow ? 'Last' : 'Last done'}</th></tr></thead>
             <tbody>
               {(progress[g.id]?.lists ?? []).map((l) => (
                 <tr key={l.list_id}>
