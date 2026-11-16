@@ -270,7 +270,7 @@ func TestMCPEndToEnd(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	if want := []string{"create_event", "list_calendars", "list_events", "update_event"}; !slices.Equal(names, want) {
+	if want := []string{"create_event", "create_task", "day_gaps", "get_task", "list_calendars", "list_events", "list_tasks", "update_event", "update_task"}; !slices.Equal(names, want) {
 		t.Fatalf("tools %v, want %v (and nothing that deletes)", names, want)
 	}
 
@@ -764,7 +764,7 @@ func TestAgentSkill(t *testing.T) {
 			t.Errorf("skill names %s, which is not a tool", m[1])
 		}
 	}
-	for _, msg := range []string{api.MCPReadOnlyForTest, api.MCPNotOwnForTest, api.MCPSubscribedForTest, api.MCPMeetingForTest, "No such calendar", "No such event", "The event changed elsewhere; reload it", "Calendar storage is full"} {
+	for _, msg := range []string{api.MCPReadOnlyForTest, api.MCPNotOwnForTest, api.MCPSubscribedForTest, api.MCPMeetingForTest, api.MCPNotOwnTaskForTest, "No such task", "No such calendar", "No such event", "The event changed elsewhere; reload it", "Calendar storage is full"} {
 		if !strings.Contains(skill, msg) {
 			t.Errorf("skill error table lacks %q", msg)
 		}

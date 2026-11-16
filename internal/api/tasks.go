@@ -649,7 +649,8 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, apiErr)
 		return
 	}
-	uid, etag, apiErr := s.createTask(r.Context(), sessionUser(r.Context()), c, b, "", "")
+	uid := uuid.NewString()
+	etag, apiErr := s.createTask(r.Context(), sessionUser(r.Context()), c, uid, b, "", "")
 	if apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
@@ -657,37 +658,36 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusCreated, map[string]string{"calendar_id": c.ID, "uid": uid, "etag": etag})
 }
 
-// createTask validates b and writes a new task to c, which the caller may edit.
-func (s *Server) createTask(ctx context.Context, user *store.User, c *store.Calendar, b taskBody, url, source string) (string, string, *apiError) {
+// createTask validates b and writes it to c, which the caller may edit, as task uid.
+func (s *Server) createTask(ctx context.Context, user *store.User, c *store.Calendar, uid string, b taskBody, url, source string) (string, *apiError) {
 	if b.Title == nil {
-		return "", "", badTask("A task needs a title")
+		return "", badTask("A task needs a title")
 	}
 	p, apiErr := b.patch()
 	if apiErr != nil {
-		return "", "", apiErr
+		return "", apiErr
 	}
 	files, apiErr := eventFiles(b.Files)
 	if apiErr != nil {
-		return "", "", apiErr
+		return "", apiErr
 	}
-	uid := uuid.NewString()
 	if p.Parent != nil && *p.Parent != "" {
 		if apiErr := s.checkParent(ctx, c, uid, *p.Parent); apiErr != nil {
-			return "", "", apiErr
+			return "", apiErr
 		}
 	}
 	cal, err := tasks.New(uid, p, url, source, time.Now())
 	if err != nil {
-		return "", "", badTask(strings.TrimPrefix(err.Error(), "tasks: invalid task: "))
+		return "", badTask(strings.TrimPrefix(err.Error(), "tasks: invalid task: "))
 	}
 	if files != nil {
 		calendar.SetFiles(cal, files)
 	}
 	o, apiErr := s.saveEvent(ctx, user, c, uid+".ics", cal, "", true)
 	if apiErr != nil {
-		return "", "", apiErr
+		return "", apiErr
 	}
-	return uid, o.ETag, nil
+	return o.ETag, nil
 }
 
 // checkParent refuses a parent that is missing from c, is the task itself, would make a cycle

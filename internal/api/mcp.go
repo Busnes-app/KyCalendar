@@ -170,6 +170,7 @@ func (s *Server) mcpServer(caller mcpCaller) *mcp.Server {
 		Description: "Change an event. Fields left out keep their value; start and end come together. Pass the etag from list_events. Confirm the change with the user first.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(false), OpenWorldHint: boolPtr(false)},
 	}, t.updateEvent)
+	s.addTaskTools(srv, t)
 	return srv
 }
 
