@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -350,6 +351,44 @@ func Conflicts(want, busy []Span) []int64 {
 		}
 	}
 	return out
+}
+
+// ExplicitFutureSpans expands the finite future dates and overrides of a series without its
+// RRULE. Each must be checked even though the ordinary rule is reserved past the horizon.
+// False means expansion cannot account for every explicit reservation within the bound.
+func ExplicitFutureSpans(cal *ical.Calendar, after int64) ([]Span, bool) {
+	finite := *cal.Component
+	finite.Children = nil
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			finite.Children = append(finite.Children, c)
+			continue
+		}
+		copy := *c
+		copy.Props = maps.Clone(c.Props)
+		if len(c.Props[ical.PropRecurrenceRule]) > 0 && len(c.Props[ical.PropRecurrenceDates]) == 0 && c.Props.Get(ical.PropRecurrenceID) == nil {
+			// Keep recurrence-set processing of EXDATE when the infinite rule is removed.
+			start := *c.Props.Get(ical.PropDateTimeStart)
+			start.Name = ical.PropRecurrenceDates
+			copy.Props[ical.PropRecurrenceDates] = []ical.Prop{start}
+		}
+		delete(copy.Props, ical.PropRecurrenceRule)
+		finite.Children = append(finite.Children, &copy)
+	}
+	insts, err := calendar.Expand(&ical.Calendar{Component: &finite}, time.Unix(after, 0), time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC, MaxOccurrences)
+	if err != nil {
+		return nil, false
+	}
+	var spans []Span
+	for _, in := range insts {
+		if in.Partial {
+			return nil, false
+		}
+		if !Cancelled(in.Event) && in.Start.Unix() >= after {
+			spans = append(spans, Span{in.Start.Unix(), in.End.Unix()})
+		}
+	}
+	return spans, true
 }
 
 // OpenSpans are cal's occurrences in [from, to) at or after openAfter: what an accepted series

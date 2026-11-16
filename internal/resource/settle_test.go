@@ -213,3 +213,28 @@ func TestFingerprintSeparatesTimingParameterTuples(t *testing.T) {
 		t.Fatal("the new fingerprint must not match a stored legacy digest")
 	}
 }
+
+func TestExplicitFutureSpansHonorsExclusionsAndCancellation(t *testing.T) {
+	for name, extra := range map[string]string{
+		"excluded":  "RRULE:FREQ=WEEKLY\nEXDATE:20261120T090000Z\n",
+		"cancelled": "RRULE:FREQ=WEEKLY\nSTATUS:CANCELLED\n",
+	} {
+		cal := parse(t, event("20261120T090000Z", "20261120T100000Z", extra))
+		spans, ok := ExplicitFutureSpans(cal, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Unix())
+		if !ok || len(spans) != 0 {
+			t.Errorf("%s: %v %v", name, spans, ok)
+		}
+	}
+}
+
+func TestExplicitFutureSpansRefusesExcessDates(t *testing.T) {
+	start := time.Date(2027, 1, 1, 9, 0, 0, 0, time.UTC)
+	var dates []string
+	for i := 0; i <= MaxOccurrences; i++ {
+		dates = append(dates, start.AddDate(0, 0, i).Format("20060102T150405Z"))
+	}
+	cal := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY\nRDATE:"+strings.Join(dates, ",")+"\n"))
+	if _, ok := ExplicitFutureSpans(cal, start.Unix()); ok {
+		t.Fatal("uncheckable future dates admitted")
+	}
+}

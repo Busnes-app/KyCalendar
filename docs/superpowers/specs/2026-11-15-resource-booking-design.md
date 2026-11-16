@@ -76,7 +76,10 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    event no longer names are deleted.
 
 **Recurring events.** Every occurrence from now to the horizon is checked. If any conflicts, the
-whole series is declined and the reason lists up to five conflicting dates. A series may run past
+whole series is declined and the reason lists up to five conflicting dates. Explicit overrides and
+RDATEs beyond the horizon are also checked against stored and open bookings in their own time
+windows, preserving EXDATE and cancellation. An explicit expansion that cannot be checked
+within the occurrence bound is declined. A series may run past
 the horizon, and with no end (the web's repeats have none): once accepted it reserves every later
 occurrence too. Its busy rows stop at the horizon, and the booking records where (`open_after`);
 every later check and the finder expand such a series past that point, so a later booking that

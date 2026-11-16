@@ -895,3 +895,39 @@ func TestRoomCalDAVTimingParameterCollisionNeedsNewDecision(t *testing.T) {
 		})
 	}
 }
+
+func TestRoomFutureExplicitOccurrencesMustBeFree(t *testing.T) {
+	for _, form := range []string{"override", "rdate", "period", "untyped period"} {
+		t.Run(form, func(t *testing.T) {
+			srv, st, _ := setupTestServer(t)
+			alice, aliceCal := webUser(t, srv, st, "alice")
+			bob, bobCal := webUser(t, srv, st, "bob")
+			room := makeResource(t, st, resource.Resource{Name: "Fjord", HorizonDays: 30})
+			bs, be := slot(1, 14)
+			createEvent(t, srv, bob, bobCal, bookBody("Held", bs, be, `,"repeat":{"freq":"weekly"}`, room))
+			s, e := slot(1, 9)
+			fs, fe := slot(1+7*20, 14)
+			master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+			var override string
+			switch form {
+			case "override":
+				rid, _ := slot(1+7*20, 9)
+				override = "RECURRENCE-ID:" + icsTime(rid) + "\r\nDTSTART:" + icsTime(fs) + "\r\nDTEND:" + icsTime(fe) + "\r\nSUMMARY:Moved\r\n"
+			case "rdate":
+				master += "RDATE:" + icsTime(fs) + "\r\n"
+			case "period":
+				master += "RDATE;VALUE=PERIOD:" + icsTime(fs) + "/PT1H\r\n"
+			case "untyped period":
+				master += "RDATE:" + icsTime(fs) + "/PT1H\r\n"
+			}
+			parts := []string{master}
+			if override != "" {
+				parts = append(parts, override)
+			}
+			putRaw(t, st, aliceCal, "future.ics", roomICS("future", room, parts...), "usr_alice")
+			if status, reason, _ := roomStatus(t, srv, alice, "future"); status != resource.Declined || reason != resource.ReasonBusy {
+				t.Fatalf("%s future collision accepted: %s %s", form, status, reason)
+			}
+		})
+	}
+}

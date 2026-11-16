@@ -195,21 +195,40 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 				d = resource.Decision{Status: resource.Declined, Reason: resource.ReasonNotAllowed}
 			}
 		}
-		if d.Status != resource.Declined && len(d.Spans) > 0 {
-			last := int64(0)
-			for _, sp := range d.Spans {
-				last = max(last, sp.End)
+		if d.Status != resource.Declined {
+			windows := [][]resource.Span{d.Spans}
+			if d.OpenAfter > 0 {
+				future, ok := resource.ExplicitFutureSpans(cal, d.OpenAfter)
+				if !ok {
+					d = resource.Decision{Status: resource.Declined, Reason: resource.ReasonOccurrences}
+				}
+				// Keep distant dates separate: expanding a gap of centuries is not a busy check.
+				for _, sp := range future {
+					windows = append(windows, []resource.Span{sp})
+				}
 			}
-			busy, err := c.busyOf(ctx, tx, id, d.Spans[0].Start, last, o.CalendarID, o.Name)
-			if err != nil {
-				return nil, err
-			}
-			spans := make([]resource.Span, len(busy))
-			for i, b := range busy {
-				spans[i] = resource.Span{Start: b.Start, End: b.End}
-			}
-			if hit := resource.Conflicts(d.Spans, spans); len(hit) > 0 {
-				d = resource.Decision{Status: resource.Declined, Reason: resource.ReasonBusy, Detail: resource.ConflictDetail(hit)}
+			for _, want := range windows {
+				if d.Status == resource.Declined {
+					break
+				}
+				if len(want) == 0 {
+					continue
+				}
+				last := int64(0)
+				for _, sp := range want {
+					last = max(last, sp.End)
+				}
+				busy, err := c.busyOf(ctx, tx, id, want[0].Start, last, o.CalendarID, o.Name)
+				if err != nil {
+					return nil, err
+				}
+				spans := make([]resource.Span, len(busy))
+				for i, b := range busy {
+					spans[i] = resource.Span{Start: b.Start, End: b.End}
+				}
+				if hit := resource.Conflicts(want, spans); len(hit) > 0 {
+					d = resource.Decision{Status: resource.Declined, Reason: resource.ReasonBusy, Detail: resource.ConflictDetail(hit)}
+				}
 			}
 		}
 		if d.Status == resource.Declined {
