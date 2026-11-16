@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarClock, CalendarDays, CheckCircle2, ChevronDown, Inbox, Layers, ListTodo, Mail, Plus, Repeat, Search,
-  SlidersHorizontal, Star, CornerDownLeft, Sun, Hourglass, AlertCircle, Bookmark,
+  SlidersHorizontal, Star, CornerDownLeft, Flame, Target, BarChart3, Sun, Hourglass, AlertCircle, Bookmark,
 } from 'lucide-react';
 import { MoreMenu } from '../components/MoreMenu';
 import { EmptyState, Modal } from '../components/ui';
 import { TaskDialog, estimateText } from '../components/TaskDialog';
 import { TaskBoard } from '../components/TaskBoard';
+import { GoalsView, HabitsView, InsightsView } from '../components/TaskInsights';
 import { ApiError, createCalendar, deleteCalendar, listCalendars, patchCalendar, type CalendarInfo } from '../calendarApi';
 import {
   createTask, createView, deleteView, inbox, listAreas, listTasks, listViews, patchTask, saveAreas,
@@ -24,7 +25,7 @@ import { PlanView, TodayView, useDay, useModel } from './TaskDay';
 export { TASKS_CHANGED } from '../components/CaptureBox';
 import { TASKS_CHANGED } from '../components/CaptureBox';
 
-type Smart = 'today' | 'upcoming' | 'overdue' | 'someday' | 'flagged' | 'completed';
+type Smart = 'today' | 'upcoming' | 'overdue' | 'someday' | 'flagged' | 'completed' | 'habits' | 'goals' | 'insights';
 export type TaskView = { kind: 'smart'; id: Smart } | { kind: 'list' | 'area' | 'view'; id: string };
 const SMART: { id: Smart; label: string; icon: typeof Sun }[] = [
   { id: 'today', label: 'Today', icon: Sun },
@@ -33,6 +34,12 @@ const SMART: { id: Smart; label: string; icon: typeof Sun }[] = [
   { id: 'someday', label: 'Someday', icon: Hourglass },
   { id: 'flagged', label: 'Flagged from mail', icon: Mail },
   { id: 'completed', label: 'Completed', icon: CheckCircle2 },
+];
+// Review views: not task lists, so no quick add, tools or board.
+const REVIEW: { id: Smart; label: string; icon: typeof Sun }[] = [
+  { id: 'habits', label: 'Habits', icon: Flame },
+  { id: 'goals', label: 'Goals', icon: Target },
+  { id: 'insights', label: 'Insights', icon: BarChart3 },
 ];
 const VIEW_KEY = 'kycalendar.tasksView';
 const LAYOUT_KEY = 'kycalendar.tasksLayout'; // view key -> 'board', for views shown as a board
@@ -152,12 +159,13 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   useEffect(() => { document.querySelector('.tk-sidebar .tk-nav[aria-current="page"]')?.scrollIntoView({ block: 'nearest' }); }, [view]);
 
   const isToday = view.kind === 'smart' && view.id === 'today' && !serverFilter;
+  const review = view.kind === 'smart' && REVIEW.some((r) => r.id === view.id) ? view.id : '';
   const day = useDay(dayKey);
   const model = useModel(isToday ? day.data : null, day.now);
   const today = dateOnly(new Date());
   const rows = useMemo(() => {
     const base = shown ?? open;
-    return view.kind === 'smart' && view.id !== 'completed' && view.id !== 'flagged' ? base.filter((t) => inView(t, view.id as Smart, today)) : base;
+    return view.kind === 'smart' && !['completed', 'flagged', 'habits', 'goals', 'insights'].includes(view.id) ? base.filter((t) => inView(t, view.id as Smart, today)) : base;
   }, [shown, open, view, today]);
   // Subtasks list under their parent when it is shown; the rest are top level.
   const ordered = useMemo(() => {
@@ -190,7 +198,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   }, [ordered, view]);
   const flat = groups.flatMap((g) => g.items);
 
-  const title = view.kind === 'smart' ? SMART.find((s) => s.id === view.id)!.label
+  const title = view.kind === 'smart' ? [...SMART, ...REVIEW].find((s) => s.id === view.id)!.label
     : view.kind === 'list' ? listName(view.id) : view.kind === 'area' ? areas.find((a) => a.id === view.id)?.name ?? 'Area'
       : views.find((v) => v.id === view.id)?.name ?? 'View';
   const writable = lists.filter((c) => c.role !== 'reader' && !c.subscription);
@@ -268,6 +276,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       <ul className="tk-navlist">
         {inboxId && navItem({ kind: 'list', id: inboxId }, 'Inbox', Inbox, counts[inboxId])}
         {SMART.map((s) => navItem({ kind: 'smart', id: s.id }, s.label, s.icon, s.id === 'today' || s.id === 'overdue' || s.id === 'flagged' ? counts[s.id] : undefined))}
+        {REVIEW.map((s) => navItem({ kind: 'smart', id: s.id }, s.label, s.icon))}
       </ul>
       {areas.map((a) => (
         <div key={a.id} className="tk-group">
@@ -350,7 +359,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         </div>
       </header>
 
-      {!(isToday && planning) && <form className="tk-quick" onSubmit={quickAdd}>
+      {!(isToday && planning) && !review && <form className="tk-quick" onSubmit={quickAdd}>
         <Plus aria-hidden="true" />
         <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder={isNarrow ? 'Add a task' : 'Add a task: “Call Ana tomorrow 3pm !high #home”'}
           value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!targetList} />
@@ -364,7 +373,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         </div>
       </form>}
 
-      {!(view.kind === 'smart' && view.id === 'today') && <div className="tk-tools">
+      {!(view.kind === 'smart' && view.id === 'today') && !review && <div className="tk-tools">
         <label className="tk-search">
           <Search aria-hidden="true" />
           <input ref={search} type="search" aria-label="Search tasks" placeholder="Search title, notes and tags" value={q} maxLength={200} onChange={(e) => setQ(e.target.value)} />
@@ -421,13 +430,16 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       {isToday && model && day.data && (planning
         ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onDone={() => setPlanning(false)} reload={() => void load()} />
         : <TodayView m={model} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
-      {!isToday && flat.length === 0 && !error && (
+      {review === 'insights' && <InsightsView />}
+      {review === 'goals' && <GoalsView lists={lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c))} areas={areas} />}
+      {review === 'habits' && <HabitsView tasks={open} onOpen={(t) => setDialog({ task: t })} />}
+      {!isToday && !review && flat.length === 0 && !error && (
         <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>
           {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}
         </EmptyState>
       )}
-      {board && <TaskBoard tasks={topLevel(shown ?? [])} listName={view.kind === 'list' ? () => '' : listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
-      {!isToday && !board && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
+      {board && !review && <TaskBoard tasks={topLevel(shown ?? [])} listName={view.kind === 'list' ? () => '' : listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
+      {!isToday && !board && !review && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
         {groups.map((g) => (
           <li key={g.label || 'all'} className="tk-day">
             {g.label && <h2 className="tk-day-head">{g.label}</h2>}

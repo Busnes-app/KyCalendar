@@ -87,6 +87,8 @@ try {
     await patch('Fix contact form validation', { start: at(0, 10, 0), duration_min: 90, zone });
     await patch('Write launch announcement', { start: at(0, 13, 30), duration_min: 45, zone });
     for (const title of ['Compress the hero images', 'Fix contact form validation', 'Draft outline', 'Set up staging server']) await patch(title, { status: 'COMPLETED' });
+    await patch('Morning run', { habit: true });
+    await walter.call('POST', '/api/tasks/goals', { title: 'Launch the new website', period: 'quarter', starts: day(-30), ends: day(60), areas: ['work'], lists: [] }).catch(() => {});
   }
 
   await mkdir(out, { recursive: true });
@@ -136,6 +138,12 @@ try {
         await page.getByRole('tab', { name: /Candidates/ }).click();
         await shoot(page, 'plan-candidates', width, colorScheme);
       }
+      }
+      for (const name of ['Habits', 'Goals', 'Insights']) {
+        if (!(await page.getByRole('navigation', { name: 'Task lists' }).getByRole('button', { name: new RegExp(`^${name}`) }).count())) continue;
+        await view(name);
+        await page.waitForTimeout(500);
+        await shoot(page, name.toLowerCase(), width, colorScheme);
       }
       await page.goto('/#/calendar');
       await page.locator('.fc').waitFor();

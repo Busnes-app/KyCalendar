@@ -7,6 +7,7 @@ import { createTask, deleteTask, imageURL, patchTask, type FileLink, type Remind
 import { dateOnly, localRFC3339 } from '../taskParse';
 import { buildRule, presetLabel, readRule, type Preset, type Rule } from '../taskRepeat';
 import { linkify } from '../linkify';
+import { HabitPanel } from './TaskInsights';
 
 const STATUS: { value: Status; label: string }[] = [
   { value: 'NEEDS-ACTION', label: 'Not started' },
@@ -65,6 +66,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
   const [tags, setTags] = useState((start.tags ?? []).join(', '));
   const [rule, setRule] = useState<Rule>(readRule(start.rrule));
   const [fromDone, setFromDone] = useState(start.repeat_from_completion ?? false);
+  const [isHabit, setIsHabit] = useState(start.habit ?? false);
   const [reminders, setReminders] = useState<Reminder[]>(start.reminders ?? []);
   const [files, setFiles] = useState<FileLink[]>(start.files ?? []);
   const [newSub, setNewSub] = useState('');
@@ -90,10 +92,11 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
     put('tags', tagList, task?.tags ?? []);
     put('rrule', rrule, task?.rrule ?? '');
     put('repeat_from_completion', rrule ? fromDone : false, task?.repeat_from_completion ?? false);
+    put('habit', rrule ? isHabit : false, task?.habit ?? false);
     put('reminders', reminders, task?.reminders ?? []);
     put('files', files, task?.files ?? []);
     return b;
-  }, [title, notes, status, priority, due, begin, estimate, tags, rule, fromDone, reminders, files, task, anchor]);
+  }, [title, notes, status, priority, due, begin, estimate, tags, rule, fromDone, isHabit, reminders, files, task, anchor]);
 
   async function act(f: () => Promise<unknown>) {
     setBusy(true);
@@ -223,6 +226,10 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
         {repeatOn && (
           <label className="kc-check"><input type="checkbox" checked={fromDone} disabled={readOnly} onChange={(e) => setFromDone(e.target.checked)} /> Repeat from the completion date</label>
         )}
+        {repeatOn && ['daily', 'weekdays', 'weekly'].includes(rule.preset) && (
+          <label className="kc-check"><input type="checkbox" checked={isHabit} disabled={readOnly} onChange={(e) => setIsHabit(e.target.checked)} /> Track as a habit</label>
+        )}
+        {task?.habit && <HabitPanel task={task} />}
         <fieldset className="tk-reminders" disabled={readOnly}>
           <legend>Reminders</legend>
           {reminders.map((r, i) => (

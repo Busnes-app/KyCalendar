@@ -146,3 +146,33 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .tb-col ul:empty { display: none; }
 .tb-move button.kc-icon { min-height: 2rem; width: 2rem; }
 .tb-card { align-items: center; }
+/* Insights, goals and habits: one neutral ink for marks; the table carries every number. */
+.ti, .tg { display: grid; gap: var(--ky-space-5); }
+.ti h2, .tg h2 { margin: 0; font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); }
+.ti-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-3); }
+.ti-sum, .ti-key { margin: var(--ky-space-1) 0 var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
+.ti-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-1) var(--ky-space-2); }
+.ti-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 3px; }
+.ti-swatch-planned { background: var(--ink-strong); }
+.ti-swatch-free { background: var(--line); }
+.ti-bars { width: 100%; max-width: 40rem; height: auto; }
+.ti-bar { fill: var(--ink-strong); }
+.ti-hit { fill: transparent; }
+.ti-hit:hover + .ti-bar { fill: var(--accent); }
+.ti-base { stroke: var(--line-strong); stroke-width: 1; }
+.ti-label { fill: var(--ink); font-size: 11px; text-anchor: middle; }
+.ti-table { width: 100%; max-width: 40rem; border-collapse: collapse; font-size: var(--ky-type-nav); font-variant-numeric: tabular-nums; }
+.ti-table th { padding: .375rem .5rem; border-bottom: 1px solid var(--line); color: var(--ink); font-size: var(--ky-type-meta); font-weight: 600; text-align: left; }
+.ti-table td { padding: .375rem .5rem; border-bottom: 1px solid var(--line); color: var(--ink-strong); }
+.ti-days td:last-child { width: 45%; }
+.ti-bullet { display: block; height: .5rem; border-radius: 999px; background: var(--line); overflow: hidden; }
+.ti-bullet > span { display: block; height: 100%; border-radius: 999px; background: var(--ink-strong); }
+.tg-goal { display: grid; gap: var(--ky-space-1); }
+.tg-stalled { color: var(--danger); font-weight: 600; }
+.th { display: grid; gap: var(--ky-space-2); }
+.th-streaks { margin: 0; color: var(--ink); font-size: var(--ky-type-meta); }
+.th-streaks strong { color: var(--ink-strong); }
+.th-grid { display: grid; grid-template-rows: repeat(7, .75rem); grid-auto-flow: column; grid-auto-columns: .75rem; gap: 3px; }
+.th-day { border-radius: 2px; background: var(--line); }
+.th-day[data-done] { background: var(--ink-strong); }
+.th-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ky-space-4); }

@@ -75,3 +75,20 @@ export const MAX_IMAGE_BYTES = 512 << 10;
 
 export interface TaskStats { done_today: number; done_this_week: number; streak: number }
 export const taskStats = () => send(`/api/tasks/stats?tz=${encodeURIComponent(zone())}`).then((r) => parse<TaskStats>(r));
+
+export interface Goal { id: string; title: string; period: 'season' | 'quarter' | 'year' | 'custom'; starts: string; ends: string; areas: string[]; lists: string[] }
+export interface GoalProgress { goal: Goal; lists: { list_id: string; name: string; done: number; open: number; last_done?: string; stalled: boolean }[] }
+export interface Habit { freq: 'daily' | 'weekly'; current: number; longest: number; days: string[] }
+export interface Insights {
+  weeks: { start: string; done: number }[];
+  lists: { id: string; name: string; open: number; overdue: number }[];
+  days: { date: string; planned_min: number; free_min: number }[];
+}
+const tzq = () => `tz=${encodeURIComponent(zone())}`;
+export const listGoals = () => send('/api/tasks/goals').then((r) => parse<Goal[]>(r));
+export const saveGoal = (g: Omit<Goal, 'id'> & { id?: string }) =>
+  send(g.id ? `/api/tasks/goals/${encodeURIComponent(g.id)}` : '/api/tasks/goals', { method: g.id ? 'PUT' : 'POST', headers: JSON_HEADERS, body: JSON.stringify(g) }).then((r) => parse<Goal>(r));
+export const deleteGoal = (id: string) => send(`/api/tasks/goals/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => parse<void>(r));
+export const goalProgress = (id: string) => send(`/api/tasks/goals/${encodeURIComponent(id)}/progress?${tzq()}`).then((r) => parse<GoalProgress>(r));
+export const habit = (t: Pick<Task, 'calendar_id' | 'uid'>) => send(`${taskPath(t)}/habit?${tzq()}`).then((r) => parse<Habit>(r));
+export const insights = () => send(`/api/tasks/insights?${tzq()}`).then((r) => parse<Insights>(r));
