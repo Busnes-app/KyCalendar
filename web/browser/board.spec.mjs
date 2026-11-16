@@ -21,7 +21,13 @@ test('board: move a task between status columns', async ({ browser }, testInfo) 
   await page.getByRole('radio', { name: 'Board' }).check();
   const notStarted = page.locator('.tb-col', { has: page.getByRole('heading', { name: /^Not started/ }) });
   await expect(notStarted.locator('.tb-card', { hasText: title })).toBeVisible();
-  await page.getByRole('button', { name: `Move ${title} to In progress` }).click();
+  // The arrow is named for its card and column, explains itself on hover, and is a 32px target.
+  const move = page.getByRole('button', { name: `Move ${title} to In progress` });
+  await expect(move).toHaveAttribute('title', 'Move to In progress');
+  const box = await move.boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(32);
+  expect(box.height).toBeGreaterThanOrEqual(32);
+  await move.click();
   const inProgress = page.locator('.tb-col', { has: page.getByRole('heading', { name: /^In progress/ }) });
   await expect(inProgress.locator('.tb-card', { hasText: title })).toBeVisible();
   await page.reload();
