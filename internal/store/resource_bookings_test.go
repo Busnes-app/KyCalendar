@@ -36,7 +36,7 @@ func TestRoomNeutralReplyBetweenYearlyWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	master := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\nBEGIN:VEVENT\r\nUID:yearly\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261120T090000Z\r\nDTEND:20261120T100000Z\r\nRRULE:FREQ=YEARLY\r\nORGANIZER:mailto:alice@example.com\r\nATTENDEE:" + string(resource.Address(r.ID)) + "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	put := func(data, writer string) {
+	put := func(data, writer, name string) {
 		t.Helper()
 		cal, err := ical.NewDecoder(strings.NewReader(data)).Decode()
 		if err != nil {
@@ -46,12 +46,12 @@ func TestRoomNeutralReplyBetweenYearlyWindows(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		o := &CalendarObject{CalendarID: c.ID, Name: "yearly.ics", UID: info.UID, Component: info.Component, Data: []byte(data), FirstStart: info.FirstStart, LastEnd: info.LastEnd, WriterID: writer}
+		o := &CalendarObject{CalendarID: c.ID, Name: name, UID: info.UID, Component: info.Component, Data: []byte(data), FirstStart: info.FirstStart, LastEnd: info.LastEnd, WriterID: writer}
 		if _, err := st.Calendars().PutObject(ctx, o, "", false, OwnerLimits{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	put(master, "alice")
+	put(master, "alice", "yearly.ics")
 	check := func() *ResourceBooking {
 		t.Helper()
 		bs, err := st.Resources().BookingsIn(ctx, c.ID)
@@ -72,7 +72,7 @@ func TestRoomNeutralReplyBetweenYearlyWindows(t *testing.T) {
 	before := check()
 	now = time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
 	answer := "BEGIN:VEVENT\r\nUID:yearly\r\nDTSTAMP:20270301T000000Z\r\nRECURRENCE-ID:20271120T090000Z\r\nDTSTART:20271120T090000Z\r\nDTEND:20271120T100000Z\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com\r\nEND:VEVENT\r\n"
-	put(strings.Replace(master, "END:VCALENDAR", answer+"END:VCALENDAR", 1), "")
+	put(strings.Replace(master, "END:VCALENDAR", answer+"END:VCALENDAR", 1), "", "yearly.ics")
 	after := check()
 	if before.ID != after.ID || before.OpenAfter != after.OpenAfter {
 		t.Fatalf("neutral reply replaced held booking: before=%+v after=%+v", before, after)
@@ -81,4 +81,62 @@ func TestRoomNeutralReplyBetweenYearlyWindows(t *testing.T) {
 	if err != nil || !bytes.Contains(got.Data, []byte("PARTSTAT=ACCEPTED")) {
 		t.Fatalf("answer missing: %v", err)
 	}
+	// A cancellation between yearly windows releases that occurrence. Restoring the original
+	// bytes later must not reuse a fingerprint from before the cancellation.
+	cancelled := strings.Replace(master, "END:VCALENDAR", strings.Replace(answer, "DTSTAMP:", "STATUS:CANCELLED\r\nDTSTAMP:", 1)+"END:VCALENDAR", 1)
+	for _, tc := range []struct{ name, writer, status, reason string }{
+		{"authorization", "", resource.Declined, resource.ReasonNotAllowed},
+		{"approval", "alice", resource.Pending, ""},
+		{"conflict", "alice", resource.Declined, resource.ReasonBusy},
+	} {
+		if err := st.Calendars().DeleteObject(ctx, c.ID, "yearly.ics", ""); err != nil {
+			t.Fatal(err)
+		}
+		r.Approval, r.Approvers = resource.Auto, nil
+		if err := st.Resources().UpdateResource(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+		now = time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)
+		put(master, "alice", "yearly.ics")
+		now = time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+		put(cancelled, "", "yearly.ics")
+		cal, err := ical.NewDecoder(strings.NewReader(cancelled)).Decode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fingerprint string
+		db := st.(*SQLStore)
+		if err := db.db.QueryRowContext(ctx, db.rebind(`SELECT fingerprint FROM resource_bookings WHERE calendar_id = ? AND object_name = ?`), c.ID, "yearly.ics").Scan(&fingerprint); err != nil {
+			t.Fatal(err)
+		}
+		if fingerprint != resource.Fingerprint(cal) {
+			t.Errorf("%s: preserved fingerprint is stale", tc.name)
+		}
+		from := time.Date(2027, 11, 20, 9, 0, 0, 0, time.UTC).Unix()
+		if busy, err := st.Resources().Busy(ctx, r.ID, from, from+3600, "", ""); err != nil || len(busy) != 0 {
+			t.Fatalf("cancelled occurrence is busy: %v %v", busy, err)
+		}
+		now = time.Date(2027, 11, 1, 0, 0, 0, 0, time.UTC)
+		if tc.name == "approval" {
+			r.Approval, r.Approvers = resource.Approvers, []string{"alice"}
+			if err := st.Resources().UpdateResource(ctx, r); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if tc.name == "conflict" {
+			other := strings.ReplaceAll(master, "UID:yearly", "UID:other")
+			other = strings.ReplaceAll(other, "20261120", "20271120")
+			put(other, "alice", "other.ics")
+		}
+		put(master, tc.writer, "yearly.ics")
+		bs, err := st.Resources().BookingsIn(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := bs["yearly.ics"][r.ID]
+		if b.Status != tc.status || b.Reason != tc.reason {
+			t.Errorf("%s: restored occurrence bypassed new decision: %+v", tc.name, b)
+		}
+	}
+
 }

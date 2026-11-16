@@ -174,7 +174,10 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 		if b := existing[id]; b != nil && r != nil && r.Enabled && (d.Status != resource.Declined || d.Reason == resource.ReasonBeyond) && b.Status != resource.Declined &&
 			prevCal != nil && prevSeries == series && resource.Within(prevCal, cal, now) {
 			if d.Reason == resource.ReasonBeyond {
-				// No occurrence in the current horizon: keep the ledger's original open range.
+				// Keep the ledger's open range, but bind its answer to the current times.
+				if _, err := tx.ExecContext(ctx, c.q(`UPDATE resource_bookings SET fingerprint = ?, updated_at = ? WHERE id = ?`), fp, now.UTC(), b.ID); err != nil {
+					return nil, err
+				}
 				answers[id] = b.Status
 				continue
 			}
