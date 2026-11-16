@@ -198,3 +198,18 @@ func TestWithin(t *testing.T) {
 		t.Error("restoring a cancelled occurrence counted as held")
 	}
 }
+
+func TestFingerprintSeparatesTimingParameterTuples(t *testing.T) {
+	ics := event("20261120T090000", "20261120T100000", "RRULE:FREQ=WEEKLY\n")
+	withParams := func(params string) *ical.Calendar {
+		return parse(t, strings.ReplaceAll(strings.ReplaceAll(ics, "DTSTART:", "DTSTART"+params+":"), "DTEND:", "DTEND"+params+":"))
+	}
+	a := withParams(`;TZID="America/New_York;X";VALUE=DATE-TIME`)
+	b := withParams(`;TZID=America/New_York;VALUE="X;DATE-TIME"`)
+	if Fingerprint(a) == Fingerprint(b) {
+		t.Fatal("distinct timing parameter tuples collide")
+	}
+	if !strings.HasPrefix(Fingerprint(a), "v2:") {
+		t.Fatal("the new fingerprint must not match a stored legacy digest")
+	}
+}

@@ -823,3 +823,75 @@ func TestRoomDetachedOccurrenceNeedsApprovalAgain(t *testing.T) {
 		t.Fatal("an extra occurrence outside the approved rule kept the approval")
 	}
 }
+
+func TestRoomCalDAVTimingParameterCollisionNeedsNewDecision(t *testing.T) {
+	for _, mode := range []string{"approval", "conflict"} {
+		t.Run(mode, func(t *testing.T) {
+			srv, st, _ := setupTestServer(t)
+			token := davUser(t, st, "dave", "user")
+			ctx := context.Background()
+			u, _ := st.Users().GetUserByID(ctx, "usr_dave")
+			u.Email = "dave@example.com"
+			if err := st.Users().UpdateUser(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+			bob, bobCal := webUser(t, srv, st, "bob")
+			_, _ = webUser(t, srv, st, "carol")
+			r := resource.Resource{Name: "Hall", HorizonDays: 30}
+			if mode == "approval" {
+				r.Approval, r.Approvers = resource.Approvers, []string{"usr_carol"}
+			}
+			room := makeResource(t, st, r)
+			s, e := slot(1, 9)
+			text := "DTSTART:" + strings.TrimSuffix(icsTime(s), "Z") + "\r\nDTEND:" + strings.TrimSuffix(icsTime(e), "Z") + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+			body := func(params string) string {
+				fields := strings.ReplaceAll(strings.ReplaceAll(text, "DTSTART:", "DTSTART"+params+":"), "DTEND:", "DTEND"+params+":")
+				return strings.ReplaceAll(roomICS("collision", room, fields), "alice@example.com", "dave@example.com")
+			}
+			ts := httptest.NewServer(srv)
+			defer ts.Close()
+			path := "/dav/usr_dave/calendars/default/collision.ics"
+			put := func(data string) {
+				t.Helper()
+				resp := rawDAV(t, ts, "PUT", path, "dave", token, data, map[string]string{"Content-Type": "text/calendar"})
+				if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+					t.Fatalf("PUT %d: %s", resp.StatusCode, readAll(resp))
+				}
+			}
+			put(body(`;TZID="America/New_York;X";VALUE=DATE-TIME`))
+			cals, err := st.Calendars().ListCalendarsByOwner(ctx, "user", "usr_dave")
+			if err != nil || len(cals) != 1 {
+				t.Fatalf("calendars: %v %v", cals, err)
+			}
+			booking := func() *store.ResourceBooking {
+				t.Helper()
+				bs, err := st.Resources().BookingsIn(ctx, cals[0].ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return bs["collision.ics"][room]
+			}
+			if mode == "approval" {
+				if err := st.Resources().Decide(ctx, booking().ID, "usr_carol", true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if b := booking(); b.Status != resource.Accepted {
+				t.Fatalf("initial booking: %+v", b)
+			}
+			if mode == "conflict" {
+				wall, _ := time.Parse(time.RFC3339, s)
+				changed := time.Date(wall.Year(), wall.Month(), wall.Day(), wall.Hour(), 0, 0, 0, mustZone(t, "America/New_York"))
+				createEvent(t, srv, bob, bobCal, bookBody("Busy", changed.Format(time.RFC3339), changed.Add(time.Hour).Format(time.RFC3339), "", room))
+			}
+			put(body(`;TZID=America/New_York;VALUE="X;DATE-TIME"`))
+			b := booking()
+			if mode == "approval" && b.Status != resource.Pending {
+				t.Fatalf("changed times retained approval: %+v", b)
+			}
+			if mode == "conflict" && (b.Status != resource.Declined || b.Reason != resource.ReasonBusy) {
+				t.Fatalf("changed times bypassed conflict: %+v", b)
+			}
+		})
+	}
+}

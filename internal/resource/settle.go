@@ -67,23 +67,33 @@ func IDs(cal *ical.Calendar) []string {
 // Fingerprint hashes what decides a booking: every VEVENT's times, recurrence and status. A
 // write that leaves it alone (a new title, other attendees) keeps the resource's answer.
 func Fingerprint(cal *ical.Calendar) string {
+	// Length prefixes preserve boundaries even when a quoted parameter contains delimiters.
+	encode := func(fields []string) string {
+		var b strings.Builder
+		for _, field := range fields {
+			b.WriteString(strconv.Itoa(len(field)))
+			b.WriteByte(':')
+			b.WriteString(field)
+		}
+		return b.String()
+	}
 	var parts []string
 	for _, c := range cal.Children {
 		if c.Name != ical.CompEvent {
 			continue
 		}
-		var b strings.Builder
+		var fields []string
 		for _, name := range []string{ical.PropRecurrenceID, ical.PropDateTimeStart, ical.PropDateTimeEnd, ical.PropDuration,
 			ical.PropRecurrenceRule, ical.PropRecurrenceDates, ical.PropExceptionDates, ical.PropStatus} {
 			for _, p := range c.Props[name] {
-				b.WriteString(name + ";" + p.Params.Get(ical.ParamTimezoneID) + ";" + p.Params.Get(ical.ParamValue) + ":" + p.Value + "\n")
+				fields = append(fields, name, p.Params.Get(ical.ParamTimezoneID), p.Params.Get(ical.ParamValue), p.Value)
 			}
 		}
-		parts = append(parts, b.String())
+		parts = append(parts, encode(fields))
 	}
 	sort.Strings(parts)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
+	sum := sha256.Sum256([]byte(encode(parts)))
+	return "v2:" + hex.EncodeToString(sum[:])
 }
 
 // Decision is the answer for one resource on one event, before any busy check.
