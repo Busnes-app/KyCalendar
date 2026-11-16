@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 const ownIP = { 'X-Forwarded-For': '203.0.113.43' };
 
 // Plan and Today: a candidate placed with + lands on the timeline as a task block (never an
-// event), shows in Today's time-ordered day with a status menu, and Mark done counts it.
+// event), and shows in Today's time-ordered day, where its checkbox completes it.
 test('plan my day: place a task, see it in Today, mark it done', async ({ browser }, testInfo) => {
   const { viewport, colorScheme } = testInfo.project.use;
   const context = await browser.newContext({ extraHTTPHeaders: ownIP, viewport, colorScheme });
@@ -31,10 +31,9 @@ test('plan my day: place a task, see it in Today, mark it done', async ({ browse
   await expect(block).toHaveAttribute('aria-label', /High priority/);
   await expect(page.locator('.tp-event', { hasText: title })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
-  const row = page.locator('.td-task', { hasText: title });
-  await expect(row.getByRole('combobox', { name: `Status of ${title}` })).toHaveValue('NEEDS-ACTION');
-  await row.getByRole('combobox').selectOption('COMPLETED');
+  await page.getByRole('button', { name: 'Back to Today' }).click();
+  const row = page.locator('.td-rows .td-task', { hasText: title });
+  await row.getByRole('checkbox', { name: `Complete ${title}` }).click();
   await expect(row).toHaveAttribute('data-done', 'true');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();

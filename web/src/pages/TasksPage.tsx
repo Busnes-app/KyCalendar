@@ -314,10 +314,12 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         <div>
           <h1 id="tk-title" className="ky-page-title">{isToday && planning ? `Plan ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}` : title}
             {isToday && !planning && <span className="tk-date"> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>}</h1>
-          <p className="tk-meta">
-            {isToday ? 'Your day: plan it, then work through it' : flat.length === 1 ? '1 task' : `${flat.length} tasks`}
-            {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}
-          </p>
+          {!isToday && (
+            <p className="tk-meta">
+              {flat.length === 1 ? '1 task' : `${flat.length} tasks`}
+              {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}
+            </p>
+          )}
         </div>
         <div className="tk-head-actions">
           {(view.kind === 'view' || (currentList && currentList.kind === 'personal' && currentList.id !== inboxId && currentList.role === 'owner')) && (
@@ -335,7 +337,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         </div>
       </header>
 
-      <form className="tk-quick" onSubmit={quickAdd}>
+      {!(isToday && planning) && <form className="tk-quick" onSubmit={quickAdd}>
         <Plus aria-hidden="true" />
         <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder={isNarrow ? 'Add a task' : 'Add a task: “Call Ana tomorrow 3pm !high #home”'}
           value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!targetList} />
@@ -347,7 +349,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             </>
           )}
         </div>
-      </form>
+      </form>}
 
       {!(view.kind === 'smart' && view.id === 'today') && <div className="tk-tools">
         <label className="tk-search">
@@ -394,7 +396,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       {error && <p role="alert">{error}</p>}
       {isToday && day.error && <p role="alert">{day.error}</p>}
       {isToday && model && day.data && (planning
-        ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onAdd={() => setDialog({ task: null, initial: { due: today } })} onDone={() => setPlanning(false)} reload={() => void load()} />
+        ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onDone={() => setPlanning(false)} reload={() => void load()} />
         : <TodayView m={model} data={day.data} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
       {!isToday && flat.length === 0 && !error && (
         <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>

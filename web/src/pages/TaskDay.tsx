@@ -10,15 +10,10 @@ import { estimateText } from '../components/TaskDialog';
 const MIN = 60000;
 const HOUR_PX = 56;
 const DEFAULT_MIN = 30;
-const STATUS: { value: Status; label: string }[] = [
-  { value: 'NEEDS-ACTION', label: 'Not started' },
-  { value: 'IN-PROCESS', label: 'In progress' },
-  { value: 'COMPLETED', label: 'Done' },
-];
 
 export const lengthOf = (t: Task) => t.duration_min || t.estimate_min || DEFAULT_MIN;
-const hourLabel = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric' });
-const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const hourLabel = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' });
+const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' });
 // placedAt is when a task is placed today (a start time on that day), else null.
 export function placedAt(t: Task, day: string): number | null {
   if (!t.start || t.start.length === 10) return null;
@@ -134,12 +129,12 @@ function SuggestionLine({ m, now, onDone, setError }: { m: Model; now: number; o
   );
 }
 
-function StatusMenu({ t, onChange }: { t: Task; onChange: (s: Status) => void }) {
+// DoneBox completes or reopens a task; the full status list is in the task's detail.
+function DoneBox({ t, onChange }: { t: Task; onChange: (s: Status) => void }) {
+  const done = t.status === 'COMPLETED';
   return (
-    <select className="td-status" aria-label={`Status of ${t.title}`} value={t.status === 'CANCELLED' ? 'NEEDS-ACTION' : t.status} disabled={!t.editable} data-status={t.status}
-      onChange={(e) => onChange(e.target.value as Status)}>
-      {STATUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-    </select>
+    <input type="checkbox" className="tk-check" checked={done} disabled={!t.editable} aria-label={`${done ? 'Reopen' : 'Complete'} ${t.title}`}
+      onChange={() => onChange(done ? 'NEEDS-ACTION' : 'COMPLETED')} />
   );
 }
 
@@ -192,12 +187,11 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
             <p className="td-next-meta">{listName(next.t.calendar_id)}{(() => { const e = m.events.find((x) => x.start >= next.end); return e ? ` · ${e.e.title} at ${clock(e.start)}` : ''; })()}</p>
           </div>
           <div className="td-next-actions">
-            <button type="button" className="btn-secondary" onClick={() => pushLater(next)} disabled={!next.t.editable}>Push to later</button>
+            <button type="button" className="btn-ghost" onClick={() => pushLater(next)} disabled={!next.t.editable}>Push to later</button>
             <button type="button" onClick={() => run(patchTask(next.t, { status: 'COMPLETED' }))} disabled={!next.t.editable}><Check size={16} aria-hidden="true" /> Mark done</button>
           </div>
         </section>
       )}
-      <SuggestionLine m={m} now={now} onDone={reload} setError={setError} />
       {rows.length === 0 && <p className="td-empty">Nothing planned yet. <button type="button" className="btn-ghost btn-sm" onClick={onPlan}>Plan my day</button></p>}
       <ol className="td-rows" aria-label="Today in time order">
         {rows.map((r, i) => {
@@ -213,13 +207,16 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
           }
           const prio = priorityName(r.t.priority);
           return [line, (
-            <li key={`t-${key(r.t)}`} className="td-task" data-priority={prio.toLowerCase() || undefined} data-done={r.t.status === 'COMPLETED' || undefined}>
+            <li key={`t-${key(r.t)}`} className="td-task" data-done={r.t.status === 'COMPLETED' || undefined}>
               <span className="td-time">{clock(r.at)} · {hm(lengthOf(r.t))}</span>
-              <button type="button" className="td-task-title" onClick={() => onOpen(r.t)}>
-                {r.t.title}
-                {prio && <span className="td-prio">{prio}</span>}
-              </button>
-              <StatusMenu t={r.t} onChange={(s) => run(patchTask(r.t, { status: s }))} />
+              <span className="td-task-line">
+                <DoneBox t={r.t} onChange={(s) => run(patchTask(r.t, { status: s }))} />
+                <button type="button" className="td-task-title" onClick={() => onOpen(r.t)}>
+                  {r.t.title}
+                  {prio === 'High' && <span className="td-prio">High</span>}
+                  {r.t.status === 'IN-PROCESS' && <span className="td-state">In progress</span>}
+                </button>
+              </span>
             </li>
           )];
         })}
@@ -232,10 +229,12 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
             {unplanned.map((t) => {
               const d = dueLabel(t.due, new Date(now));
               return (
-                <li key={key(t)} className="td-task" data-priority={priorityName(t.priority).toLowerCase() || undefined}>
+                <li key={key(t)} className="td-task">
                   <span className={d?.overdue ? 'td-time tk-late' : 'td-time'}>{d?.overdue ? `Overdue · ${d.text}` : 'Today'}</span>
-                  <button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}{priorityName(t.priority) && <span className="td-prio">{priorityName(t.priority)}</span>}</button>
-                  <StatusMenu t={t} onChange={(s) => run(patchTask(t, { status: s }))} />
+                  <span className="td-task-line">
+                    <DoneBox t={t} onChange={(s) => run(patchTask(t, { status: s }))} />
+                    <button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}{priorityName(t.priority) === 'High' && <span className="td-prio">High</span>}</button>
+                  </span>
                 </li>
               );
             })}
@@ -247,8 +246,8 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
 }
 
 // PlanView: the day's timeline (events read-only, placed tasks movable) beside the candidates.
-export function PlanView({ m, now, listName, isNarrow, onOpen, onAdd, onDone, reload }: {
-  m: Model; now: number; listName: (id: string) => string; isNarrow: boolean; onOpen: (t: Task) => void; onAdd: () => void; onDone: () => void; reload: () => void;
+export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }: {
+  m: Model; now: number; listName: (id: string) => string; isNarrow: boolean; onOpen: (t: Task) => void; onDone: () => void; reload: () => void;
 }) {
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'plan' | 'candidates'>('plan');
@@ -303,19 +302,20 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onAdd, onDone, re
   const candidates = (
     <section className="tp-candidates" aria-labelledby="tp-cand">
       <h2 id="tp-cand">What could you do today?</h2>
+      <SuggestionLine m={m} now={Math.max(now, m.from)} onDone={reload} setError={setError} />
       {m.candidates.length === 0 && <p className="td-empty">Nothing waiting. Add a task to plan it.</p>}
       <ul>
         {shown.map((t) => {
           const d = dueLabel(t.due, new Date(now));
           return (
-            <li key={key(t)} className="tp-cand" draggable data-priority={priorityName(t.priority).toLowerCase() || undefined}
+            <li key={key(t)} className="tp-cand" draggable
               onDragStart={(e) => { e.dataTransfer.setData('text/x-task', key(t)); e.dataTransfer.effectAllowed = 'move'; }}>
               <button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}</button>
               <span className="tp-cand-meta">
-                {d ? <span className={d.overdue ? 'tk-late' : ''}>{d.overdue ? `Overdue · ${d.text}` : `Due ${d.text.toLowerCase()}`}</span> : <span>No date</span>}
+                {d && <span className={d.overdue ? 'tk-late' : ''}>{d.overdue ? `Overdue · ${d.text}` : `Due ${d.text.toLowerCase()}`}</span>}
                 <span>{listName(t.calendar_id)}</span>
-                <span>{estimateText(lengthOf(t))}{!t.duration_min && !t.estimate_min && ' (guess)'}</span>
-                {priorityName(t.priority) && <span className="td-prio">{priorityName(t.priority)}</span>}
+                {!!(t.duration_min || t.estimate_min) && <span>{estimateText(lengthOf(t))}</span>}
+                {priorityName(t.priority) === 'High' && <span className="td-prio">High</span>}
               </span>
               <button type="button" className="btn-ghost kc-icon tp-add" aria-label={`Place ${t.title} in the first free gap`} onClick={() => addFirst(t)}><Plus size={16} aria-hidden="true" /></button>
             </li>
@@ -371,13 +371,9 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onAdd, onDone, re
     <div className="tp">
       <div className="tp-head">
         <p><strong>{hm(m.plannedMin)} planned</strong> of {hm(m.freeAll)} free</p>
-        <div className="tp-head-actions">
-          <button type="button" className="btn-secondary btn-sm" onClick={onAdd}><Plus size={14} aria-hidden="true" /> Add task</button>
-          <button type="button" className="btn-sm" onClick={onDone}>Done</button>
-        </div>
+        <button type="button" className="btn-ghost btn-sm" onClick={onDone}><ChevronLeft size={14} aria-hidden="true" /> Back to Today</button>
       </div>
       {error && <p role="alert">{error}</p>}
-      <SuggestionLine m={m} now={Math.max(now, m.from)} onDone={reload} setError={setError} />
       {isNarrow ? (
         <>
           <div className="tp-tabs" role="tablist" aria-label="Plan">
