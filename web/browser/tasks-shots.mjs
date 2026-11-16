@@ -85,7 +85,7 @@ try {
   };
   for (const colorScheme of ['light', 'dark']) {
     for (const width of [1280, 390]) {
-      const ctx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, timezoneId: 'UTC', extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.81' } });
+      const ctx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone, extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.81' } });
       const page = await ctx.newPage();
       await page.goto('/');
       await page.getByLabel('Username', { exact: true }).fill('walter');
@@ -123,7 +123,7 @@ try {
       await page.locator('body').click({ position: { x: 5, y: 890 } });
       await page.keyboard.press('n');
       await page.getByRole('dialog', { name: 'Add' }).waitFor();
-      await page.getByLabel('Task', { exact: true }).fill('Plan the offsite next fri !medium @website');
+      await page.getByRole('textbox', { name: 'Task', exact: true }).fill('Plan the offsite next fri !medium @website');
       await shoot(page, 'capture', width, colorScheme);
       await ctx.close();
     }
