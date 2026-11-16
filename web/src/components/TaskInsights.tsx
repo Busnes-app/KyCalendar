@@ -47,7 +47,7 @@ export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; 
                 <g key={w.start}>
                   <rect x={i * (bw + gap)} y={0} width={bw} height={H} className="ti-hit"><title>{`Week of ${shortDate(w.start)}: ${w.done} done`}</title></rect>
                   <rect x={i * (bw + gap)} y={H - h} width={bw} height={h} rx="4" className="ti-bar" />
-                  {(narrow ? i % 5 === 0 : i % 3 === 0 || i === data.weeks.length - 1) && <text x={i * (bw + gap) + bw / 2} y={H + (narrow ? 26 : 15)} className="ti-label" style={{ fontSize: narrow ? 19 : 11 }}>{shortDate(w.start)}</text>}
+                  {(narrow ? i % 5 === 0 : i % 3 === 0 || i === data.weeks.length - 1) && <text x={i === 0 ? 0 : i * (bw + gap) + bw / 2} y={H + (narrow ? 26 : 15)} className="ti-label" style={{ fontSize: narrow ? 19 : 11, textAnchor: i === 0 ? 'start' : undefined }}>{shortDate(w.start)}</text>}
                 </g>
               );
             })}
