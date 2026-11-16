@@ -299,6 +299,9 @@ func apiRows(w *world) map[string]apiRow {
 		"DELETE /api/events/{cal}/{uid}":    {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
 		"POST /api/events/{cal}/{uid}/rsvp": {method: "POST", path: "/api/events/" + w.group.ID + "/seed-uid/rsvp", body: `{"partstat":"ACCEPTED"}`, want: groupWrite},
 		"GET /api/tasks":                    {method: "GET", path: "/api/tasks?tz=UTC", want: everyday},
+		"GET /api/tasks/prefs":              {method: "GET", path: "/api/tasks/prefs", want: everyday},
+		"PUT /api/tasks/prefs":              {method: "PUT", path: "/api/tasks/prefs", body: `{"kypost_flags":true}`, want: everyday},
+		"POST /api/tasks/flag":              {method: "POST", path: "/api/tasks/flag", body: `{}`, want: kypostOnly},
 		"POST /api/calendars/{id}/tasks":    {method: "POST", path: "/api/calendars/" + w.tasks.ID + "/tasks", body: `{"title":"M"}`, want: groupWrite},
 		// No If-Match: authorization answers first, then 428 (let through).
 		"PATCH /api/tasks/{cal}/{uid}":          {method: "PATCH", path: "/api/tasks/" + w.tasks.ID + "/seed-task", body: `{"status":"COMPLETED"}`, want: groupWrite},

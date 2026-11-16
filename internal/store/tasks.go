@@ -51,6 +51,10 @@ type TaskStore interface {
 	// word, as a prefix.
 	SearchTasks(ctx context.Context, calendarIDs, words []string) (map[string]bool, error)
 
+	// KyPostFlags is whether flagged mail makes tasks for the user (default on).
+	KyPostFlags(ctx context.Context, userID string) (bool, error)
+	SetKyPostFlags(ctx context.Context, userID string, on bool) error
+
 	// PruneTasks deletes completions before before and search rows of deleted calendars.
 	PruneTasks(ctx context.Context, before time.Time) error
 }
@@ -369,4 +373,19 @@ func (t *taskStore) UpdateGoal(ctx context.Context, g *TaskGoal) error {
 func (t *taskStore) DeleteGoal(ctx context.Context, userID, id string) error {
 	res, err := t.store.db.ExecContext(ctx, t.q(`DELETE FROM task_goals WHERE user_id = ? AND id = ?`), userID, id)
 	return affected(res, err)
+}
+
+func (t *taskStore) KyPostFlags(ctx context.Context, userID string) (bool, error) {
+	var on bool
+	err := t.store.db.QueryRowContext(ctx, t.q(`SELECT kypost_flags FROM task_prefs WHERE user_id = ?`), userID).Scan(&on)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	return on, err
+}
+
+func (t *taskStore) SetKyPostFlags(ctx context.Context, userID string, on bool) error {
+	_, err := t.store.db.ExecContext(ctx, t.q(`INSERT INTO task_prefs (user_id, kypost_flags) VALUES (?, ?)
+ON CONFLICT (user_id) DO UPDATE SET kypost_flags = excluded.kypost_flags`), userID, on)
+	return err
 }

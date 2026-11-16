@@ -92,3 +92,7 @@ export const deleteGoal = (id: string) => send(`/api/tasks/goals/${encodeURIComp
 export const goalProgress = (id: string) => send(`/api/tasks/goals/${encodeURIComponent(id)}/progress?${tzq()}`).then((r) => parse<GoalProgress>(r));
 export const habit = (t: Pick<Task, 'calendar_id' | 'uid'>) => send(`${taskPath(t)}/habit?${tzq()}`).then((r) => parse<Habit>(r));
 export const insights = () => send(`/api/tasks/insights?${tzq()}`).then((r) => parse<Insights>(r));
+export interface TaskPrefs { kypost_flags: boolean; kypost_linked: boolean }
+export const taskPrefs = () => send('/api/tasks/prefs').then((r) => parse<TaskPrefs>(r));
+export const saveTaskPrefs = (kypost_flags: boolean) =>
+  send('/api/tasks/prefs', { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ kypost_flags }) }).then((r) => parse<TaskPrefs>(r));

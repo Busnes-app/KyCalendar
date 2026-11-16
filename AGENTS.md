@@ -422,6 +422,7 @@ Spec `docs/superpowers/specs/2026-11-15-tasks-design.md` (mapping table, routes,
 - Every property maps to RFC 5545 (priority 1/5/9, STATUS with COMPLETED and PERCENT-COMPLETE, DUE, DTSTART, DESCRIPTION, CATEGORIES, `RELATED-TO;RELTYPE=PARENT`, RRULE, VALARM, DTSTART+DURATION when placed). KyCalendar's own markers are `X-KY-ESTIMATE`, `X-KY-REPEAT-FROM:COMPLETION`, `X-KY-HABIT:TRUE` and `X-KY-SOURCE`. A web edit keeps every content line it does not own (`TestInteropFixturesSurviveWebEdits`, fixtures cited in `internal/tasks/testdata/SOURCES.md`).
 - Completing a repeating task moves the same VTODO to its next occurrence, as Tasks.org does, keeping the wall-clock time across DST.
 - Areas, saved views, the completion log and the search index are KyCalendar-only (migration 32); CalDAV clients see ordinary lists. Free/busy never reads VTODO, so a placed task is never busy.
+- Flagged mail (deliverable 2, `docs/superpowers/specs/2026-11-15-kypost-flag-to-task-design.md`): KyPost's signed `kypost.task.flag` makes, updates or completes a task in the user's Inbox list; KyCalendar's `kycalendar.task.state` tells KyPost when such a task is completed, reopened or deleted on the web or over MCP. Neither side echoes the other's change. The user's switch is KyCalendar's (`/api/tasks/prefs`, default on). It needs the KyPost link, so it is off where scheduling is pinned off.
 - MCP task tools follow the event tools' scopes and personal-only rule (`internal/api/mcp_tasks.go`); no tool deletes tasks or lists.
 
 #### Installer setup

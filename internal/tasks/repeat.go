@@ -33,3 +33,16 @@ func setHabit(m *ical.Component, on bool) {
 		setRaw(m, PropHabit, "TRUE")
 	}
 }
+
+// PropRef is KyPost's opaque reference of the message a flagged-mail task came from.
+const PropRef = "X-KY-REF"
+
+// SetRef records ref on the task.
+func SetRef(cal *ical.Calendar, ref string) error {
+	m, err := Master(cal)
+	if err != nil {
+		return err
+	}
+	setRaw(m, PropRef, ref)
+	return nil
+}

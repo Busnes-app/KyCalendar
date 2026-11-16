@@ -601,6 +601,7 @@ CREATE TABLE sso_logouts (
 	{Version: 31, Name: "suite_group_calendars", SQLite: suiteGroupCalendars, Postgres: suiteGroupCalendars},
 	{Version: 32, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
 	{Version: 33, Name: "task_insights", SQLite: taskInsights, Postgres: taskInsights},
+	{Version: 34, Name: "task_prefs", SQLite: taskPrefs, Postgres: taskPrefs},
 	{Version: 35, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
 }
 
@@ -803,6 +804,12 @@ CREATE TABLE task_goals (
  created_at BIGINT NOT NULL
 );
 CREATE INDEX task_goals_user ON task_goals(user_id);`
+
+// taskPrefs: per-user task settings; no row means the defaults (flagged mail makes tasks).
+const taskPrefs = `CREATE TABLE task_prefs (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ kypost_flags BOOLEAN NOT NULL
+);`
 
 // The task search index (title, notes, tags) per calendar object, reconciled at search time.
 // SQLite: FTS5, pruned daily of deleted calendars (a virtual table has no foreign key).

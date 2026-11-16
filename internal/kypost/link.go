@@ -43,11 +43,20 @@ func (l *Link) Set(p *Peer) { l.peer.Store(p) }
 // Send is Client.Send to the linked KyPost. A signature KyPost refuses on a KyIdentity peer is
 // worth a retry once the secret is fetched again.
 func (l *Link) Send(ctx context.Context, id string, req SendRequest) error {
+	return l.do(func(c *Client) error { return c.Send(ctx, id, req) })
+}
+
+// SendTaskState is Client.SendTaskState to the linked KyPost, with Send's rotation handling.
+func (l *Link) SendTaskState(ctx context.Context, id string, req TaskStateRequest) error {
+	return l.do(func(c *Client) error { return c.SendTaskState(ctx, id, req) })
+}
+
+func (l *Link) do(send func(*Client) error) error {
 	p := l.Peer()
 	if p == nil {
 		return ErrNotConnected
 	}
-	err := (&Client{BaseURL: p.URL, Secret: p.Secret, HTTP: l.HTTP}).Send(ctx, id, req)
+	err := send(&Client{BaseURL: p.URL, Secret: p.Secret, HTTP: l.HTTP})
 	var refused Refused
 	if p.Source == SourceKyIdentity && errors.As(err, &refused) && (refused.Code == "bad_signature" || refused.Code == "status_401") {
 		if l.Rotated != nil {

@@ -8,6 +8,7 @@ import { MoreMenu } from '../components/MoreMenu';
 import { EmptyState, Modal } from '../components/ui';
 import { TaskDialog, estimateText } from '../components/TaskDialog';
 import { TaskBoard } from '../components/TaskBoard';
+import { FlaggedMailDialog } from '../components/FlaggedMailDialog';
 import { GoalsView, HabitsView, InsightsView } from '../components/TaskInsights';
 import { calendarColors } from '../calendarColors';
 import { ApiError, createCalendar, deleteCalendar, listCalendars, patchCalendar, type CalendarInfo } from '../calendarApi';
@@ -102,6 +103,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const viewKey = `${view.kind}:${view.id}`;
   const board = !!boards[viewKey] && !(view.kind === 'smart' && view.id === 'today');
   const [dayKey, setDayKey] = useState(0);
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const search = useRef<HTMLInputElement>(null);
   const listEl = useRef<HTMLUListElement>(null);
 
@@ -281,6 +283,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             <>
               <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setNaming('list'); }}><ListTodo size={16} aria-hidden="true" /> New list</button>
               <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setManaging(true); }}><Layers size={16} aria-hidden="true" /> Areas…</button>
+              <button type="button" role="menuitem" className="app-menu-item" onClick={() => { close(); setPrefsOpen(true); }}><Mail size={16} aria-hidden="true" /> Flagged from mail…</button>
             </>
           )}
         </MoreMenu>
@@ -534,6 +537,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             }
           }} />
       )}
+      {prefsOpen && <FlaggedMailDialog onClose={() => setPrefsOpen(false)} />}
       {managing && <AreasDialog areas={areas} lists={lists.filter((c) => c.id !== inboxId)} onClose={() => setManaging(false)} onSaved={(a) => { setAreas(a); setManaging(false); }} />}
       {sidebarSlot && createPortal(sidebar, sidebarSlot)}
     </section>
