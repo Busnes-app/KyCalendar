@@ -89,13 +89,12 @@ try {
       await page.locator('.ky-content').waitFor();
       if (booking) {
         await page.goto('/#/calendar');
-        if (width <= 720) await page.locator('.ky-sidebar summary', { hasText: 'Calendars' }).click().catch(() => {});
         await page.getByRole('button', { name: 'New event' }).click();
         const dialog = page.getByRole('dialog');
-        await dialog.getByLabel('Title').fill('Design review');
+        await dialog.locator('#kc-title').fill('Design review');
         if (mode === 'booking') {
-          await dialog.getByLabel('Start').fill(at(14).slice(0, 16));
-          await dialog.getByLabel('End').fill(at(15).slice(0, 16));
+          await dialog.locator('#kc-start').fill(at(14).slice(0, 16));
+          await dialog.locator('#kc-end').fill(at(15).slice(0, 16));
           await dialog.getByRole('button', { name: 'Add room' }).click();
           await dialog.getByRole('button', { name: 'Add Harbour' }).waitFor();
           await dialog.getByRole('button', { name: 'Add room' }).or(dialog.getByRole('group', { name: 'Find a room' })).first().scrollIntoViewIfNeeded();
