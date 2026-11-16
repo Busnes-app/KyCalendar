@@ -17,6 +17,7 @@ const STATUS: { value: Status; label: string }[] = [
 ];
 
 export const lengthOf = (t: Task) => t.duration_min || t.estimate_min || DEFAULT_MIN;
+const hourLabel = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric' });
 const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 // placedAt is when a task is placed today (a start time on that day), else null.
 export function placedAt(t: Task, day: string): number | null {
@@ -333,7 +334,7 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onAdd, onDone, re
           const t = m.candidates.find((c) => key(c) === k);
           if (t) { e.preventDefault(); run(place(t, timeAt(e.clientY))); }
         }}>
-        {hours.map((h) => <div key={h} className="tp-hour" style={{ top: y(h) }}><span>{clock(h)}</span></div>)}
+        {hours.map((h) => <div key={h} className="tp-hour" style={{ top: y(h) }}><span>{hourLabel(h)}</span></div>)}
         {m.free.map((g) => (
           <div key={`g${g.start}`} className="tp-gap" style={{ top: y(g.start), height: y(g.end) - y(g.start) }}>{g.minutes >= 30 && <span>{hm(g.minutes)} free</span>}</div>
         ))}
