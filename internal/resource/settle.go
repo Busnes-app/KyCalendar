@@ -131,7 +131,7 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 	if !open {
 		to = time.Unix(*lastEnd, 0).Add(time.Second)
 	}
-	insts, err := calendar.Expand(cal, now, to, time.UTC, MaxOccurrences)
+	insts, err := calendar.ExpandComplete(cal, now, to, time.UTC, MaxOccurrences)
 	if err != nil {
 		return Decision{Status: Declined, Reason: ReasonOccurrences}
 	}
@@ -155,9 +155,6 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 		d.OpenAfter = horizon.Unix()
 	}
 	for _, in := range insts {
-		if in.Partial {
-			return Decision{Status: Declined, Reason: ReasonOccurrences}
-		}
 		if Cancelled(in.Event) {
 			continue
 		}
@@ -306,15 +303,12 @@ func Within(prev, next *ical.Calendar, now time.Time) bool {
 	}
 	end = end.Add(15 * 24 * time.Hour) // past the longest occurrence and any zone
 	spans := func(cal *ical.Calendar) (map[Span]bool, bool) {
-		insts, err := calendar.Expand(cal, now, end, time.UTC, MaxOccurrences)
+		insts, err := calendar.ExpandComplete(cal, now, end, time.UTC, MaxOccurrences)
 		if err != nil {
 			return nil, false
 		}
 		out := map[Span]bool{}
 		for _, in := range insts {
-			if in.Partial {
-				return nil, false
-			}
 			if !Cancelled(in.Event) {
 				out[Span{in.Start.Unix(), in.End.Unix()}] = true
 			}
@@ -377,15 +371,12 @@ func ExplicitFutureSpans(cal *ical.Calendar, after int64) ([]Span, bool) {
 		delete(copy.Props, ical.PropRecurrenceRule)
 		finite.Children = append(finite.Children, &copy)
 	}
-	insts, err := calendar.Expand(&ical.Calendar{Component: &finite}, time.Unix(after, 0), time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC, MaxOccurrences)
+	insts, err := calendar.ExpandComplete(&ical.Calendar{Component: &finite}, time.Unix(after, 0), time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC, MaxOccurrences)
 	if err != nil {
 		return nil, false
 	}
 	var spans []Span
 	for _, in := range insts {
-		if in.Partial {
-			return nil, false
-		}
 		if !Cancelled(in.Event) && in.End.Unix() > after {
 			spans = append(spans, Span{in.Start.Unix(), in.End.Unix()})
 		}
@@ -469,37 +460,12 @@ func FutureRuleConflicts(a, b *ical.Calendar, after int64) ([]Span, bool) {
 			return nil, false
 		}
 		end := time.Unix(*info.LastEnd, 0).Add(time.Second)
-		probe := *cal.Component
-		probe.Children = nil
-		for _, c := range cal.Children {
-			if c.Name == ical.CompEvent {
-				if c.Props.Get(ical.PropRecurrenceID) != nil {
-					continue
-				}
-			}
-			probe.Children = append(probe.Children, c)
-		}
-		// Check completeness without overrides: otherwise an override of DTSTART can hide
-		// the engine's Partial fallback. Never infer completeness from the remaining rows.
-		checked, err := calendar.Expand(&ical.Calendar{Component: &probe}, time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), end, time.UTC, MaxOccurrences)
-		if err != nil {
-			return nil, false
-		}
-		for _, in := range checked {
-			if in.Partial {
-				return nil, false
-			}
-		}
-		// Include DTSTART so an engine fallback flagged Partial cannot disappear before `after`.
-		insts, err := calendar.Expand(cal, time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), end, time.UTC, MaxOccurrences)
+		insts, err := calendar.ExpandComplete(cal, time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), end, time.UTC, MaxOccurrences)
 		if err != nil {
 			return nil, false
 		}
 		var out []Span
 		for _, in := range insts {
-			if in.Partial {
-				return nil, false
-			}
 			if !Cancelled(in.Event) && in.End.Unix() > after {
 				out = append(out, Span{in.Start.Unix(), in.End.Unix()})
 			}
@@ -527,9 +493,9 @@ func OpenSpans(cal *ical.Calendar, openAfter, from, to int64) []Span {
 	if from >= to {
 		return nil
 	}
-	insts, err := calendar.Expand(cal, time.Unix(from, 0), time.Unix(to, 0), time.UTC, MaxOccurrences)
+	insts, err := calendar.ExpandComplete(cal, time.Unix(from, 0), time.Unix(to, 0), time.UTC, MaxOccurrences)
 	if err != nil {
-		return []Span{{from, to}} // too many to tell apart: the whole range is taken
+		return []Span{{from, to}} // cannot enumerate safely: the whole range is taken
 	}
 	var out []Span
 	for _, in := range insts {

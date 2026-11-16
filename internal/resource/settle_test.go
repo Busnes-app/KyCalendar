@@ -283,3 +283,16 @@ func TestExplicitFutureSpansKeepsCrossingReservations(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanRejectsIncompleteMasterHiddenByOverride(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	for _, start := range []string{"20261120T090000Z", "20261101T090000Z"} {
+		master := event(start, strings.Replace(start, "090000", "090500", 1), "RRULE:FREQ=MINUTELY\n")
+		override := event("20261120T120000Z", "20261120T120500Z", "RECURRENCE-ID:"+start+"\n")
+		text := strings.Replace(master, "END:VCALENDAR\n", "", 1) + override[strings.Index(override, "BEGIN:VEVENT"):]
+		cal := parse(t, text)
+		if got := Plan(cal, room, lastEnd(t, cal), now); got.Status != Declined || got.Reason != ReasonOccurrences {
+			t.Errorf("master %s: %+v", start, got)
+		}
+	}
+}

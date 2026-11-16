@@ -1025,3 +1025,23 @@ func TestRoomNewRuleChecksStoredFutureBookingAfterHorizonShortens(t *testing.T) 
 		})
 	}
 }
+
+func TestRoomRejectsIncompleteMasterHiddenByOverride(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, cal := webUser(t, srv, st, "alice")
+	bob, bobCal := webUser(t, srv, st, "bob")
+	room := makeResource(t, st, resource.Resource{Name: "Incomplete series"})
+	start, _ := slot(3, 9)
+	first, _ := time.Parse(time.RFC3339, start)
+	held := createEvent(t, srv, bob, bobCal, bookBody("Held", first.Add(30*time.Minute).Format(time.RFC3339), first.Add(90*time.Minute).Format(time.RFC3339), "", room))
+	if status, _, _ := roomStatus(t, srv, bob, held); status != resource.Accepted {
+		t.Fatalf("initial hold: %s", status)
+	}
+	uid := "incomplete-series"
+	master := "DTSTART:" + icsTime(start) + "\r\nDURATION:PT5M\r\nRRULE:FREQ=MINUTELY\r\n"
+	override := "RECURRENCE-ID:" + icsTime(start) + "\r\nDTSTART:" + icsTime(first.Add(3*time.Hour).Format(time.RFC3339)) + "\r\nDURATION:PT5M\r\n"
+	putRaw(t, st, cal, uid+".ics", roomICS(uid, room, master, override), "usr_alice")
+	if status, reason, _ := roomStatus(t, srv, alice, uid); status != resource.Declined || reason != resource.ReasonOccurrences {
+		t.Fatalf("incomplete master admitted: %s %s", status, reason)
+	}
+}
