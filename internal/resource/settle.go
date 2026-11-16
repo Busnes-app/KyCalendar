@@ -355,7 +355,8 @@ func Conflicts(want, busy []Span) []int64 {
 }
 
 // ExplicitFutureSpans expands the finite future dates and overrides of a series without its
-// RRULE. Each must be checked even though the ordinary rule is reserved past the horizon.
+// RRULE. Include spans crossing after: their remaining portion is still reserved.
+// Each must be checked even though the ordinary rule is reserved past the horizon.
 // False means expansion cannot account for every explicit reservation within the bound.
 func ExplicitFutureSpans(cal *ical.Calendar, after int64) ([]Span, bool) {
 	finite := *cal.Component
@@ -385,7 +386,7 @@ func ExplicitFutureSpans(cal *ical.Calendar, after int64) ([]Span, bool) {
 		if in.Partial {
 			return nil, false
 		}
-		if !Cancelled(in.Event) && in.Start.Unix() >= after {
+		if !Cancelled(in.Event) && in.End.Unix() > after {
 			spans = append(spans, Span{in.Start.Unix(), in.End.Unix()})
 		}
 	}

@@ -268,3 +268,18 @@ func TestFutureRuleConflictsRequiresProof(t *testing.T) {
 		t.Fatalf("exclusion lost: %v %v", hits, ok)
 	}
 }
+
+func TestExplicitFutureSpansKeepsCrossingReservations(t *testing.T) {
+	cal := parse(t, event("20261120T090000Z", "20261120T120000Z", ""))
+	for _, hour := range []int{8, 9, 10, 12} {
+		after := time.Date(2026, 11, 20, hour, 0, 0, 0, time.UTC).Unix()
+		spans, ok := ExplicitFutureSpans(cal, after)
+		want := 1
+		if hour == 12 {
+			want = 0 // Half-open reservation ends at the boundary.
+		}
+		if !ok || len(spans) != want {
+			t.Errorf("boundary hour %d: %v, checkable=%v", hour, spans, ok)
+		}
+	}
+}

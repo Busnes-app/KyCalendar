@@ -977,23 +977,37 @@ func TestRoomRuleIntersectionBeyondHorizonIsDeclined(t *testing.T) {
 }
 
 func TestRoomNewRuleChecksStoredFutureBookingAfterHorizonShortens(t *testing.T) {
-	srv, st, _ := setupTestServer(t)
-	alice, cal := webUser(t, srv, st, "alice")
-	bob, bobCal := webUser(t, srv, st, "bob")
-	room := makeResource(t, st, resource.Resource{Name: "Distant hold", HorizonDays: 120})
-	start, end := slot(60, 9)
-	createEvent(t, srv, bob, bobCal, bookBody("Held", start, end, "", room))
-	r, err := st.Resources().GetResource(context.Background(), room)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.HorizonDays = 30
-	if err := st.Resources().UpdateResource(context.Background(), r); err != nil {
-		t.Fatal(err)
-	}
-	start, end = slot(4, 9)
-	uid := createEvent(t, srv, alice, cal, bookBody("Weekly", start, end, `,"repeat":{"freq":"weekly"}`, room))
-	if status, reason, _ := roomStatus(t, srv, alice, uid); status != resource.Declined || reason != resource.ReasonBusy {
-		t.Fatalf("stored future booking missed: %s %s", status, reason)
+	for _, crossing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("crossing=%v", crossing), func(t *testing.T) {
+			srv, st, _ := setupTestServer(t)
+			alice, cal := webUser(t, srv, st, "alice")
+			bob, bobCal := webUser(t, srv, st, "bob")
+			room := makeResource(t, st, resource.Resource{Name: "Distant hold", HorizonDays: 120})
+			start, end := slot(60, 9)
+			incomingStart, incomingEnd := slot(4, 9)
+			if crossing {
+				boundary := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second)
+				start = boundary.Add(-time.Hour).Format(time.RFC3339)
+				end = boundary.Add(2 * time.Hour).Format(time.RFC3339)
+				first := boundary.Add(time.Hour - 28*24*time.Hour)
+				incomingStart, incomingEnd = first.Format(time.RFC3339), first.Add(time.Hour).Format(time.RFC3339)
+			}
+			held := createEvent(t, srv, bob, bobCal, bookBody("Held", start, end, "", room))
+			if status, reason, _ := roomStatus(t, srv, bob, held); status != resource.Accepted {
+				t.Fatalf("initial hold: %s %s", status, reason)
+			}
+			r, err := st.Resources().GetResource(context.Background(), room)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.HorizonDays = 30
+			if err := st.Resources().UpdateResource(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			uid := createEvent(t, srv, alice, cal, bookBody("Weekly", incomingStart, incomingEnd, `,"repeat":{"freq":"weekly"}`, room))
+			if status, reason, _ := roomStatus(t, srv, alice, uid); status != resource.Declined || reason != resource.ReasonBusy {
+				t.Fatalf("stored future booking missed: %s %s", status, reason)
+			}
+		})
 	}
 }
