@@ -775,19 +775,19 @@ CREATE INDEX task_views_user ON task_views(user_id);
 // taskInsights: each completion names its occurrence, so one seen twice (web, then a phone's
 // sync) is one row. The log is rebuilt so older rows, which may share a second, each get a
 // distinct placeholder before the unique index exists. Goals are KyCalendar-only.
-const taskInsights = `CREATE TABLE task_completions_v31 (
+const taskInsights = `CREATE TABLE task_completions_v33 (
  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
  uid TEXT NOT NULL,
  occurrence TEXT NOT NULL,
  completed_at BIGINT NOT NULL
 );
-INSERT INTO task_completions_v31 (user_id, calendar_id, uid, occurrence, completed_at)
+INSERT INTO task_completions_v33 (user_id, calendar_id, uid, occurrence, completed_at)
  SELECT user_id, calendar_id, uid,
   'at:' || completed_at || ':' || ROW_NUMBER() OVER (PARTITION BY user_id, calendar_id, uid, completed_at ORDER BY completed_at),
   completed_at FROM task_completions;
 DROP TABLE task_completions;
-ALTER TABLE task_completions_v31 RENAME TO task_completions;
+ALTER TABLE task_completions_v33 RENAME TO task_completions;
 CREATE INDEX task_completions_user ON task_completions(user_id, completed_at);
 CREATE UNIQUE INDEX task_completions_once ON task_completions(user_id, calendar_id, uid, occurrence);
 CREATE TABLE task_goals (

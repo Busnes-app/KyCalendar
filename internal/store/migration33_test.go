@@ -10,10 +10,10 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
-// Migration 31 gives each logged completion an occurrence under a unique index. Rows from
+// Migration 33 gives each logged completion an occurrence under a unique index. Rows from
 // before it may share user, task and second (a repeating task completed twice in a second);
 // the upgrade keeps both instead of failing (security review, PR 163).
-func TestMigration31KeepsSameSecondCompletions(t *testing.T) {
+func TestMigration33KeepsSameSecondCompletions(t *testing.T) {
 	ctx := context.Background()
 	cfg := testdb.Config(t)
 	st, err := store.Open(ctx, cfg)
@@ -28,7 +28,7 @@ func TestMigration31KeepsSameSecondCompletions(t *testing.T) {
 	}
 	_ = st.Close()
 
-	// The log as migration 30 left it, with two completions in the same second.
+	// The log as migration 32 left it, with two completions in the same second.
 	driver := map[string]string{"sqlite": "sqlite", "postgres": "pgx"}[cfg.Driver]
 	raw, err := sql.Open(driver, cfg.DSN)
 	if err != nil {
@@ -40,7 +40,7 @@ func TestMigration31KeepsSameSecondCompletions(t *testing.T) {
 		"DROP TABLE task_completions",
 		"CREATE TABLE task_completions (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE, uid TEXT NOT NULL, completed_at BIGINT NOT NULL)",
 		"CREATE INDEX task_completions_user ON task_completions(user_id, completed_at)",
-		"DELETE FROM schema_migrations WHERE version = 31",
+		"DELETE FROM schema_migrations WHERE version = 33",
 	} {
 		if _, err := raw.ExecContext(ctx, q); err != nil {
 			t.Fatalf("%s: %v", q, err)

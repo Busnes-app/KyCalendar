@@ -381,7 +381,7 @@ spacing on Plan.
   DTSTART, value): the web's completion synced back from a phone counts once; un-completing
   removes it; a repeating task moved to the rule's next occurrence counts as completing the one it
   left; a COMPLETED time in the future or before CREATED becomes the receive time, an older one
-  is kept (migration 31). Owner question 4 is answered; the web-only default is retired.
+  is kept (migration 33). Owner question 4 is answered; the web-only default is retired.
 - **Goals:** `task_goals` per user, at most 50; a goal links areas and lists over a season,
   quarter, year or custom period (at most a year). Progress per linked list: done in the period,
   open, last done, and "No progress in 14 days".
