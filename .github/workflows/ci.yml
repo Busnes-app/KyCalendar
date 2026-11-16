@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -24,7 +25,9 @@ jobs:
   # check names below are gates that pass only when every leg of their backend did.
   sqlite:
     name: SQLite (normal)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: image and attestation coordinates match this repository
@@ -130,7 +133,9 @@ jobs:
 
   sqlite-fips:
     name: SQLite (fips)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -146,14 +151,17 @@ jobs:
   go:
     name: Go build, vet & tests (SQLite)
     needs: [sqlite, sqlite-fips]
-    if: always()
+    if: (always()) && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
 
   postgres-tests:
     name: PostgreSQL (${{ matrix.profile }})
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -195,14 +203,17 @@ jobs:
   postgres:
     name: Go tests (PostgreSQL)
     needs: [postgres-tests]
-    if: always()
+    if: (always()) && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
 
   web:
     name: Frontend typecheck & build
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -235,6 +246,7 @@ jobs:
 
   browser:
     name: Browser regressions (production server)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -268,7 +280,9 @@ jobs:
 
   security:
     name: Vulnerability scan
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -282,7 +296,9 @@ jobs:
 
   smoke:
     name: End-to-end smoke test
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -300,7 +316,9 @@ jobs:
 
   docker:
     name: Docker image build & run
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -363,6 +381,7 @@ jobs:
     needs: [sqlite, sqlite-fips, go, postgres-tests, postgres, web, browser, security, smoke, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # No concurrency group here on purpose: GitHub cancels a *pending* job when a
     # newer one queues into the same group, which would leave that commit with no
     # :<sha> image and no attestation. Every commit whose run reaches this job
@@ -426,6 +445,7 @@ jobs:
     needs: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     concurrency:
       group: promote-main
       cancel-in-progress: false
