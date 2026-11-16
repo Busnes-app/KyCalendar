@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarClock, CalendarDays, CheckCircle2, ChevronDown, Inbox, Layers, ListTodo, Mail, Plus, Repeat, Search,
-  SlidersHorizontal, Star, Sun, Hourglass, AlertCircle, Bookmark,
+  SlidersHorizontal, Star, CornerDownLeft, Sun, Hourglass, AlertCircle, Bookmark,
 } from 'lucide-react';
 import { MoreMenu } from '../components/MoreMenu';
 import { EmptyState, Modal } from '../components/ui';
@@ -319,7 +319,6 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
               )}
             </MoreMenu>
           )}
-          <button type="button" className="ky-page-action" onClick={() => setDialog({ task: null })} disabled={!targetList}><Plus aria-hidden="true" /> New task</button>
         </div>
       </header>
 
@@ -327,7 +326,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         <Plus aria-hidden="true" />
         <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder="Add a task: “Call Ana tomorrow 3pm !high #home”"
           value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!targetList} />
-        <button type="submit" className="btn-sm" disabled={!text.trim() || !targetList}>Add</button>
+        <button type="submit" className="btn-ghost kc-icon tk-quick-go" aria-label="Add task" title="Add (Enter)" disabled={!text.trim() || !targetList}><CornerDownLeft size={16} aria-hidden="true" /></button>
         <div id="tk-quick-preview" className="tk-chips" aria-live="polite">
           {text.trim() && (
             <>
@@ -339,7 +338,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         </div>
       </form>
 
-      <div className="tk-tools">
+      {!(view.kind === 'smart' && view.id === 'today') && <div className="tk-tools">
         <label className="tk-search">
           <Search aria-hidden="true" />
           <input ref={search} type="search" aria-label="Search tasks" placeholder="Search title, notes and tags" value={q} maxLength={200} onChange={(e) => setQ(e.target.value)} />
@@ -354,7 +353,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           </select>
         </label>
         {filtering && view.kind !== 'view' && <button type="button" className="btn-ghost btn-sm" onClick={() => setNaming('view')}><Star size={14} aria-hidden="true" /> Save view</button>}
-      </div>
+      </div>}
       {filtersOpen && (
         <div id="tk-filters" className="tk-filters" role="group" aria-label="Filters">
           <label>Priority
@@ -408,7 +407,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
                       <span className="tk-title">{t.title}</span>
                       <span className="tk-row-meta">
                         {due && <span className={late ? 'tk-due tk-late' : due.today ? 'tk-due tk-today' : 'tk-due'}><CalendarClock size={13} aria-hidden="true" />{late && 'Overdue · '}{due.text}</span>}
-                        {prio && <span className="tk-prio">{prio}</span>}
+                        {prio === 'High' && <span className="tk-prio">High</span>}
                         {t.status === 'IN-PROCESS' && <span className="tk-state">In progress</span>}
                         {!!t.subtasks && (
                           <span className="tk-subs">{t.subtasks_done ?? 0} of {t.subtasks} done
