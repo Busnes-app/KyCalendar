@@ -224,8 +224,8 @@ func TestGuestKeysAndWindows(t *testing.T) {
 		b, _ := json.Marshal(map[string]any{"member_url": roomURL(id), "guest_urls": links})
 		return 200, string(b)
 	})
-	r.create(t, map[string]any{"meeting": true, "repeat": map[string]any{"freq": "daily"}, "attendees": []string{"out@elsewhere.example"}})
-	r.clock = time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC).Add(-2 * time.Hour)
+	start := r.clock.UTC().Truncate(24 * time.Hour).Add(33 * time.Hour)
+	r.create(t, map[string]any{"meeting": true, "start": start.Format(time.RFC3339), "end": start.Add(time.Hour).Format(time.RFC3339), "repeat": map[string]any{"freq": "daily"}, "attendees": []string{"out@elsewhere.example"}})
 	r.sync()
 	r.sync()
 	calls := r.km.seen()
@@ -233,7 +233,7 @@ func TestGuestKeysAndWindows(t *testing.T) {
 		t.Fatalf("key not replaced: %+v", calls)
 	}
 	w := calls[1].Body.Windows
-	if len(w) != 90 || w[0].Start != "2026-11-17T08:50:00Z" {
+	if len(w) != 90 || w[0].Start != start.Add(-10*time.Minute).Format(time.RFC3339) {
 		t.Fatalf("windows %d %+v", len(w), w[:min(len(w), 2)])
 	}
 	for _, win := range w {
