@@ -28,6 +28,9 @@ type Instance struct {
 
 var ErrTooManyInstances = errors.New("calendar: too many instances in range")
 
+// ErrIncompleteExpansion means a master could not be expanded safely.
+var ErrIncompleteExpansion = errors.New("calendar: incomplete recurrence expansion")
+
 // span is a VEVENT's start and length, resolved for one viewer.
 type span struct {
 	start                     time.Time
@@ -326,6 +329,16 @@ func overrideKey(rid *ical.Prop, viewer *time.Location, form *span) (string, boo
 // maxIndexOccurrences iteration budget before reaching to, and masters past
 // maxRecurringComponents, show only DTSTART, flagged Partial.
 func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit int) ([]Instance, error) {
+	return expand(cal, from, to, viewer, limit, false)
+}
+
+// ExpandComplete uses the same engine as Expand but refuses any incomplete master,
+// even when its fallback is outside the range or suppressed by an override.
+func ExpandComplete(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit int) ([]Instance, error) {
+	return expand(cal, from, to, viewer, limit, true)
+}
+
+func expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit int, complete bool) ([]Instance, error) {
 	var masters, ridComps []*ical.Component
 	for _, c := range cal.Children {
 		switch {
@@ -375,6 +388,9 @@ func Expand(cal *ical.Calendar, from, to time.Time, viewer *time.Location, limit
 			}
 		}
 		first := func(partial bool) error {
+			if partial && complete {
+				return ErrIncompleteExpansion
+			}
 			in := base
 			in.Start, in.End = s.start, s.endAt(s.start)
 			if partial {

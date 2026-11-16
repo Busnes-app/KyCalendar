@@ -601,6 +601,7 @@ CREATE TABLE sso_logouts (
 	{Version: 31, Name: "suite_group_calendars", SQLite: suiteGroupCalendars, Postgres: suiteGroupCalendars},
 	{Version: 32, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
 	{Version: 33, Name: "task_insights", SQLite: taskInsights, Postgres: taskInsights},
+	{Version: 35, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
 }
 
 // suiteGroupCalendars: the group calendar each KyIdentity suite group has here, keyed on the
@@ -955,4 +956,37 @@ func presencePushes(ts string) string {
  refresh_at ` + ts + `
 );
 CREATE INDEX presence_pushes_due ON presence_pushes(next_attempt_at);`
+}
+
+// resourceBookings: one row per resource an event object names, with the answer KyCalendar gave
+// for it, and the busy spans (unix seconds) of accepted and pending bookings up to the horizon.
+// open_after (not 0) is where the spans of a series that goes on stop. Both go with the event
+// object (and so with its calendar).
+func resourceBookings(ts string) string {
+	return `CREATE TABLE resource_bookings (
+ id TEXT PRIMARY KEY,
+ resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+ calendar_id TEXT NOT NULL,
+ object_name TEXT NOT NULL,
+ booked_by TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL CHECK (status IN ('accepted', 'pending', 'declined')),
+ reason TEXT NOT NULL DEFAULT '',
+ detail TEXT NOT NULL DEFAULT '',
+ fingerprint TEXT NOT NULL,
+ decided_by TEXT NOT NULL DEFAULT '',
+ open_after BIGINT NOT NULL DEFAULT 0,
+ created_at ` + ts + ` NOT NULL,
+ updated_at ` + ts + ` NOT NULL,
+ UNIQUE (calendar_id, object_name, resource_id),
+ FOREIGN KEY (calendar_id, object_name) REFERENCES calendar_objects(calendar_id, name) ON DELETE CASCADE
+);
+CREATE INDEX resource_bookings_resource ON resource_bookings(resource_id, status);
+CREATE TABLE resource_busy (
+ booking_id TEXT NOT NULL REFERENCES resource_bookings(id) ON DELETE CASCADE,
+ resource_id TEXT NOT NULL,
+ start_at BIGINT NOT NULL,
+ end_at BIGINT NOT NULL
+);
+CREATE INDEX resource_busy_time ON resource_busy(resource_id, start_at);
+CREATE INDEX resource_busy_booking ON resource_busy(booking_id);`
 }

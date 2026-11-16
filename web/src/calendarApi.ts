@@ -35,6 +35,12 @@ export interface EventInfo {
   // Meeting guests (organizer only): attendees outside the organisation; guests_error is why KyMessages took none.
   guests?: string[]; guests_error?: string;
   files?: { name: string; url: string; type?: string }[]; // KyDrive links (contract I); the description omits their File: lines
+  resources?: ResourceRef[]; // rooms and equipment with KyCalendar's answer; not in attendees
+}
+/** A room or equipment on an event: status is KyCalendar's answer, reason and detail why it declined. */
+export interface ResourceRef {
+  id: string; name?: string; kind?: 'room' | 'equipment'; location?: string;
+  status: 'accepted' | 'pending' | 'declined'; reason?: string; detail?: string;
 }
 export interface Attendee { email: string; status: string }
 export type Answer = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
@@ -44,6 +50,7 @@ export interface EventBody {
   attendees?: string[]; // absent keeps the list; [] removes everyone
   meeting?: boolean; // the video meeting switch; absent keeps it
   files?: { name: string; url: string; type?: string }[]; // absent keeps the file links; [] removes them
+  resources?: string[]; // resource IDs; absent keeps them, [] removes them
 }
 
 export class ApiError extends Error {
@@ -160,6 +167,28 @@ export const chatLink = (email: string) =>
       return b.url;
     });
 
+/** A room or equipment the user may book, from `GET /api/resources`; free over the asked time when one was given. */
+export interface Bookable {
+  id: string; kind: 'room' | 'equipment'; name: string; location: string; capacity: number; tags: string[];
+  approval: 'auto' | 'approvers'; address: string; free?: boolean;
+}
+export function findResources(start: Date, end: Date, ev?: Pick<EventInfo, 'calendar_id' | 'uid'>) {
+  const q = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+  if (ev) {
+    q.set('calendar', ev.calendar_id);
+    q.set('uid', ev.uid);
+  }
+  return send(`/api/resources?${q}`).then((r) => parse<{ resources: Bookable[] }>(r)).then((b) => b.resources);
+}
+
+/** A pending booking as an approver sees it: who, which room and when; never the title. */
+export interface RoomRequest {
+  id: string; resource_id: string; resource_name: string; organizer: string;
+  first: { start: string; end: string }; last: { start: string; end: string }; occurrences: number;
+}
+export const roomRequests = () => send('/api/resources/requests').then((r) => parse<{ requests: RoomRequest[] }>(r)).then((b) => b.requests);
+export const decideRoomRequest = (id: string, decision: 'accept' | 'decline') =>
+  send(`/api/resources/requests/${encodeURIComponent(id)}`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ decision }) }).then((r) => parse<void>(r));
 /** A colleague's coarse status from KyMessages (`POST /api/presence`). */
 export type PresenceState = 'available' | 'busy' | 'in_a_meeting' | 'away' | 'out_of_office' | 'unknown';
 export interface Presence { email: string; state: PresenceState; until?: string }

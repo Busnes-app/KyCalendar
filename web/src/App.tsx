@@ -14,6 +14,7 @@ import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
 import People from './pages/People';
 import Resources from './pages/Resources';
+import RoomRequests from './pages/RoomRequests';
 import SignIn from './pages/SignIn';
 import './styles/theme.css';
 import './styles/ui.css';
@@ -168,7 +169,7 @@ export const App: React.FC = () => {
   }
 
   const isAdmin = user.role === 'admin';
-  const tabs = [...(isAdmin ? ADMIN_TABS : ['calendar', 'tasks']), ...settingsSections(user).map((s) => `settings/${s.id}`)];
+  const tabs = [...(isAdmin ? ADMIN_TABS : ['calendar', 'tasks', ...(settings?.resource_approver === true ? ['room-requests'] : [])]), ...settingsSections(user).map((s) => `settings/${s.id}`)];
   // An unknown address lands on the role's first page, or Settings' first section.
   const fallback = chosenTab?.startsWith('settings/') ? 'settings/account' : tabs[0];
   const activeTab = chosenTab && tabs.includes(chosenTab) ? chosenTab : fallback;
@@ -185,6 +186,7 @@ export const App: React.FC = () => {
         sidebarSlot={setSidebarSlot}
         version={settings?.version}
         apps={apps}
+        approver={settings?.resource_approver === true}
         onCapture={isAdmin ? undefined : () => setCapturing(true)}
       />
 
@@ -200,6 +202,7 @@ export const App: React.FC = () => {
         {activeTab === 'groups' && <Groups />}
         {activeTab === 'group-calendars' && <GroupCalendars />}
         {activeTab === 'resources' && <Resources />}
+        {activeTab === 'room-requests' && <RoomRequests />}
         {activeTab === 'signin' && <SignIn />}
         {activeTab === 'scim' && <SCIMAdmin />}
         {activeTab === 'backup' && <Backup />}

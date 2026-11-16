@@ -16,6 +16,8 @@ interface AppHeaderProps {
   version?: string;
   /** Suite apps for the rail, from `/api/suite/apps`. */
   apps?: SuiteApp[];
+  /** The user approves a room or equipment: Room requests joins the navigation. */
+  approver?: boolean;
   /** Opens the capture box (everyday users); the visible twin of the n key. */
   onCapture?: () => void;
 }
@@ -46,7 +48,7 @@ export function useScrollCue() {
   return setEl;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot, version, apps = [], onCapture }) => {
+export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabChange, user, onLogout, sidebarSlot, version, apps = [], approver = false, onCapture }) => {
   const slotCue = useScrollCue();
   const slotRef = useCallback((el: HTMLDivElement | null) => { sidebarSlot?.(el); slotCue(el); }, [sidebarSlot, slotCue]);
   // Administrators run the instance and never see calendars; everyday users see nothing else.
@@ -62,7 +64,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         { id: 'backup', label: 'Backups', icon: Archive },
         { id: 'server-settings', label: 'Server settings', icon: Server },
       ]
-    : [{ id: 'calendar', label: 'Calendar', icon: CalendarDays }, { id: 'tasks', label: 'Tasks', icon: ListChecks }];
+    : [{ id: 'calendar', label: 'Calendar', icon: CalendarDays }, { id: 'tasks', label: 'Tasks', icon: ListChecks }, ...(approver ? [{ id: 'room-requests', label: 'Room requests', icon: DoorOpen }] : [])];
   const role = user?.role === 'admin' ? 'Administrator' : 'Everyday account';
   // Name over role, never the same word twice: a display name equal to the role yields to the username.
   const name = user?.display_name && user.display_name !== role ? user.display_name : user?.username;
