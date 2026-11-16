@@ -267,7 +267,7 @@ Inherited from the scaffold; these rules apply to the server code.
 
 #### Verification
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request:
+CI (`.github/workflows/ci.yml`) runs on every push and every non-draft pull request (drafts skip until marked ready):
 - `make lint` equivalent: gofmt, `go vet`, `go mod tidy`/`verify`
 - The release binary is repeatable: two `git archive` builds with the Dockerfile's flags (`-trimpath`) in different directories must be byte-identical
 - `go test -race -timeout 20m` with coverage on SQLite, the vendored `third_party/go-webdav` tests, and the same suite against PostgreSQL 17 (`internal/api` alone runs close to Go's default 10 minutes under race and FIPS on CI runners)
