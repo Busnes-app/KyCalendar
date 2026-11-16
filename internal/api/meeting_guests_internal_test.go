@@ -82,7 +82,9 @@ func (r *meetRig) deliver(t *testing.T) {
 // CONFERENCE property or description, the queued messages, nor any other attendee's copy.
 func TestGuestLinkReachesOnlyItsOwnAttendee(t *testing.T) {
 	r, box := guestRig(t, "")
-	uid := r.create(t, map[string]any{"meeting": true, "description": "Agenda",
+	// Tomorrow at 09:00, so the meeting has not ended whenever the suite runs.
+	start := time.Now().UTC().Truncate(24 * time.Hour).Add(33 * time.Hour)
+	uid := r.create(t, map[string]any{"meeting": true, "description": "Agenda", "start": start.Format(time.RFC3339), "end": start.Add(time.Hour).Format(time.RFC3339),
 		"attendees": []string{"ann@example.com", "Out@Elsewhere.example", "eve@other.example"}})
 	// Before KyMessages answers, invitations wait for their links.
 	r.deliver(t)
@@ -93,7 +95,7 @@ func TestGuestLinkReachesOnlyItsOwnAttendee(t *testing.T) {
 	r.sync() // the room link written into the event is a change too
 	calls := r.km.seen()
 	put := calls[0].Body
-	if len(put.Guests) != 2 || len(put.Windows) != 1 || put.Windows[0].Start != "2026-11-16T08:50:00Z" || put.Windows[0].End != "2026-11-16T10:00:00Z" {
+	if len(put.Guests) != 2 || len(put.Windows) != 1 || put.Windows[0].Start != start.Add(-10*time.Minute).Format(time.RFC3339) || put.Windows[0].End != start.Add(time.Hour).Format(time.RFC3339) {
 		t.Fatalf("PUT %+v", put)
 	}
 	raw, _ := json.Marshal(put)
@@ -223,15 +225,20 @@ func TestGuestKeysAndWindows(t *testing.T) {
 		return 200, string(b)
 	})
 	r.create(t, map[string]any{"meeting": true, "repeat": map[string]any{"freq": "daily"}, "attendees": []string{"out@elsewhere.example"}})
-	r.clock = time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC).Add(-2 * time.Hour)
+	// The rig's clock is the real one (the store stamps retries with it), so the first window is
+	// the next daily 09:00 UTC meeting that has not ended yet.
 	r.sync()
 	r.sync()
+	next := r.clock.UTC().Truncate(24 * time.Hour).Add(9 * time.Hour)
+	if !r.clock.Before(next.Add(time.Hour)) {
+		next = next.Add(24 * time.Hour)
+	}
 	calls := r.km.seen()
 	if len(calls) < 2 || calls[0].Body.Guests[0].Key == calls[1].Body.Guests[0].Key {
 		t.Fatalf("key not replaced: %+v", calls)
 	}
 	w := calls[1].Body.Windows
-	if len(w) != 90 || w[0].Start != "2026-11-17T08:50:00Z" {
+	if len(w) != 90 || w[0].Start != next.Add(-10*time.Minute).Format(time.RFC3339) {
 		t.Fatalf("windows %d %+v", len(w), w[:min(len(w), 2)])
 	}
 	for _, win := range w {
