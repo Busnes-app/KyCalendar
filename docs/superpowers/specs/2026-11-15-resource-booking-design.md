@@ -52,7 +52,9 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    booking. Skip an attendee copy (ORGANIZER set and not the writer, and no booking).
 2. For each resource attendee (at most 10), compute a fingerprint of the event's timing
    properties (DTSTART, DTEND, DURATION, RRULE, RDATE, EXDATE, RECURRENCE-ID, STATUS of every
-   VEVENT). An existing booking with the same fingerprint keeps its answer. Editing the title,
+   VEVENT). An existing booking with the same fingerprint keeps an accepted, pending or
+   approver-rejected answer; any other decline holds nothing and is decided again, so a freed
+   room is booked at the next save. Editing the title,
    description or other attendees never re-decides the room, and never re-declines a past one.
 3. Otherwise decide, in order: unknown resource (`unknown`) or disabled (`disabled`); the event
    is over (`past`); a single event ending after now + horizon, or a series whose first

@@ -130,6 +130,14 @@ func TestRoomBookingAcceptsDeclinesAndReleases(t *testing.T) {
 	if st, reason, detail := roomStatus(t, srv, bob, other); st != "declined" || reason != "busy" || detail != s[:10] {
 		t.Fatalf("double booking: %s %s %s", st, reason, detail)
 	}
+	// Bob saving again while the room is still taken keeps the decline.
+	bev := roomEvents(t, srv, bob)[other]
+	if r := withIfMatch(t, srv, "PUT", "/api/events/"+bobCal+"/"+other, `{"title":"Standup!","start":"`+s2+`","end":"`+e2+`","zone":"UTC"}`, bev.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("bob edit %d", r.Code)
+	}
+	if st, _, _ := roomStatus(t, srv, bob, other); st != "declined" {
+		t.Fatalf("bob re-save: %s", st)
+	}
 	// The finder shows the room busy to Bob, and free to Alice for her own event.
 	if free := finderFree(t, srv, bob, s, e, "", ""); free[room] {
 		t.Fatal("finder shows a busy room free")
@@ -152,6 +160,18 @@ func TestRoomBookingAcceptsDeclinesAndReleases(t *testing.T) {
 	}
 	if free := finderFree(t, srv, bob, s, e, "", ""); !free[room] {
 		t.Fatal("deleting the event did not release the room")
+	}
+	// Bob's next save books the freed room.
+	bev = roomEvents(t, srv, bob)[other]
+	if r := withIfMatch(t, srv, "PUT", "/api/events/"+bobCal+"/"+other, `{"title":"Standup","start":"`+s2+`","end":"`+e2+`","zone":"UTC"}`, bev.ETag, bob); r.Code != http.StatusOK {
+		t.Fatalf("bob edit %d", r.Code)
+	}
+	if st, _, _ := roomStatus(t, srv, bob, other); st != "accepted" {
+		t.Fatalf("freed room on re-save: %s", st)
+	}
+	bev = roomEvents(t, srv, bob)[other]
+	if r := withIfMatch(t, srv, "DELETE", "/api/events/"+bobCal+"/"+other, "", bev.ETag, bob); r.Code != http.StatusNoContent {
+		t.Fatalf("bob delete %d", r.Code)
 	}
 	// Removing the room from an event releases it too.
 	again := createEvent(t, srv, alice, aliceCal, bookBody("Retro", s, e, "", room))

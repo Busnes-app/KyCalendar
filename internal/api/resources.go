@@ -303,4 +303,3 @@ func (s *Server) isResourceApprover(ctx context.Context, u *store.User) bool {
 	ok, err := s.store.Resources().IsApprover(ctx, u.ID)
 	return err == nil && ok
 }
-

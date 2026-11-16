@@ -148,7 +148,9 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 		if i >= resource.MaxPerEvent {
 			continue // declined by SetAnswers; no row
 		}
-		if b := existing[id]; b != nil && prints[id] == fp {
+		// Same times: the answer stands. A decline holds nothing, so it is asked again, unless an
+		// approver gave it.
+		if b := existing[id]; b != nil && prints[id] == fp && (b.Status != resource.Declined || b.Reason == resource.ReasonRejected) {
 			answers[id] = b.Status
 			continue
 		}
