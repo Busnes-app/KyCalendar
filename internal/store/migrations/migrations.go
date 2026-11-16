@@ -597,6 +597,7 @@ CREATE TABLE sso_logouts (
 	{Version: 27, Name: "booking_pages", SQLite: bookingPages("DATETIME"), Postgres: bookingPages("TIMESTAMPTZ")},
 	{Version: 28, Name: "resources", SQLite: resources("DATETIME"), Postgres: resources("TIMESTAMPTZ")},
 	{Version: 29, Name: "kypost_out_of_office", SQLite: kypostOutOfOffice, Postgres: kypostOutOfOffice},
+	{Version: 30, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
 }
 
 // resources: rooms and equipment an administrator defines. Tags is a JSON list. A resource is
@@ -732,6 +733,42 @@ func videoMeetings(ts string) string {
 CREATE UNIQUE INDEX video_meetings_object ON video_meetings(calendar_id, name) WHERE state = 'open';
 CREATE INDEX video_meetings_due ON video_meetings(state, next_attempt_at);`
 }
+
+// taskTables: what KyCalendar keeps about tasks beyond CalDAV, never task text: each user's
+// areas (JSON grouping of task lists), one row per web completion, and saved views. Times are
+// unix seconds.
+const taskTables = `CREATE TABLE task_areas (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ data TEXT NOT NULL
+);
+CREATE TABLE task_completions (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ uid TEXT NOT NULL,
+ completed_at BIGINT NOT NULL
+);
+CREATE INDEX task_completions_user ON task_completions(user_id, completed_at);
+CREATE TABLE task_views (
+ id TEXT PRIMARY KEY,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ name TEXT NOT NULL,
+ query TEXT NOT NULL,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX task_views_user ON task_views(user_id);
+`
+
+// The task search index (title, notes, tags) per calendar object, reconciled at search time.
+// SQLite: FTS5, pruned daily of deleted calendars (a virtual table has no foreign key).
+const taskSearchSQLite = `CREATE VIRTUAL TABLE task_search USING fts5(calendar_id UNINDEXED, uid UNINDEXED, etag UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2');`
+
+const taskSearchPostgres = `CREATE TABLE task_search (
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ uid TEXT NOT NULL,
+ etag TEXT NOT NULL,
+ body TEXT NOT NULL,
+ PRIMARY KEY (calendar_id, uid)
+);`
 
 const cancellationReservations = `CREATE TABLE cancellation_reservations (
  calendar_id TEXT NOT NULL,

@@ -205,3 +205,8 @@ func TestGroupCalendarMultigetFromPersonalCalendar(t *testing.T) {
 		t.Fatalf("multiget answered the href without 403/404: %s", got)
 	}
 }
+
+func todoICS(uid string) string {
+	return "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VTODO\r\nUID:" + uid +
+		"\r\nDTSTAMP:20261001T000000Z\r\nSUMMARY:t\r\nSTATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+}
