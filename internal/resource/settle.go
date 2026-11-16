@@ -93,8 +93,6 @@ type Decision struct {
 	// OpenAfter, when not 0, is where Spans stop although the series goes on (unix seconds): its
 	// later occurrences are reserved too, and later bookings are checked against them.
 	OpenAfter int64
-	// Moved are the spans of Spans that a RECURRENCE-ID component gives, not the rule.
-	Moved map[Span]bool
 }
 
 // Plan decides what r's booking of cal needs at now: the spans to reserve, or a declined
@@ -137,7 +135,7 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 	if tooLong(cal, time.Duration(r.MaxMinutes)*time.Minute) {
 		return Decision{Status: Declined, Reason: ReasonTooLong, Detail: strconv.Itoa(r.MaxMinutes)}
 	}
-	d := Decision{Status: Accepted, Moved: map[Span]bool{}}
+	d := Decision{Status: Accepted}
 	if r.Approval == Approvers {
 		d.Status = Pending
 	}
@@ -154,11 +152,7 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 		if in.End.Sub(in.Start) > time.Duration(r.MaxMinutes)*time.Minute {
 			return Decision{Status: Declined, Reason: ReasonTooLong, Detail: strconv.Itoa(r.MaxMinutes)}
 		}
-		sp := Span{in.Start.Unix(), in.End.Unix()}
-		d.Spans = append(d.Spans, sp)
-		if in.Override {
-			d.Moved[sp] = true
-		}
+		d.Spans = append(d.Spans, Span{in.Start.Unix(), in.End.Unix()})
 	}
 	return d
 }
@@ -266,45 +260,48 @@ func SeriesFingerprint(cal *ical.Calendar) string {
 	return Fingerprint(masters)
 }
 
-// LaterOverrides hashes the timing of the RECURRENCE-ID components that start, or replace an
-// occurrence, at or after after (unix seconds): the overrides a series reserves past its horizon.
-// An override that keeps its occurrence's start and the rule's length (an attendee's answer), or
-// cancels it (which only frees time), is left out: it changes no reservation.
-func LaterOverrides(cal *ical.Calendar, after int64) string {
-	var ruleLen time.Duration
-	ruleOK := false
-	for _, c := range cal.Children {
-		if c.Name == ical.CompEvent && c.Props.Get(ical.PropRecurrenceID) == nil {
-			ruleLen, ruleOK = componentLength(c)
-			break
+// Within reports whether every occurrence of next is an occurrence of prev, from now on: an
+// attendee's answer to one occurrence, or a cancelled occurrence, asks for no new time. Both must
+// share the series rule (SeriesFingerprint); past the last override of either, the rule alone
+// makes both alike. An object too large to compare is not within.
+func Within(prev, next *ical.Calendar, now time.Time) bool {
+	end := now.Add(24 * time.Hour)
+	for _, cal := range []*ical.Calendar{prev, next} {
+		for _, c := range cal.Children {
+			if c.Name != ical.CompEvent || c.Props.Get(ical.PropRecurrenceID) == nil {
+				continue
+			}
+			for _, name := range []string{ical.PropRecurrenceID, ical.PropDateTimeStart, ical.PropDateTimeEnd} {
+				if t, err := c.Props.DateTime(name, time.UTC); err == nil && t.After(end) {
+					end = t
+				}
+			}
 		}
 	}
-	later := &ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar, Props: cal.Props}}
-	for _, c := range cal.Children {
-		if c.Name != ical.CompEvent || c.Props.Get(ical.PropRecurrenceID) == nil {
-			continue
+	end = end.Add(15 * 24 * time.Hour) // past the longest occurrence and any zone
+	spans := func(cal *ical.Calendar) (map[Span]bool, bool) {
+		insts, err := calendar.Expand(cal, now, end, time.UTC, MaxOccurrences)
+		if err != nil {
+			return nil, false
 		}
-		rid, err1 := c.Props.DateTime(ical.PropRecurrenceID, time.UTC)
-		start, err2 := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
-		if err1 == nil && err2 == nil && rid.Unix() < after && start.Unix() < after {
-			continue
+		out := map[Span]bool{}
+		for _, in := range insts {
+			if in.Partial {
+				return nil, false
+			}
+			if !Cancelled(in.Event) {
+				out[Span{in.Start.Unix(), in.End.Unix()}] = true
+			}
 		}
-		if err1 == nil && err2 == nil && Cancelled(c) {
-			continue
-		}
-		if l, ok := componentLength(c); err1 == nil && err2 == nil && ok && ruleOK && start.Equal(rid) && l == ruleLen {
-			continue
-		}
-		later.Children = append(later.Children, c)
+		return out, true
 	}
-	return Fingerprint(later)
-}
-
-// Covered reports whether d asks for nothing a booking does not already hold: every span is one
-// of held, or a rule occurrence at or after the booking's openAfter (which its series reserves).
-func (d Decision) Covered(held map[Span]bool, openAfter int64) bool {
-	for _, sp := range d.Spans {
-		if !held[sp] && (d.Moved[sp] || openAfter == 0 || sp.Start < openAfter) {
+	before, ok1 := spans(prev)
+	after, ok2 := spans(next)
+	if !ok1 || !ok2 {
+		return false
+	}
+	for sp := range after {
+		if !before[sp] {
 			return false
 		}
 	}

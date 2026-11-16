@@ -798,3 +798,28 @@ func TestRoomOverlongMasterOutsideHorizonIsDeclined(t *testing.T) {
 		t.Fatal("a declined series reserves its later occurrences")
 	}
 }
+
+func TestRoomDetachedOccurrenceNeedsApprovalAgain(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	carol, _ := webUser(t, srv, st, "carol")
+	room := makeResource(t, st, resource.Resource{Name: "Hall", HorizonDays: 30, Approval: resource.Approvers, Approvers: []string{"usr_carol"}})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "d.ics", roomICS("d", room, master), "usr_alice")
+	var reqs struct{ Requests []struct{ ID string } }
+	_ = json.Unmarshal(call(t, srv, "GET", "/api/resources/requests", "", carol).Body.Bytes(), &reqs)
+	if len(reqs.Requests) != 1 {
+		t.Fatalf("requests %+v", reqs)
+	}
+	if w := call(t, srv, "POST", "/api/resources/requests/"+reqs.Requests[0].ID, `{"decision":"accept"}`, carol); w.Code != http.StatusNoContent {
+		t.Fatalf("accept %d", w.Code)
+	}
+	// An extra occurrence 20 weeks and a day out, on no day of the rule, with the rule's length.
+	xs, xe := slot(2+7*20, 9)
+	extra := "RECURRENCE-ID:" + icsTime(xs) + "\r\nDTSTART:" + icsTime(xs) + "\r\nDTEND:" + icsTime(xe) + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "d.ics", roomICS("d", room, master, extra), "")
+	if st, _, _ := roomStatus(t, srv, alice, "d"); st == "accepted" {
+		t.Fatal("an extra occurrence outside the approved rule kept the approval")
+	}
+}

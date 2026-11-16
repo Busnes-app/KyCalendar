@@ -169,23 +169,14 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 		}
 		r := defs[id]
 		d := resource.Plan(cal, r, o.LastEnd, now)
-		// The same rule and no occurrence outside what the booking holds (an attendee's answer
+		// The same rule and no occurrence the previous object did not have (an attendee's answer
 		// to one occurrence, a cancelled one): the answer stands, whoever writes it.
-		if b := existing[id]; b != nil && r != nil && d.Status != resource.Declined && b.Status != resource.Declined && prevSeries == series {
-			held, err := c.heldSpans(ctx, tx, b.ID)
-			if err != nil {
-				return nil, err
-			}
-			// Past the horizon nothing was expanded: the overrides there must be as they were.
-			// A finite booking that now runs past the horizon asks for time nobody checked.
-			later := (b.OpenAfter == 0 && d.OpenAfter == 0) ||
-				(b.OpenAfter != 0 && resource.LaterOverrides(cal, b.OpenAfter) == resource.LaterOverrides(prevCal, b.OpenAfter))
-			if later && d.Covered(held, b.OpenAfter) {
-				d.Status = b.Status
-				answers[id] = d.Status
-				changes = append(changes, change{r, d})
-				continue
-			}
+		if b := existing[id]; b != nil && r != nil && d.Status != resource.Declined && b.Status != resource.Declined &&
+			prevCal != nil && prevSeries == series && resource.Within(prevCal, cal, now) {
+			d.Status = b.Status
+			answers[id] = d.Status
+			changes = append(changes, change{r, d})
+			continue
 		}
 		if d.Status != resource.Declined {
 			ok, err := c.store.mayBook(ctx, tx, r, o.WriterID)
@@ -272,24 +263,6 @@ fingerprint, open_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,
 		}
 		return nil
 	}, nil
-}
-
-// heldSpans is the busy spans booking id holds.
-func (c *calendarStore) heldSpans(ctx context.Context, q txQuerier, id string) (map[resource.Span]bool, error) {
-	rows, err := q.QueryContext(ctx, c.q(`SELECT start_at, end_at FROM resource_busy WHERE booking_id = ?`), id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[resource.Span]bool{}
-	for rows.Next() {
-		var sp resource.Span
-		if err := rows.Scan(&sp.Start, &sp.End); err != nil {
-			return nil, err
-		}
-		out[sp] = true
-	}
-	return out, rows.Err()
 }
 
 // busyOf is resource id's busy spans overlapping [from, to): the stored spans of accepted and

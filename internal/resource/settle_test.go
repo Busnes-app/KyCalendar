@@ -165,3 +165,34 @@ func TestAmbiguousObjectsBookNothing(t *testing.T) {
 		}
 	}
 }
+
+func TestWithin(t *testing.T) {
+	series := event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY\n")
+	withOverride := func(extra string) *ical.Calendar {
+		return parse(t, strings.Replace(series, "END:VCALENDAR", "BEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\n"+extra+"SUMMARY:x\nEND:VEVENT\nEND:VCALENDAR", 1))
+	}
+	prev := parse(t, series)
+	// An answer to the 30th occurrence, checked long after the booking was made.
+	answer := withOverride("RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T100000Z\n")
+	later := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	if !Within(prev, answer, later) {
+		t.Fatal("a timing-neutral answer asks for new time")
+	}
+	cancel := withOverride("RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T100000Z\nSTATUS:CANCELLED\n")
+	if !Within(prev, cancel, later) {
+		t.Fatal("cancelling an occurrence asks for new time")
+	}
+	for name, extra := range map[string]string{
+		"moved":    "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T130000Z\nDTEND:20270611T140000Z\n",
+		"detached": "RECURRENCE-ID:20270615T090000Z\nDTSTART:20270615T090000Z\nDTEND:20270615T100000Z\n",
+		"longer":   "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T110000Z\n",
+	} {
+		if Within(prev, withOverride(extra), later) {
+			t.Errorf("%s occurrence counted as already held", name)
+		}
+	}
+	// Restoring a cancelled occurrence is new time too.
+	if Within(cancel, prev, later) {
+		t.Error("restoring a cancelled occurrence counted as held")
+	}
+}
