@@ -6,7 +6,22 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
+
+// fold lowercases s and drops its combining marks ("Café" is "cafe"), so both backends match
+// the way SQLite's FTS5 tokenizer does.
+func fold(s string) string {
+	out, _, err := transform.String(transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC), s)
+	if err != nil {
+		out = s
+	}
+	return strings.ToLower(out)
+}
 
 // TaskStore keeps what KyCalendar knows about tasks beyond CalDAV: each user's areas, the log
 // of web completions, saved views and the search index. Task content lives in calendar objects.
@@ -218,7 +233,7 @@ func (t *taskStore) IndexTasks(ctx context.Context, calendarID string, docs []Ta
 		}
 	}
 	for _, d := range fresh {
-		if _, err := tx.ExecContext(ctx, t.q(`INSERT INTO task_search (calendar_id, uid, etag, body) VALUES (?, ?, ?, ?)`), calendarID, d.UID, d.ETag, d.Body); err != nil {
+		if _, err := tx.ExecContext(ctx, t.q(`INSERT INTO task_search (calendar_id, uid, etag, body) VALUES (?, ?, ?, ?)`), calendarID, d.UID, d.ETag, fold(d.Body)); err != nil {
 			return err
 		}
 	}
@@ -236,13 +251,13 @@ func (t *taskStore) SearchTasks(ctx context.Context, calendarIDs, words []string
 		var conds []string
 		for _, w := range words {
 			conds = append(conds, `body ILIKE ? ESCAPE '\'`)
-			args = append(args, "%"+likeEscape(w)+"%")
+			args = append(args, "%"+likeEscape(fold(w))+"%")
 		}
 		where = strings.Join(conds, " AND ")
 	} else {
 		var terms []string
 		for _, w := range words {
-			terms = append(terms, `"`+strings.ReplaceAll(w, `"`, `""`)+`"*`)
+			terms = append(terms, `"`+strings.ReplaceAll(fold(w), `"`, `""`)+`"*`)
 		}
 		where = `task_search MATCH ?`
 		args = append(args, strings.Join(terms, " AND "))
