@@ -227,10 +227,12 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   });
 
   const counts = useMemo(() => {
+    // One count rule everywhere: open top-level tasks, as the page head and the board count.
     const c: Record<string, number> = {};
-    for (const s of ['today', 'overdue'] as Smart[]) c[s] = open.filter((t) => inView(t, s, today)).length;
-    for (const t of open) c[t.calendar_id] = (c[t.calendar_id] ?? 0) + 1;
-    c.flagged = open.filter((t) => t.source === 'kypost').length;
+    const top = topLevel(open);
+    for (const s of ['today', 'overdue'] as Smart[]) c[s] = top.filter((t) => inView(t, s, today)).length;
+    for (const t of top) c[t.calendar_id] = (c[t.calendar_id] ?? 0) + 1;
+    c.flagged = top.filter((t) => t.source === 'kypost').length;
     return c;
   }, [open, today]);
 
@@ -327,7 +329,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             {isToday && !planning && <span className="tk-date"> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>}</h1>
           {!isToday && (
             <p className="tk-meta">
-              {(() => { const n = topLevel(board ? shown ?? [] : rows).filter((t) => view.kind === 'smart' && view.id === 'completed' ? true : isOpen(t)).length; return n === 1 ? '1 task' : `${n} tasks`; })()}
+              {(() => { const n = topLevel(board ? shown ?? [] : rows).filter((t) => view.kind === 'smart' && view.id === 'completed' ? true : isOpen(t)).length; const word = view.kind === 'smart' && view.id === 'completed' ? 'done' : 'open'; return `${n} ${word} task${n === 1 ? '' : 's'}`; })()}
               {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}
             </p>
           )}

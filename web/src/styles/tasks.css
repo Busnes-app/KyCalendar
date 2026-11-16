@@ -135,7 +135,7 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .tb-count { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
 .tb-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ky-space-2); }
 .tb-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .125rem var(--ky-space-1); padding: var(--ky-space-2) var(--ky-space-2) var(--ky-space-2) var(--ky-space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); cursor: grab; }
-.tb-card[data-done] .tb-title { color: var(--ink); text-decoration: line-through; }
+.tb-card[data-done] .tb-title { color: var(--ink); }
 .tb-title { grid-column: 1; min-height: 0; justify-content: start; padding: 0; border: 0; border-radius: 0; background: none; color: var(--ink-strong); font: inherit; font-weight: 500; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .tb-card .tb-title:hover:not(:disabled), .tb-title:focus { background: none; color: var(--ink-strong); text-decoration: underline; }
 .tb-meta { grid-column: 1; display: flex; flex-wrap: wrap; gap: .25rem .625rem; color: var(--ink); font-size: var(--ky-type-meta); }
@@ -144,3 +144,5 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 @media (max-width: 720px) { .tb { grid-template-columns: minmax(0, 1fr); } }
 .tb-empty { margin: 0; padding: 0 var(--ky-space-1) var(--ky-space-1); color: var(--ink); font-size: var(--ky-type-meta); }
 .tb-col ul:empty { display: none; }
+.tb-move button.kc-icon { min-height: 1.75rem; width: 1.75rem; }
+.tb-card { align-items: center; }

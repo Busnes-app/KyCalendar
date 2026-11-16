@@ -42,7 +42,7 @@ export function TaskBoard({ tasks, listName, onOpen, onMove }: {
                       {due && t.status !== 'COMPLETED' && <span className={due.overdue ? 'tk-late' : ''}>{due.overdue ? 'Overdue' : due.text}</span>}
                       {listName(t.calendar_id) && <span>{listName(t.calendar_id)}</span>}
                       {!!t.subtasks && <span>{t.subtasks_done ?? 0} of {t.subtasks} done</span>}
-                      {priorityName(t.priority) === 'High' && <span className="tk-prio">High</span>}
+                      {priorityName(t.priority) === 'High' && t.status !== 'COMPLETED' && <span className="tk-prio">High</span>}
                     </span>
                     {t.editable && (
                       <span className="tb-move">

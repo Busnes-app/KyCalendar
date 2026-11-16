@@ -364,3 +364,12 @@ The board asks the server for open and done tasks of the view (`status=needs-act
 and shows three columns by `STATUS`; cancelled tasks are not shown. Dragging a card to another
 column, or its arrow buttons (the keyboard and touch twin), sends `PATCH {status}`, so completing
 a repeating task on the board moves it to its next occurrence as anywhere else. No new route.
+
+## Council round 3 (2026-11-15)
+
+Scores: Opus 7.9, Sol 8.3 (satisfied). Applied: times from the calendar's own FullCalendar
+formatter and the calendar's now-line colour; one count everywhere (open top-level tasks, "1 open
+task"); no resting tint on a row; short Plan blocks show their range without priority; the
+progress fill in secondary ink; Done cards without strikethrough or High; the segment ring only
+on keyboard focus; a neutral quick-add plus; Add reminder aligned with the labels; tighter phone
+spacing on Plan.
