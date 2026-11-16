@@ -174,8 +174,8 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
         <p><strong>{m.done} of {m.total} done</strong> · {hm(m.leftMin)} left{data.stats && <> · {data.stats.done_this_week} done this week{data.stats.streak > 1 && ` · ${data.stats.streak}-day streak`}</>}</p>
         <progress max={Math.max(1, m.total)} value={m.done} aria-label={`${pct}% of today's tasks done`} />
         <div className="td-progress-actions">
-          <button type="button" className="btn-secondary btn-sm" onClick={replanAll} disabled={!m.placed.some((x) => x.t.status !== 'COMPLETED')}><RefreshCw size={14} aria-hidden="true" /> Replan</button>
-          <button type="button" className="btn-sm" onClick={onPlan}>Plan my day</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={replanAll} disabled={!m.placed.some((x) => x.t.status !== 'COMPLETED')}><RefreshCw size={14} aria-hidden="true" /> Replan</button>
+          <button type="button" className="btn-secondary btn-sm" onClick={onPlan}>Plan my day</button>
         </div>
       </div>
       {error && <p role="alert">{error}</p>}
@@ -230,7 +230,7 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
               const d = dueLabel(t.due, new Date(now));
               return (
                 <li key={key(t)} className="td-task">
-                  <span className={d?.overdue ? 'td-time tk-late' : 'td-time'}>{d?.overdue ? `Overdue · ${d.text}` : 'Today'}</span>
+                  <span className={d?.overdue ? 'td-time tk-late' : 'td-time'}>{d?.overdue ? 'Overdue' : 'Today'}</span>
                   <span className="td-task-line">
                     <DoneBox t={t} onChange={(s) => run(patchTask(t, { status: s }))} />
                     <button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}{priorityName(t.priority) === 'High' && <span className="td-prio">High</span>}</button>
@@ -358,7 +358,7 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
               onKeyDown={(e) => keyMove(e, x)} onDoubleClick={() => onOpen(x.t)}>
               <span className="tp-mark" aria-hidden="true"><Check size={12} /></span>
               <button type="button" className="tp-block-title" onClick={() => onOpen(x.t)}>{x.t.title}</button>
-              <span className="tp-block-time">{clock(start)} · {hm(minutes)}{prio && ` · ${prio}`}</span>
+              <span className="tp-block-time">{clock(start)} · {hm(minutes)}{prio === 'High' && ' · High'}</span>
               <span className="tp-resize" aria-hidden="true" onPointerDown={(e) => { e.stopPropagation(); startDrag(e, x, 'resize'); }} />
             </div>
           );

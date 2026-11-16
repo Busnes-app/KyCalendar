@@ -86,6 +86,8 @@
 .tp-tabs button[aria-selected='true'] { border-bottom-color: var(--accent); color: var(--ink-strong); }
 
 @media (max-width: 720px) {
+  .td-progress { grid-template-columns: minmax(0, 1fr); }
+  .td-progress progress { grid-row: auto; }
   .td-rows > li, .td-unplanned li { grid-template-columns: minmax(0, 1fr) auto; }
   .td-rows > li > .td-time, .td-unplanned li > .td-time { grid-column: 1 / -1; }
   .td-cal { display: none; }
