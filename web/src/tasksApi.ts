@@ -11,12 +11,14 @@ export interface Task {
   duration_min?: number; estimate_min?: number; tags?: string[]; parent?: string; rrule?: string;
   repeat_from_completion?: boolean; habit?: boolean; reminders?: Reminder[]; url?: string; source?: string;
   files?: FileLink[]; created?: string; modified?: string; editable: boolean; subtasks?: number; subtasks_done?: number;
+  images?: { name: string; type: string }[];
 }
 // A change: absent keeps the stored value; '' or [] removes it.
 export interface TaskBody {
   title?: string; notes?: string; status?: Status; priority?: number; due?: string; start?: string; zone?: string;
   duration_min?: number; estimate_min?: number; tags?: string[]; parent?: string; rrule?: string;
   repeat_from_completion?: boolean; habit?: boolean; reminders?: Reminder[]; files?: FileLink[];
+  image?: { name: string; data: string }; // create only: base64 PNG, JPEG or WebP, at most 512 KiB
 }
 export type PriorityName = 'high' | 'medium' | 'low' | 'none';
 export type StatusName = 'needs-action' | 'in-process' | 'completed' | 'cancelled';
@@ -68,3 +70,5 @@ export const createView = (name: string, query: TaskFilter) =>
 export const deleteView = (id: string) => send(`/api/tasks/views/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => parse<void>(r));
 
 export const zoneName = zone;
+export const imageURL = (t: Pick<Task, 'calendar_id' | 'uid'>, n: number) => `${taskPath(t)}/images/${n}`;
+export const MAX_IMAGE_BYTES = 512 << 10;

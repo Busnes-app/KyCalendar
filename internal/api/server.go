@@ -446,6 +446,7 @@ func (s *Server) routes() {
 	s.handle("POST /api/calendars/{id}/tasks", s.requireEveryday(s.handleCreateTask))
 	s.handle("PATCH /api/tasks/{cal}/{uid}", s.requireEveryday(s.handlePatchTask))
 	s.handle("DELETE /api/tasks/{cal}/{uid}", s.requireEveryday(s.handleDeleteTask))
+	s.handle("GET /api/tasks/{cal}/{uid}/images/{n}", s.requireEveryday(s.handleTaskImage))
 	s.handle("POST /api/tasks/inbox", s.requireEveryday(s.handleTaskInbox))
 	s.handle("GET /api/tasks/areas", s.requireEveryday(s.handleGetAreas))
 	s.handle("PUT /api/tasks/areas", s.requireEveryday(s.handlePutAreas))

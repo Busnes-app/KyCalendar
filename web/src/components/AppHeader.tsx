@@ -108,7 +108,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
             );
           })}
           {onCapture && (
-            <button type="button" className="ky-nav-item app-capture" onClick={onCapture} aria-keyshortcuts="n" title="Add a task, Inbox item or list (n)">
+            <button type="button" className="ky-nav-item app-capture" onClick={onCapture} aria-keyshortcuts="n"
+              onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })} title="Add a task, Inbox item or list (n)">
               <Plus aria-hidden="true" />
               <span>Add</span>
             </button>

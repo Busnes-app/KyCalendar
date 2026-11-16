@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"cmp"
+	"encoding/base64"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -76,6 +78,13 @@ type taskView struct {
 	Editable       bool       `json:"editable"`
 	Subtasks       int        `json:"subtasks,omitempty"`
 	SubtasksDone   int        `json:"subtasks_done,omitempty"`
+	// Images are the inline images, served by GET .../images/{n}; never their bytes here.
+	Images []imageView `json:"images,omitempty"`
+}
+
+type imageView struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 // reminder is a VALARM: before_min minutes before the due time (start without one), or at.
@@ -102,6 +111,13 @@ type taskBody struct {
 	Habit          *bool       `json:"habit"`
 	Reminders      *[]reminder `json:"reminders"`
 	Files          *[]fileView `json:"files"`
+	// Image is a pasted image (create only): base64 of a PNG, JPEG or WebP of at most 512 KiB.
+	Image *imageBody `json:"image"`
+}
+
+type imageBody struct {
+	Name string `json:"name"`
+	Data string `json:"data"`
 }
 
 func badTask(msg string) *apiError {
@@ -289,6 +305,9 @@ func viewOfTask(c *store.Calendar, o *store.CalendarObject, cal *ical.Calendar, 
 				v.Files = append(v.Files, fileView(f))
 			}
 		}
+	}
+	for _, img := range tasks.Images(cal) {
+		v.Images = append(v.Images, imageView{Name: img.Name, Type: img.Type})
 	}
 	if !validTaskURL(v.URL) {
 		v.URL = "" // only an https link is ever offered as the source
@@ -632,7 +651,7 @@ func (s *Server) taskList(w http.ResponseWriter, r *http.Request, id string) *st
 
 func decodeTaskBody(r *http.Request) (taskBody, *apiError) {
 	var b taskBody
-	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 256<<10))
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
 	if err := dec.Decode(&b); err != nil {
 		return b, &apiError{status: http.StatusBadRequest, msg: "Invalid JSON body"}
 	}
@@ -682,6 +701,13 @@ func (s *Server) createTask(ctx context.Context, user *store.User, c *store.Cale
 	}
 	if files != nil {
 		calendar.SetFiles(cal, files)
+	}
+	if b.Image != nil {
+		data, err := base64.StdEncoding.DecodeString(b.Image.Data)
+		name := strings.TrimSpace(b.Image.Name)
+		if err != nil || !cleanText(name, 255, false) || strings.ContainsAny(name, `"`) || tasks.AddImage(cal, tasks.Image{Name: name, Data: data}) != nil {
+			return "", &apiError{status: http.StatusBadRequest, msg: "The image must be a PNG, JPEG or WebP of at most 512 KiB", code: "bad_image"}
+		}
 	}
 	o, apiErr := s.saveEvent(ctx, user, c, uid+".ics", cal, "", true)
 	if apiErr != nil {
@@ -1094,4 +1120,31 @@ func (s *Server) handleDeleteView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleTaskImage serves inline image n of a task the caller can read, typed by its bytes, as a
+// sandboxed download-safe response.
+func (s *Server) handleTaskImage(w http.ResponseWriter, r *http.Request) {
+	c, _ := s.calendarFor(w, r, r.PathValue("cal"))
+	if c == nil {
+		return
+	}
+	_, cal, apiErr := s.loadTaskObject(r.Context(), c, r.PathValue("uid"))
+	if apiErr != nil {
+		s.writeAPIError(w, apiErr)
+		return
+	}
+	imgs := tasks.Images(cal)
+	n, err := strconv.Atoi(r.PathValue("n"))
+	if err != nil || n < 0 || n >= len(imgs) {
+		s.writeError(w, http.StatusNotFound, "No such image")
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", imgs[n].Type)
+	h.Set("Content-Disposition", "inline")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("Cache-Control", "private, no-store")
+	_, _ = w.Write(imgs[n].Data)
 }

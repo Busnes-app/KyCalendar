@@ -106,3 +106,6 @@
   .tk-sort span { display: none; }
   .tk-keys { display: none; }
 }
+.tk-image { margin: 0; display: grid; gap: var(--ky-space-1); }
+.tk-image img { max-width: 100%; max-height: 16rem; justify-self: start; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.tk-image figcaption { display: flex; align-items: center; gap: var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }

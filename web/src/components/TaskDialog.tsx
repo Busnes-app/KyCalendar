@@ -3,7 +3,7 @@ import { ExternalLink, Paperclip, Plus, Trash2, X } from 'lucide-react';
 import { Modal } from './ui';
 import { pickFromDrive } from '../drivePicker';
 import type { CalendarInfo } from '../calendarApi';
-import { createTask, deleteTask, patchTask, type FileLink, type Reminder, type Status, type Task, type TaskBody } from '../tasksApi';
+import { createTask, deleteTask, imageURL, patchTask, type FileLink, type Reminder, type Status, type Task, type TaskBody } from '../tasksApi';
 import { dateOnly, localRFC3339 } from '../taskParse';
 import { buildRule, presetLabel, readRule, type Preset, type Rule } from '../taskRepeat';
 import { linkify } from '../linkify';
@@ -240,6 +240,12 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
             <button type="button" className="btn-ghost btn-sm" onClick={() => setReminders([...reminders, { before_min: 15 }])}><Plus size={14} aria-hidden="true" /> Add reminder</button>
           )}
         </fieldset>
+        {task?.images?.map((img, i) => (
+          <figure key={i} className="tk-image">
+            <img src={imageURL(task, i)} alt={img.name || `Image ${i + 1}`} />
+            {img.name && <figcaption>{img.name}</figcaption>}
+          </figure>
+        ))}
         <label htmlFor="tk-notes">Notes</label>
         {readOnly ? <p className="tk-notes">{linkify(notes)}</p> : <textarea id="tk-notes" value={notes} maxLength={65536} onChange={(e) => setNotes(e.target.value)} />}
         {(files.length > 0 || (drive && !readOnly)) && (

@@ -76,7 +76,7 @@ func (t mcpTools) narrow(ctx context.Context, vs []taskView) error {
 		if len(v.Notes) > maxMCPDescription {
 			v.Notes = strings.ToValidUTF8(v.Notes[:maxMCPDescription], "")
 		}
-		v.Files = nil
+		v.Files, v.Images = nil, nil
 	}
 	return nil
 }

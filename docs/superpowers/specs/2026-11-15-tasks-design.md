@@ -206,11 +206,16 @@ Sources: Tasks.org `main` at `8f84221` (2026-11-15), jtx Board `main` the same d
 - **Files** reuse the event file links: `ATTACH;FMTTYPE=…;FILENAME=…:<https KyDrive link>` from
   the KyDrive picker, at most 20, validated exactly as for events (`eventFiles`).
 - **Pasted images** become an inline `ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png|jpeg|webp;FILENAME=…`
-  on the task, titled "Screenshot HH:MM". The image never leaves KyCalendar. Cap: 512 KiB
-  decoded, which keeps the object under `calendar.MaxObjectSize` (1 MiB) and the same quotas.
-  The server checks the type by its magic bytes and refuses anything else (400 `bad_image`).
-  The browser shows it as an `<img>` from a `blob:` URL it builds itself; the CSP already allows
-  `img-src blob:` (checked in the PR).
+  on a new Inbox item, titled "Screenshot HH:MM" (renameable before or after saving). The image
+  never leaves KyCalendar and is not read (no OCR). Cap: 512 KiB decoded, which keeps the object
+  under `calendar.MaxObjectSize` (1 MiB) and the same quotas. The server checks the type by its
+  magic bytes and refuses anything else (400 `bad_image`), and serves an image only from
+  `GET /api/tasks/{cal}/{uid}/images/{n}` to a caller who can read the list, typed by its bytes
+  (never the stored FMTTYPE), with `nosniff`, `Content-Disposition: inline`, `Cache-Control:
+  private, no-store` and `Content-Security-Policy: default-src 'none'; sandbox`; an ATTACH from
+  another client whose bytes are not an image is never served. The capture box previews the
+  pasted image from a `data:` URL, which the CSP's `img-src 'self' data:` already allows; the
+  CSP is unchanged.
 - **Note** (not built): proposed KyNotes route `#/capture?text=<url-encoded>`; the fragment never
   reaches a server, and KyNotes encrypts the note as usual. Shown only when KyIdentity's app list
   holds `kynotes` and KyNotes has shipped the route.

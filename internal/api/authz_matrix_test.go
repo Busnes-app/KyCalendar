@@ -116,8 +116,12 @@ func newWorld(t *testing.T) *world {
 		grantRole(t, st, w.group, string(a), "usr_"+string(a))
 		grantRole(t, st, w.tasks, string(a), "usr_"+string(a))
 	}
-	for _, uid := range []string{"seed-task", "doomed-task"} {
-		o := &store.CalendarObject{CalendarID: w.tasks.ID, Name: uid + ".ics", Component: "VTODO", UID: uid, Data: []byte(todoICS(uid))}
+	for _, uid := range []string{"seed-task", "doomed-task", "image-task"} {
+		data := todoICS(uid)
+		if uid == "image-task" {
+			data = strings.Replace(data, "END:VTODO", "ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw0KGgoAAAANSUhEUg==\r\nEND:VTODO", 1)
+		}
+		o := &store.CalendarObject{CalendarID: w.tasks.ID, Name: uid + ".ics", Component: "VTODO", UID: uid, Data: []byte(data)}
 		if _, err := st.Calendars().PutObject(ctx, o, "", false, store.OwnerLimits{}); err != nil {
 			t.Fatal(err)
 		}
@@ -289,25 +293,26 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/events/{cal}/{uid}/rsvp": {method: "POST", path: "/api/events/" + w.group.ID + "/seed-uid/rsvp", body: `{"partstat":"ACCEPTED"}`, want: groupWrite},
 		"GET /api/tasks":                    {method: "GET", path: "/api/tasks?tz=UTC", want: everyday},
 		// No If-Match: authorization answers first, then 428 (let through).
-		"PATCH /api/tasks/{cal}/{uid}":  {method: "PATCH", path: "/api/tasks/" + w.tasks.ID + "/seed-task", body: `{"status":"COMPLETED"}`, want: groupWrite},
-		"DELETE /api/tasks/{cal}/{uid}": {method: "DELETE", path: "/api/tasks/" + w.tasks.ID + "/doomed-task", want: groupWrite},
-		"POST /api/tasks/inbox":         {method: "POST", path: "/api/tasks/inbox", want: everyday},
-		"GET /api/tasks/areas":          {method: "GET", path: "/api/tasks/areas", want: everyday},
-		"PUT /api/tasks/areas":          {method: "PUT", path: "/api/tasks/areas", body: `[]`, want: everyday},
-		"GET /api/tasks/views":          {method: "GET", path: "/api/tasks/views", want: everyday},
-		"POST /api/tasks/views":         {method: "POST", path: "/api/tasks/views", body: `{"name":"M","query":{}}`, want: everyday},
-		"PUT /api/tasks/views/{id}":     {method: "PUT", path: "/api/tasks/views/view_matrix", body: `{"name":"M","query":{"q":"x"}}`, want: ownerOnly},
-		"DELETE /api/tasks/views/{id}":  {method: "DELETE", path: "/api/tasks/views/view_doomed", want: ownerOnly},
-		"GET /api/freebusy":             {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
-		"GET /api/suite/people":         {method: "GET", path: "/api/suite/people?q=al", want: everyday},
-		"POST /api/suite/chat":          {method: "POST", path: "/api/suite/chat", body: `{}`, want: everyday}, // 400 before any lookup
-		"GET /api/admin/resources":      {method: "GET", path: "/api/admin/resources", want: adminOnly},
-		"POST /api/admin/resources":     {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
-		"PUT /api/admin/resources/{id}": {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
-		"GET /api/admin/booking":        {method: "GET", path: "/api/admin/booking", want: adminOnly},
-		"PUT /api/admin/booking":        {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
-		"GET /api/booking-types":        {method: "GET", path: "/api/booking-types", want: everyday},
-		"POST /api/booking-types":       {method: "POST", path: "/api/booking-types", body: `{}`, want: everyday}, // 400 before any write
+		"PATCH /api/tasks/{cal}/{uid}":          {method: "PATCH", path: "/api/tasks/" + w.tasks.ID + "/seed-task", body: `{"status":"COMPLETED"}`, want: groupWrite},
+		"DELETE /api/tasks/{cal}/{uid}":         {method: "DELETE", path: "/api/tasks/" + w.tasks.ID + "/doomed-task", want: groupWrite},
+		"POST /api/tasks/inbox":                 {method: "POST", path: "/api/tasks/inbox", want: everyday},
+		"GET /api/tasks/areas":                  {method: "GET", path: "/api/tasks/areas", want: everyday},
+		"PUT /api/tasks/areas":                  {method: "PUT", path: "/api/tasks/areas", body: `[]`, want: everyday},
+		"GET /api/tasks/views":                  {method: "GET", path: "/api/tasks/views", want: everyday},
+		"POST /api/tasks/views":                 {method: "POST", path: "/api/tasks/views", body: `{"name":"M","query":{}}`, want: everyday},
+		"PUT /api/tasks/views/{id}":             {method: "PUT", path: "/api/tasks/views/view_matrix", body: `{"name":"M","query":{"q":"x"}}`, want: ownerOnly},
+		"DELETE /api/tasks/views/{id}":          {method: "DELETE", path: "/api/tasks/views/view_doomed", want: ownerOnly},
+		"GET /api/freebusy":                     {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
+		"GET /api/suite/people":                 {method: "GET", path: "/api/suite/people?q=al", want: everyday},
+		"POST /api/suite/chat":                  {method: "POST", path: "/api/suite/chat", body: `{}`, want: everyday}, // 400 before any lookup
+		"GET /api/admin/resources":              {method: "GET", path: "/api/admin/resources", want: adminOnly},
+		"POST /api/admin/resources":             {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
+		"PUT /api/admin/resources/{id}":         {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
+		"GET /api/admin/booking":                {method: "GET", path: "/api/admin/booking", want: adminOnly},
+		"PUT /api/admin/booking":                {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
+		"GET /api/booking-types":                {method: "GET", path: "/api/booking-types", want: everyday},
+		"POST /api/booking-types":               {method: "POST", path: "/api/booking-types", body: `{}`, want: everyday}, // 400 before any write
+		"GET /api/tasks/{cal}/{uid}/images/{n}": {method: "GET", path: "/api/tasks/" + w.tasks.ID + "/image-task/images/0", want: expect{anon: 401, deactivated: 401, admin: 403, reader: allow, editor: allow, manager: allow, owner: 404, nonmember: 404}},
 		// A booking type is its owner's alone: anyone else's request is answered as if it were missing.
 		"PUT /api/booking-types/{id}":         {method: "PUT", path: "/api/booking-types/" + w.bookingType, body: `{}`, want: ownerOnly},
 		"POST /api/booking-types/{id}/rotate": {method: "POST", path: "/api/booking-types/" + w.bookingType + "/rotate", want: ownerOnly},

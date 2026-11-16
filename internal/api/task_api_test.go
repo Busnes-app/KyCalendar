@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -336,5 +337,46 @@ func TestTaskAcceptsEveryWebRepeat(t *testing.T) {
 		if w := taskReq(t, srv, "PATCH", "/api/tasks/"+list+"/"+task.UID, task.ETag, alice, map[string]any{"status": "COMPLETED"}); w.Code != http.StatusOK {
 			t.Errorf("%s: complete %d %s", rule, w.Code, w.Body)
 		}
+	}
+}
+
+func TestTaskPastedImage(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice := loginAs(t, srv, st, "alice", "user")
+	bob := loginAs(t, srv, st, "bob", "user")
+	list := taskList(t, srv, alice)
+	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{1}, 100)...)
+	enc := base64.StdEncoding.EncodeToString
+	made := createTask(t, srv, alice, list, map[string]any{"title": "Screenshot 21:05", "image": map[string]any{"name": "Screenshot 21:05.png", "data": enc(png)}})
+	for name, img := range map[string]map[string]any{
+		"svg":       {"name": "x.svg", "data": enc([]byte(`<svg onload="alert(1)"/>`))},
+		"gif":       {"name": "x.gif", "data": enc([]byte("GIF89a......"))},
+		"oversize":  {"name": "x.png", "data": enc(append(png, make([]byte, 512<<10)...))},
+		"not b64":   {"name": "x.png", "data": "!!!"},
+		"bad name":  {"name": "a\"b.png", "data": enc(png)},
+		"ctrl name": {"name": "a\nb.png", "data": enc(png)},
+	} {
+		if w := taskReq(t, srv, "POST", "/api/calendars/"+list+"/tasks", "", alice, map[string]any{"title": "t", "image": img}); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	w := taskReq(t, srv, "GET", "/api/tasks/"+list+"/"+made.UID+"/images/0", "", alice, "")
+	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), png) || w.Header().Get("Content-Type") != "image/png" ||
+		w.Header().Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Fatalf("image: %d %v", w.Code, w.Header())
+	}
+	if w := taskReq(t, srv, "GET", "/api/tasks/"+list+"/"+made.UID+"/images/1", "", alice, ""); w.Code != http.StatusNotFound {
+		t.Errorf("missing index: %d", w.Code)
+	}
+	if w := taskReq(t, srv, "GET", "/api/tasks/"+list+"/"+made.UID+"/images/0", "", bob, ""); w.Code != http.StatusNotFound {
+		t.Errorf("bob read alice's image: %d", w.Code)
+	}
+	// A client-written ATTACH that claims PNG but holds HTML is never served.
+	evil := strings.Replace(todoICS("evil"), "END:VTODO", "ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:"+enc([]byte("<script>alert(1)</script>"))+"\r\nEND:VTODO", 1)
+	if _, err := st.Calendars().PutObject(context.Background(), &store.CalendarObject{CalendarID: list, Name: "evil.ics", Component: "VTODO", UID: "evil", Data: []byte(evil)}, "", false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if w := taskReq(t, srv, "GET", "/api/tasks/"+list+"/evil/images/0", "", alice, ""); w.Code != http.StatusNotFound {
+		t.Errorf("served a non-image: %d", w.Code)
 	}
 }
