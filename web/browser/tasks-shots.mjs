@@ -119,6 +119,7 @@ try {
       await shoot(page, 'detail', width, colorScheme);
       await page.keyboard.press('Escape');
       await page.getByLabel('Quick add a task').fill('Call Ana tomorrow 3pm !high #home');
+      await page.getByLabel('Quick add a task').press('Home'); // the first character in view
       await shoot(page, 'quickadd', width, colorScheme);
       await page.getByLabel('Quick add a task').fill('');
       await page.locator('body').click({ position: { x: 5, y: 890 } });

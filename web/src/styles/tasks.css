@@ -83,7 +83,7 @@
 .tk-form .tk-segmented { align-self: start; }
 .tk-form .tk-segmented > legend:not(.sr-only) { margin: 0 0 var(--ky-space-2); }
 .tk-form .tk-segmented > label { flex: 1; justify-content: center; }
-.tk-segmented { display: flex !important; flex-wrap: wrap; gap: 0 !important; }
+.tk-segmented { display: flex !important; flex-wrap: wrap; gap: 0 !important; margin: 0; padding: 0; border: 0; min-inline-size: 0; }
 .tk-segmented > legend:not(.sr-only) { width: 100%; }
 .tk-segmented > label { display: inline-flex; align-items: center; min-height: var(--ky-control-size); padding: 0 .75rem; border: 1px solid var(--line-strong); margin-left: -1px; color: var(--ink-strong); font-size: var(--ky-type-nav); cursor: pointer; }
 .tk-segmented > label:first-of-type { margin-left: 0; border-radius: var(--ky-control-radius) 0 0 var(--ky-control-radius); }
@@ -111,7 +111,18 @@
 .tk-image figcaption { display: flex; align-items: center; gap: var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
 .tk-quick-go { width: 2.25rem; min-height: 2.25rem; padding: 0; }
 /* Only the selected list is marked: the Tasks row in the main navigation stays neutral meanwhile. */
-:root:has(.tk-sidebar .tk-nav[aria-current='page']) .ky-nav > .ky-nav-item[aria-current='page'] { background: transparent; box-shadow: none; }
+@media (min-width: 721px) { :root:has(.tk-sidebar .tk-nav[aria-current='page']) .ky-nav > .ky-nav-item[aria-current='page'] { background: transparent; box-shadow: none; } }
 .tk-keys { display: grid; grid-template-columns: auto 1fr; gap: var(--ky-space-2) var(--ky-space-3); margin: 0; }
 .tk-keys dd { margin: 0; color: var(--ink); }
 .tk-quick input { padding-inline-start: .25rem; }
+/* The task dialog's actions stay in view while its fields scroll. */
+.tk-sticky-actions { position: sticky; bottom: calc(var(--space-6, 1.5rem) * -1); z-index: 1; margin-bottom: calc(var(--space-6, 1.5rem) * -1); padding-bottom: var(--space-6, 1.5rem); background: var(--panel); }
+.tk-add-reminder { justify-self: start; }
+@media (max-width: 720px) {
+  .tk-sticky-actions { bottom: calc(var(--space-4) * -1); margin-bottom: calc(var(--space-4) * -1); padding-bottom: var(--space-4); }
+  /* Phones: list rows are borderless, like Today's. */
+  .tk-day > ul { border: 0; border-radius: 0; background: none; }
+  .tk-row { padding-inline: 0; border-bottom: 0; background: none; }
+  .tk-row[data-depth='1'] { padding-left: 1.75rem; }
+  .tk-row[data-depth='2'] { padding-left: 3.5rem; }
+}

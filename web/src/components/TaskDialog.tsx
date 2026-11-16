@@ -237,7 +237,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
             </div>
           ))}
           {reminders.length < 10 && (due.date || begin.date) && (
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setReminders([...reminders, { before_min: 15 }])}><Plus size={14} aria-hidden="true" /> Add reminder</button>
+            <button type="button" className="btn-ghost btn-sm tk-add-reminder" onClick={() => setReminders([...reminders, { before_min: 15 }])}><Plus size={14} aria-hidden="true" /> Add reminder</button>
           )}
         </fieldset>
         {task?.images?.map((img, i) => (
@@ -290,7 +290,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
           </fieldset>
         )}
         {error && <p role="alert">{error}</p>}
-        <div className="modal-actions">
+        <div className="modal-actions tk-sticky-actions">
           {task && !readOnly && (
             <button type="button" className="btn-danger push-start" disabled={busy}
               onClick={() => window.confirm(`Delete “${task.title}”?${subtasks.length ? ' Its subtasks stay.' : ''}`) && void act(() => deleteTask(task)).then((ok) => ok && onClose())}>
