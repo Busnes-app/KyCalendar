@@ -5,7 +5,8 @@ KyCalendar's copy of the wave 1 and wave 2 wire contracts (owner decisions 2026-
 This copy is the durable one for this repository: change it together with the peer's copy.
 Sections implemented here: shared rules, B (KyCalendar → KyMessages meetings), D (people picker,
 KyCalendar's part), E (the `/new` deep link, receiver), F (the free/busy strip) and, from wave 2,
-H (chat from the event view, KyCalendar's part), I (the KyDrive picker, as a caller) and L (meeting guests, KyCalendar's part).
+H (chat from the event view, KyCalendar's part), I (the KyDrive picker, as a caller), L (meeting guests, KyCalendar's part)
+and S (suite groups, KyCalendar's part).
 
 Wave 2 compatibility rule: each side must keep working against the other side's wave 1 `main`
 until both have merged. A new request field the old receiver refuses means: retry without it
@@ -471,3 +472,34 @@ the event, re-reading the stored row so a newer revision wins. `Scheduler.autoTe
 `Inbound`'s new-invitation branch and the outbox's internal delivery; `itip.SetComment` and
 `attendeeReply` carry the comment. Tests: `TestKyPostOutOfOffice*`,
 `TestAttendeeReplyCarriesANewComment`.
+
+## S. Suite groups (KyCalendar's part)
+
+Contract: KyIdentity-server `docs/SUITE-DIRECTORY.md` (`GET /api/suite/groups`) and
+`docs/superpowers/specs/2026-11-15-suite-groups-design.md` (threat model, app contract). Client:
+`ky-primitives/suitedir` `Groups`.
+
+### How KyCalendar implements it
+
+- **Poll.** `Server.SyncSuiteGroups` (`internal/api/suite_groups.go`) runs at start and every
+  60 s from `cmd/server`, only while the live sign-in provider is KyIdentity, under KyCalendar's
+  own client credentials. Any error from the list changes nothing; a group missing from the
+  list is never archived. A removed member leaves at the next pass, at most about a minute.
+- **One calendar per group, keyed on the KyIdentity group ID** (`suite_group_calendars`,
+  migration 31), never the name or slug, so a recreated namesake gets a new calendar. The
+  members live in a local group of source `suite` named `suite-group:<id>` (admin writes
+  refuse it as managed elsewhere; SCIM never sees it), granted `editor` on the calendar, the
+  ordinary member role; a grant an administrator removes or changes (to manager, say) is put
+  back to `editor` at the next pass. The calendar takes the group's name and follows renames.
+- **Members** are exactly the listed subjects that have an active everyday account here
+  signed in or provisioned through the bound KyIdentity (`kysignon` or `scim` rows of the
+  binding); administrators never, and subjects with no account yet join on a later poll.
+- **Archived**: members removed and the calendar read-only for everyone (`Calendar.Archived`;
+  the store refuses every event write, so web, CalDAV, scheduling and agents all stop), kept
+  with its events and grants, and marked `archived` in `GET /api/admin/calendars`. Active
+  again: the same calendar, writable, members back.
+- **Never deleted** by reconcile. An administrator may still delete the calendar; a group
+  still active then gets a new, empty one on the same local group.
+- **Each group is one transaction** under the `group-names` lock and writes only the
+  differences, so the same list twice writes nothing and a pass cut short repeats safely.
+- **Never logged or audited:** names, subjects, addresses. Logs carry the group ID and counts.

@@ -284,7 +284,7 @@ export function CalendarSidebar({ calendars, hidden, onToggle, onChanged }: Prop
                 )}
               </span>
             </div>
-            {!c.components.includes('VEVENT') && <div className="kc-sub"><span>Tasks · open in a tasks app</span></div>}
+            {!c.components.includes('VEVENT') && <div className="kc-sub"><a href="#/tasks">Tasks · open in Tasks</a></div>}
             {c.subscription?.error && editing !== c.id && <div className="kc-sub"><span role="alert">{c.subscription.error}</span></div>}
             {editing === c.id && (
               <div className="kc-cal-edit">

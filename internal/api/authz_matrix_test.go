@@ -51,9 +51,9 @@ var (
 	grantManager = expect{anon: 401, deactivated: 401, admin: allow, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
 	groupManage  = expect{anon: 401, deactivated: 401, admin: 403, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
 	groupWrite   = expect{anon: 401, deactivated: 401, admin: 403, editor: allow, manager: allow, reader: 403, owner: 404, nonmember: 404}
-	ownerOnly    = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
-	// everyday404: an everyday route whose target no caller may reach (answered as missing).
+	// everyday404 is an authenticated everyday route whose target is missing.
 	everyday404 = expect{anon: 401, deactivated: 401, admin: 403, owner: 404, reader: 404, editor: 404, manager: 404, nonmember: 404}
+	ownerOnly   = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// SCIM takes only its bearer token: a session cookie is never enough.
 	scimOnly = expect{anon: 401, deactivated: 401, admin: 401, owner: 401, reader: 401, editor: 401, manager: 401, nonmember: 401}
 	// KyPost's routes take only its signature, and are absent (404) until KyPost is configured,
@@ -79,6 +79,7 @@ type world struct {
 	passIDs map[actor]string
 	mcpIDs  map[actor]string // an MCP token each, for the scope row (the delete row revokes passIDs)
 	group   *store.Calendar  // reader, editor and manager each hold their role on it
+	tasks   *store.Calendar  // a group task list; reader, editor and manager hold their role on it
 	doomed  *store.Calendar  // the group calendar the admin row deletes
 	spare   *store.Calendar  // a personal calendar of the owner, deleted by the owner row
 	sub     *store.Calendar  // a subscribed calendar of the owner; its link never opens, so no row fetches
@@ -109,8 +110,33 @@ func newWorld(t *testing.T) *world {
 	}
 	w.group = groupCalendar(t, st, "Team")
 	w.doomed = groupCalendar(t, st, "Doomed")
+	w.tasks = &store.Calendar{ID: "cal_matrix_tasks", OwnerKind: "group", OwnerID: "cal_matrix_tasks", Slug: "group", Name: "Team tasks", Components: []string{"VTODO"}}
+	if err := st.Calendars().CreateCalendar(ctx, w.tasks, 0); err != nil {
+		t.Fatal(err)
+	}
 	for _, a := range []actor{reader, editor, manager} {
 		grantRole(t, st, w.group, string(a), "usr_"+string(a))
+		grantRole(t, st, w.tasks, string(a), "usr_"+string(a))
+	}
+	for _, uid := range []string{"seed-task", "doomed-task", "image-task"} {
+		data := todoICS(uid)
+		if uid == "image-task" {
+			data = strings.Replace(data, "END:VTODO", "ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw0KGgoAAAANSUhEUg==\r\nEND:VTODO", 1)
+		}
+		o := &store.CalendarObject{CalendarID: w.tasks.ID, Name: uid + ".ics", Component: "VTODO", UID: uid, Data: []byte(data)}
+		if _, err := st.Calendars().PutObject(ctx, o, "", false, store.OwnerLimits{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"goal_matrix", "goal_doomed"} {
+		if err := st.TaskGoals().CreateGoal(ctx, &store.TaskGoal{ID: id, UserID: "usr_owner", Title: id, Period: "quarter", Starts: "2026-10-01", Ends: "2026-12-31", CreatedAt: time.Now()}, 50); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"view_matrix", "view_doomed"} {
+		if err := st.Tasks().CreateView(ctx, &store.TaskView{ID: id, UserID: "usr_owner", Name: id, Query: "{}", CreatedAt: time.Now()}, 50); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Local accounts the People rows change; no row signs in as one. victim takes the reset and
 	// the profile edit, which succeed in any order; each role or status row owns its own.
@@ -272,15 +298,36 @@ func apiRows(w *world) map[string]apiRow {
 			body: `{"title":"M","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`, want: groupWrite},
 		"DELETE /api/events/{cal}/{uid}":    {method: "DELETE", path: "/api/events/" + w.group.ID + "/seed-uid?scope=all", want: groupWrite},
 		"POST /api/events/{cal}/{uid}/rsvp": {method: "POST", path: "/api/events/" + w.group.ID + "/seed-uid/rsvp", body: `{"partstat":"ACCEPTED"}`, want: groupWrite},
-		"GET /api/freebusy":                 {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
-		"GET /api/suite/people":             {method: "GET", path: "/api/suite/people?q=al", want: everyday},
-		"POST /api/suite/chat":              {method: "POST", path: "/api/suite/chat", body: `{}`, want: everyday}, // 400 before any lookup
-		"GET /api/admin/resources":          {method: "GET", path: "/api/admin/resources", want: adminOnly},
-		"POST /api/admin/resources":         {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
-		"PUT /api/admin/resources/{id}":     {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
-		"GET /api/resources":                {method: "GET", path: "/api/resources", want: everyday},
-		"GET /api/resources/{id}/busy":      {method: "GET", path: "/api/resources/" + matrixResource + "/busy?start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
-		"GET /api/resources/requests":       {method: "GET", path: "/api/resources/requests", want: everyday},
+		"GET /api/tasks":                    {method: "GET", path: "/api/tasks?tz=UTC", want: everyday},
+		"POST /api/calendars/{id}/tasks":    {method: "POST", path: "/api/calendars/" + w.tasks.ID + "/tasks", body: `{"title":"M"}`, want: groupWrite},
+		// No If-Match: authorization answers first, then 428 (let through).
+		"PATCH /api/tasks/{cal}/{uid}":          {method: "PATCH", path: "/api/tasks/" + w.tasks.ID + "/seed-task", body: `{"status":"COMPLETED"}`, want: groupWrite},
+		"DELETE /api/tasks/{cal}/{uid}":         {method: "DELETE", path: "/api/tasks/" + w.tasks.ID + "/doomed-task", want: groupWrite},
+		"POST /api/tasks/inbox":                 {method: "POST", path: "/api/tasks/inbox", want: everyday},
+		"GET /api/tasks/insights":               {method: "GET", path: "/api/tasks/insights?tz=UTC", want: everyday},
+		"GET /api/tasks/goals":                  {method: "GET", path: "/api/tasks/goals", want: everyday},
+		"POST /api/tasks/goals":                 {method: "POST", path: "/api/tasks/goals", body: `{"title":"M","period":"quarter","starts":"2026-10-01","ends":"2026-12-31"}`, want: everyday},
+		"PUT /api/tasks/goals/{id}":             {method: "PUT", path: "/api/tasks/goals/goal_matrix", body: `{"title":"M","period":"quarter","starts":"2026-10-01","ends":"2026-12-31"}`, want: ownerOnly},
+		"DELETE /api/tasks/goals/{id}":          {method: "DELETE", path: "/api/tasks/goals/goal_doomed", want: ownerOnly},
+		"GET /api/tasks/goals/{id}/progress":    {method: "GET", path: "/api/tasks/goals/goal_matrix/progress?tz=UTC", want: ownerOnly},
+		"GET /api/tasks/{cal}/{uid}/habit":      {method: "GET", path: "/api/tasks/" + w.tasks.ID + "/seed-task/habit?tz=UTC", want: expect{anon: 401, deactivated: 401, admin: 403, reader: allow, editor: allow, manager: allow, owner: 404, nonmember: 404}},
+		"GET /api/tasks/stats":                  {method: "GET", path: "/api/tasks/stats?tz=UTC", want: everyday},
+		"GET /api/tasks/areas":                  {method: "GET", path: "/api/tasks/areas", want: everyday},
+		"PUT /api/tasks/areas":                  {method: "PUT", path: "/api/tasks/areas", body: `[]`, want: everyday},
+		"GET /api/tasks/views":                  {method: "GET", path: "/api/tasks/views", want: everyday},
+		"POST /api/tasks/views":                 {method: "POST", path: "/api/tasks/views", body: `{"name":"M","query":{}}`, want: everyday},
+		"PUT /api/tasks/views/{id}":             {method: "PUT", path: "/api/tasks/views/view_matrix", body: `{"name":"M","query":{"q":"x"}}`, want: ownerOnly},
+		"DELETE /api/tasks/views/{id}":          {method: "DELETE", path: "/api/tasks/views/view_doomed", want: ownerOnly},
+		"GET /api/tasks/{cal}/{uid}/images/{n}": {method: "GET", path: "/api/tasks/" + w.tasks.ID + "/image-task/images/0", want: expect{anon: 401, deactivated: 401, admin: 403, reader: allow, editor: allow, manager: allow, owner: 404, nonmember: 404}},
+		"GET /api/freebusy":                     {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
+		"GET /api/suite/people":                 {method: "GET", path: "/api/suite/people?q=al", want: everyday},
+		"POST /api/suite/chat":                  {method: "POST", path: "/api/suite/chat", body: `{}`, want: everyday}, // 400 before any lookup
+		"GET /api/admin/resources":              {method: "GET", path: "/api/admin/resources", want: adminOnly},
+		"POST /api/admin/resources":             {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
+		"PUT /api/admin/resources/{id}":         {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
+		"GET /api/resources":                    {method: "GET", path: "/api/resources", want: everyday},
+		"GET /api/resources/{id}/busy":          {method: "GET", path: "/api/resources/" + matrixResource + "/busy?start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
+		"GET /api/resources/requests":           {method: "GET", path: "/api/resources/requests", want: everyday},
 		// Nobody approves the matrix room: every everyday caller is answered as if it were missing.
 		"POST /api/resources/requests/{id}": {method: "POST", path: "/api/resources/requests/rbk_none", body: `{"decision":"accept"}`, want: everyday404},
 		"POST /api/presence":                {method: "POST", path: "/api/presence", body: `{}`, want: everyday}, // 400 before any lookup

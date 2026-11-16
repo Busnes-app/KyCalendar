@@ -327,6 +327,7 @@ only the process setting across base/build/LAN-DNS/static-IP combinations.
 - A group calendar is `owner_kind = 'group'` with `owner_id` = its own ID, so it survives the deletion of any KyIdentity group. Its grants cascade with the group. Its CalDAV segment in each member's home is `_<calendar-id>`.
 - A caller who cannot read a calendar gets 404 on every API and CalDAV route; one who can read but lacks the role gets 403.
 - Deleting a group calendar requires a sign-in younger than 10 minutes (403 `reauth_required` otherwise). The delete runs on a detached context and is tracked for shutdown.
+- Suite groups (contract `docs/SUITE-INTEGRATIONS.md` S; KyIdentity-server `docs/SUITE-DIRECTORY.md`): `Server.SyncSuiteGroups` polls KyIdentity's `GET /api/suite/groups` at start and every 60 s while the live provider is KyIdentity and gives each suite group one group calendar keyed on its KyIdentity ID only (`suite_group_calendars`), members in a `suite`-source local group granted `editor` (reconcile puts any other role back). A failed list changes nothing; absence never archives. Archived: members removed, calendar read-only (`Calendar.Archived`, `ErrReadOnly` on every write path), kept. Reconcile never deletes; logs carry IDs and counts only.
 - `internal/api/authz_matrix_test.go` covers every registered route and every CalDAV operation for anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers, and fails when a route has no row.
 
 #### Plan 3 recurrence and event API contracts
@@ -371,7 +372,7 @@ Spec `docs/superpowers/specs/2026-10-07-kycalendar-standalone-admin-design.md`.
 
 Spec `docs/superpowers/specs/2026-10-14-kycalendar-mcp-agent-access-design.md`.
 
-- `/mcp` serves AI agents (OpenClaw, Hermes Agent) over stateless Streamable HTTP. It takes only `Authorization: Bearer` with an MCP-scoped app password: `mcp:read`, `mcp:write-own` (create, and update only events that token created, recorded in `mcp_events`) or `mcp:write-any` (update any personal event). A `dav` token is refused there as an MCP token is on `/dav/`, both like a wrong secret.
+- `/mcp` serves AI agents (OpenClaw, Hermes Agent) over stateless Streamable HTTP. It takes only `Authorization: Bearer` with an MCP-scoped app password: `mcp:read`, `mcp:write-own` (create, and update only events and tasks that token created, recorded in `mcp_events`) or `mcp:write-any` (update any personal event or task). A `dav` token is refused there as an MCP token is on `/dav/`, both like a wrong secret.
 - Personal calendars only: a group calendar is answered as missing on every tool. There is no delete tool, and `update_event` cannot blank a title or cancel an occurrence.
 - Any request carrying `Origin` is 403; `/mcp` gets no CORS grant and no `OPTIONS` short-circuit. Cookies never authenticate it. Administrators get 403.
 - An MCP token unused for 90 days is revoked: refused and deleted at sign-in, and swept daily by `cmd/server` (`api.ExpireIdleMCPTokens`). `dav` tokens never expire.
@@ -413,6 +414,16 @@ Spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`.
 - Public POSTs need the pre-session CSRF token from every client and refuse cross-site requests.
 - A type may add a KyMessages meeting room (`meeting_room`, only while `meetingsFor` the member; an existing room survives edits): the confirmed booking's event is written with the meeting switch on (wave 1 PUT), the booker joins only through the wave 2 guest line in their own copy, and `davbackend.sendExternal` strips the member-only CONFERENCE and `Join:` line from a booking's mail to anyone outside, so with `guests_off`/`guests_unsupported` the invitation says nothing about joining.
 
+#### Tasks contracts
+
+Spec `docs/superpowers/specs/2026-11-15-tasks-design.md` (mapping table, routes, owner questions).
+
+- Tasks are VTODO objects in calendars whose component set holds VTODO; lists are those calendars, group task lists follow the group roles. The web, CalDAV and MCP read the same rows; the event API and event tools ignore tasks.
+- Every property maps to RFC 5545 (priority 1/5/9, STATUS with COMPLETED and PERCENT-COMPLETE, DUE, DTSTART, DESCRIPTION, CATEGORIES, `RELATED-TO;RELTYPE=PARENT`, RRULE, VALARM, DTSTART+DURATION when placed). KyCalendar's own markers are `X-KY-ESTIMATE`, `X-KY-REPEAT-FROM:COMPLETION`, `X-KY-HABIT:TRUE` and `X-KY-SOURCE`. A web edit keeps every content line it does not own (`TestInteropFixturesSurviveWebEdits`, fixtures cited in `internal/tasks/testdata/SOURCES.md`).
+- Completing a repeating task moves the same VTODO to its next occurrence, as Tasks.org does, keeping the wall-clock time across DST.
+- Areas, saved views, the completion log and the search index are KyCalendar-only (migration 32); CalDAV clients see ordinary lists. Free/busy never reads VTODO, so a placed task is never busy.
+- MCP task tools follow the event tools' scopes and personal-only rule (`internal/api/mcp_tasks.go`); no tool deletes tasks or lists.
+
 #### Installer setup
 
 - Container-local `kycalendar apply-setup` uses `ky.product-setup/1` and private `<DataDir>/installer/setup.sock`; `--check` inspects without migrations, key creation or writes. First setup atomically creates exact issuer/subject accounts, immutable ownership, sign-in binding and audit under the native `local-admins`, then `user-names` locks. Existing identities and sign-in settings are refused. Activation uses the normal graceful restart and drain.
@@ -440,6 +451,7 @@ Spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
 - [internal/csvimport/AGENTS.md](internal/csvimport/AGENTS.md): Outlook and Google Calendar CSV files read into event rows for a one-time import.
 - [internal/resource/AGENTS.md](internal/resource/AGENTS.md): Pure rules for rooms and equipment: the definition, its bounds and the resource address.
+- [internal/tasks/AGENTS.md](internal/tasks/AGENTS.md): Pure VTODO reading and in-place editing for the Tasks screens and MCP task tools.
 - [internal/booking/AGENTS.md](internal/booking/AGENTS.md): Booking pages' pure rules: slot grid, busy scans, visitor text, hold and booked objects.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
 - [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.

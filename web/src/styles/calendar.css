@@ -228,6 +228,7 @@ dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw 
 .kc-fb-tentative { fill: var(--ink); opacity: 0.25; }
 .kc-fb-chosen { fill: none; stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; }
 .kc-fb-row[data-conflict] .kc-fb-chosen { stroke: var(--ky-danger); }
+.kc-sub a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 /* Colleague status (KyMessages): a dot beside a text label; the label carries the meaning. */
 .kc-status { display: inline-flex; align-items: center; gap: var(--ky-space-1); min-width: 0; font-size: var(--ky-type-meta); line-height: 1.5; color: var(--ink); }
@@ -244,3 +245,8 @@ dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw 
 .kc-status[data-state="in_a_meeting"] .kc-status-dot { background: var(--ky-danger); border-color: var(--ky-danger); }
 .kc-status[data-state="away"] .kc-status-dot { background: var(--ky-warning); border-color: var(--ky-warning); }
 .kc-status[data-state="out_of_office"] .kc-status-dot { background: transparent; border: 2px solid var(--ky-danger); }
+/* Tasks on the calendar: a plain panel card, never filled like an event. */
+/* The list's own colour marks the left edge (FullCalendar's borderColor), as an event's fill does. */
+.kc-calendar .fc .kc-task { border-width: 1px 1px 1px 3px !important; border-style: solid !important; background: var(--panel) !important; color: var(--ink-strong) !important; box-shadow: none; }
+.kc-calendar .fc .kc-task .fc-event-main, .kc-calendar .fc .kc-task .fc-event-title, .kc-calendar .fc .kc-task .fc-event-time { color: var(--ink-strong) !important; }
+.kc-calendar .fc .kc-task .fc-event-title::before { content: '☐ '; }

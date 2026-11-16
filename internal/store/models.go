@@ -91,6 +91,9 @@ type Group struct {
 const (
 	GroupSourceLocal = "local"
 	GroupSourceSCIM  = "scim"
+	// GroupSourceSuite holds a KyIdentity suite group's members (ExternalID is its KyIdentity
+	// ID); only ReconcileSuiteGroup writes it.
+	GroupSourceSuite = "suite"
 )
 
 // AuditRecord logs security and operational events with tamper-evident structure.
@@ -136,6 +139,7 @@ type Calendar struct {
 	Seq                                                    int64
 	CreatedAt                                              time.Time
 	Subscribed                                             bool     // mirrors an ICS link; its events are read-only
+	Archived                                               bool     // an archived suite group's calendar; its events are read-only
 	Components                                             []string // VEVENT, VTODO or both, fixed at creation
 }
 

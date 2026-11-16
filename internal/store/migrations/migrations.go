@@ -598,41 +598,22 @@ CREATE TABLE sso_logouts (
 	{Version: 28, Name: "resources", SQLite: resources("DATETIME"), Postgres: resources("TIMESTAMPTZ")},
 	{Version: 29, Name: "kypost_out_of_office", SQLite: kypostOutOfOffice, Postgres: kypostOutOfOffice},
 	{Version: 30, Name: "presence_pushes", SQLite: presencePushes("DATETIME"), Postgres: presencePushes("TIMESTAMPTZ")},
-	{Version: 31, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
+	{Version: 31, Name: "suite_group_calendars", SQLite: suiteGroupCalendars, Postgres: suiteGroupCalendars},
+	{Version: 32, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
+	{Version: 33, Name: "task_insights", SQLite: taskInsights, Postgres: taskInsights},
+	{Version: 35, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
 }
 
-// resourceBookings: one row per resource an event object names, with the answer KyCalendar gave
-// for it, and the busy spans (unix seconds) of accepted and pending bookings up to the horizon.
-// open_after (not 0) is where the spans of a series that goes on stop. Both go with the event
-// object (and so with its calendar).
-func resourceBookings(ts string) string {
-	return `CREATE TABLE resource_bookings (
- id TEXT PRIMARY KEY,
- resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
- calendar_id TEXT NOT NULL,
- object_name TEXT NOT NULL,
- booked_by TEXT NOT NULL DEFAULT '',
- status TEXT NOT NULL CHECK (status IN ('accepted', 'pending', 'declined')),
- reason TEXT NOT NULL DEFAULT '',
- detail TEXT NOT NULL DEFAULT '',
- fingerprint TEXT NOT NULL,
- decided_by TEXT NOT NULL DEFAULT '',
- open_after BIGINT NOT NULL DEFAULT 0,
- created_at ` + ts + ` NOT NULL,
- updated_at ` + ts + ` NOT NULL,
- UNIQUE (calendar_id, object_name, resource_id),
- FOREIGN KEY (calendar_id, object_name) REFERENCES calendar_objects(calendar_id, name) ON DELETE CASCADE
-);
-CREATE INDEX resource_bookings_resource ON resource_bookings(resource_id, status);
-CREATE TABLE resource_busy (
- booking_id TEXT NOT NULL REFERENCES resource_bookings(id) ON DELETE CASCADE,
- resource_id TEXT NOT NULL,
- start_at BIGINT NOT NULL,
- end_at BIGINT NOT NULL
-);
-CREATE INDEX resource_busy_time ON resource_busy(resource_id, start_at);
-CREATE INDEX resource_busy_booking ON resource_busy(booking_id);`
-}
+// suiteGroupCalendars: the group calendar each KyIdentity suite group has here, keyed on the
+// KyIdentity group ID only (never its name or slug), with the local group that holds its
+// members. archived makes the calendar read-only. A calendar an administrator deletes takes
+// its row with it; reconcile then makes a new one for a group that is still active.
+const suiteGroupCalendars = `CREATE TABLE suite_group_calendars (
+ suite_group_id TEXT PRIMARY KEY,
+ calendar_id TEXT NOT NULL UNIQUE REFERENCES calendars(id) ON DELETE CASCADE,
+ group_id TEXT NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
+ archived BOOLEAN NOT NULL DEFAULT FALSE
+);`
 
 // resources: rooms and equipment an administrator defines. Tags is a JSON list. A resource is
 // never deleted: disabling keeps its history. Groups who may book (audience groups) and
@@ -767,6 +748,73 @@ func videoMeetings(ts string) string {
 CREATE UNIQUE INDEX video_meetings_object ON video_meetings(calendar_id, name) WHERE state = 'open';
 CREATE INDEX video_meetings_due ON video_meetings(state, next_attempt_at);`
 }
+
+// taskTables: what KyCalendar keeps about tasks beyond CalDAV, never task text: each user's
+// areas (JSON grouping of task lists), one row per web completion, and saved views. Times are
+// unix seconds.
+const taskTables = `CREATE TABLE task_areas (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ data TEXT NOT NULL
+);
+CREATE TABLE task_completions (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ uid TEXT NOT NULL,
+ completed_at BIGINT NOT NULL
+);
+CREATE INDEX task_completions_user ON task_completions(user_id, completed_at);
+CREATE TABLE task_views (
+ id TEXT PRIMARY KEY,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ name TEXT NOT NULL,
+ query TEXT NOT NULL,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX task_views_user ON task_views(user_id);
+`
+
+// taskInsights: each completion names its occurrence, so one seen twice (web, then a phone's
+// sync) is one row. The log is rebuilt so older rows, which may share a second, each get a
+// distinct placeholder before the unique index exists. Goals are KyCalendar-only.
+const taskInsights = `CREATE TABLE task_completions_v33 (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ uid TEXT NOT NULL,
+ occurrence TEXT NOT NULL,
+ completed_at BIGINT NOT NULL
+);
+INSERT INTO task_completions_v33 (user_id, calendar_id, uid, occurrence, completed_at)
+ SELECT user_id, calendar_id, uid,
+  'at:' || completed_at || ':' || ROW_NUMBER() OVER (PARTITION BY user_id, calendar_id, uid, completed_at ORDER BY completed_at),
+  completed_at FROM task_completions;
+DROP TABLE task_completions;
+ALTER TABLE task_completions_v33 RENAME TO task_completions;
+CREATE INDEX task_completions_user ON task_completions(user_id, completed_at);
+CREATE UNIQUE INDEX task_completions_once ON task_completions(user_id, calendar_id, uid, occurrence);
+CREATE TABLE task_goals (
+ id TEXT PRIMARY KEY,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ title TEXT NOT NULL,
+ period TEXT NOT NULL,
+ starts TEXT NOT NULL,
+ ends TEXT NOT NULL,
+ areas TEXT NOT NULL,
+ lists TEXT NOT NULL,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX task_goals_user ON task_goals(user_id);`
+
+// The task search index (title, notes, tags) per calendar object, reconciled at search time.
+// SQLite: FTS5, pruned daily of deleted calendars (a virtual table has no foreign key).
+const taskSearchSQLite = `CREATE VIRTUAL TABLE task_search USING fts5(calendar_id UNINDEXED, uid UNINDEXED, etag UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2');`
+
+const taskSearchPostgres = `CREATE TABLE task_search (
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ uid TEXT NOT NULL,
+ etag TEXT NOT NULL,
+ body TEXT NOT NULL,
+ PRIMARY KEY (calendar_id, uid)
+);`
 
 const cancellationReservations = `CREATE TABLE cancellation_reservations (
  calendar_id TEXT NOT NULL,
@@ -908,4 +956,37 @@ func presencePushes(ts string) string {
  refresh_at ` + ts + `
 );
 CREATE INDEX presence_pushes_due ON presence_pushes(next_attempt_at);`
+}
+
+// resourceBookings: one row per resource an event object names, with the answer KyCalendar gave
+// for it, and the busy spans (unix seconds) of accepted and pending bookings up to the horizon.
+// open_after (not 0) is where the spans of a series that goes on stop. Both go with the event
+// object (and so with its calendar).
+func resourceBookings(ts string) string {
+	return `CREATE TABLE resource_bookings (
+ id TEXT PRIMARY KEY,
+ resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+ calendar_id TEXT NOT NULL,
+ object_name TEXT NOT NULL,
+ booked_by TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL CHECK (status IN ('accepted', 'pending', 'declined')),
+ reason TEXT NOT NULL DEFAULT '',
+ detail TEXT NOT NULL DEFAULT '',
+ fingerprint TEXT NOT NULL,
+ decided_by TEXT NOT NULL DEFAULT '',
+ open_after BIGINT NOT NULL DEFAULT 0,
+ created_at ` + ts + ` NOT NULL,
+ updated_at ` + ts + ` NOT NULL,
+ UNIQUE (calendar_id, object_name, resource_id),
+ FOREIGN KEY (calendar_id, object_name) REFERENCES calendar_objects(calendar_id, name) ON DELETE CASCADE
+);
+CREATE INDEX resource_bookings_resource ON resource_bookings(resource_id, status);
+CREATE TABLE resource_busy (
+ booking_id TEXT NOT NULL REFERENCES resource_bookings(id) ON DELETE CASCADE,
+ resource_id TEXT NOT NULL,
+ start_at BIGINT NOT NULL,
+ end_at BIGINT NOT NULL
+);
+CREATE INDEX resource_busy_time ON resource_busy(resource_id, start_at);
+CREATE INDEX resource_busy_booking ON resource_busy(booking_id);`
 }

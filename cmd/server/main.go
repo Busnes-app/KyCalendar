@@ -125,6 +125,10 @@ func runServer() {
 			if err := st.Calendars().PruneOutbox(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
 				log.Printf("scheduling outbox prune failed: %v", err)
 			}
+			// The completion log feeds streaks and insights (12 weeks); search rows of deleted lists go too.
+			if err := st.Tasks().PruneTasks(ctx, time.Now().Add(-400*24*time.Hour)); err != nil {
+				log.Printf("task log prune failed: %v", err)
+			}
 			if err := api.ExpireIdleMCPTokens(ctx, st, time.Now()); err != nil {
 				log.Printf("idle agent token sweep failed: %v", err)
 			}
@@ -187,6 +191,20 @@ func runServer() {
 			}
 			srv.SyncMeetings(ctx)
 			srv.SyncPresence(ctx)
+		}
+	}()
+	// KyIdentity suite groups: one group calendar each, reconciled once at start and then every
+	// minute. A pass writes only differences, so a pass cut short repeats safely.
+	go func() {
+		ticker := time.NewTicker(api.SuiteGroupsInterval)
+		defer ticker.Stop()
+		for {
+			srv.SyncSuiteGroups(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
 		}
 	}()
 
