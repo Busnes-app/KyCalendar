@@ -489,7 +489,8 @@ Contract: KyIdentity-server `docs/SUITE-DIRECTORY.md` (`GET /api/suite/groups`) 
   migration 31), never the name or slug, so a recreated namesake gets a new calendar. The
   members live in a local group of source `suite` named `suite-group:<id>` (admin writes
   refuse it as managed elsewhere; SCIM never sees it), granted `editor` on the calendar, the
-  ordinary member role. The calendar takes the group's name and follows renames.
+  ordinary member role; a grant an administrator removes or changes (to manager, say) is put
+  back to `editor` at the next pass. The calendar takes the group's name and follows renames.
 - **Members** are exactly the listed subjects that have an active everyday account here
   signed in or provisioned through the bound KyIdentity (`kysignon` or `scim` rows of the
   binding); administrators never, and subjects with no account yet join on a later poll.

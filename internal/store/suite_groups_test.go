@@ -202,6 +202,16 @@ func TestSuiteGroupHealsDrift(t *testing.T) {
 	if ch := reconcile(t, st, want); ch.Removed != 1 || !ch.GrantRestored || ch.Created {
 		t.Fatalf("heal %+v", ch)
 	}
+	// An administrator raises the grant to manager: the next reconcile puts it back.
+	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: c.ID, GroupID: g.ID, Role: "manager"}); err != nil {
+		t.Fatal(err)
+	}
+	if ch := reconcile(t, st, want); !ch.GrantRestored || ch.Added != 0 || ch.Removed != 0 {
+		t.Fatalf("manager heal %+v", ch)
+	}
+	if ch := reconcile(t, st, want); ch.Changed() {
+		t.Fatalf("after manager heal wrote %+v", ch)
+	}
 	g, c2 := suiteCalendar(t, st, "kg1")
 	if c2 == nil || c2.ID != c.ID || !slices.Equal(g.Members, []string{"usr_ann"}) {
 		t.Fatalf("healed %+v %+v", g, c2)

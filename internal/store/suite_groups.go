@@ -97,9 +97,10 @@ func (g *groupStore) ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, s
 			ch.Renamed = true
 		}
 	}
-	// The ordinary member role, never manager. A grant an administrator changed stays; one
-	// removed comes back, since the members would otherwise lose the calendar.
-	res, err := tx.ExecContext(ctx, q(`INSERT INTO calendar_grants (calendar_id, group_id, role) VALUES (?, ?, 'editor') ON CONFLICT DO NOTHING`), calID, groupID)
+	// The ordinary member role, never higher or lower: a suite group grants no more than an
+	// ordinary member, so a grant an administrator changed or removed is put back to editor.
+	res, err := tx.ExecContext(ctx, q(`INSERT INTO calendar_grants (calendar_id, group_id, role) VALUES (?, ?, 'editor')
+ON CONFLICT (calendar_id, group_id) DO UPDATE SET role = 'editor' WHERE calendar_grants.role <> 'editor'`), calID, groupID)
 	if err != nil {
 		return ch, err
 	}
