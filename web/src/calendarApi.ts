@@ -189,3 +189,21 @@ export interface RoomRequest {
 export const roomRequests = () => send('/api/resources/requests').then((r) => parse<{ requests: RoomRequest[] }>(r)).then((b) => b.requests);
 export const decideRoomRequest = (id: string, decision: 'accept' | 'decline') =>
   send(`/api/resources/requests/${encodeURIComponent(id)}`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ decision }) }).then((r) => parse<void>(r));
+/** A colleague's coarse status from KyMessages (`POST /api/presence`). */
+export type PresenceState = 'available' | 'busy' | 'in_a_meeting' | 'away' | 'out_of_office' | 'unknown';
+export interface Presence { email: string; state: PresenceState; until?: string }
+// At most 50 addresses; organisation people only; `[]` on any failure, so rows still show.
+export const presenceOf = (emails: string[]): Promise<Presence[]> =>
+  emails.length === 0
+    ? Promise.resolve([])
+    : send('/api/presence', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ emails: emails.slice(0, 50) }) })
+        .then((r) => (r?.ok ? r.json() : null))
+        .then((b) => (Array.isArray(b?.people) ? b.people.filter((p: Presence) => typeof p?.email === 'string' && typeof p?.state === 'string') : []))
+        .catch(() => []);
+
+/** The user's own status settings, kept by KyMessages (`/api/presence/me`); throws `ApiError`. */
+export interface Manual { state: 'available' | 'busy' | 'away'; until: string }
+export interface StatusSettings { share: boolean; manual: Manual | null }
+export const statusSettings = () => send('/api/presence/me').then((r) => parse<StatusSettings>(r));
+export const saveStatusSettings = (b: { share?: boolean; manual?: Manual | null }) =>
+  send('/api/presence/me', { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(b) }).then((r) => parse<StatusSettings>(r));

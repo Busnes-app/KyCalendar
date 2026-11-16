@@ -87,7 +87,7 @@ describe('Settings', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy();
     const tabs = screen.getByRole('navigation', { name: 'Settings sections' });
-    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Account', 'Phones & apps', 'Booking pages', 'Appearance']);
+    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Account', 'Phones & apps', 'Booking pages', 'Status', 'Appearance']);
     expect(within(tabs).getByRole('link', { name: 'Account' }).getAttribute('aria-current')).toBe('page');
     expect(gear.getAttribute('aria-current')).toBe('page');
     expect(within(nav).getByRole('button', { name: 'Calendar' }).getAttribute('aria-current')).toBeNull();

@@ -128,6 +128,9 @@ func (c *calendarStore) DeleteCalendar(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := c.touchPresence(ctx, tx, id); err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendars WHERE id = ?`), id)
 	if err != nil {
 		return err
@@ -452,6 +455,9 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 	if err := c.touchMeeting(ctx, tx, o.CalendarID, o.Name, o.WriterID, o.Meeting, false); err != nil {
 		return false, err
 	}
+	if err := c.touchPresence(ctx, tx, o.CalendarID); err != nil {
+		return false, err
+	}
 	if ownTx {
 		return !exists, tx.Commit()
 	}
@@ -509,6 +515,9 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 		return err
 	}
 	if err := c.touchMeeting(ctx, tx, calendarID, name, "", nil, true); err != nil {
+		return err
+	}
+	if err := c.touchPresence(ctx, tx, calendarID); err != nil {
 		return err
 	}
 	if ownTx {

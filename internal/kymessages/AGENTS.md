@@ -10,6 +10,11 @@ contracts are `docs/SUITE-INTEGRATIONS.md` sections B and H; KyMessages implemen
   `kycalendar.meeting.put` (`PUT /api/meetings/{id}`), `kycalendar.meeting.close`
   (`DELETE /api/meetings/{id}`), `kycalendar.chat.open` (`POST /api/suite/chat`, section H). The
   caller passes a fresh event ID per attempt.
+- **Status** (`presence.go`, section P): `kycalendar.presence.busy`, `.me` and `.lookup`, all
+  `POST /api/suite/presence/<calendar|me|lookup>`. `Busy` sends `[]` for no blocks, never null,
+  and at most `MaxBusy` (200); `Lookup` at most `MaxLookup` (50) subjects, keeps only subjects
+  asked for, reads an unknown state as `unknown` and drops `until` except on `in_a_meeting`
+  and `out_of_office`. Bodies carry times and subjects only, never an event's text.
 - **IDs** are `ValidID` (`[A-Za-z0-9_-]{16,64}`); anything else is refused before a request.
   Both signed bodies carry the ID as `"id"` too (`{"id","sub","issuer",...}`), because the
   signature does not cover the path.

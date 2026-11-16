@@ -283,6 +283,9 @@ func apiRows(w *world) map[string]apiRow {
 		"GET /api/resources/requests":       {method: "GET", path: "/api/resources/requests", want: everyday},
 		// Nobody approves the matrix room: every everyday caller is answered as if it were missing.
 		"POST /api/resources/requests/{id}": {method: "POST", path: "/api/resources/requests/rbk_none", body: `{"decision":"accept"}`, want: everyday404},
+		"POST /api/presence":                {method: "POST", path: "/api/presence", body: `{}`, want: everyday}, // 400 before any lookup
+		"GET /api/presence/me":              {method: "GET", path: "/api/presence/me", want: everyday},
+		"PUT /api/presence/me":              {method: "PUT", path: "/api/presence/me", body: `{}`, want: everyday},
 		"GET /api/admin/booking":            {method: "GET", path: "/api/admin/booking", want: adminOnly},
 		"PUT /api/admin/booking":            {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
 		"GET /api/booking-types":            {method: "GET", path: "/api/booking-types", want: everyday},

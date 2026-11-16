@@ -36,7 +36,7 @@ test('settings menu: keyboard, current section and closing', async ({ browser },
   await gear.focus();
   await page.keyboard.press('Enter');
   await expect(menu).toBeVisible();
-  await expect(items).toHaveText(['Account', 'Phones & apps', 'Booking pages', 'Appearance']);
+  await expect(items).toHaveText(['Account', 'Phones & apps', 'Booking pages', 'Status', 'Appearance']);
   await expect(items.first()).toBeFocused();
   // The panel stays inside the window.
   const box = await menu.boundingBox();

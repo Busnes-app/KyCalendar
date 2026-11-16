@@ -27,6 +27,9 @@ func peer(t *testing.T, status int, body string) (*Link, *[]*http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		h := syncauth.FromRequest(r)
 		want := map[string]string{http.MethodPut: EventPut, http.MethodDelete: EventClose, http.MethodPost: EventChat}[r.Method]
+		if ev, ok := map[string]string{PresencePath + "calendar": EventBusy, PresencePath + "me": EventMe, PresencePath + "lookup": EventLookup}[r.URL.Path]; ok {
+			want = ev
+		}
 		if _, err := syncauth.Verify(secret, h, b, syncauth.Options{}); err != nil || h.EventType != want {
 			t.Errorf("%s %s: event %q, signature %v", r.Method, r.URL.Path, h.EventType, err)
 		}
