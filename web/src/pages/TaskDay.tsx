@@ -3,7 +3,7 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, Lightbulb, Plus } from 
 import { browserZone, listCalendars, listEvents, type CalendarInfo, type EventInfo } from '../calendarApi';
 import { listTasks, patchTask, type Status, type Task } from '../tasksApi';
 import { dateOnly, localRFC3339 } from '../taskParse';
-import { clockOf, dueLabel, priorityName, rangeOf } from '../taskRepeat';
+import { clockOf, dueLabel, hourOf, priorityName, rangeOf } from '../taskRepeat';
 import { fit, gaps, hm, suggestions, SNAP, type Block } from '../dayPlan';
 import { estimateText } from '../components/TaskDialog';
 
@@ -12,7 +12,7 @@ const HOUR_PX = 56;
 const DEFAULT_MIN = 30;
 
 export const lengthOf = (t: Task) => t.duration_min || t.estimate_min || DEFAULT_MIN;
-const hourLabel = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric' });
+const hourLabel = (ms: number) => hourOf(new Date(ms));
 const clock = (ms: number) => clockOf(new Date(ms));
 const range = (a: number, b: number) => rangeOf(new Date(a), new Date(b));
 // placedAt is when a task is placed today (a start time on that day), else null.
@@ -361,14 +361,14 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
           const minutes = d?.minutes ?? lengthOf(x.t);
           const prio = priorityName(x.t.priority);
           return (
-            <div key={`t${key(x.t)}`} className="tp-task" role="group" tabIndex={0} data-done={x.t.status === 'COMPLETED' || undefined} data-short={minutes < 45 || undefined}
+            <div key={`t${key(x.t)}`} className="tp-task" role="group" tabIndex={0} data-done={x.t.status === 'COMPLETED' || undefined} data-short={minutes < 30 || undefined}
               aria-label={`${x.t.title}, ${clock(start)}, ${hm(minutes)}${prio ? `, ${prio} priority` : ''}. Arrow keys move it, Shift with arrows changes its length.`}
               style={{ top: y(start), height: Math.max(22, (minutes / 60) * HOUR_PX) }}
               onPointerDown={(e) => { if (!(e.target as Element).closest('button, .tp-resize')) startDrag(e, x, 'move'); }}
               onKeyDown={(e) => keyMove(e, x)} onDoubleClick={() => onOpen(x.t)}>
               <span className="tp-mark" aria-hidden="true">{x.t.status === 'COMPLETED' && <Check size={12} />}</span>
               <button type="button" className="tp-block-title" onClick={() => onOpen(x.t)}>{x.t.title}</button>
-              <span className="tp-block-time">{minutes < 45 ? clock(start) : `${range(start, start + minutes * MIN)} · ${hm(minutes)}`}{prio === 'High' && ' · High'}</span>
+              <span className="tp-block-time">{minutes < 30 ? range(start, start + minutes * MIN) : `${range(start, start + minutes * MIN)} · ${hm(minutes)}${prio === 'High' ? ' · High' : ''}`}</span>
               <span className="tp-resize" aria-hidden="true" onPointerDown={(e) => { e.stopPropagation(); startDrag(e, x, 'resize'); }} />
             </div>
           );
