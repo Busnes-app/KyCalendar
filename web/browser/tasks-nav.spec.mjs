@@ -52,7 +52,10 @@ test('tasks navigation: short section, every view reachable, old choices land on
     await page.evaluate((v) => localStorage.setItem('kycalendar.tasksView', JSON.stringify({ kind: 'smart', id: v })), id);
     await page.reload();
     await expect(page.getByRole('heading', { level: 1, name: row })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: `${row} views` }).getByRole('button', { name: new RegExp(`^${tab}`) })).toHaveAttribute('aria-current', 'page');
+    const chosen = page.getByRole('navigation', { name: `${row} views` }).getByRole('button', { name: new RegExp(`^${tab}`) });
+    await expect(chosen).toHaveAttribute('aria-current', 'page');
+    // The chosen tab is in view inside its row, which scrolls sideways on phones.
+    expect(await chosen.evaluate((el) => { const r = el.getBoundingClientRect(), n = el.parentElement.getBoundingClientRect(); return r.left >= n.left - 1 && r.right <= n.right + 1; }), `${tab} tab in view`).toBe(true);
     await openNav();
     await expect(nav.getByRole('button', { name: new RegExp(`^${row}`) })).toHaveAttribute('aria-current', 'page');
     if (narrow) await page.locator('.kc-picker > summary').click();

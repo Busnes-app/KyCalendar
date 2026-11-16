@@ -66,7 +66,8 @@ test('habit and insight marks hold 3:1', async ({ browser }, testInfo) => {
   const worst = await page.evaluate(() => {
     const rgb = (el, prop) => {
       const c = document.createElement('canvas').getContext('2d');
-      c.fillStyle = getComputedStyle(el)[prop];
+      const v = getComputedStyle(el)[prop];
+      c.fillStyle = prop === 'boxShadow' ? v.match(/^(rgba?|color)\([^)]*\)/)[0] : v;
       c.fillRect(0, 0, 1, 1);
       return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3);
     };
@@ -77,14 +78,16 @@ test('habit and insight marks hold 3:1', async ({ browser }, testInfo) => {
     document.querySelector('.ky-content').append(host);
     const card = rgb(host, 'backgroundColor');
     const out = [];
-    for (const color of ['var(--accent)', '#1f7a6d', '#bf3f18', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75']) {
-      host.innerHTML = `<section class="th" style="--habit: ${color}"><span class="th-day" data-done></span><span class="th-day"></span></section>`;
-      const [done, missed] = [...host.querySelectorAll('.th-day')].map((el) => rgb(el, 'backgroundColor'));
-      out.push([`habit ${color} done/card`, ratio(done, card)], [`habit ${color} done/missed`, ratio(done, missed)]);
+    for (const color of ['var(--accent)', '#1f7a6d', '#1b6f91', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75']) {
+      host.innerHTML = `<section class="th" style="--habit: ${color}"><span class="th-day" data-state="done"></span><span class="th-day" data-state="missed"></span><span class="th-day" data-state="before"></span></section>`;
+      const [d, m, b] = host.querySelectorAll('.th-day');
+      const [done, missed] = [d, m].map((el) => rgb(el, 'backgroundColor'));
+      out.push([`habit ${color} done/card`, ratio(done, card)], [`habit ${color} done/missed`, ratio(done, missed)],
+        [`habit ${color} missed edge/card`, ratio(rgb(m, 'boxShadow'), card)], [`habit ${color} before outline/card`, ratio(rgb(b, 'outlineColor'), card)]);
     }
-    host.innerHTML = '<svg><rect class="ti-bar"/><rect class="ti-bar ti-bar-now"/></svg><span class="ti-bullet"></span>';
-    const [past, now] = [...host.querySelectorAll('rect')].map((el) => rgb(el, 'fill'));
-    out.push(['past week bar/card', ratio(past, card)], ['this week bar/card', ratio(now, card)]);
+    host.innerHTML = '<svg><rect class="ti-bar"/><rect class="ti-bar ti-bar-now"/><rect class="ti-bar ti-bar-zero"/></svg><span class="ti-bullet"></span>';
+    const [past, now, zero] = [...host.querySelectorAll('rect')].map((el) => rgb(el, 'fill'));
+    out.push(['past week bar/card', ratio(past, card)], ['this week bar/card', ratio(now, card)], ['zero week stub/card', ratio(zero, card)]);
     host.remove();
     return out.sort((a, b) => a[1] - b[1]).slice(0, 3);
   });

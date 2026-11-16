@@ -164,7 +164,7 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .ti-bars { display: block; width: 100%; height: auto; overflow: visible; }
 .ti-bar { fill: color-mix(in srgb, var(--accent) 70%, var(--panel)); }
 .ti-bar-now { fill: var(--accent); }
-.ti-bar-zero { fill: var(--line-strong); }
+.ti-bar-zero { fill: var(--ink); }
 .ti-hit { fill: transparent; }
 .ti-base { stroke: var(--line-strong); stroke-width: 1; }
 .ti-label, .ti-value { fill: var(--ink); font-size: 12px; text-anchor: middle; }
@@ -178,6 +178,9 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .ti-table tr[data-now] td:first-child { box-shadow: inset 3px 0 var(--accent); }
 .ti-today { margin-left: .375rem; color: var(--accent); font-size: var(--ky-type-meta); }
 .ti-days td:not(:last-child), .ti-lists td:nth-child(2), .ti-lists td:last-child { width: 1%; white-space: nowrap; }
+.ti-lists td:nth-child(3) { width: 2.5rem; }
+.ti-lists :is(th, td) { padding-inline: .375rem; }
+.ti-lists .ti-meter { min-width: 2.5rem; }
 .ti-bullet { display: block; height: .625rem; border-radius: 999px; overflow: hidden; }
 .ti-bullet > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
 .ti-list, .ti-meter { --list-on: var(--list); }
@@ -188,8 +191,10 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .ti-meter > span { display: block; height: 100%; border-radius: 999px; }
 .ti-late { display: inline-flex; align-items: center; gap: .25rem; color: var(--danger); font-weight: 600; white-space: nowrap; }
 .ti-none { color: var(--ink); }
-.tg .ti-table { max-width: none; }
-.tg-goal { display: grid; gap: var(--ky-space-1); }
+.tg > .card { margin: 0; }
+.tg .ti-table td:not(:first-child) { width: 1%; white-space: nowrap; }
+.tg-list { display: grid; gap: .375rem; }
+.tg-meter { max-width: 12rem; border-radius: 999px; background: color-mix(in srgb, var(--list-on) 18%, var(--panel)); } /* done of done + open */
 .tg-stalled { color: var(--danger); font-weight: 600; }
 /* Habits: a card per habit; its list's colour marks done days (lightened on dark themes), a
    tint of it missed days, an outline the days before it began. */
@@ -198,29 +203,42 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .th { --habit-on: var(--habit); container-type: inline-size; }
 .th-body { display: grid; gap: var(--ky-space-4); }
 :root[data-scheme='dark'] .th { --habit-on: color-mix(in srgb, var(--habit) 60%, #fff); }
-.th-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ky-space-3) var(--ky-space-4); margin: 0; align-content: start; }
+.th-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ky-space-2) var(--ky-space-3); margin: 0; align-content: start; }
 .th-stats > div { display: grid; gap: .125rem; padding-left: var(--ky-space-2); border-left: 3px solid var(--habit-on); }
 .th-stats dt { color: var(--ink); font-size: var(--ky-type-meta); }
-.th-stats dd { margin: 0; color: var(--ink-strong); font-size: 1.375rem; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.th-stats dd { margin: 0; color: var(--ink-strong); font-size: 1.125rem; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .th-chart { display: grid; gap: var(--ky-space-2); min-width: 0; }
-.th-plot { display: grid; grid-template-columns: max-content minmax(0, 32rem); justify-content: start; gap: .5rem; }
+.th-plot { display: grid; grid-template-columns: max-content minmax(0, calc(var(--weeks) * 2.5rem + (var(--weeks) - 1) * 4px)); justify-content: start; gap: .5rem; }
 .th-weekdays { display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px; color: var(--ink); font-size: var(--ky-type-meta); align-items: center; }
-.th-grid { display: grid; grid-template-rows: repeat(7, auto); grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: column; gap: 4px; }
-.th-grid[data-weekly] { grid-template-rows: auto; grid-column: 1 / -1; }
+.th-grid { display: grid; grid-template-rows: repeat(7, auto); grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); grid-auto-flow: column; gap: 4px; }
+.th-plot[data-weekly] { grid-template-columns: minmax(0, calc(var(--weeks) * 2.5rem + (var(--weeks) - 1) * 4px)); }
+.th-grid[data-weekly] { grid-template-rows: auto; }
 .th-grid .th-day { aspect-ratio: 1; }
-.th-day { border-radius: 4px; background: color-mix(in srgb, var(--habit-on) 30%, var(--panel)); }
-.th-day[data-done] { background: var(--habit-on); }
-.th-day[data-before] { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
-.th-day[data-future] { visibility: hidden; } /* days to come are not a state */
+.th-day { border-radius: 4px; background: color-mix(in srgb, var(--habit-on) 18%, var(--panel)); box-shadow: inset 0 0 0 1.5px var(--habit-on); }
+.th-day[data-state='done'] { background: var(--habit-on); box-shadow: none; }
+.th-day[data-state='now'] { background: transparent; } /* open until it ends: the edge only */
+.th-day[data-state='before'] { background: transparent; box-shadow: none; outline: 1px dashed var(--ink); outline-offset: -1px; }
+.th-day[data-state='future'] { visibility: hidden; } /* days to come are not a state */
 .th-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-1) var(--ky-space-3); margin: 0; color: var(--ink); font-size: var(--ky-type-meta); }
 .th-key > span { display: inline-flex; align-items: center; gap: .375rem; }
 .th-key-swatch { display: inline-block; width: 12px; height: 12px; }
 @container (min-width: 40rem) {
   .th-body { grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); align-items: start; gap: var(--ky-space-5); }
-  .th-stats { grid-template-columns: minmax(0, 1fr); }
+  .th-stats { grid-template-columns: minmax(0, 1fr); gap: var(--ky-space-3) var(--ky-space-4); }
+  .th-stats dd { font-size: 1.375rem; }
+  /* A weekly habit's strip is one row: its figures sit in a row above it. */
+  .th-body[data-weekly] { grid-template-columns: minmax(0, 1fr); }
+  .th-body[data-weekly] .th-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
-/* Tabs for the views behind All tasks and Progress. */
-.tk-tabs { margin: calc(-1 * var(--ky-space-2)) 0 0; }
+/* Tabs for the views behind All tasks and Progress; a view's one action sits at the row's end. */
+.tk-tabrow { min-width: 0; display: flex; align-items: center; gap: var(--ky-space-3); margin-top: calc(-1 * var(--ky-space-2)); box-shadow: inset 0 -1px var(--line); }
+.tk-tabs { flex: 1; min-width: 0; margin: 0; }
+.tk-tabrow > button { flex: none; }
+@media (max-width: 480px) { .tk-new-goal > span { display: none; } .tk-new-goal { padding-inline: .75rem; } }
 .tk-tabs .tk-count { margin-left: .25rem; }
 .ti-label-start { text-anchor: start; }
 .ti-label-now { text-anchor: end; }
+/* Phones: the Lists panel keeps its "Tasks" heading, so its + is not a bare mark. */
+@media (max-width: 720px) {
+  .kc-picker-panel .tk-sidebar .kc-sidebar-head h2 { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+}
