@@ -108,3 +108,12 @@
 }
 .td-rows > li.td-earlier { display: block; min-height: 0; }
 .tp-now { z-index: 2; }
+/* Block meta under the title, from the title's left edge; a short block keeps one line. */
+.tp-task .tp-block-time { flex-basis: 100%; padding-left: 1.5rem; }
+.tp-task[data-short] { flex-wrap: nowrap; }
+.tp-task[data-short] .tp-block-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-task[data-short] .tp-block-time { flex: none; padding-left: 0; }
+@media (max-width: 720px) {
+  .tp-cand { padding-inline: 0; border: 0; background: none; }
+  .td-rows > li, .td-unplanned li, .td-earlier details > ul > li { grid-template-columns: 6.5rem minmax(0, 1fr); }
+}

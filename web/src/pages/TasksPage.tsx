@@ -397,7 +397,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       {isToday && day.error && <p role="alert">{day.error}</p>}
       {isToday && model && day.data && (planning
         ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onDone={() => setPlanning(false)} reload={() => void load()} />
-        : <TodayView m={model} data={day.data} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
+        : <TodayView m={model} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
       {!isToday && flat.length === 0 && !error && (
         <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>
           {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Lightbulb, Plus } from 'lucide-react';
 import { browserZone, listCalendars, listEvents, type CalendarInfo, type EventInfo } from '../calendarApi';
-import { listTasks, patchTask, taskStats, type Status, type Task, type TaskStats } from '../tasksApi';
+import { listTasks, patchTask, type Status, type Task } from '../tasksApi';
 import { dateOnly, localRFC3339 } from '../taskParse';
-import { dueLabel, priorityName } from '../taskRepeat';
+import { clockOf, dueLabel, priorityName, rangeOf } from '../taskRepeat';
 import { fit, gaps, hm, suggestions, SNAP, type Block } from '../dayPlan';
 import { estimateText } from '../components/TaskDialog';
 
@@ -12,8 +12,9 @@ const HOUR_PX = 56;
 const DEFAULT_MIN = 30;
 
 export const lengthOf = (t: Task) => t.duration_min || t.estimate_min || DEFAULT_MIN;
-const hourLabel = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' });
-const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' });
+const hourLabel = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric' });
+const clock = (ms: number) => clockOf(new Date(ms));
+const range = (a: number, b: number) => rangeOf(new Date(a), new Date(b));
 // placedAt is when a task is placed today (a start time on that day), else null.
 export function placedAt(t: Task, day: string): number | null {
   if (!t.start || t.start.length === 10) return null;
@@ -26,7 +27,6 @@ interface DayData {
   allDay: EventInfo[];
   open: Task[];
   doneToday: Task[];
-  stats: TaskStats | null;
   calendars: CalendarInfo[];
 }
 
@@ -43,14 +43,14 @@ export function useDay(reloadKey: number) {
       const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
       const cals = await listCalendars();
       const evCals = cals.filter((c) => c.components.includes('VEVENT')).map((c) => c.id);
-      const [events, open, done, stats] = await Promise.all([
+      const [events, open, done] = await Promise.all([
         evCals.length ? listEvents(start, end, browserZone(), evCals) : Promise.resolve([] as EventInfo[]),
-        listTasks({}), listTasks({ status: ['completed'], sort: 'created' }), taskStats().catch(() => null),
+        listTasks({}), listTasks({ status: ['completed'], sort: 'created' }),
       ]);
       const today = dateOnly(start);
       setData({
         events: events.filter((e) => !e.all_day && !e.cancelled), allDay: events.filter((e) => e.all_day),
-        open, doneToday: done.filter((t) => t.completed_at && dateOnly(new Date(t.completed_at)) === today), stats, calendars: cals,
+        open, doneToday: done.filter((t) => t.completed_at && dateOnly(new Date(t.completed_at)) === today), calendars: cals,
       });
       setError('');
     } catch (e) {
@@ -88,7 +88,6 @@ export function useModel(data: DayData | null, now: number) {
     const todays = new Map<string, Task>();
     for (const x of placed) todays.set(key(x.t), x.t);
     for (const t of data.open) if (rank(t) < 2) todays.set(key(t), t);
-    for (const t of data.doneToday) todays.set(key(t), t);
     const all = [...todays.values()];
     const done = all.filter((t) => t.status === 'COMPLETED').length;
     const leftMin = all.filter((t) => t.status !== 'COMPLETED').reduce((n, t) => n + lengthOf(t), 0);
@@ -139,8 +138,8 @@ function DoneBox({ t, onChange }: { t: Task; onChange: (s: Status) => void }) {
 }
 
 // TodayView: progress, the Next card, the day in time order, and what is not planned yet.
-export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
-  m: Model; data: DayData; now: number; listName: (id: string) => string; onOpen: (t: Task) => void; onPlan: () => void; reload: () => void;
+export function TodayView({ m, now, listName, onOpen, onPlan, reload }: {
+  m: Model; now: number; listName: (id: string) => string; onOpen: (t: Task) => void; onPlan: () => void; reload: () => void;
 }) {
   const [error, setError] = useState('');
   const run = (p: Promise<unknown>) => void p.then(reload, (e) => setError(e instanceof Error ? e.message : 'Could not save'));
@@ -166,7 +165,7 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
   return (
     <div className="td">
       <div className="td-progress">
-        <p><strong>{m.done} of {m.total} done</strong> · {hm(m.leftMin)} left{data.stats && <> · {data.stats.done_this_week} done this week{data.stats.streak > 1 && ` · ${data.stats.streak}-day streak`}</>}</p>
+        <p><strong>{m.done} of {m.total} done</strong> · {hm(m.leftMin)} left</p>
         <progress max={Math.max(1, m.total)} value={m.done} aria-label={`${pct}% of today's tasks done`} />
         <div className="td-progress-actions">
           <button type="button" className="btn-secondary btn-sm" onClick={onPlan}>Plan my day</button>
@@ -176,7 +175,7 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
       {next && (
         <section className="td-next" aria-label="Next">
           <div>
-            <p className="td-next-when">{next.start <= now ? 'Now' : 'Next'} · {clock(next.start)} – {clock(next.end)}</p>
+            <p className="td-next-when">{next.start <= now ? 'Now' : 'Next'} · {range(next.start, next.end)}</p>
             <h2>{next.t.title}</h2>
             <p className="td-next-meta">{listName(next.t.calendar_id)}{(() => { const e = m.events.find((x) => x.start >= next.end); return e ? ` · ${e.e.title} at ${clock(e.start)}` : ''; })()}</p>
           </div>
@@ -211,7 +210,7 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
           if (r.kind === 'event') {
             return [line, (
               <li key={`e-${r.e.calendar_id}-${r.e.uid}-${r.e.recurrence_id ?? ''}`} className="td-event">
-                <span className="td-time">{clock(r.at)}–{clock(r.end)}</span>
+                <span className="td-time">{range(r.at, r.end)}</span>
                 <span className="td-event-title"><CalendarDays size={15} aria-hidden="true" /> {r.e.title || 'Busy'}</span>
               </li>
             )];
@@ -353,7 +352,7 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
           <div key={`e${x.e.calendar_id}${x.e.uid}${x.e.recurrence_id ?? ''}`} className="tp-event" style={{ top: y(x.start), height: Math.max(20, y(x.end) - y(x.start)) }}>
             <CalendarDays size={13} aria-hidden="true" />
             <span className="tp-block-title">{x.e.title || 'Busy'}</span>
-            <span className="tp-block-time">{clock(x.start)}–{clock(x.end)}</span>
+            <span className="tp-block-time">{range(x.start, x.end)}</span>
           </div>
         ))}
         {m.placed.map((x) => {
@@ -362,14 +361,14 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
           const minutes = d?.minutes ?? lengthOf(x.t);
           const prio = priorityName(x.t.priority);
           return (
-            <div key={`t${key(x.t)}`} className="tp-task" role="group" tabIndex={0} data-priority={prio.toLowerCase() || undefined} data-done={x.t.status === 'COMPLETED' || undefined}
+            <div key={`t${key(x.t)}`} className="tp-task" role="group" tabIndex={0} data-done={x.t.status === 'COMPLETED' || undefined} data-short={minutes < 45 || undefined}
               aria-label={`${x.t.title}, ${clock(start)}, ${hm(minutes)}${prio ? `, ${prio} priority` : ''}. Arrow keys move it, Shift with arrows changes its length.`}
               style={{ top: y(start), height: Math.max(22, (minutes / 60) * HOUR_PX) }}
               onPointerDown={(e) => { if (!(e.target as Element).closest('button, .tp-resize')) startDrag(e, x, 'move'); }}
               onKeyDown={(e) => keyMove(e, x)} onDoubleClick={() => onOpen(x.t)}>
               <span className="tp-mark" aria-hidden="true">{x.t.status === 'COMPLETED' && <Check size={12} />}</span>
               <button type="button" className="tp-block-title" onClick={() => onOpen(x.t)}>{x.t.title}</button>
-              <span className="tp-block-time">{clock(start)} · {hm(minutes)}{prio === 'High' && ' · High'}</span>
+              <span className="tp-block-time">{minutes < 45 ? clock(start) : `${range(start, start + minutes * MIN)} · ${hm(minutes)}`}{prio === 'High' && ' · High'}</span>
               <span className="tp-resize" aria-hidden="true" onPointerDown={(e) => { e.stopPropagation(); startDrag(e, x, 'resize'); }} />
             </div>
           );
