@@ -524,7 +524,9 @@ func TestGoalsHabitsInsights(t *testing.T) {
 	var in struct {
 		Weeks []struct{ Done int }
 		Lists []struct{ Open, Overdue int }
-		Days  []struct{ FreeMin int `json:"free_min"` }
+		Days  []struct {
+			FreeMin int `json:"free_min"`
+		}
 	}
 	_ = json.Unmarshal(taskReq(t, srv, "GET", "/api/tasks/insights?tz=UTC", "", alice, "").Body.Bytes(), &in)
 	if len(in.Weeks) != 12 || in.Weeks[11].Done != 2 || len(in.Days) != 7 || in.Days[0].FreeMin != 600 {
