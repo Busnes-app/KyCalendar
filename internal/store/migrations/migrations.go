@@ -600,6 +600,7 @@ CREATE TABLE sso_logouts (
 	{Version: 30, Name: "presence_pushes", SQLite: presencePushes("DATETIME"), Postgres: presencePushes("TIMESTAMPTZ")},
 	{Version: 31, Name: "suite_group_calendars", SQLite: suiteGroupCalendars, Postgres: suiteGroupCalendars},
 	{Version: 32, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
+	{Version: 33, Name: "task_insights", SQLite: taskInsights, Postgres: taskInsights},
 }
 
 // suiteGroupCalendars: the group calendar each KyIdentity suite group has here, keyed on the
@@ -770,6 +771,24 @@ CREATE TABLE task_views (
 );
 CREATE INDEX task_views_user ON task_views(user_id);
 `
+
+// taskInsights: each completion names its occurrence, so one seen twice (web, then a phone's
+// sync) is one row; rows from before keep a unique placeholder. Goals are KyCalendar-only.
+const taskInsights = `ALTER TABLE task_completions ADD COLUMN occurrence TEXT NOT NULL DEFAULT '';
+UPDATE task_completions SET occurrence = 'at:' || completed_at;
+CREATE UNIQUE INDEX task_completions_once ON task_completions(user_id, calendar_id, uid, occurrence);
+CREATE TABLE task_goals (
+ id TEXT PRIMARY KEY,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ title TEXT NOT NULL,
+ period TEXT NOT NULL,
+ starts TEXT NOT NULL,
+ ends TEXT NOT NULL,
+ areas TEXT NOT NULL,
+ lists TEXT NOT NULL,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX task_goals_user ON task_goals(user_id);`
 
 // The task search index (title, notes, tags) per calendar object, reconciled at search time.
 // SQLite: FTS5, pruned daily of deleted calendars (a virtual table has no foreign key).

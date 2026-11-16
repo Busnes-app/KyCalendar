@@ -126,6 +126,11 @@ func newWorld(t *testing.T) *world {
 			t.Fatal(err)
 		}
 	}
+	for _, id := range []string{"goal_matrix", "goal_doomed"} {
+		if err := st.TaskGoals().CreateGoal(ctx, &store.TaskGoal{ID: id, UserID: "usr_owner", Title: id, Period: "quarter", Starts: "2026-10-01", Ends: "2026-12-31", CreatedAt: time.Now()}, 50); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, id := range []string{"view_matrix", "view_doomed"} {
 		if err := st.Tasks().CreateView(ctx, &store.TaskView{ID: id, UserID: "usr_owner", Name: id, Query: "{}", CreatedAt: time.Now()}, 50); err != nil {
 			t.Fatal(err)
@@ -297,6 +302,13 @@ func apiRows(w *world) map[string]apiRow {
 		"PATCH /api/tasks/{cal}/{uid}":          {method: "PATCH", path: "/api/tasks/" + w.tasks.ID + "/seed-task", body: `{"status":"COMPLETED"}`, want: groupWrite},
 		"DELETE /api/tasks/{cal}/{uid}":         {method: "DELETE", path: "/api/tasks/" + w.tasks.ID + "/doomed-task", want: groupWrite},
 		"POST /api/tasks/inbox":                 {method: "POST", path: "/api/tasks/inbox", want: everyday},
+		"GET /api/tasks/insights":               {method: "GET", path: "/api/tasks/insights?tz=UTC", want: everyday},
+		"GET /api/tasks/goals":                  {method: "GET", path: "/api/tasks/goals", want: everyday},
+		"POST /api/tasks/goals":                 {method: "POST", path: "/api/tasks/goals", body: `{"title":"M","period":"quarter","starts":"2026-10-01","ends":"2026-12-31"}`, want: everyday},
+		"PUT /api/tasks/goals/{id}":             {method: "PUT", path: "/api/tasks/goals/goal_matrix", body: `{"title":"M","period":"quarter","starts":"2026-10-01","ends":"2026-12-31"}`, want: ownerOnly},
+		"DELETE /api/tasks/goals/{id}":          {method: "DELETE", path: "/api/tasks/goals/goal_doomed", want: ownerOnly},
+		"GET /api/tasks/goals/{id}/progress":    {method: "GET", path: "/api/tasks/goals/goal_matrix/progress?tz=UTC", want: ownerOnly},
+		"GET /api/tasks/{cal}/{uid}/habit":      {method: "GET", path: "/api/tasks/" + w.tasks.ID + "/seed-task/habit?tz=UTC", want: expect{anon: 401, deactivated: 401, admin: 403, reader: allow, editor: allow, manager: allow, owner: 404, nonmember: 404}},
 		"GET /api/tasks/stats":                  {method: "GET", path: "/api/tasks/stats?tz=UTC", want: everyday},
 		"GET /api/tasks/areas":                  {method: "GET", path: "/api/tasks/areas", want: everyday},
 		"PUT /api/tasks/areas":                  {method: "PUT", path: "/api/tasks/areas", body: `[]`, want: everyday},

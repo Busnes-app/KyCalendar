@@ -1,10 +1,12 @@
 package davbackend
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/tasks"
 )
 
 // ErrInvalidResource is an object CalDAV refuses outright, such as one carrying METHOD.
@@ -41,10 +44,35 @@ func WriteMeeting(ctx context.Context, st store.Store, c *store.Calendar, name s
 		return nil, fmt.Errorf("%w: this calendar holds %s", calendar.ErrUnsupportedComponent, strings.Join(c.Components, " and "))
 	}
 	o.WriterID, o.Meeting = writerID, sw
+	var prev *store.CalendarObject
+	if o.Component == ical.CompToDo && writerID != "" && !ifNoneMatch {
+		prev, _ = st.Calendars().GetObject(ctx, c.ID, name)
+	}
 	if _, err := st.Calendars().PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan); err != nil {
 		return nil, err
 	}
+	if o.Component == ical.CompToDo && writerID != "" {
+		logCompletion(ctx, st, writerID, c.ID, o.UID, prev, cal)
+	}
 	return o, nil
+}
+
+// logCompletion records a task finished or reopened by this write, whichever client wrote it,
+// for the writer's streaks and insights. The log is a record, not the task: a failure never
+// fails the write.
+func logCompletion(ctx context.Context, st store.Store, writerID, calendarID, uid string, prev *store.CalendarObject, next *ical.Calendar) {
+	var before *ical.Calendar
+	if prev != nil {
+		before, _ = ical.NewDecoder(bytes.NewReader(prev.Data)).Decode()
+	}
+	ch, ok := tasks.Change(before, next, time.Now())
+	switch {
+	case !ok:
+	case ch.Done:
+		_ = st.Tasks().LogCompletion(ctx, store.TaskCompletion{UserID: writerID, CalendarID: calendarID, UID: uid, Occurrence: ch.Occurrence, At: ch.At})
+	default:
+		_ = st.Tasks().UndoCompletion(ctx, writerID, calendarID, uid, ch.Occurrence)
+	}
 }
 
 // Delete is the one delete path for calendar objects, with plan run inside its transaction and
