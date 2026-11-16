@@ -307,7 +307,7 @@ fingerprint, open_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,
 // futureResourceWindows checks future rules and returns the explicit/finite conflict windows
 // of other live bookings, including stored reservations beyond a shortened horizon.
 func (c *calendarStore) futureResourceWindows(ctx context.Context, q txQuerier, id, skipCal, skipName string, incoming *ical.Calendar, from int64) ([]resource.Span, bool, error) {
-	rows, err := q.QueryContext(ctx, c.q(`SELECT b.open_after, o.data FROM resource_bookings b
+	rows, err := q.QueryContext(ctx, c.q(`SELECT o.data FROM resource_bookings b
 JOIN calendar_objects o ON o.calendar_id = b.calendar_id AND o.name = b.object_name
 WHERE b.resource_id = ? AND b.status <> 'declined' AND (o.last_end IS NULL OR o.last_end > ?) AND NOT (b.calendar_id = ? AND b.object_name = ?)`), id, from, skipCal, skipName)
 	if err != nil {
@@ -316,9 +316,8 @@ WHERE b.resource_id = ? AND b.status <> 'declined' AND (o.last_end IS NULL OR o.
 	defer rows.Close()
 	var out []resource.Span
 	for rows.Next() {
-		var after int64
 		var data []byte
-		if err := rows.Scan(&after, &data); err != nil {
+		if err := rows.Scan(&data); err != nil {
 			return nil, false, err
 		}
 		cal, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
@@ -330,7 +329,7 @@ WHERE b.resource_id = ? AND b.status <> 'declined' AND (o.last_end IS NULL OR o.
 			return nil, false, nil
 		}
 		out = append(out, ruleHits...)
-		spans, ok := resource.ExplicitFutureSpans(cal, max(after, from))
+		spans, ok := resource.ExplicitFutureSpans(cal, from)
 		if !ok {
 			return nil, false, nil
 		}
