@@ -15,7 +15,7 @@ const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString([], { d
 /** Why KyCalendar declined a room, in words. A single event's conflict is its own date, so only a series names dates. */
 function reason(r: ResourceRef, series: boolean): string {
   switch (r.reason) {
-    case 'busy': return series && r.detail ? `already booked on ${r.detail.split(', ').map(day).join(', ')}` : 'already booked';
+    case 'busy': return series && r.detail ? `busy on ${r.detail.split(', ').map(day).join(', ')}` : 'busy then';
     case 'not_allowed': return 'you may not book it';
     case 'disabled': return 'it cannot be booked now';
     case 'beyond_horizon': return r.detail ? `it can be booked only until ${day(r.detail)}` : 'too far ahead';
@@ -145,7 +145,7 @@ export function RoomPicker({ rooms, onChange, start, end, event, repeats, place 
           {failed && <p role="alert">Could not load rooms. Try again in a moment.</p>}
           {!failed && found === null && <p className="kc-hint" role="status">Finding free rooms…</p>}
           {found !== null && (free.length === 0 ? (
-            <p className="kc-hint" role="status">{found.length === 0 ? 'There are no rooms or equipment you can book.' : filtered && matches.length === 0 ? 'Nothing matches these filters.' : filtered ? 'Nothing that matches is free at this time.' : 'Nothing is free at this time.'}</p>
+            <p className="kc-hint" role="status">{found.length === 0 ? 'There are no rooms or equipment you can book.' : matches.length === 0 ? (filtered ? 'Nothing matches these filters.' : 'Everything you can book is on this event already.') : `All ${busy}${filtered ? ' that match' : ''} ${busy === 1 ? 'is' : 'are'} busy at this time.`}</p>
           ) : (
             <ul className="kc-people kc-finder" aria-label="Free rooms and equipment">
               {free.map((r) => (
@@ -164,7 +164,7 @@ export function RoomPicker({ rooms, onChange, start, end, event, repeats, place 
               ))}
             </ul>
           ))}
-          {busy > 0 && <p className="kc-hint">{`${busy}${free.length > 0 ? ' more' : ''} ${busy === 1 ? 'is' : 'are'} busy then.`}</p>}
+          {busy > 0 && free.length > 0 && <p className="kc-hint">{busy === 1 ? '1 more is busy then.' : `${busy} more are busy then.`}</p>}
           {repeats && <p className="kc-hint">For a repeating event, KyCalendar checks every occurrence when you save.</p>}
         </div>
       )}

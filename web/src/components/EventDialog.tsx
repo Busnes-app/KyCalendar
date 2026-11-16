@@ -118,6 +118,8 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
   // Rooms and equipment: the organizer's (or anyone's, before there is one) to change, for the whole series.
   const canRoom = !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
   const [rooms, setRooms] = useState(() => event?.resources ?? []);
+  // Location filled from a room that was then declined would send people to a room the event does not have.
+  const declinedPlace = rooms.find((r) => r.status === 'declined' && form.location.trim() === [r.name, r.location].filter(Boolean).join(', '));
   const roomsChanged = rooms.length !== (event?.resources ?? []).length || rooms.some((r, i) => r.id !== event!.resources![i].id);
   const filesChanged = files.length !== (event?.files ?? []).length || files.some((f, i) => f.url !== event!.files![i].url);
   // Organisation people for the Invite field, after a short pause in typing; free text still works.
@@ -275,7 +277,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {room}
           {invitation}
           <div className="modal-actions">
-            <button type="button" ref={closeBtn} onClick={onClose}>Close</button>
+            <button type="button" className="btn-secondary" ref={closeBtn} onClick={onClose}>Close</button>
           </div>
         </div>
       ) : (
@@ -306,6 +308,12 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           </div>
           <label htmlFor="kc-location">Location <span className="field-optional">(optional)</span></label>
           <input id="kc-location" value={form.location} maxLength={1000} onChange={(e) => set({ location: e.target.value })} />
+          {declinedPlace && (
+            <p role="note" className="kc-declined-place">
+              Location names {declinedPlace.name}, which is declined.{' '}
+              <button type="button" className="btn-secondary btn-sm" onClick={() => set({ location: '' })}>Clear location</button>
+            </p>
+          )}
           {canRoom && scope === 'all' && (
             <RoomPicker
               rooms={rooms}
@@ -321,7 +329,12 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
               place={form.location}
             />
           )}
-          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} place={form.location} series />}
+          {canRoom && scope === 'this' && rooms.length > 0 && (
+            <>
+              <RoomList rooms={rooms} place={form.location} series />
+              <p className="kc-hint">Rooms apply to all events in the series.</p>
+            </>
+          )}
           <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
           {scope === 'all' && (files.length > 0 || drive) && (

@@ -74,10 +74,37 @@ describe('RoomPicker', () => {
     render(<EventDialog calendars={cals} event={ev} initial={emptyForm(new Date(), new Date(), false, 'cal_p')} onDone={onDone} onClose={vi.fn()} />);
     // A single event's conflict is its own date: the answer leads with Declined in weight and names no date.
     expect(screen.getByText('Declined').tagName).toBe('STRONG');
-    expect(screen.getByText('Declined').parentElement!.textContent).toBe('Declined · already booked');
+    expect(screen.getByText('Declined').parentElement!.textContent).toBe('Declined · busy then');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(calls.find((c) => c.method === 'PUT')!.body).not.toHaveProperty('resources');
+  });
+
+  it('flags a Location filled from a declined room, and clears it on request', () => {
+    capture();
+    const ev: EventInfo = {
+      calendar_id: 'cal_p', uid: 'u1', etag: 'e1', title: 'Review', location: 'Fjord, Floor 2', start: '2026-12-07T09:00:00Z', end: '2026-12-07T10:00:00Z',
+      series_start: '2026-12-07T09:00:00Z', series_end: '2026-12-07T10:00:00Z', all_day: false, recurring: false, repeat: { freq: '' }, editable: true,
+      resources: [{ id: 'r1', name: 'Fjord', kind: 'room', location: 'Floor 2', status: 'declined', reason: 'busy' }],
+    };
+    const form = { ...emptyForm(new Date('2026-12-07T09:00:00Z'), new Date('2026-12-07T10:00:00Z'), false, 'cal_p'), location: 'Fjord, Floor 2' };
+    render(<EventDialog calendars={cals} event={ev} initial={form} onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('note').textContent).toMatch(/^Location names Fjord, which is declined\./);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear location' }));
+    expect((screen.getByLabelText(/^Location/) as HTMLInputElement).value).toBe('');
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  it('keeps a Location the user typed even when the room is declined', () => {
+    capture();
+    const ev: EventInfo = {
+      calendar_id: 'cal_p', uid: 'u1', etag: 'e1', title: 'Review', location: 'Café downstairs', start: '2026-12-07T09:00:00Z', end: '2026-12-07T10:00:00Z',
+      series_start: '2026-12-07T09:00:00Z', series_end: '2026-12-07T10:00:00Z', all_day: false, recurring: false, repeat: { freq: '' }, editable: true,
+      resources: [{ id: 'r1', name: 'Fjord', kind: 'room', location: 'Floor 2', status: 'declined', reason: 'busy' }],
+    };
+    const form = { ...emptyForm(new Date('2026-12-07T09:00:00Z'), new Date('2026-12-07T10:00:00Z'), false, 'cal_p'), location: 'Café downstairs' };
+    render(<EventDialog calendars={cals} event={ev} initial={form} onDone={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByText(/which is declined/)).toBeNull();
   });
 
   it('shows the rooms of an event the user cannot edit, read only', () => {
@@ -102,7 +129,7 @@ describe('RoomPicker', () => {
     };
     render(<EventDialog calendars={cals} event={ev} initial={emptyForm(new Date(), new Date(), false, 'cal_p')} onDone={vi.fn()} onClose={vi.fn()} />);
     const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' });
-    expect(screen.getByText('Declined').parentElement!.textContent).toBe(`Declined · already booked on ${day('2026-12-14')}, ${day('2026-12-21')}`);
+    expect(screen.getByText('Declined').parentElement!.textContent).toBe(`Declined · busy on ${day('2026-12-14')}, ${day('2026-12-21')}`);
   });
 });
 

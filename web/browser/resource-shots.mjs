@@ -95,6 +95,10 @@ try {
     await ev('Budget check', at(14, 30), at(15), ['Fjord', 'Portable screen']);
     await ev('Workshop', at(16), at(17), ['Harbour']);
     await ev('Weekly planning', at(17, 30), at(18, 30), ['Harbour'], { repeat: { freq: 'weekly' } });
+    // Fjord taken a week out, then a weekly series wanting it: the series is declined and names that date.
+    const week = (h, m) => new Date(Date.parse(at(h, m)) + 7 * 86400000).toISOString().replace('.000Z', 'Z');
+    await ev('Offsite', week(12, 0), week(12, 30), ['Fjord']);
+    await ev('Weekly 1:1', at(12), at(12, 30), ['Fjord'], { repeat: { freq: 'weekly' } });
     const team = (await (await annAPI.call('GET', '/api/calendars')).json()).find((c) => c.name === 'Studio').id;
     await annAPI.call('POST', '/api/calendars/' + team + '/events', { title: 'Studio offsite', start: at(18, 45), end: at(19, 45), zone: 'UTC', resources: [byName['Fjord']] });
   }
@@ -102,6 +106,7 @@ try {
   await mkdir(out, { recursive: true });
   const browser = await chromium.launch();
   const shoot = async (page, name, width, scheme) => {
+    await page.mouse.move(1, 1);
     await page.waitForTimeout(300);
     // Viewport only: the sidebar is sticky at viewport height, so a stitched full page shows it ending mid-page.
     await page.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`) });
@@ -140,7 +145,7 @@ try {
           await dialog.getByLabel('People').fill('');
           await setTime(at(8), at(9));
           await dialog.locator('#kc-end').blur();
-          await reveal(dialog.getByText('Nothing is free at this time.'));
+          await reveal(dialog.getByText(/^All \d+ are busy at this time\.$/));
           await shoot(page, 'room-finder-none-free', width, colorScheme);
           await setTime(at(14), at(15));
           await dialog.getByRole('button', { name: 'Request Harbour' }).click();
@@ -151,7 +156,8 @@ try {
             const item = page.locator('.fc-list-event', { hasText: title }).first();
             if (!(await item.count())) await page.locator('.fc-next-button').click();
             await item.click();
-            await reveal(page.getByRole('dialog').getByText(text).first());
+            // Scroll stays at 0 so the dialog reads from its title; the rooms fit in the first screen.
+            await page.getByRole('dialog').getByText(text).first().waitFor();
             await shoot(page, name, width, colorScheme);
             const d = page.getByRole('dialog');
             await d.getByRole('button', { name: /^(Cancel|Close)$/ }).first().click();
@@ -162,9 +168,10 @@ try {
           await open('Board meeting', 'Rooms and equipment', 'event-long-room');
           await open('Studio offsite', 'Rooms and equipment', 'event-read-only');
           await open('Weekly planning', 'Waiting for approval', 'event-repeating-pending');
+          await open('Weekly 1:1', 'Declined', 'event-declined-series');
           const pending = page.locator('.fc-list-event', { hasText: 'Design review' });
           await pending.click();
-          await reveal(page.getByRole('dialog').getByText('Waiting for approval'));
+          await page.getByRole('dialog').getByText('Waiting for approval').waitFor();
           await shoot(page, 'event-pending-room', width, colorScheme);
           page.once('dialog', (d) => void d.accept());
           await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
@@ -191,6 +198,14 @@ try {
             await ap.getByText(ready).first().waitFor();
             await shoot(ap, name, width, colorScheme);
             if (who === 'ann') {
+              // An approver's navigation has Requests too; Calendars must stay reachable beside it.
+              await ap.goto('/#/calendar');
+              await ap.locator('.fc').waitFor();
+              await shoot(ap, 'approver-calendar', width, colorScheme);
+              await ap.locator('.ky-nav').first().evaluate((e) => e.scrollTo({ left: e.scrollWidth }));
+              await shoot(ap, 'approver-calendar-nav-end', width, colorScheme);
+              await ap.goto('/#/room-requests');
+              await ap.getByText(ready).first().waitFor();
               await ap.getByText('Repeats').first().evaluate((e) => e.scrollIntoView({ block: 'center' }));
               await shoot(ap, 'room-requests-repeating', width, colorScheme);
               await ap.getByRole('button', { name: 'Accept' }).last().click();

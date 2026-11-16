@@ -238,6 +238,9 @@ dialog.kc-dialog .modal-actions { position: sticky; bottom: calc(var(--space-5) 
   .kc-room > button { grid-column: 2; grid-row: 1 / span 2; }
 }
 .kc-room-finder { display: grid; gap: var(--ky-space-2); padding: var(--ky-space-3) var(--ky-space-4) var(--ky-space-4); border: 1px solid var(--line); border-radius: var(--radius-md); }
+@media (max-width: 720px) { .kc-room-finder { padding: var(--ky-space-3); } }
+.kc-declined-place { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-2); }
+dialog.kc-dialog > div > h3.kc-label { margin-top: var(--ky-space-3); }
 .kc-finder-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-2); }
 .kc-finder-title { font-size: var(--ky-type-body); font-weight: 600; color: var(--ink-strong); }
 .kc-room-finder .kc-pair { align-items: start; }

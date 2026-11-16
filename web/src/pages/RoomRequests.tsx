@@ -47,7 +47,7 @@ export default function RoomRequests() {
       ) : requests.length === 0 ? (
         <EmptyState title="No requests waiting.">Requests wait here until you accept or decline them. Until then they hold the time.</EmptyState>
       ) : (
-        requests.map((r, i) => (
+        requests.map((r) => (
           <article key={r.id} className="card" aria-labelledby={`req-${r.id}`}>
             <div className="card-header">
               <div>
@@ -62,13 +62,13 @@ export default function RoomRequests() {
               {r.occurrences > 1 && (
                 <>
                   <dt>Repeats</dt>
-                  <dd>{`${r.occurrences} times, the last ${when(r.last)}`}</dd>
+                  <dd>{`${r.occurrences} times, until ${new Date(r.last.start).toLocaleDateString([], { dateStyle: 'medium' })}`}</dd>
                 </>
               )}
             </dl>
             <div className="kc-request-actions">
               <button type="button" className="btn-secondary" disabled={busy === r.id} onClick={() => void decide(r, 'decline')}>Decline</button>
-              <button type="button" className={i === 0 ? undefined : 'btn-secondary'} disabled={busy === r.id} onClick={() => void decide(r, 'accept')}>Accept</button>
+              <button type="button" className="btn-secondary" disabled={busy === r.id} onClick={() => void decide(r, 'accept')}>Accept</button>
             </div>
             </div>
           </article>
