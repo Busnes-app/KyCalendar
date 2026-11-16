@@ -17,6 +17,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
+	"github.com/Busnes-app/kycalendar/internal/resource"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -197,6 +198,9 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 				if _, seen := internal[a.Address]; seen {
 					continue
 				}
+				if _, ok := resource.IDOf(a.Address); ok {
+					continue
+				}
 				_, err := s.Store.Users().CalendarUser(ctx, a.Address.Email())
 				if err != nil && !errors.Is(err, store.ErrNotFound) {
 					return func([]byte) ([]byte, []*store.OutboxMessage, error) { return nil, nil, err }
@@ -232,6 +236,9 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 				return nil, nil, err
 			}
 			for _, to := range m.Recipients {
+				if _, ok := resource.IDOf(to); ok {
+					continue // KyCalendar answers for its resources in the write itself
+				}
 				sum := sha256.Sum256([]byte(writer.ID + "\x00" + m.Method + "\x00" + string(to) + "\x00" + string(body)))
 				rows = append(rows, &store.OutboxMessage{ID: "obx_" + uuid.NewString(), DedupeKey: hex.EncodeToString(sum[:]),
 					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body, CountInviteBytes: m.Method == itip.MethodRequest && internal[to]})

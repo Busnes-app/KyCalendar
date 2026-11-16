@@ -16,6 +16,7 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 - Scheduling (`Scheduler`, `scheduling.go`; nil while scheduling is off (`KYCALENDAR_SCHEDULING`, decided before serving), and then every write is exactly an unscheduled one):
   - `Plan(writer, newCal)` is the `store.Planner` that `Write` and `Delete` run inside their transaction. It diffs the previous bytes with `itip.Outgoing`, raises SEQUENCE on an organizer's significant change (`itip.BumpSequence`, the only change the server makes to a client's object), and queues one outbox row per recipient.
   - A user's calendar user address is `mailto:` plus their email. A writer with no email, or an administrator, schedules nothing.
+  - Resource addresses (`resource.IDOf`) are never recipients: the store answers for them in the write itself.
   - When the stored bytes differ from the PUT body, CalDAV returns no ETag so the client refetches. The JSON API still returns the stored ETag.
   - `DeliverDue` (`cmd/server`, every 5 s) resolves each recipient with `store.CalendarUser` at delivery time. Internal recipients:
     - REQUEST writes `itip.AttendeeCopy` into their existing copy, or a new object `<hex of the UID hash>.ics` in their default calendar (their first personal event calendar when `default` is gone or holds no events).

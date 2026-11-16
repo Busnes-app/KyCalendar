@@ -18,6 +18,14 @@ the server, your user name and the password once; revoke it there at any time.
 Enter the app password where the client asks for a password. Per-user caps are in
 [Calendar limits](ACCOUNTS-AND-GROUPS.md#calendar-limits).
 
+## Book a room from a phone or desktop app
+
+Add the room's calendar address as an attendee (an administrator copies it from Rooms and
+equipment; it looks like `resource-<id>@kycalendar.invalid`). KyCalendar answers for the room
+when the event is saved: Accepted, Declined, or Needs action while an approver decides. Your
+app shows the answer after its next sync. The web calendar also says why a room was declined.
+Nothing is ever mailed to a room address.
+
 ## Connect an AI agent
 
 AI agents such as OpenClaw and Hermes Agent reach your personal calendars over MCP at

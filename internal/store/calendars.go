@@ -349,6 +349,10 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	if err != nil {
 		return false, err
 	}
+	book, err := c.settleResources(ctx, tx, o, rows)
+	if err != nil {
+		return false, err
+	}
 	sum := sha256.Sum256(o.Data)
 	o.ETag = hex.EncodeToString(sum[:])
 	var other string
@@ -433,6 +437,11 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 			return false, ErrUIDConflict
 		}
 		return false, err
+	}
+	if book != nil {
+		if err := book(); err != nil {
+			return false, err
+		}
 	}
 	if err := c.writeCancellationReserve(ctx, tx, o, reserve); err != nil {
 		return false, err

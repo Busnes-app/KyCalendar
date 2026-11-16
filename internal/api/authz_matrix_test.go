@@ -52,6 +52,8 @@ var (
 	groupManage  = expect{anon: 401, deactivated: 401, admin: 403, manager: allow, reader: 403, editor: 403, owner: 404, nonmember: 404}
 	groupWrite   = expect{anon: 401, deactivated: 401, admin: 403, editor: allow, manager: allow, reader: 403, owner: 404, nonmember: 404}
 	ownerOnly    = expect{anon: 401, deactivated: 401, admin: 403, owner: allow, reader: 404, editor: 404, manager: 404, nonmember: 404}
+	// everyday404: an everyday route whose target no caller may reach (answered as missing).
+	everyday404 = expect{anon: 401, deactivated: 401, admin: 403, owner: 404, reader: 404, editor: 404, manager: 404, nonmember: 404}
 	// SCIM takes only its bearer token: a session cookie is never enough.
 	scimOnly = expect{anon: 401, deactivated: 401, admin: 401, owner: 401, reader: 401, editor: 401, manager: 401, nonmember: 401}
 	// KyPost's routes take only its signature, and are absent (404) until KyPost is configured,
@@ -276,6 +278,11 @@ func apiRows(w *world) map[string]apiRow {
 		"GET /api/admin/resources":          {method: "GET", path: "/api/admin/resources", want: adminOnly},
 		"POST /api/admin/resources":         {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
 		"PUT /api/admin/resources/{id}":     {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
+		"GET /api/resources":                {method: "GET", path: "/api/resources", want: everyday},
+		"GET /api/resources/{id}/busy":      {method: "GET", path: "/api/resources/" + matrixResource + "/busy?start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
+		"GET /api/resources/requests":       {method: "GET", path: "/api/resources/requests", want: everyday},
+		// Nobody approves the matrix room: every everyday caller is answered as if it were missing.
+		"POST /api/resources/requests/{id}": {method: "POST", path: "/api/resources/requests/rbk_none", body: `{"decision":"accept"}`, want: everyday404},
 		"GET /api/admin/booking":            {method: "GET", path: "/api/admin/booking", want: adminOnly},
 		"PUT /api/admin/booking":            {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
 		"GET /api/booking-types":            {method: "GET", path: "/api/booking-types", want: everyday},

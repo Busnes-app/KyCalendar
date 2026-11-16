@@ -23,6 +23,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kymessages"
+	"github.com/Busnes-app/kycalendar/internal/resource"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -67,6 +68,9 @@ type eventView struct {
 	Organizer string         `json:"organizer,omitempty"`
 	Attendees []attendeeView `json:"attendees,omitempty"`
 	MyStatus  string         `json:"my_status,omitempty"`
+	// Resources are the rooms and equipment on the event, with KyCalendar's answer for each;
+	// they are not in Attendees.
+	Resources []resourceRef `json:"resources,omitempty"`
 	// Cancelled: STATUS:CANCELLED, such as an invitation the organizer called off.
 	Cancelled bool `json:"cancelled,omitempty"`
 	// Video meetings: MeetingURL is the KyMessages room link (the Join button; the description
@@ -142,6 +146,10 @@ func instanceView(c *store.Calendar, o *store.CalendarObject, repeat repeatView,
 		v.Cancelled = true
 	}
 	for _, a := range itip.AttendeesOf(in.Event) {
+		if id, ok := resource.IDOf(a.Address); ok {
+			v.Resources = append(v.Resources, resourceRef{ID: id, Status: answerOf(a.Status)})
+			continue
+		}
 		v.Attendees = append(v.Attendees, attendeeView{Email: a.Address.Email(), Status: a.Status})
 	}
 	if u := calendar.Conference(in.Event); kymessages.ValidURL(u) {
@@ -267,6 +275,7 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 		}
 		return true
 	}
+	res := s.resourceDescriber()
 	for _, c := range cals {
 		if tooSlow() {
 			return nil, errTooSlow
@@ -313,6 +322,9 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 			}
 			for _, in := range insts {
 				v := instanceView(c, o, repeat, zone, series, in, viewer, role)
+				if err := res.describe(ctx, c.ID, o.Name, v.Resources); err != nil {
+					return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load the rooms"}
+				}
 				if m := meetings[o.Name]; m != nil && v.Editable {
 					v.Meeting, v.MeetingError, v.GuestsError = true, m.LastError, m.GuestsError
 					if _, ok := guestsOf[m.ID]; !ok {
@@ -383,6 +395,8 @@ type eventBody struct {
 	Meeting *bool `json:"meeting"`
 	// Files replaces the event's file links; absent keeps them, [] removes them.
 	Files *[]fileView `json:"files"`
+	// Resources replaces the event's rooms and equipment (IDs); absent keeps them, [] removes them.
+	Resources *[]string `json:"resources"`
 }
 
 const maxFiles = 20
@@ -597,7 +611,7 @@ func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	uid := uuid.NewString()
 	cal := calendar.NewEvent(uid, in, time.Now())
-	if apiErr := s.applyAttendees(r.Context(), cal, b.Attendees); apiErr != nil {
+	if apiErr := s.applyPeople(r.Context(), cal, b); apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
 	}
@@ -692,8 +706,8 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	// Who is invited is one list for the whole series: the scheduler sends each person the
 	// series, so a per-occurrence change would reach every occurrence.
-	if b.Scope == "this" && (b.Attendees != nil || b.Meeting != nil || b.Files != nil) {
-		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests, files and the video meeting can only be changed for all events", code: "attendees_series_only"})
+	if b.Scope == "this" && (b.Attendees != nil || b.Meeting != nil || b.Files != nil || b.Resources != nil) {
+		s.writeAPIError(w, &apiError{status: http.StatusBadRequest, msg: "Guests, rooms, files and the video meeting can only be changed for all events", code: "attendees_series_only"})
 		return
 	}
 	files, apiErr := eventFiles(b.Files)
@@ -708,7 +722,7 @@ func (s *Server) handleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	if files != nil {
 		calendar.SetFiles(cal, files)
 	}
-	if apiErr := s.applyAttendees(r.Context(), cal, b.Attendees); apiErr != nil {
+	if apiErr := s.applyPeople(r.Context(), cal, b); apiErr != nil {
 		s.writeAPIError(w, apiErr)
 		return
 	}
