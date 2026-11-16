@@ -13,6 +13,7 @@ import { PersonalSettings, settingsSections } from './pages/PersonalSettings';
 import GroupCalendars from './pages/GroupCalendars';
 import Groups from './pages/Groups';
 import People from './pages/People';
+import Resources from './pages/Resources';
 import SignIn from './pages/SignIn';
 import './styles/theme.css';
 import './styles/ui.css';
@@ -26,7 +27,7 @@ import { secureFetch } from './api';
 // FullCalendar is the bulk of the bundle; load it only for the calendar (same-origin chunk).
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 
-const ADMIN_TABS = ['dashboard', 'people', 'groups', 'group-calendars', 'signin', 'scim', 'backup', 'server-settings'];
+const ADMIN_TABS = ['dashboard', 'people', 'groups', 'group-calendars', 'resources', 'signin', 'scim', 'backup', 'server-settings'];
 // Pages that became Settings sections keep their old addresses.
 const MOVED: Record<string, string> = {
   settings: 'settings/account',
@@ -177,6 +178,7 @@ export const App: React.FC = () => {
         {activeTab === 'people' && <People me={user.id} />}
         {activeTab === 'groups' && <Groups />}
         {activeTab === 'group-calendars' && <GroupCalendars />}
+        {activeTab === 'resources' && <Resources />}
         {activeTab === 'signin' && <SignIn />}
         {activeTab === 'scim' && <SCIMAdmin />}
         {activeTab === 'backup' && <Backup />}

@@ -126,6 +126,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 
 - Sender and instance byte admission include bounded future cancellation capacity for admitted organizer meetings. Ordinary writes cannot spend it; cancelling converts it into the existing asynchronous queue, including at full ordinary usable capacity. The existing 507 `quota` response covers insufficient admission; no route, setting or response field is added.
 
+- Rooms and equipment (`admin_resources.go`): `GET /api/admin/resources` lists every resource with its address, `group_refs` and `approver_refs`; `POST` and `PUT /{id}` take the whole definition as strict JSON of at most 16 KiB (400 `invalid_<field>`, 409 `name_taken`/`unknown_group`/`bad_approver`, 404 for an unknown ID). Admin only; audit details never carry names.
 - Booking pages (`booking.go`; spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`):
   - `GET /api/admin/booking` (admin) `{allowed, available, reason, prerequisite}`; `PUT` (admin + step-up) `{allowed}`, 409 `kypost_unpaired`/`scheduling_off` when turning on, audits `admin.booking_pages` `from= to=` on a change.
   - `GET /api/booking-types` (everyday) `{available, reason, reason_text, meetings, types}`; a type's `meeting_room` turning on needs `meetingsFor` (409 `meetings_off`); `POST` creates (400 `invalid`, 409 `limit` at 20, 409 `<reason>` when enabling while unavailable); `PUT /{id}`, `POST /{id}/rotate`, `DELETE /{id}` reach only the caller's own types (404 otherwise).

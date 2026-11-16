@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { LicenseFooter } from './LicenseFooter';
 import { AppRail, type SuiteApp } from './AppRail';
 import { SettingsMenu } from './SettingsMenu';
-import { LogOut, Users, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, Server } from 'lucide-react';
+import { LogOut, Users, LayoutDashboard, Archive, CalendarDays, UsersRound, UserRound, KeyRound, Server, DoorOpen } from 'lucide-react';
 
 interface AppHeaderProps {
   appName: string;
@@ -54,6 +54,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ appName, activeTab, onTabC
         { id: 'people', label: 'People', icon: UserRound },
         { id: 'groups', label: 'Groups', icon: UsersRound },
         { id: 'group-calendars', label: 'Group calendars', icon: CalendarDays },
+        { id: 'resources', label: 'Rooms and equipment', icon: DoorOpen },
         { id: 'signin', label: 'Sign-in', icon: KeyRound },
         { id: 'scim', label: 'Directory & SCIM', icon: Users },
         { id: 'backup', label: 'Backups', icon: Archive },

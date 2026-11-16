@@ -117,6 +117,17 @@ how, why not, and whether scheduling is on.
 
 Names are unique ignoring case. If your identity provider sends a group whose name a local group already has, KyCalendar refuses it and the local group shows a warning: rename the local group and the next sync creates the synced one.
 
+## Rooms and equipment
+
+**Rooms and equipment** defines what people can book by adding it to an event. Each has a kind
+(room or equipment), a name, a location, a capacity and equipment tags people filter by; who may
+book it (everyone, or only members of chosen groups); whether requests are accepted
+automatically when it is free or wait for approvers (active everyday people); the longest
+booking; and how many days ahead it can be booked. Disabling keeps its bookings; nobody can book
+it again until you enable it. There is no delete. The card shows the calendar address CalDAV
+clients use to invite it. The design is
+`docs/superpowers/specs/2026-11-15-resource-booking-design.md`.
+
 ## Calendar limits
 
 Native clients sync over CalDAV at `/dav/` with an app password. Each user is capped, and so is

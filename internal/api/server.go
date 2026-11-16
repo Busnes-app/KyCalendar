@@ -445,6 +445,11 @@ func (s *Server) routes() {
 
 	// Booking pages (booking.go). Members manage their own types; the /api/book routes are
 	// public, need the pre-session CSRF token on every POST, and answer 404 while unavailable.
+	// Rooms and equipment (admin_resources.go): administrators define them; members book them
+	// by adding them to an event.
+	s.handle("GET /api/admin/resources", s.requireAdmin(s.handleListResources))
+	s.handle("POST /api/admin/resources", s.requireAdmin(s.handleCreateResource))
+	s.handle("PUT /api/admin/resources/{id}", s.requireAdmin(s.handleUpdateResource))
 	s.handle("GET /api/admin/booking", s.requireAdmin(s.handleGetBookingAdmin))
 	s.handle("PUT /api/admin/booking", s.requireAdmin(s.handleSetBookingAdmin))
 	s.handle("GET /api/booking-types", s.requireEveryday(s.handleListBookingTypes))
