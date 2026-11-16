@@ -145,7 +145,7 @@ export function GoalsView({ lists, areas }: { lists: CalendarInfo[]; areas: Area
             <tbody>
               {(progress[g.id]?.lists ?? []).map((l) => (
                 <tr key={l.list_id}>
-                  <td>{l.name}{l.stalled && <span className="tg-stalled"> · No progress in 14 days</span>}</td>
+                  <td>{lists.find((c) => c.id === l.list_id)?.name ?? l.name}{l.stalled && <span className="tg-stalled"> · No progress in 14 days</span>}</td>
                   <td>{l.done}</td><td>{l.open}</td>
                   <td>{l.last_done ? new Date(l.last_done).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'}</td>
                 </tr>
