@@ -268,7 +268,17 @@ func SeriesFingerprint(cal *ical.Calendar) string {
 
 // LaterOverrides hashes the timing of the RECURRENCE-ID components that start, or replace an
 // occurrence, at or after after (unix seconds): the overrides a series reserves past its horizon.
+// An override that keeps its occurrence's start and the rule's length (an attendee's answer), or
+// cancels it (which only frees time), is left out: it changes no reservation.
 func LaterOverrides(cal *ical.Calendar, after int64) string {
+	var ruleLen time.Duration
+	ruleOK := false
+	for _, c := range cal.Children {
+		if c.Name == ical.CompEvent && c.Props.Get(ical.PropRecurrenceID) == nil {
+			ruleLen, ruleOK = componentLength(c)
+			break
+		}
+	}
 	later := &ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar, Props: cal.Props}}
 	for _, c := range cal.Children {
 		if c.Name != ical.CompEvent || c.Props.Get(ical.PropRecurrenceID) == nil {
@@ -276,9 +286,16 @@ func LaterOverrides(cal *ical.Calendar, after int64) string {
 		}
 		rid, err1 := c.Props.DateTime(ical.PropRecurrenceID, time.UTC)
 		start, err2 := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
-		if err1 != nil || err2 != nil || rid.Unix() >= after || start.Unix() >= after {
-			later.Children = append(later.Children, c)
+		if err1 == nil && err2 == nil && rid.Unix() < after && start.Unix() < after {
+			continue
 		}
+		if err1 == nil && err2 == nil && Cancelled(c) {
+			continue
+		}
+		if l, ok := componentLength(c); err1 == nil && err2 == nil && ok && ruleOK && start.Equal(rid) && l == ruleLen {
+			continue
+		}
+		later.Children = append(later.Children, c)
 	}
 	return Fingerprint(later)
 }

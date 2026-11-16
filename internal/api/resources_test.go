@@ -613,6 +613,18 @@ func TestRoomKeptWhenAnAttendeeAnswersOneOccurrence(t *testing.T) {
 			t.Fatalf("slot %s is free after the answer", sl[0])
 		}
 	}
+	// The same for an answer to an occurrence past the horizon (60 days), which the booking
+	// holds only through its open series.
+	s4, e4 := slot(1+7*12, 9)
+	farAnswer := "RECURRENCE-ID:" + icsTime(s4) + "\r\nDTSTART:" + icsTime(s4) + "\r\nDTEND:" + icsTime(e4) + "\r\nSUMMARY:Weekly\r\n"
+	answered = strings.Replace(roomICS("weekly", room, master, override, farAnswer), "PARTSTAT=NEEDS-ACTION:mailto:bob", "PARTSTAT=ACCEPTED:mailto:bob", 2)
+	putRaw(t, st, aliceCal, "weekly.ics", answered, "")
+	if st, reason, _ := roomStatus(t, srv, alice, "weekly"); st != "accepted" {
+		t.Fatalf("an answer past the horizon released the room: %s %s", st, reason)
+	}
+	if free := finderFree(t, srv, bob, s4, e4, "", ""); free[room] {
+		t.Fatal("the answered occurrence past the horizon is free")
+	}
 	// Moving that occurrence is a change the booking does not hold: decided again, and an
 	// unknown writer may not book.
 	s3, e3 := slot(8, 13)
