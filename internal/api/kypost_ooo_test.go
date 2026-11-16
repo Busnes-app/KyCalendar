@@ -236,3 +236,12 @@ func TestKyPostOutOfOfficeRefusals(t *testing.T) {
 		t.Error("never rate limited")
 	}
 }
+
+// Without a linked KyPost the route does not exist.
+func TestKyPostOutOfOfficeUnpaired(t *testing.T) {
+	srv, _, _ := setupTestServer(t)
+	in := kypost.OutOfOfficeRequest{User: kypost.User{Sub: "sub-bob", Issuer: "https://id.example"}, Revision: 1}
+	if r := signedPost(t, srv, oooPath, kypost.EventOOO, "unpaired-1", in); r.Code != 404 {
+		t.Fatalf("unpaired: %d %s", r.Code, r.Body.String())
+	}
+}
