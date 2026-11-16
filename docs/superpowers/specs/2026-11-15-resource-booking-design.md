@@ -25,7 +25,7 @@ KyCalendar answers for the resource in the same database transaction that stores
 
 ## Data
 
-Migration 28 adds four tables.
+Migrations 28 (definitions) and 29 (bookings) add five tables.
 
 - `resources`: `id` (32 hex), `kind` (`room` or `equipment`), `name` (unique ignoring case),
   `location`, `capacity` (0 = not stated), `tags` (JSON list), `audience` (`everyone` or
@@ -33,11 +33,11 @@ Migration 28 adds four tables.
   `created_at`, `updated_at`.
 - `resource_groups (resource_id, group_id)` and `resource_approvers (resource_id, user_id)`,
   cascading on both sides. Deleting a group drops it from every resource.
-- `resource_bookings`: one row per resource per event object: `resource_id`,
+- `resource_bookings` (migration 29): one row per resource per event object: `resource_id`,
   `calendar_id`, `object_name` (cascading from `calendar_objects`, so deleting the event or its
   calendar releases the room), `booked_by`, `status` (`accepted`, `pending`, `declined`),
-  `reason`, `fingerprint`, `decided_by`, times.
-- `resource_busy`: the busy spans of accepted and pending bookings (unix seconds), cascading
+  `reason`, `detail`, `fingerprint`, `decided_by`, `open_after`, times.
+- `resource_busy`: the busy spans up to the horizon of accepted and pending bookings (unix seconds), cascading
   from the booking.
 
 A resource is never deleted. **Disabling** keeps every booking and busy row; new bookings and
@@ -54,24 +54,28 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    properties (DTSTART, DTEND, DURATION, RRULE, RDATE, EXDATE, RECURRENCE-ID, STATUS of every
    VEVENT). An existing booking with the same fingerprint keeps its answer. Editing the title,
    description or other attendees never re-decides the room, and never re-declines a past one.
-3. Otherwise decide, in order: unknown resource or disabled (`disabled`); writer may not book
-   (`not_allowed`); the series has no end or ends after now + horizon (`beyond_horizon`); the
-   event is over (`past`); more than 1000 occurrences (`too_many_occurrences`); an occurrence
-   longer than the maximum (`too_long`); an occurrence overlapping another booking's busy span
-   (`busy`, with the conflicting dates). Cancelled occurrences (STATUS:CANCELLED) need no room.
-   Passing all: `accepted`, or `pending` under the approver policy.
+3. Otherwise decide, in order: unknown resource (`unknown`) or disabled (`disabled`); the event
+   is over (`past`); a single event ending after now + horizon, or a series whose first
+   occurrence is past it (`beyond_horizon`); more than 1000 occurrences within the horizon
+   (`too_many_occurrences`); an occurrence longer than the maximum (`too_long`); the writer may
+   not book it (`not_allowed`); an occurrence overlapping another booking (`busy`, with the
+   conflicting dates). Cancelled occurrences (STATUS:CANCELLED) need no room. Passing all:
+   `accepted`, or `pending` under the approver policy.
 4. Write the answer: the booking row, the busy rows (accepted and pending hold the slot), and
    the resource attendee rewritten to `CUTYPE=ROOM` (room) or `RESOURCE` (equipment),
    `CN=<name>`, `ROLE=NON-PARTICIPANT` and `PARTSTAT`, without RSVP. Bookings of resources the
    event no longer names are deleted.
 
-**Recurring events.** Every occurrence from now to the end of the series is checked, and the
-whole series must end within the horizon. If any occurrence conflicts, the whole series is
-declined and the reason lists up to five conflicting dates. This matches Exchange's default
-(`EnforceSchedulingHorizon`): a series that runs past the horizon, including one with no end,
-is declined (`beyond_horizon`, naming the last date allowed). It is the safest choice: a
-booking covers every occurrence it reserves, so a later booking can never land on an occurrence
-nobody checked. A resource on only some occurrences is booked for the whole series.
+**Recurring events.** Every occurrence from now to the horizon is checked. If any conflicts, the
+whole series is declined and the reason lists up to five conflicting dates. A series may run past
+the horizon, and with no end (the web's repeats have none): once accepted it reserves every later
+occurrence too. Its busy rows stop at the horizon, and the booking records where (`open_after`);
+every later check and the finder expand such a series past that point, so a later booking that
+lands on one of its occurrences is declined. This is how an accepted series sits in an Exchange
+room calendar, and it keeps the guarantee that two events never hold the same slot. Declining
+every open-ended series (Exchange's `EnforceSchedulingHorizon`) was considered and rejected: the
+web editor cannot set an end date, so no repeating meeting could have a room. A resource on only
+some occurrences is booked for the whole series.
 
 **Moving and cancelling.** A move changes the fingerprint, so the room is decided again, with
 the event's own busy rows excluded. A move into a busy slot is declined. Deleting the event
@@ -142,7 +146,8 @@ change.
 ## Owner questions (defaults applied)
 
 1. Approvers see the organizer's name and times, not the event title. Default: no title.
-2. A series that runs past the horizon, including an open-ended weekly meeting, is declined.
-   Default: decline (Exchange's default), the safest choice.
+2. An accepted series with no end keeps its room for every later occurrence, as in Exchange.
+   Default: keep (declining open-ended series would make repeating meetings unbookable from the
+   web). Alternative: decline any series that runs past the horizon.
 3. Who may book is checked against whoever writes the change, so an editor of a group calendar
    who may not book a room cannot move that room's booking. Default: the writer.
