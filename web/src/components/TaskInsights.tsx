@@ -9,6 +9,7 @@ import {
 import { dateOnly } from '../taskParse';
 import { rangeOf } from '../taskRepeat';
 import { hm } from '../dayPlan';
+import { habitGrid, type HabitState } from '../habitGrid';
 
 const workday = () => { const d = new Date(); return rangeOf(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8), new Date(d.getFullYear(), d.getMonth(), d.getDate(), 18)); };
 const shortDate = (d: string) => new Date(`${d}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
@@ -106,59 +107,40 @@ export function InsightsView({ lists, colors, open, overdue }: { lists: Calendar
   );
 }
 
-// HabitPanel: a habit's numbers and its days from the week it began, at most 12 weeks (one
-// column per week, Monday on top; a weekly habit is one cell per week). Done cells take the
-// habit's colour, missed ones a tint of it inside a full-colour edge, and days of the first week
-// before the habit began a dashed outline. The same facts are in words.
+// HabitPanel: a habit's numbers and its grid (`habitGrid`; Monday on top, one column per week,
+// a weekly habit one cell per week). Done cells take the habit's colour, missed ones a tint of it
+// inside a full-colour edge, the current day or week while open only the edge, and days of the
+// first week before the habit began a dashed outline. The same facts are in words.
 export function HabitPanel({ task, color = 'var(--accent)' }: { task: Task; color?: string }) {
   const [h, setH] = useState<Habit | null>(null);
   useEffect(() => { void habit(task).then(setH, () => setH(null)); }, [task]);
   if (!h) return null;
-  const done = new Set(h.days);
-  const today = new Date();
-  const todayKey = dateOnly(today);
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
-  // The habit began at the earlier of its creation and its first completion.
-  const began = [task.created ? dateOnly(new Date(task.created)) : todayKey, ...h.days].sort()[0];
-  const b = new Date(`${began}T12:00`);
-  const weeks = Math.min(12, Math.max(1, Math.round((monday.getTime() - new Date(b.getFullYear(), b.getMonth(), b.getDate() - ((b.getDay() + 6) % 7)).getTime()) / (7 * 86400000)) + 1));
-  const first = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * (weeks - 1));
-  const days = Array.from({ length: weeks * 7 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
-  const weekly = h.freq === 'weekly';
-  const cells = weekly
-    ? Array.from({ length: weeks }, (_, w) => {
-      const span = days.slice(w * 7, w * 7 + 7).map(dateOnly);
-      return { key: span[0], label: `Week of ${days[w * 7].toLocaleDateString()}`, done: span.some((k) => done.has(k)), before: span[6] < began, future: span[0] > todayKey };
-    })
-    : days.map((d) => { const k = dateOnly(d); return { key: k, label: d.toLocaleDateString(), done: done.has(k), before: k < began, future: k > todayKey }; });
-  const counted = cells.filter((c) => !c.future && !c.before);
-  const hits = counted.filter((c) => c.done).length;
-  const unit = weekly ? 'week' : 'day';
+  const g = habitGrid(h, task.created, new Date());
+  const unit = g.weekly ? 'week' : 'day';
   const plural = (n: number) => `${n} ${unit}${n === 1 ? '' : 's'}`;
-  const rate = counted.length ? Math.round((hits / counted.length) * 100) : 0;
-  const thisWeek = days.slice(-7).map(dateOnly);
-  const week = weekly ? (thisWeek.some((k) => done.has(k)) ? 'Done' : 'Not yet') : `${thisWeek.filter((k) => done.has(k)).length} of ${thisWeek.filter((k) => k <= todayKey).length}`;
-  const summary = `${hits} of ${plural(counted.length)}, streak ${plural(h.current)}, longest ${h.longest}`;
-  const range = `${shortDate(dateOnly(first))} – ${shortDate(todayKey)}`;
-  const state = (c: typeof cells[number]) => (c.future ? 'to come' : c.before ? 'before the habit began' : c.done ? 'done' : 'missed');
+  const summary = `${g.hits} of ${plural(g.counted)}, streak ${plural(h.current)}, longest ${h.longest}`;
+  const range = `${shortDate(dateOnly(g.first))} – ${shortDate(dateOnly(new Date()))}`;
+  const words: Record<HabitState, string> = { done: 'done', missed: 'missed', now: g.weekly ? 'this week, not done yet' : 'today, not done yet', before: 'before the habit began', future: 'to come' };
+  const has = (st: HabitState) => g.cells.some((c) => c.state === st);
   return (
-    <section className="th" aria-label={`${task.title}: habit`} style={{ '--habit': color, '--weeks': weeks } as React.CSSProperties}>
-      <div className="th-body">
+    <section className="th" aria-label={`${task.title}: habit`} style={{ '--habit': color, '--weeks': g.weeks } as React.CSSProperties}>
+      <div className="th-body" data-weekly={g.weekly || undefined}>
         <dl className="th-stats">
           <div><dt>Current streak</dt><dd>{plural(h.current)}</dd></div>
           <div><dt>Longest</dt><dd>{plural(h.longest)}</dd></div>
-          <div><dt>Completion</dt><dd>{rate}%</dd></div>
-          <div><dt>This week</dt><dd>{week}</dd></div>
+          <div><dt>Completion</dt><dd>{g.rate}%</dd></div>
+          <div><dt>This week</dt><dd>{g.week}</dd></div>
         </dl>
         <div className="th-chart">
-          <div className="th-plot">
-            {!weekly && <span className="th-weekdays" aria-hidden="true"><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span /><span>Sun</span></span>}
-            <div className="th-grid" data-weekly={weekly || undefined} role="img" aria-label={`${task.title}, ${range}: ${summary}`}>
-              {cells.map((c) => <span key={c.key} className="th-day" data-done={c.done || undefined} data-before={c.before || undefined} data-future={c.future || undefined} title={`${c.label}: ${state(c)}`} />)}
+          <div className="th-plot" data-weekly={g.weekly || undefined}>
+            {!g.weekly && <span className="th-weekdays" aria-hidden="true"><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span /><span>Sun</span></span>}
+            <div className="th-grid" data-weekly={g.weekly || undefined} role="img" aria-label={`${task.title}, ${range}: ${summary}`}>
+              {g.cells.map((c) => <span key={c.key} className="th-day" data-state={c.state} title={`${g.weekly ? `Week of ${c.start.toLocaleDateString()}` : c.start.toLocaleDateString()}: ${words[c.state]}`} />)}
             </div>
           </div>
-          <p className="th-key"><span>{range}</span><span><span className="th-day th-key-swatch" data-done aria-hidden="true" /> Done</span><span><span className="th-day th-key-swatch" aria-hidden="true" /> Missed</span>
-            {cells.some((c) => c.before) && <span><span className="th-day th-key-swatch" data-before aria-hidden="true" /> Before it began</span>}</p>
+          <p className="th-key"><span>{range}</span><span><span className="th-day th-key-swatch" data-state="done" aria-hidden="true" /> Done</span><span><span className="th-day th-key-swatch" data-state="missed" aria-hidden="true" /> Missed</span>
+            {has('now') && <span><span className="th-day th-key-swatch" data-state="now" aria-hidden="true" /> {g.weekly ? 'This week' : 'Today'}</span>}
+            {has('before') && <span><span className="th-day th-key-swatch" data-state="before" aria-hidden="true" /> Before it began</span>}</p>
         </div>
       </div>
     </section>
@@ -198,7 +180,7 @@ export function GoalsView({ lists, colors, areas, open, creating, onCreated }: {
     <div className="tg">
       {error && <p role="alert">{error}</p>}
       {goals?.length === 0 && <EmptyState title="No goals yet">A goal follows the lists and areas behind it over a season, quarter or year.</EmptyState>}
-      {goals?.map((g) => { const rows = progress[g.id]?.lists ?? []; const most = Math.max(1, ...rows.map((l) => l.done)); return (
+      {goals?.map((g) => { const rows = progress[g.id]?.lists ?? []; return (
         <section key={g.id} className="card ti-card" aria-labelledby={`goal-${g.id}`}>
           <div className="ti-head">
             <div>
@@ -207,13 +189,13 @@ export function GoalsView({ lists, colors, areas, open, creating, onCreated }: {
             </div>
           </div>
           <table className="ti-table">
-            <thead><tr><th scope="col">List</th><th scope="col">Done in period</th><th scope="col">Open</th><th scope="col">Last done</th></tr></thead>
+            <thead><tr><th scope="col">List</th><th scope="col">Done</th><th scope="col">Open</th><th scope="col">Last done</th></tr></thead>
             <tbody>
               {rows.map((l) => (
                 <tr key={l.list_id}>
                   <td><span className="tg-list" style={{ '--list': colors.get(l.list_id) ?? 'var(--accent)' } as React.CSSProperties}>
                     <span className="ti-list"><span className="ti-swatch" aria-hidden="true" />{lists.find((c) => c.id === l.list_id)?.name ?? l.name}</span>
-                    <span className="ti-meter" aria-hidden="true"><span style={{ width: `${(l.done / most) * 100}%` }} /></span>
+                    <span className="ti-meter tg-meter" aria-hidden="true"><span style={{ width: `${(l.done / Math.max(1, l.done + open(l.list_id))) * 100}%` }} /></span>
                     {l.stalled && <span className="tg-stalled">No progress in 14 days</span>}
                   </span></td>
                   <td>{l.done}</td><td>{open(l.list_id)}</td>

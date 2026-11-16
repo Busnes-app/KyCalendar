@@ -378,7 +378,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             </button>
           ))}
         </nav>
-        {review === 'goals' && <button type="button" className="btn-secondary btn-sm" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> New goal</button>}
+        {review === 'goals' && <button type="button" className="btn-secondary btn-sm tk-new-goal" aria-label="New goal" title="New goal" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> <span>New goal</span></button>}
       </div>)}
 
       {!(isToday && planning) && !review && !(view.kind === 'smart' && (view.id === 'flagged' || view.id === 'completed')) && <form className="tk-quick" onSubmit={quickAdd}>

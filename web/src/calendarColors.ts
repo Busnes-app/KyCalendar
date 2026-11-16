@@ -4,7 +4,7 @@
 // default. Every palette colour holds white text at 4.5:1; the accent carries `--button-text`.
 // The palette leaves out the Busnes accent (#bf3f18), so no list reads as the accent highlight.
 export const ACCENT = 'var(--accent)';
-export const PALETTE = ['#1f7a6d', '#1b6f91', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75'] as const;
+export const PALETTE = ['#1f7a6d', '#7a6a12', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75'] as const;
 
 const norm = (c: string) => c.slice(0, 7).toLowerCase();
 

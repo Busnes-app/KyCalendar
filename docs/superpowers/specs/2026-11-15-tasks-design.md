@@ -414,24 +414,29 @@ stored field or figure changes.
   rate and this week as large figures, beside a grid that starts at the week the habit began
   (its creation or first completion), at most 12 weeks (the API keeps returning 12), cells up to
   2.5rem. Done cells use the habit's list colour (accent by default), lightened on dark themes;
-  missed cells a tint of it inside an edge of the full colour; days of the first week before the
-  habit began have a dashed outline in the muted text colour and are left out of the rate (the
-  key names them only when some show). A weekly habit is one cell per week, so a week with one
-  completion is not shown as six missed days.
+  missed cells a tint of it inside an edge of the full colour; today (this week for a weekly
+  habit) is only the edge while not yet done, and counts toward the rate only once done or
+  over; days of the first week before the habit began have a dashed outline in the muted text
+  colour and are left out of the rate (the key names today and pre-start days only when they
+  show). A weekly habit is one cell per week, so a week with one completion is not shown as six
+  missed days, and its figures sit in a row above the strip on wide cards. Phone cards use
+  smaller figures and tighter spacing. The grid rules are `web/src/habitGrid.ts`.
 - **Insights:** three cards. Completed per week in the accent: earlier weeks a tint, this week
   full and labelled, zero weeks a baseline stub, counts above bars; the chart is drawn at its
   box's pixel width so its text stays 12px. Planned in the accent on a tinted track, today's row
   marked and labelled. Each list with its colour as a swatch and a bar; overdue above zero in the
   danger colour with an icon and the word "overdue".
 - **Goals:** each goal is a card like Insights'; its List column shows the list's swatch and a
-  bar of its completions in the period. Headers read "Done in period" and "Last done" at every
-  width, wrapping on phones. "New goal" sits at the end of the tab row, so the page head does
-  not move between tabs.
+  bar of done out of done plus open on a tinted track. Headers are "Done", "Open" and "Last
+  done", never wrapping (the card shows the period). "New goal" sits at the end of the tab row,
+  so the page head does not move between tabs; below 480px it is a "+" named "New goal" with a
+  tooltip.
 - **Contrast:** done cells against the card and against missed cells, missed cells' edge,
   pre-start outlines, the zero-week stub and every bar against the card hold 3:1 in light and
   dark for the accent and every palette colour (`web/browser/insights.spec.mjs`). Text stays on
   the existing ink tokens. The list palette leaves out the Busnes accent (#bf3f18, replaced by
-  petrol #1b6f91), so no list reads as the accent highlight.
+  olive-ochre #7a6a12, a warm hue apart from the teal and blue beside it), so no list reads as
+  the accent highlight.
 - **Tabs on phones:** the chosen tab is centred in its row, which scrolls sideways. Flagged from
   mail and Completed have no quick add (flagged tasks come from KyPost); Flagged's empty state
   says "Tasks you flag in KyPost appear here." The Lists panel keeps its "Tasks" heading, so its

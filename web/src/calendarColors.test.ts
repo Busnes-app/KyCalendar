@@ -4,7 +4,7 @@ import { ACCENT, PALETTE, calendarColors, nextColor, textOn } from './calendarCo
 describe('calendar colours', () => {
   it('gives a new calendar the first colour its neighbours do not use', () => {
     expect(nextColor([])).toBe(PALETTE[0]);
-    expect(nextColor([PALETTE[0], '#1B6F91'])).toBe(PALETTE[2]);
+    expect(nextColor([PALETTE[0], '#7A6A12'])).toBe(PALETTE[2]);
     expect(PALETTE).not.toContain('#bf3f18'); // the Busnes accent stays the accent's
     expect(nextColor([], 2)).toBe(PALETTE[2]);
   });
