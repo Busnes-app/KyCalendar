@@ -177,7 +177,9 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 				return nil, err
 			}
 			// Past the horizon nothing was expanded: the overrides there must be as they were.
-			later := b.OpenAfter == 0 || resource.LaterOverrides(cal, b.OpenAfter) == resource.LaterOverrides(prevCal, b.OpenAfter)
+			// A finite booking that now runs past the horizon asks for time nobody checked.
+			later := (b.OpenAfter == 0 && d.OpenAfter == 0) ||
+				(b.OpenAfter != 0 && resource.LaterOverrides(cal, b.OpenAfter) == resource.LaterOverrides(prevCal, b.OpenAfter))
 			if later && d.Covered(held, b.OpenAfter) {
 				d.Status = b.Status
 				answers[id] = d.Status

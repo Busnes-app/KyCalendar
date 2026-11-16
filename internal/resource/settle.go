@@ -198,8 +198,8 @@ func tooLong(cal *ical.Calendar, max time.Duration) bool {
 			continue
 		}
 		if c.Props.Get(ical.PropRecurrenceID) != nil {
-			if l, ok := componentLength(c); ok && l > max {
-				return true
+			if l, ok := componentLength(c); !ok || l > max {
+				return true // a length expansion cannot tell could be any
 			}
 		}
 		for _, p := range c.Props[ical.PropRecurrenceDates] {
@@ -237,21 +237,23 @@ func tooLong(cal *ical.Calendar, max time.Duration) bool {
 	return false
 }
 
-// componentLength is a VEVENT's own length from DTSTART and DTEND or DURATION.
+// componentLength is a VEVENT's own length as expansion reads it (implicit all-day day
+// included), by expanding a copy without its recurrence properties.
 func componentLength(c *ical.Component) (time.Duration, bool) {
-	start, err := c.Props.DateTime(ical.PropDateTimeStart, time.UTC)
-	if err != nil {
+	one := ical.NewComponent(ical.CompEvent)
+	for name, props := range c.Props {
+		switch name {
+		case ical.PropRecurrenceID, ical.PropRecurrenceRule, ical.PropRecurrenceDates, ical.PropExceptionDates:
+			continue
+		}
+		one.Props[name] = props
+	}
+	tmp := &ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar, Props: ical.Props{}, Children: []*ical.Component{one}}}
+	insts, err := calendar.Expand(tmp, time.Date(1800, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC, 2)
+	if err != nil || len(insts) != 1 {
 		return 0, false
 	}
-	if p := c.Props.Get(ical.PropDuration); p != nil {
-		d, err := p.Duration()
-		return d, err == nil
-	}
-	if c.Props.Get(ical.PropDateTimeEnd) != nil {
-		end, err := c.Props.DateTime(ical.PropDateTimeEnd, time.UTC)
-		return end.Sub(start), err == nil
-	}
-	return 0, true
+	return insts[0].End.Sub(insts[0].Start), true
 }
 
 // SeriesFingerprint hashes the timing of the components without RECURRENCE-ID: the rule itself.

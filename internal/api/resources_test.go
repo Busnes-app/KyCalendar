@@ -721,3 +721,44 @@ func mustZone(t *testing.T, name string) *time.Location {
 	}
 	return loc
 }
+
+func TestRoomFiniteSeriesGoingPastTheHorizonNeedsApprovalAgain(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	carol, _ := webUser(t, srv, st, "carol")
+	room := makeResource(t, st, resource.Resource{Name: "Hall", HorizonDays: 30, Approval: resource.Approvers, Approvers: []string{"usr_carol"}})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY;COUNT=3\r\nSUMMARY:Three\r\n"
+	putRaw(t, st, aliceCal, "three.ics", roomICS("three", room, master), "usr_alice")
+	var reqs struct{ Requests []struct{ ID string } }
+	_ = json.Unmarshal(call(t, srv, "GET", "/api/resources/requests", "", carol).Body.Bytes(), &reqs)
+	if len(reqs.Requests) != 1 {
+		t.Fatalf("requests %+v", reqs)
+	}
+	if w := call(t, srv, "POST", "/api/resources/requests/"+reqs.Requests[0].ID, `{"decision":"accept"}`, carol); w.Code != http.StatusNoContent {
+		t.Fatalf("accept %d", w.Code)
+	}
+	// The second occurrence moves 100 days out, past the 30-day horizon.
+	s2, _ := slot(8, 9)
+	fs, fe := slot(100, 9)
+	moved := "RECURRENCE-ID:" + icsTime(s2) + "\r\nDTSTART:" + icsTime(fs) + "\r\nDTEND:" + icsTime(fe) + "\r\nSUMMARY:Three\r\n"
+	putRaw(t, st, aliceCal, "three.ics", roomICS("three", room, master, moved), "usr_alice")
+	if st, _, _ := roomStatus(t, srv, alice, "three"); st != "pending" {
+		t.Fatalf("an approved finite series gained time past the horizon and kept its approval: %s", st)
+	}
+}
+
+func TestRoomImplicitAllDayOverrideIsMeasured(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	room := makeResource(t, st, resource.Resource{Name: "Fjord", MaxMinutes: 120, HorizonDays: 30})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	fs, _ := slot(1+7*20, 9)
+	day := fs[:4] + fs[5:7] + fs[8:10]
+	allDay := "RECURRENCE-ID:" + icsTime(fs) + "\r\nDTSTART;VALUE=DATE:" + day + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "allday.ics", roomICS("allday", room, master, allDay), "usr_alice")
+	if st, reason, _ := roomStatus(t, srv, alice, "allday"); st != "declined" || reason != "too_long" {
+		t.Fatalf("implicit one-day override past the horizon: %s %s", st, reason)
+	}
+}
