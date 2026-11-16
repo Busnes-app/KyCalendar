@@ -77,6 +77,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const [picker, setPicker] = useState(false);
   const [managing, setManaging] = useState(false);
   const [naming, setNaming] = useState<'list' | 'view' | null>(null);
+  const [keysOpen, setKeysOpen] = useState(false);
   const search = useRef<HTMLInputElement>(null);
   const listEl = useRef<HTMLUListElement>(null);
 
@@ -190,7 +191,8 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       const el = e.target as HTMLElement;
       if (e.metaKey || e.ctrlKey || e.altKey || el.closest('input, textarea, select, dialog, [contenteditable]')) return;
       const cur = flat[selected]?.task;
-      if (e.key === '/') { e.preventDefault(); search.current?.focus(); }
+      if (e.key === '?') { e.preventDefault(); setKeysOpen(true); }
+      else if (e.key === '/') { e.preventDefault(); search.current?.focus(); }
       else if (e.key === 'j' || e.key === 'k') {
         e.preventDefault();
         const next = Math.max(0, Math.min(flat.length - 1, selected + (e.key === 'j' ? 1 : -1)));
@@ -324,15 +326,13 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
 
       <form className="tk-quick" onSubmit={quickAdd}>
         <Plus aria-hidden="true" />
-        <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder="Add a task: “Call Ana tomorrow 3pm !high #home”"
+        <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder={isNarrow ? 'Add a task' : 'Add a task: “Call Ana tomorrow 3pm !high #home”'}
           value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!targetList} />
         <button type="submit" className="btn-ghost kc-icon tk-quick-go" aria-label="Add task" title="Add (Enter)" disabled={!text.trim() || !targetList}><CornerDownLeft size={16} aria-hidden="true" /></button>
         <div id="tk-quick-preview" className="tk-chips" aria-live="polite">
           {text.trim() && (
             <>
-              <span className="tk-chip tk-chip-title">{parsed.title}</span>
-              {parsed.chips.map((c) => <span key={c} className="tk-chip">{c}</span>)}
-              {!parsed.list && <span className="tk-chip tk-chip-quiet">In {listName(targetList)}</span>}
+              {[...parsed.chips, ...(parsed.list ? [] : [`In ${listName(targetList)}`])].join(' · ')}
             </>
           )}
         </div>
@@ -344,18 +344,17 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           <input ref={search} type="search" aria-label="Search tasks" placeholder="Search title, notes and tags" value={q} maxLength={200} onChange={(e) => setQ(e.target.value)} />
         </label>
         <button type="button" className="btn-secondary btn-sm" aria-expanded={filtersOpen} aria-controls="tk-filters" onClick={() => setFiltersOpen(!filtersOpen)}>
-          <SlidersHorizontal size={14} aria-hidden="true" /> Filters{filtering && filter !== undefined && Object.values(filter).some((v) => (Array.isArray(v) ? v.length : v)) ? ' (on)' : ''}
+          <SlidersHorizontal size={14} aria-hidden="true" /> Filters{(Object.values(filter).some((v) => (Array.isArray(v) ? v.length : v)) || sort !== 'smart') ? ' (on)' : ''}
         </button>
-        <label className="tk-sort">
-          <span>Sort</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value as TaskFilter['sort'])}>
-            {SORTS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-          </select>
-        </label>
         {filtering && view.kind !== 'view' && <button type="button" className="btn-ghost btn-sm" onClick={() => setNaming('view')}><Star size={14} aria-hidden="true" /> Save view</button>}
       </div>}
       {filtersOpen && (
         <div id="tk-filters" className="tk-filters" role="group" aria-label="Filters">
+          <label>Sort
+            <select value={sort} onChange={(e) => setSort(e.target.value as TaskFilter['sort'])}>
+              {SORTS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+            </select>
+          </label>
           <label>Priority
             <select value={filter.priority?.[0] ?? ''} onChange={(e) => setFilter({ ...filter, priority: e.target.value ? [e.target.value as PriorityName] : undefined })}>
               <option value="">Any</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="none">None</option>
@@ -377,7 +376,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
               <option value="">Open</option><option value="needs-action">Not started</option><option value="in-process">In progress</option><option value="completed">Done</option><option value="cancelled">Cancelled</option>
             </select>
           </label>
-          <button type="button" className="btn-ghost btn-sm" onClick={() => setFilter({})}>Clear</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => { setFilter({}); setSort('smart'); }}>Clear</button>
         </div>
       )}
 
@@ -406,12 +405,11 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
                     <button type="button" className="tk-open" onClick={() => { setSelected(i); setDialog({ task: t }); }} onFocus={() => setSelected(i)}>
                       <span className="tk-title">{t.title}</span>
                       <span className="tk-row-meta">
-                        {due && <span className={late ? 'tk-due tk-late' : due.today ? 'tk-due tk-today' : 'tk-due'}><CalendarClock size={13} aria-hidden="true" />{late && 'Overdue · '}{due.text}</span>}
+                        {due && !g.label && <span className={late ? 'tk-due tk-late' : due.today ? 'tk-due tk-today' : 'tk-due'}><CalendarClock size={13} aria-hidden="true" />{late && 'Overdue · '}{due.text}</span>}
                         {prio === 'High' && <span className="tk-prio">High</span>}
                         {t.status === 'IN-PROCESS' && <span className="tk-state">In progress</span>}
                         {!!t.subtasks && (
                           <span className="tk-subs">{t.subtasks_done ?? 0} of {t.subtasks} done
-                            <progress className="tk-bar" max={t.subtasks} value={t.subtasks_done ?? 0} aria-hidden="true" />
                           </span>
                         )}
                         {repeat && <span className="tk-repeat" title={repeat}><Repeat size={13} aria-label={repeat} /></span>}
@@ -428,7 +426,19 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           </li>
         ))}
       </ul>
-      <p className="tk-keys" aria-label="Keyboard shortcuts"><kbd>n</kbd> new · <kbd>x</kbd> complete · <kbd>e</kbd> edit · <kbd>/</kbd> search · <kbd>j</kbd>/<kbd>k</kbd> move</p>
+      {keysOpen && (
+        <Modal title="Keyboard shortcuts" onClose={() => setKeysOpen(false)}>
+          <dl className="tk-keys">
+            <dt><kbd>n</kbd></dt><dd>Add a task, Inbox item or list</dd>
+            <dt><kbd>x</kbd></dt><dd>Complete the selected task</dd>
+            <dt><kbd>e</kbd></dt><dd>Open the selected task</dd>
+            <dt><kbd>/</kbd></dt><dd>Search</dd>
+            <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move down and up the list</dd>
+            <dt><kbd>?</kbd></dt><dd>This list</dd>
+          </dl>
+          <div className="modal-actions"><button type="button" onClick={() => setKeysOpen(false)}>Done</button></div>
+        </Modal>
+      )}
 
       {dialog && (
         <TaskDialog key={dialog.task ? dialog.task.etag : 'new'} task={dialog.task} lists={lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c))} defaultList={targetList}

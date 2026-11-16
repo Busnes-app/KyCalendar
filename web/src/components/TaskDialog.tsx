@@ -125,7 +125,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
 
   const repeatOn = rule.preset !== 'none';
   return (
-    <Modal title={task ? (readOnly ? 'Task' : 'Edit task') : 'New task'} onClose={onClose} wide>
+    <Modal title={task ? (readOnly ? 'Task' : 'Edit task') : 'New task'} onClose={onClose} wide closable>
       <form className="kc-form tk-form" onSubmit={save}>
         {readOnly && <p className="kc-hint" role="note">This list is read-only for you.</p>}
         <label htmlFor="tk-title-input">Title</label>
@@ -158,7 +158,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
             ))}
           </fieldset>
         </div>
-        <div className="kc-pair">
+        <div className="tk-whens">
           <div className="field">
             <label htmlFor="tk-due">Due</label>
             <div className="tk-when">

@@ -226,3 +226,4 @@ dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw 
 .kc-fb-tentative { fill: var(--ink); opacity: 0.25; }
 .kc-fb-chosen { fill: none; stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; }
 .kc-fb-row[data-conflict] .kc-fb-chosen { stroke: var(--ky-danger); }
+.kc-sub a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }

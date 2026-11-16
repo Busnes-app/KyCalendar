@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, X } from 'lucide-react';
 
 /** The suite page head (ky-ui shell): title, a one-sentence lede and the page's primary action (`ky-page-action`). */
 export function PageHeader({ title, lede, action }: { title: string; lede?: ReactNode; action?: ReactNode }) {
@@ -29,7 +29,7 @@ export function EmptyState({ title, children, compact }: { title: string; childr
  * A modal native dialog: title, body, then actions. Escape calls onClose.
  * The dialog's accessible name is its title.
  */
-export function Modal({ title, description, onClose, children, wide }: { title: string; description?: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, description, onClose, children, wide, closable }: { title: string; description?: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean; closable?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current!;
@@ -46,7 +46,12 @@ export function Modal({ title, description, onClose, children, wide }: { title: 
         onClose();
       }}
     >
-      <h2 className="modal-title">{title}</h2>
+      {closable ? (
+        <div className="modal-head">
+          <h2 className="modal-title">{title}</h2>
+          <button type="button" className="ky-icon-button modal-close" aria-label="Close" title="Close" onClick={onClose}><X aria-hidden="true" /></button>
+        </div>
+      ) : <h2 className="modal-title">{title}</h2>}
       {description && <p className="modal-desc">{description}</p>}
       {children}
     </dialog>

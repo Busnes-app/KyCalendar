@@ -1,5 +1,8 @@
 // The repeat choices in the task form, as RFC 5545 RRULEs, and the words a task row shows.
 
+// clock24 is the one time format in Tasks: 24-hour, "9:30".
+export const clock24 = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' });
+
 export type Preset = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'monthly-nth' | 'monthly-last' | 'yearly' | 'custom';
 export interface Rule { preset: Preset; interval: number; until?: string; count?: number; raw?: string }
 
@@ -95,7 +98,7 @@ export function dueLabel(due: string | undefined, now = new Date()): { text: str
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
   const days = Math.round((day.getTime() - today.getTime()) / 86400000);
-  const time = allDay ? '' : ` ${at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  const time = allDay ? '' : ` ${clock24(at)}`;
   const overdue = allDay ? days < 0 : at.getTime() < now.getTime();
   let word: string;
   if (days === 0) word = 'Today';

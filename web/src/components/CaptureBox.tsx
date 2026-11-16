@@ -81,12 +81,10 @@ export function CaptureBox({ onClose }: { onClose: () => void }) {
         <div id="capture-preview" className="tk-chips" aria-live="polite">
           {mode === 'task' && text.trim() && !image && (
             <>
-              <span className="tk-chip tk-chip-title">{parsed.title}</span>
-              {parsed.chips.map((c) => <span key={c} className="tk-chip">{c}</span>)}
-              {!parsed.list && <span className="tk-chip tk-chip-quiet">In Inbox</span>}
+              {[...parsed.chips, ...(parsed.list ? [] : ['In Inbox'])].join(' · ')}
             </>
           )}
-          {mode === 'inbox' && text.trim() && <span className="tk-chip tk-chip-quiet">In Inbox, no date</span>}
+          {mode === 'inbox' && text.trim() && 'In Inbox, no date'}
         </div>
         {image && mode !== 'list' && (
           <figure className="tk-image">
