@@ -380,3 +380,25 @@ func TestTaskPastedImage(t *testing.T) {
 		t.Errorf("served a non-image: %d", w.Code)
 	}
 }
+
+// A CalDAV client stores a rule that never matches; completing it on the web is refused at once
+// and the stored task is untouched (security review, PR 158).
+func TestTaskCompleteUnreachableRule(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice := loginAs(t, srv, st, "alice", "user")
+	list := taskList(t, srv, alice)
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VTODO\r\nUID:never\r\nDTSTAMP:20261001T000000Z\r\nSUMMARY:Never\r\n" +
+		"DUE:20261101T090000Z\r\nRRULE:FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+	if _, err := st.Calendars().PutObject(context.Background(), &store.CalendarObject{CalendarID: list, Name: "never.ics", Component: "VTODO", UID: "never", Data: []byte(ics)}, "", false, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	o, _ := st.Calendars().GetObjectByUID(context.Background(), list, "never")
+	start := time.Now()
+	w := taskReq(t, srv, "PATCH", "/api/tasks/"+list+"/never", o.ETag, alice, map[string]any{"status": "COMPLETED"})
+	if w.Code != http.StatusBadRequest || time.Since(start) > 2*time.Second {
+		t.Fatalf("complete: %d after %v", w.Code, time.Since(start))
+	}
+	if after, _ := st.Calendars().GetObjectByUID(context.Background(), list, "never"); after.ETag != o.ETag {
+		t.Fatal("the stored task changed")
+	}
+}

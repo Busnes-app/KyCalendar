@@ -38,3 +38,4 @@ Pure iCalendar rules: what a calendar object must contain and how it is indexed;
 
 ## Verification
 - `go test ./internal/calendar/`
+- `SafeRule(opt, start)` is expansion's guard set (time set size, ordinals, month-day feasibility, reachable clock, a first occurrence) for other code that steps a rule; `internal/tasks` calls it before moving a repeating task on.

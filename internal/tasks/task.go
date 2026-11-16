@@ -408,6 +408,9 @@ func setStatus(cal *ical.Calendar, m *ical.Component, status string, now time.Ti
 	return res, nil
 }
 
+// maxAdvanceYears bounds the search for a repeating task's next occurrence.
+const maxAdvanceYears = 10
+
 // advance moves a repeating task to its next occurrence: DUE (or DTSTART without DUE) to the
 // rule's next date after the current one, or after the completion day with repeat from
 // completion; the other time keeps its distance. A COUNT drops by one. false: the rule has no
@@ -428,7 +431,9 @@ func advance(m *ical.Component, now time.Time, viewer *time.Location) (bool, err
 		loc = time.UTC
 	}
 	opt, err := rrule.StrToROption(rp.Value)
-	if err != nil {
+	// Only daily to yearly rules that expansion would also step through: a client-written rule
+	// that can never match would otherwise keep rrule-go searching.
+	if err != nil || opt.Freq > rrule.DAILY {
 		return false, fmt.Errorf("%w: RRULE", ErrInvalid)
 	}
 	count := opt.Count
@@ -449,6 +454,13 @@ func advance(m *ical.Component, now time.Time, viewer *time.Location) (bool, err
 		opt.Until = time.Date(opt.Until.Year(), opt.Until.Month(), opt.Until.Day(), 23, 59, 59, 0, time.UTC)
 	}
 	opt.Dtstart = from
+	if !calendar.SafeRule(opt, from) {
+		return false, fmt.Errorf("%w: RRULE", ErrInvalid)
+	}
+	// The next occurrence is searched for within maxAdvance at most.
+	if limit := from.AddDate(maxAdvanceYears, 0, 0); opt.Until.IsZero() || opt.Until.After(limit) {
+		opt.Until = limit
+	}
 	r, err := rrule.NewRRule(*opt)
 	if err != nil {
 		return false, fmt.Errorf("%w: RRULE", ErrInvalid)

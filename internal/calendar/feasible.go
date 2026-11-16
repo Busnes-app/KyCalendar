@@ -148,3 +148,10 @@ func ordinalWithDayFilter(opt *rrule.ROption) bool {
 	}
 	return slices.ContainsFunc(opt.Byweekday, func(w rrule.Weekday) bool { return w.N() != 0 })
 }
+
+// SafeRule reports whether opt, starting at start, can be stepped through without the risk of
+// rrule-go searching forever: the same checks expansion applies (time set size, ordinals,
+// month-day feasibility, a reachable clock and a first occurrence).
+func SafeRule(opt *rrule.ROption, start time.Time) bool {
+	return !wideTimeSet(opt) && ordinalsInRange(opt) && satisfiable(opt) && yields(opt, start)
+}

@@ -220,3 +220,35 @@ END:VCALENDAR
 		t.Fatal(out)
 	}
 }
+
+// A CalDAV client can store a rule the web would refuse. Completing it must answer at once,
+// refused, and leave the task unchanged.
+func TestCompleteUnreachableRuleIsRefusedPromptly(t *testing.T) {
+	for _, rule := range []string{
+		"FREQ=HOURLY;BYHOUR=25",
+		"FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30",
+		"FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30",
+		"FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=31",
+		"FREQ=MINUTELY",
+	} {
+		ics := strings.Replace(strings.Replace(berlinDaily, "RRULE:FREQ=DAILY", "RRULE:"+rule, 1), "UID:t1", "UID:t1\nDTSTAMP:20261001T000000Z", 1)
+		cal := decode(t, ics)
+		before := encode(t, cal)
+		done := make(chan error, 1)
+		go func() {
+			_, err := Apply(cal, Patch{Status: ptr(Completed)}, time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC), time.UTC)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Errorf("%s: completed", rule)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: still searching after 2s", rule)
+		}
+		if encode(t, cal) != before {
+			t.Errorf("%s: task changed", rule)
+		}
+	}
+}
