@@ -3,10 +3,10 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Status, Task } from '../tasksApi';
 import { dueLabel, priorityName } from '../taskRepeat';
 
-const COLUMNS: { status: Status; label: string }[] = [
-  { status: 'NEEDS-ACTION', label: 'Not started' },
-  { status: 'IN-PROCESS', label: 'In progress' },
-  { status: 'COMPLETED', label: 'Done' },
+const COLUMNS: { status: Status; label: string; empty: string }[] = [
+  { status: 'NEEDS-ACTION', label: 'Not started', empty: 'Nothing waiting' },
+  { status: 'IN-PROCESS', label: 'In progress', empty: 'Nothing in progress' },
+  { status: 'COMPLETED', label: 'Done', empty: 'Nothing done yet' },
 ];
 
 // TaskBoard is the Kanban layout: one column per STATUS. Dragging a card to another column, or
@@ -30,6 +30,7 @@ export function TaskBoard({ tasks, listName, onOpen, onMove }: {
               if (t && t.status !== col.status) { e.preventDefault(); onMove(t, col.status); }
             }}>
             <h2 id={`tb-${col.status}`}>{col.label} <span className="tb-count">{items.length}</span></h2>
+            {items.length === 0 && <p className="tb-empty">{col.empty}</p>}
             <ul>
               {items.map((t) => {
                 const due = dueLabel(t.due);
@@ -39,7 +40,8 @@ export function TaskBoard({ tasks, listName, onOpen, onMove }: {
                     <button type="button" className="tb-title" onClick={() => onOpen(t)}>{t.title}</button>
                     <span className="tb-meta">
                       {due && t.status !== 'COMPLETED' && <span className={due.overdue ? 'tk-late' : ''}>{due.overdue ? 'Overdue' : due.text}</span>}
-                      <span>{listName(t.calendar_id)}</span>
+                      {listName(t.calendar_id) && <span>{listName(t.calendar_id)}</span>}
+                      {!!t.subtasks && <span>{t.subtasks_done ?? 0} of {t.subtasks} done</span>}
                       {priorityName(t.priority) === 'High' && <span className="tk-prio">High</span>}
                     </span>
                     {t.editable && (

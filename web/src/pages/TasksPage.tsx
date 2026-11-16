@@ -39,6 +39,12 @@ const LAYOUT_KEY = 'kycalendar.tasksLayout'; // view key -> 'board', for views s
 const SORTS = [{ v: 'smart', label: 'Smart (overdue, due, priority)' }, { v: 'due', label: 'Due date' }, { v: 'priority', label: 'Priority' }, { v: 'created', label: 'Newest' }, { v: 'title', label: 'Title' }] as const;
 
 const isTasks = (c: CalendarInfo) => c.components.includes('VTODO');
+// topLevel are the tasks whose parent is not among them: what a list and a board show as rows.
+export const topLevel = (ts: Task[]) => {
+  const here = new Set(ts.map((t) => `${t.calendar_id}/${t.uid}`));
+  return ts.filter((t) => !t.parent || !here.has(`${t.calendar_id}/${t.parent}`));
+};
+const isOpen = (t: Task) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
 const dayOf = (v?: string) => (v ? (v.length === 10 ? v : dateOnly(new Date(v))) : '');
 
 function savedView(): TaskView {
@@ -321,7 +327,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             {isToday && !planning && <span className="tk-date"> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>}</h1>
           {!isToday && (
             <p className="tk-meta">
-              {flat.length === 1 ? '1 task' : `${flat.length} tasks`}
+              {(() => { const n = topLevel(board ? shown ?? [] : rows).filter((t) => view.kind === 'smart' && view.id === 'completed' ? true : isOpen(t)).length; return n === 1 ? '1 task' : `${n} tasks`; })()}
               {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}
             </p>
           )}
@@ -418,7 +424,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}
         </EmptyState>
       )}
-      {board && <TaskBoard tasks={shown ?? []} listName={listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
+      {board && <TaskBoard tasks={topLevel(shown ?? [])} listName={view.kind === 'list' ? () => '' : listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
       {!isToday && !board && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
         {groups.map((g) => (
           <li key={g.label || 'all'} className="tk-day">
