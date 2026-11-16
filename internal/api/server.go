@@ -68,6 +68,7 @@ type Server struct {
 	// kymessages is the KyMessages link for video meetings, looked up like kypost
 	// (kymessages_link.go); the meetings worker is video_meetings.go.
 	kymessages      *kymessages.Link
+	presence        presenceCache
 	kymessagesState kypostState
 	kymessagesKick  chan struct{}
 	// kypostReplay remembers KyPost event IDs inside the signature window.
@@ -426,6 +427,9 @@ func (s *Server) routes() {
 	s.handle("GET /api/suite/apps", s.requireSession(s.handleSuiteApps))
 	s.handle("GET /api/suite/people", s.requireEveryday(s.handleSuitePeople))
 	s.handle("POST /api/suite/chat", s.requireEveryday(s.handleSuiteChat))
+	s.handle("POST /api/presence", s.requireEveryday(s.handlePresenceLookup))
+	s.handle("GET /api/presence/me", s.requireEveryday(s.handlePresenceMe))
+	s.handle("PUT /api/presence/me", s.requireEveryday(s.handlePresenceMe))
 	s.handle("GET /api/calendars/{id}/grants", s.requireSession(s.handleListGrants))
 	s.handle("PUT /api/calendars/{id}/grants/{group}", s.requireSession(s.handleSetGrant))
 	s.handle("DELETE /api/calendars/{id}/grants/{group}", s.requireSession(s.handleDeleteGrant))

@@ -221,6 +221,51 @@ the `kymessage-chat` launch URL's origin.
 - **Audit.** `chat.open`, or `chat.refused` with `code=`, by user ID only: never the address,
   the subject or the link.
 
+## P. Status from the calendar (KyCalendar → KyMessages)
+
+Owner request 2026-11-15. KyMessages keeps a member's coarse status and is the contract's owner
+(KyMessages `docs/PRESENCE.md`, the durable copy of the wire format; design
+`docs/superpowers/specs/2026-11-15-presence-design.md` there). Pair: `kycalendar`↔`kymessage`.
+
+| Event type | Route on KyMessages console | KyCalendar sends |
+|---|---|---|
+| `kycalendar.presence.busy` | `POST /api/suite/presence/calendar` | `{"sub","issuer","revision","busy":[{"start","end"}]}` |
+| `kycalendar.presence.me` | `POST /api/suite/presence/me` | `{"sub","issuer","share"?,"manual"?}` |
+| `kycalendar.presence.lookup` | `POST /api/suite/presence/lookup` | `{"sub","issuer","subs":[≤50]}` |
+
+KyMessages decodes strictly: any other field is refused, so a title, location, attendee or
+event ID can never ride along. States: `available`, `busy`, `in_a_meeting` (with `until`),
+`away`, `out_of_office` (with `until`), `unknown`.
+
+**Busy blocks.** `davbackend.MeetingBlocks`: instances in the member's personal event
+calendars, from now to 48 hours ahead, that are opaque, not cancelled or tentative, and that the
+member organised (or that have no organizer) or accepted (`PARTSTAT=ACCEPTED` on the member's
+own `ATTENDEE`, per instance). Out-of-office events (`X-KYCALENDAR-OUT-OF-OFFICE:TRUE` or
+`X-MICROSOFT-CDO-BUSYSTATUS:OOF`) are left out: out-of-office reaches KyMessages from KyPost.
+Start and end only, RFC 3339 UTC; `revision` is the compute time in milliseconds.
+
+**When.** `presence_pushes` (migration 30) is one outbox row per everyday member with a KyIdentity
+subject. Every object write and calendar delete bumps the owner's row in the write's
+transaction (`touchPresence`); a sent row is due again after `store.PresenceRefresh` (6 h).
+`SyncPresence` runs on the meetings ticker (5 s), 20 rows a pass, only while KyMessages is
+linked. 429, 5xx and network errors back off as meetings do; a refusal (`no_user`, ...) waits
+for the next change or refresh. Nothing is kept in memory and nothing is scheduled per event.
+
+**Session routes** (everyday members, `meetingsFor`):
+- `GET`/`PUT /api/presence/me`: Settings → Status. `share` is "Show my status to colleagues"
+  (on by default, KyMessages' default); `manual` is `{"state":"available|busy|away","until"}`
+  within 7 days, or `null` for automatic. Unknown fields are 400. 30 a minute. 409
+  `status_off` without KyMessages or a KyIdentity sign-in; 409 `sharing_off` for a manual
+  status while sharing is off.
+- `POST /api/presence {"emails":[≤50]}`: `resolveAs` keeps organisation people only, then
+  one lookup for the subjects not cached; answers are cached by subject for 60 seconds.
+  Answers `{"people":[{"email","state","until"?}]}`, organisation people only. 60 a minute;
+  400 `too_many` over 50.
+
+**UI.** `StatusLabel`: a dot and a text label ("In a meeting until 15:00", "Out of office until
+5 Dec", "Status unknown"); the dot is `aria-hidden` and colour never carries the meaning alone.
+Shown on attendee rows, the organizer line and, as text, in the Invite field's suggestions.
+
 ## I. KyDrive picker (KyCalendar is a caller, in the browser)
 
 `https://<kydrive-origin>/pick?origin=<caller origin>&mode=link|copy`, opened as a popup on a

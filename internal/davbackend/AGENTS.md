@@ -58,6 +58,8 @@ Owns `Backend` (the `caldav.Backend` implementation), DAV path parsing and objec
 
 - Scheduled organizer admission also reserves sender/instance bytes for its full future CANCEL recipient bodies (owner Q12 A). This reduces ordinary usable capacity. Every trusted physical sponsored copy also reserves its possible partial-cleanup growth against live sources and pending cancellations, even after source removal or grant loss. Source updates recompute the reservation; source deletion/attendee removal converts it to the normal queued CANCEL messages. Wire content and asynchronous delivery are unchanged. Existing untracked legacy sources remain Q11's migration question.
 
+- `MeetingBlocks(ctx, st, u, start, end)` (`presence.go`, contract P) is u's busy blocks for KyMessages' status: personal non-subscribed event calendars, instances (`calendar.Expand`) that are opaque, not cancelled or tentative, not out-of-office (`X-KYCALENDAR-OUT-OF-OFFICE:TRUE`, `X-MICROSOFT-CDO-BUSYSTATUS:OOF`), and organised by u (or with no organizer) or with u's own `ATTENDEE` `PARTSTAT=ACCEPTED`; times only, UTC, free/busy's instance and time bounds.
+
 ## Verification
 - `go test ./internal/davbackend/`
 - `go test ./internal/api/ -run 'CalDAV|DAV|GroupCalendar|MembershipRemoval|GroupSegment'`

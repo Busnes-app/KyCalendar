@@ -276,6 +276,9 @@ func apiRows(w *world) map[string]apiRow {
 		"GET /api/admin/resources":          {method: "GET", path: "/api/admin/resources", want: adminOnly},
 		"POST /api/admin/resources":         {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
 		"PUT /api/admin/resources/{id}":     {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
+		"POST /api/presence":                {method: "POST", path: "/api/presence", body: `{}`, want: everyday}, // 400 before any lookup
+		"GET /api/presence/me":              {method: "GET", path: "/api/presence/me", want: everyday},
+		"PUT /api/presence/me":              {method: "PUT", path: "/api/presence/me", body: `{}`, want: everyday},
 		"GET /api/admin/booking":            {method: "GET", path: "/api/admin/booking", want: adminOnly},
 		"PUT /api/admin/booking":            {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
 		"GET /api/booking-types":            {method: "GET", path: "/api/booking-types", want: everyday},

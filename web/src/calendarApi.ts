@@ -159,3 +159,22 @@ export const chatLink = (email: string) =>
       if (typeof b?.url !== 'string' || !b.url.startsWith('https://')) throw new ApiError(502, 'refused', 'KyMessages refused to open the chat');
       return b.url;
     });
+
+/** A colleague's coarse status from KyMessages (`POST /api/presence`). */
+export type PresenceState = 'available' | 'busy' | 'in_a_meeting' | 'away' | 'out_of_office' | 'unknown';
+export interface Presence { email: string; state: PresenceState; until?: string }
+// At most 50 addresses; organisation people only; `[]` on any failure, so rows still show.
+export const presenceOf = (emails: string[]): Promise<Presence[]> =>
+  emails.length === 0
+    ? Promise.resolve([])
+    : send('/api/presence', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ emails: emails.slice(0, 50) }) })
+        .then((r) => (r?.ok ? r.json() : null))
+        .then((b) => (Array.isArray(b?.people) ? b.people.filter((p: Presence) => typeof p?.email === 'string' && typeof p?.state === 'string') : []))
+        .catch(() => []);
+
+/** The user's own status settings, kept by KyMessages (`/api/presence/me`); throws `ApiError`. */
+export interface Manual { state: 'available' | 'busy' | 'away'; until: string }
+export interface StatusSettings { share: boolean; manual: Manual | null }
+export const statusSettings = () => send('/api/presence/me').then((r) => parse<StatusSettings>(r));
+export const saveStatusSettings = (b: { share?: boolean; manual?: Manual | null }) =>
+  send('/api/presence/me', { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(b) }).then((r) => parse<StatusSettings>(r));
