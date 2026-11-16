@@ -147,6 +147,13 @@ try {
       await shoot(page, 'upcoming', width, colorScheme);
       await view('Website relaunch');
       await shoot(page, 'list', width, colorScheme);
+      const boardSwitch = page.getByRole('radio', { name: 'Board' });
+      if (await boardSwitch.count()) {
+        await boardSwitch.check();
+        await page.locator('.tb').waitFor();
+        await shoot(page, 'board', width, colorScheme);
+        await page.getByRole('radio', { name: 'List' }).check();
+      }
       await page.getByRole('button', { name: /Write launch announcement/ }).click();
       await page.getByRole('dialog').waitFor();
       await shoot(page, 'detail', width, colorScheme);
