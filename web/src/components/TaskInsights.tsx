@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { EmptyState, Modal } from './ui';
 import type { CalendarInfo } from '../calendarApi';
 import {
@@ -7,13 +7,15 @@ import {
   type Area, type Goal, type GoalProgress, type Habit, type Insights, type Task,
 } from '../tasksApi';
 import { dateOnly } from '../taskParse';
+import { rangeOf } from '../taskRepeat';
 import { hm } from '../dayPlan';
 
+const workday = () => { const d = new Date(); return rangeOf(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8), new Date(d.getFullYear(), d.getMonth(), d.getDate(), 18)); };
 const shortDate = (d: string) => new Date(`${d}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 // InsightsView: completions per week, open and overdue per list, planned against free hours.
 // Each chart has a table view; the bars carry their numbers in a tooltip and the table.
-export function InsightsView() {
+export function InsightsView({ lists, open, overdue }: { lists: CalendarInfo[]; open: (id: string) => number; overdue: (id: string) => number }) {
   const [data, setData] = useState<Insights | null>(null);
   const [error, setError] = useState('');
   const [table, setTable] = useState(false);
@@ -52,7 +54,7 @@ export function InsightsView() {
       </section>
       <section aria-labelledby="ti-days">
         <h2 id="ti-days">This week: planned of free</h2>
-        <p className="ti-key"><span className="ti-swatch ti-swatch-planned" aria-hidden="true" /> Planned <span className="ti-swatch ti-swatch-free" aria-hidden="true" /> Free (08:00–18:00, less events)</p>
+        <p className="ti-key"><span className="ti-swatch ti-swatch-planned" aria-hidden="true" /> Planned <span className="ti-swatch ti-swatch-free" aria-hidden="true" /> Free ({workday()}, less events)</p>
         <table className="ti-table ti-days">
           <thead><tr><th scope="col">Day</th><th scope="col">Planned of free</th><th scope="col"><span className="sr-only">Bar</span></th></tr></thead>
           <tbody>
@@ -70,29 +72,43 @@ export function InsightsView() {
         <h2 id="ti-lists">Open and overdue by list</h2>
         <table className="ti-table">
           <thead><tr><th scope="col">List</th><th scope="col">Open</th><th scope="col">Overdue</th></tr></thead>
-          <tbody>{data.lists.map((l) => <tr key={l.id}><td>{l.name}</td><td>{l.open}</td><td className={l.overdue ? 'tk-late' : ''}>{l.overdue}</td></tr>)}</tbody>
+          <tbody>{lists.map((l) => <tr key={l.id}><td>{l.name}</td><td>{open(l.id)}</td><td className={overdue(l.id) ? 'tk-late' : ''}>{overdue(l.id)}</td></tr>)}</tbody>
         </table>
       </section>
     </div>
   );
 }
 
-// HabitPanel: in a habit's detail, its streaks and a 12-week grid of the days it was done.
+// HabitPanel: a habit's streaks and 12 weeks of days, one column per week (Monday on top), with
+// the same facts in words so nothing is told by colour alone.
 export function HabitPanel({ task }: { task: Task }) {
   const [h, setH] = useState<Habit | null>(null);
   useEffect(() => { void habit(task).then(setH, () => setH(null)); }, [task]);
   if (!h) return null;
   const done = new Set(h.days);
   const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 83 - ((today.getDay() + 6) % 7));
-  const days = Array.from({ length: 84 + ((today.getDay() + 6) % 7) + 1 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+  const todayKey = dateOnly(today);
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+  const first = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * 11);
+  const days = Array.from({ length: 84 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
+  const past = days.filter((d) => dateOnly(d) <= todayKey);
+  const hits = past.filter((d) => done.has(dateOnly(d))).length;
   const unit = h.freq === 'weekly' ? 'week' : 'day';
+  const summary = `${hits} of ${past.length} days, streak ${h.current} ${unit}${h.current === 1 ? '' : 's'}, longest ${h.longest}`;
+  const range = `${shortDate(dateOnly(first))} – ${shortDate(todayKey)}`;
   return (
-    <section className="th" aria-label="Habit">
-      <p className="th-streaks"><strong>{h.current}-{unit} streak</strong> · longest {h.longest} {unit}{h.longest === 1 ? '' : 's'}</p>
-      <div className="th-grid" role="img" aria-label={`Done on ${h.days.length} days in the last 12 weeks`}>
-        {days.map((d) => { const k = dateOnly(d); return <span key={k} className="th-day" data-done={done.has(k) || undefined} title={`${d.toLocaleDateString()}${done.has(k) ? ': done' : ''}`} />; })}
+    <section className="th" aria-label={`${task.title}: habit`}>
+      <p className="th-streaks"><strong>{h.current}-{unit} streak</strong> · longest {h.longest} · {hits} of {past.length} days</p>
+      <div className="th-chart">
+        <span className="th-weekdays" aria-hidden="true"><span>M</span><span /><span>W</span><span /><span>F</span><span /><span /></span>
+        <div className="th-grid" role="img" aria-label={`${task.title}, ${range}: ${summary}`}>
+          {days.map((d) => {
+            const k = dateOnly(d);
+            return <span key={k} className="th-day" data-done={done.has(k) || undefined} data-future={k > todayKey || undefined} title={`${d.toLocaleDateString()}: ${k > todayKey ? 'to come' : done.has(k) ? 'done' : 'missed'}`} />;
+          })}
+        </div>
       </div>
+      <p className="th-key"><span>{range}</span><span><span className="th-day th-key-swatch" data-done aria-hidden="true" /> Done</span><span><span className="th-day th-key-swatch" aria-hidden="true" /> Missed</span></p>
     </section>
   );
 }
@@ -114,7 +130,7 @@ export function HabitsView({ tasks, onOpen }: { tasks: Task[]; onOpen: (t: Task)
 }
 
 // GoalsView: the user's goals, each with how its lists are moving; add, edit and delete.
-export function GoalsView({ lists, areas }: { lists: CalendarInfo[]; areas: Area[] }) {
+export function GoalsView({ lists, areas, open, creating, onCreated }: { lists: CalendarInfo[]; areas: Area[]; open: (id: string) => number; creating: boolean; onCreated: () => void }) {
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [progress, setProgress] = useState<Record<string, GoalProgress>>({});
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
@@ -125,11 +141,9 @@ export function GoalsView({ lists, areas }: { lists: CalendarInfo[]; areas: Area
     setProgress(Object.fromEntries(entries));
   }, (e) => setError(e instanceof Error ? e.message : 'Goals could not be loaded.'));
   useEffect(() => { void load(); }, []);
+  useEffect(() => { if (creating) { setEditing('new'); onCreated(); } }, [creating, onCreated]);
   return (
     <div className="tg">
-      <div className="ti-head"><span />
-        <button type="button" className="btn-secondary btn-sm" onClick={() => setEditing('new')}><Plus size={14} aria-hidden="true" /> New goal</button>
-      </div>
       {error && <p role="alert">{error}</p>}
       {goals?.length === 0 && <EmptyState title="No goals yet">A goal follows the lists and areas behind it over a season, quarter or year.</EmptyState>}
       {goals?.map((g) => (
@@ -146,7 +160,7 @@ export function GoalsView({ lists, areas }: { lists: CalendarInfo[]; areas: Area
               {(progress[g.id]?.lists ?? []).map((l) => (
                 <tr key={l.list_id}>
                   <td>{lists.find((c) => c.id === l.list_id)?.name ?? l.name}{l.stalled && <span className="tg-stalled"> · No progress in 14 days</span>}</td>
-                  <td>{l.done}</td><td>{l.open}</td>
+                  <td>{l.done}</td><td>{open(l.list_id)}</td>
                   <td>{l.last_done ? new Date(l.last_done).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'}</td>
                 </tr>
               ))}

@@ -95,6 +95,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const [managing, setManaging] = useState(false);
   const [naming, setNaming] = useState<'list' | 'view' | null>(null);
   const [keysOpen, setKeysOpen] = useState(false);
+  const [newGoal, setNewGoal] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [boards, setBoards] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '{}') ?? {}; } catch { return {}; } });
   const viewKey = `${view.kind}:${view.id}`;
@@ -240,9 +241,11 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     const top = topLevel(open);
     for (const s of ['today', 'overdue'] as Smart[]) c[s] = top.filter((t) => inView(t, s, today)).length;
     for (const t of top) c[t.calendar_id] = (c[t.calendar_id] ?? 0) + 1;
+    for (const t of top) if (inView(t, 'overdue', today)) c[`overdue:${t.calendar_id}`] = (c[`overdue:${t.calendar_id}`] ?? 0) + 1;
     c.flagged = top.filter((t) => t.source === 'kypost').length;
     return c;
   }, [open, today]);
+  const named = lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c));
 
   const go = (v: TaskView) => { setView(v); setQ(''); setFilter({}); setPicker(false); setPlanning(false); };
   const navItem = (v: TaskView, label: string, Icon: typeof Sun, count?: number, extra?: string) => {
@@ -344,6 +347,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           )}
         </div>
         <div className="tk-head-actions">
+          {review === 'goals' && <button type="button" className="btn-secondary btn-sm" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> New goal</button>}
           {(view.kind === 'view' || (currentList && currentList.kind === 'personal' && currentList.id !== inboxId && currentList.role === 'owner')) && (
             <MoreMenu label={`${title} options`}>
               {(close) => view.kind === 'view' ? (
@@ -430,8 +434,8 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       {isToday && model && day.data && (planning
         ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onDone={() => setPlanning(false)} reload={() => void load()} />
         : <TodayView m={model} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
-      {review === 'insights' && <InsightsView />}
-      {review === 'goals' && <GoalsView lists={lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c))} areas={areas} />}
+      {review === 'insights' && <InsightsView lists={named} open={(id) => counts[id] ?? 0} overdue={(id) => counts[`overdue:${id}`] ?? 0} />}
+      {review === 'goals' && <GoalsView lists={named} areas={areas} open={(id) => counts[id] ?? 0} creating={newGoal} onCreated={() => setNewGoal(false)} />}
       {review === 'habits' && <HabitsView tasks={open} onOpen={(t) => setDialog({ task: t })} />}
       {!isToday && !review && flat.length === 0 && !error && (
         <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>
