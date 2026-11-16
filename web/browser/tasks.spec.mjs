@@ -44,7 +44,7 @@ test('tasks: quick add, complete, detail and capture', async ({ browser }, testI
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 
-  await row.getByRole('checkbox', { name: `Complete ${title}` }).check();
+  await row.getByRole('checkbox', { name: `Complete ${title}` }).click();
   await expect(row).toHaveCount(0);
   await open('Completed');
   await expect(page.locator('.tk-row', { hasText: title })).toBeVisible();
