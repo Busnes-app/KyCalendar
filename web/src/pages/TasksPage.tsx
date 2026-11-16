@@ -132,6 +132,8 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     return () => window.removeEventListener(TASKS_CHANGED, changed);
   }, [load, loadMeta]);
   useEffect(() => { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); setSelected(0); }, [view]);
+  // The chosen view's row stays in sight in the sidebar, without moving it when it already fits.
+  useEffect(() => { document.querySelector('.tk-sidebar .tk-nav[aria-current="page"]')?.scrollIntoView({ block: 'nearest' }); }, [view]);
 
   const today = dateOnly(new Date());
   const rows = useMemo(() => {

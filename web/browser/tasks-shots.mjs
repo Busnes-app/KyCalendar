@@ -106,6 +106,9 @@ try {
         if (width === 390) await page.locator('.kc-picker > summary').click();
         await page.getByRole('navigation', { name: 'Task lists' }).getByRole('button', { name: new RegExp(`^${name}`) }).click();
         await page.getByRole('heading', { level: 1, name }).waitFor();
+        // A click scrolls its target into view; put the sidebar back as a reader would see it.
+        await page.evaluate(() => { const s = document.querySelector('.app-sidebar-slot'); if (s) s.scrollTop = 0; document.querySelector('.tk-sidebar .tk-nav[aria-current="page"]')?.scrollIntoView({ block: 'nearest' }); });
+        await page.mouse.move(2, 2); // no hover tint in the shot
       };
       await view('Today');
       await page.getByText('Compress the hero images').waitFor();
@@ -118,6 +121,7 @@ try {
       await page.getByRole('dialog').waitFor();
       await shoot(page, 'detail', width, colorScheme);
       await page.keyboard.press('Escape');
+      await page.mouse.move(2, 2);
       await page.getByLabel('Quick add a task').fill('Call Ana tomorrow 3pm !high #home');
       await page.getByLabel('Quick add a task').press('Home'); // the first character in view
       await shoot(page, 'quickadd', width, colorScheme);

@@ -23,11 +23,12 @@ import './ky-ui/shell.css';
 import './ky-ui/appearance.css';
 import './ky-ui/appearance-themes.css';
 import { secureFetch } from './api';
-import { CaptureBox } from './components/CaptureBox';
 
 // FullCalendar is the bulk of the bundle; load it only for the calendar (same-origin chunk).
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then((m) => ({ default: m.TasksPage })));
+// The capture box parses and formats with the calendar's formatter: loaded on first use.
+const CaptureBox = lazy(() => import('./components/CaptureBox').then((m) => ({ default: m.CaptureBox })));
 
 const ADMIN_TABS = ['dashboard', 'people', 'groups', 'group-calendars', 'resources', 'signin', 'scim', 'backup', 'server-settings'];
 // Pages that became Settings sections keep their old addresses.
@@ -190,7 +191,7 @@ export const App: React.FC = () => {
       <main className="ky-content">
         {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} chat={settings?.meetings === true && apps.some((a) => a.id === 'kymessage-chat')} me={user.email ?? ''} drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab === 'tasks' && <Suspense fallback={<p className="app-loading">Loading tasks…</p>}><TasksPage drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
-        {capturing && <CaptureBox onClose={() => setCapturing(false)} />}
+        {capturing && <Suspense fallback={null}><CaptureBox onClose={() => setCapturing(false)} /></Suspense>}
         {activeTab.startsWith('settings/') && (
           <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onPasswordChanged={passwordChanged} />
         )}

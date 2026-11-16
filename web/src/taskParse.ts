@@ -1,3 +1,5 @@
+import { clockOf } from './taskRepeat';
+
 // Quick add: parses "Call Ana tomorrow 3pm !high #work @Errands every 2 weeks" into fields.
 // Pure: the preview shows exactly what Save sends. Words that parse as nothing stay in the title,
 // and text that would leave no title is all title.
@@ -170,7 +172,7 @@ export function parseQuick(text: string, lists: ListRef[], now = new Date()): Pa
     if (time) {
       const at = new Date(date.getFullYear(), date.getMonth(), date.getDate(), time.h, time.m);
       out.due = localRFC3339(at);
-      out.chips.unshift(`Due ${at.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}, ${at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`);
+      out.chips.unshift(`Due ${at.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}, ${clockOf(at)}`);
     } else {
       out.due = dateOnly(date);
       out.chips.unshift(`Due ${date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`);

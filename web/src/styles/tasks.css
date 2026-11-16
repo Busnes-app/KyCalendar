@@ -117,7 +117,7 @@
 .tk-quick input { padding-inline-start: .25rem; }
 /* The task dialog's actions stay in view while its fields scroll. */
 .tk-sticky-actions { position: sticky; bottom: calc(var(--space-6, 1.5rem) * -1); z-index: 1; margin-bottom: calc(var(--space-6, 1.5rem) * -1); padding-bottom: var(--space-6, 1.5rem); background: var(--panel); }
-.tk-add-reminder { justify-self: start; padding-inline: 0; }
+button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 @media (max-width: 720px) {
   .tk-sticky-actions { bottom: calc(var(--space-4) * -1); margin-bottom: calc(var(--space-4) * -1); padding-bottom: var(--space-4); }
   /* Phones: list rows are borderless, like Today's. */
