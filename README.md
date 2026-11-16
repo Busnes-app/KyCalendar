@@ -44,3 +44,12 @@ An administrator can Enable a disabled KyIdentity person after a fresh sign-in w
 Internal invitation copies are charged to the sender until the attendee answers, then to the authenticated responding attendee (including a copy in a group calendar). Quota refusal leaves the copy and charge unchanged. Sender storage includes pending messages and delivered unanswered copies together. Existing copies without delivery metadata acquire it on their next organizer REQUEST; migration does not guess trusted delivery from editable ICS. In addition to 1000 new invitees per sender per hour, internal REQUEST recipient bodies, including updates, have a 64 MiB hourly byte budget per sender. The new-invitee count resets on restart; byte windows persist and commit only with a successful enqueue. Failed saves and deduplicated messages spend no byte allowance. Refusals say when sending can resume in UTC.
 
 Meetings also reserve room for their full cancellation notices. This reduces the room available for ordinary calendar data, so a successfully admitted meeting can still be cancelled when that ordinary space is full. Updates replace the reserved amount; cancellation uses it for the existing queued notices, and ended liability is reclaimed. This adds no setting and keeps the existing wire content and asynchronous delivery. Historical untracked sources remain subject to the legacy-attribution migration question.
+
+## User manual
+
+Read the [online manual](https://busnes.app/manuals/kycalendar/) or browse its
+[Markdown sources](docs/src/introduction.md).
+
+Build and check it with `mdbook build docs` and `python3 docs/check-links.py`,
+then open `docs/book/index.html`. The documentation workflow also provides a
+downloadable `documentation-book` artifact.
