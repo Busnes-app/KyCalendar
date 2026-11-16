@@ -25,7 +25,7 @@ KyCalendar answers for the resource in the same database transaction that stores
 
 ## Data
 
-Migrations 28 (definitions) and 29 (bookings) add five tables.
+Migrations 28 (definitions) and 30 (bookings) add five tables.
 
 - `resources`: `id` (32 hex), `kind` (`room` or `equipment`), `name` (unique ignoring case),
   `location`, `capacity` (0 = not stated), `tags` (JSON list), `audience` (`everyone` or
@@ -33,7 +33,7 @@ Migrations 28 (definitions) and 29 (bookings) add five tables.
   `created_at`, `updated_at`.
 - `resource_groups (resource_id, group_id)` and `resource_approvers (resource_id, user_id)`,
   cascading on both sides. Deleting a group drops it from every resource.
-- `resource_bookings` (migration 29): one row per resource per event object: `resource_id`,
+- `resource_bookings` (migration 30): one row per resource per event object: `resource_id`,
   `calendar_id`, `object_name` (cascading from `calendar_objects`, so deleting the event or its
   calendar releases the room), `booked_by`, `status` (`accepted`, `pending`, `declined`),
   `reason`, `detail`, `fingerprint`, `decided_by`, `open_after`, times.
