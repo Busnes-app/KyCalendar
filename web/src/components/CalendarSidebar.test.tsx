@@ -81,7 +81,7 @@ describe('CalendarSidebar', () => {
     const onChanged = vi.fn();
     const list: CalendarInfo = { ...cals[0], id: 'cal_t', name: 'Todo', components: ['VTODO'] };
     render(<CalendarSidebar calendars={[...cals, list]} hidden={new Set()} onToggle={vi.fn()} onChanged={onChanged} />);
-    expect(screen.getByText('Tasks · open in a tasks app')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Tasks · open in Tasks' }).getAttribute('href')).toBe('#/tasks');
     fireEvent.click(screen.getByRole('button', { name: 'Add a calendar' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'New calendar' }));
     fireEvent.change(within(screen.getByRole('dialog', { name: 'New calendar' })).getByLabelText('Name'), { target: { value: 'Shared' } });

@@ -324,3 +324,17 @@ func TestTaskAreasAndViews(t *testing.T) {
 		t.Errorf("inbox %v %v", first, second)
 	}
 }
+
+// Every rule the web form builds is accepted, with each way it can end.
+func TestTaskAcceptsEveryWebRepeat(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice := loginAs(t, srv, st, "alice", "user")
+	list := taskList(t, srv, alice)
+	for _, rule := range []string{"FREQ=DAILY", "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "FREQ=WEEKLY;BYDAY=TU;INTERVAL=2", "FREQ=MONTHLY;BYMONTHDAY=10",
+		"FREQ=MONTHLY;BYDAY=2TU", "FREQ=MONTHLY;BYDAY=-1FR", "FREQ=MONTHLY;BYMONTHDAY=-1;UNTIL=20270630", "FREQ=YEARLY;COUNT=5"} {
+		task := createTask(t, srv, alice, list, map[string]any{"title": rule, "due": "2026-11-10", "rrule": rule})
+		if w := taskReq(t, srv, "PATCH", "/api/tasks/"+list+"/"+task.UID, task.ETag, alice, map[string]any{"status": "COMPLETED"}); w.Code != http.StatusOK {
+			t.Errorf("%s: complete %d %s", rule, w.Code, w.Body)
+		}
+	}
+}

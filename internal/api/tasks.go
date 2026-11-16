@@ -30,22 +30,22 @@ import (
 
 // Task bounds, checked at the API boundary (design: docs/superpowers/specs/2026-11-15-tasks-design.md).
 const (
-	maxTasks        = 5000
-	maxTags         = 20
-	maxTagBytes     = 64
-	maxTaskDepth    = 3 // a task, its subtask and that subtask's subtask
-	maxReminders    = 10
-	maxRRuleBytes   = 200
-	maxLengthMin    = 24 * 60
-	maxAreas        = 20
-	maxAreaLists    = 50
-	maxViews        = 50
-	maxViewBytes    = 2048
-	maxNameBytes    = 100
-	maxQueryBytes   = 200
-	maxQueryWords   = 10
-	searchesPerMin  = 30
-	inboxName       = "Tasks"
+	maxTasks       = 5000
+	maxTags        = 20
+	maxTagBytes    = 64
+	maxTaskDepth   = 3 // a task, its subtask and that subtask's subtask
+	maxReminders   = 10
+	maxRRuleBytes  = 200
+	maxLengthMin   = 24 * 60
+	maxAreas       = 20
+	maxAreaLists   = 50
+	maxViews       = 50
+	maxViewBytes   = 2048
+	maxNameBytes   = 100
+	maxQueryBytes  = 200
+	maxQueryWords  = 10
+	searchesPerMin = 30
+	inboxName      = "Tasks"
 )
 
 type taskView struct {
