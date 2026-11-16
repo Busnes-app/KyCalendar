@@ -171,8 +171,13 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 		d := resource.Plan(cal, r, o.LastEnd, now)
 		// The same rule and no occurrence the previous object did not have (an attendee's answer
 		// to one occurrence, a cancelled one): the answer stands, whoever writes it.
-		if b := existing[id]; b != nil && r != nil && d.Status != resource.Declined && b.Status != resource.Declined &&
+		if b := existing[id]; b != nil && r != nil && r.Enabled && (d.Status != resource.Declined || d.Reason == resource.ReasonBeyond) && b.Status != resource.Declined &&
 			prevCal != nil && prevSeries == series && resource.Within(prevCal, cal, now) {
+			if d.Reason == resource.ReasonBeyond {
+				// No occurrence in the current horizon: keep the ledger's original open range.
+				answers[id] = b.Status
+				continue
+			}
 			d.Status = b.Status
 			answers[id] = d.Status
 			changes = append(changes, change{r, d})

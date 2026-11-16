@@ -265,6 +265,9 @@ func SeriesFingerprint(cal *ical.Calendar) string {
 // share the series rule (SeriesFingerprint); past the last override of either, the rule alone
 // makes both alike. An object too large to compare is not within.
 func Within(prev, next *ical.Calendar, now time.Time) bool {
+	if ambiguous(next) {
+		return false
+	}
 	end := now.Add(24 * time.Hour)
 	for _, cal := range []*ical.Calendar{prev, next} {
 		for _, c := range cal.Children {
@@ -272,7 +275,18 @@ func Within(prev, next *ical.Calendar, now time.Time) bool {
 				continue
 			}
 			for _, name := range []string{ical.PropRecurrenceID, ical.PropDateTimeStart, ical.PropDateTimeEnd} {
-				if t, err := c.Props.DateTime(name, time.UTC); err == nil && t.After(end) {
+				p := c.Props.Get(name)
+				if p == nil {
+					continue
+				}
+				// Use expansion's timezone resolution for each comparison bound too.
+				one := ical.NewComponent(ical.CompEvent)
+				one.Props[ical.PropDateTimeStart] = []ical.Prop{*p}
+				t, _, _, err := calendar.SeriesTimes(one, time.UTC)
+				if err != nil {
+					return false
+				}
+				if t.After(end) {
 					end = t
 				}
 			}

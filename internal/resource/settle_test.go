@@ -183,9 +183,11 @@ func TestWithin(t *testing.T) {
 		t.Fatal("cancelling an occurrence asks for new time")
 	}
 	for name, extra := range map[string]string{
-		"moved":    "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T130000Z\nDTEND:20270611T140000Z\n",
-		"detached": "RECURRENCE-ID:20270615T090000Z\nDTSTART:20270615T090000Z\nDTEND:20270615T100000Z\n",
-		"longer":   "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T110000Z\n",
+		"Windows zone": "RECURRENCE-ID;TZID=Eastern Standard Time:20270611T050000\nDTSTART;TZID=Eastern Standard Time:20270611T090000\nDTEND;TZID=Eastern Standard Time:20270611T100000\n",
+		"Mozilla zone": "RECURRENCE-ID;TZID=/mozilla.org/20050126_1/America/New_York:20270611T050000\nDTSTART;TZID=/mozilla.org/20050126_1/America/New_York:20270611T090000\nDTEND;TZID=/mozilla.org/20050126_1/America/New_York:20270611T100000\n",
+		"moved":        "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T130000Z\nDTEND:20270611T140000Z\n",
+		"detached":     "RECURRENCE-ID:20270615T090000Z\nDTSTART:20270615T090000Z\nDTEND:20270615T100000Z\n",
+		"longer":       "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T110000Z\n",
 	} {
 		if Within(prev, withOverride(extra), later) {
 			t.Errorf("%s occurrence counted as already held", name)
