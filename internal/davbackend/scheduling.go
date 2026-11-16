@@ -127,7 +127,7 @@ func (e errPermanent) Error() string { return e.reason }
 
 const (
 	outboxBatch   = 50
-	outboxGiveUp  = 24 * time.Hour
+	outboxGiveUp  = 24 * time.Hour // KyPost refuses superseded out-of-office comments for 25h (docs/SUITE-INTEGRATIONS.md O)
 	outboxBackoff = time.Minute
 	outboxMaxWait = time.Hour
 )
