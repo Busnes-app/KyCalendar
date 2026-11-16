@@ -189,7 +189,7 @@ export const App: React.FC = () => {
       />
 
       <main className="ky-content">
-        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} chat={settings?.meetings === true && apps.some((a) => a.id === 'kymessage-chat')} me={user.email ?? ''} drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
+        {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} chat={settings?.meetings === true && apps.some((a) => a.id === 'kymessage-chat')} status={settings?.meetings === true} me={user.email ?? ''} drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
         {activeTab === 'tasks' && <Suspense fallback={<p className="app-loading">Loading tasks…</p>}><TasksPage drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
         {capturing && <Suspense fallback={null}><CaptureBox onClose={() => setCapturing(false)} /></Suspense>}
         {activeTab.startsWith('settings/') && (

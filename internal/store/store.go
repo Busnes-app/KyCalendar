@@ -223,6 +223,9 @@ type GroupStore interface {
 	AddGroupMember(ctx context.Context, groupID, userID string) error
 	RemoveGroupMember(ctx context.Context, groupID, userID string) error
 	GetUserGroups(ctx context.Context, userID string) ([]*Group, error)
+	// ReconcileSuiteGroup makes g's group calendar and members here match KyIdentity's suite
+	// group list in one transaction; members come from the accounts in scope. See suite_groups.go.
+	ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, g SuiteGroup) (SuiteGroupChange, error)
 }
 
 // AuditStore logs security events.
@@ -338,6 +341,13 @@ type CalendarStore interface {
 	MeetingGuests(ctx context.Context, meetingID string) ([]MeetingGuest, error)
 	// SetMeetingGuests replaces them and records guestsError and the next refresh (nil: none).
 	SetMeetingGuests(ctx context.Context, meetingID string, guests []MeetingGuest, guestsError string, refreshAt *time.Time) error
+	// RefreshPresence adds a push row for every everyday member without one and makes rows
+	// whose refresh time has come due again; DuePresence lists due rows, oldest attempt first.
+	RefreshPresence(ctx context.Context, now time.Time) error
+	DuePresence(ctx context.Context, now time.Time, limit int) ([]PresencePush, error)
+	// PushedPresence records rev as sent and the next refresh; RetryPresence backs off.
+	PushedPresence(ctx context.Context, userID string, rev int64, refresh time.Time) error
+	RetryPresence(ctx context.Context, userID string, next time.Time) error
 	// RefreshMeetings makes open meetings whose refresh time has come due again.
 	RefreshMeetings(ctx context.Context, now time.Time) error
 	// GuestLink is email's sealed guest link on senderID's open meeting for uid (ErrNotFound:

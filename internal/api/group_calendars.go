@@ -32,6 +32,7 @@ type groupCalendarView struct {
 	CreatedAt   time.Time   `json:"created_at"`
 	Components  []string    `json:"components"`
 	Grants      []grantView `json:"grants"`
+	Archived    bool        `json:"archived"` // an archived suite group's calendar: read-only
 }
 
 func grantViews(gs []store.CalendarGrant) []grantView {
@@ -43,7 +44,7 @@ func grantViews(gs []store.CalendarGrant) []grantView {
 }
 
 func groupCalendarViewOf(c *store.Calendar, gs []store.CalendarGrant) groupCalendarView {
-	return groupCalendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, CreatedAt: c.CreatedAt, Components: c.Components, Grants: grantViews(gs)}
+	return groupCalendarView{ID: c.ID, Name: c.Name, Color: c.Color, Description: c.Description, CreatedAt: c.CreatedAt, Components: c.Components, Grants: grantViews(gs), Archived: c.Archived}
 }
 
 // auditAction records an admin or access change by the session user; IDs and names only.

@@ -5,7 +5,8 @@ KyCalendar's copy of the wave 1 and wave 2 wire contracts (owner decisions 2026-
 This copy is the durable one for this repository: change it together with the peer's copy.
 Sections implemented here: shared rules, B (KyCalendar → KyMessages meetings), D (people picker,
 KyCalendar's part), E (the `/new` deep link, receiver), F (the free/busy strip) and, from wave 2,
-H (chat from the event view, KyCalendar's part), I (the KyDrive picker, as a caller) and L (meeting guests, KyCalendar's part).
+H (chat from the event view, KyCalendar's part), I (the KyDrive picker, as a caller), L (meeting guests, KyCalendar's part)
+and S (suite groups, KyCalendar's part).
 
 Wave 2 compatibility rule: each side must keep working against the other side's wave 1 `main`
 until both have merged. A new request field the old receiver refuses means: retry without it
@@ -221,6 +222,51 @@ the `kymessage-chat` launch URL's origin.
 - **Audit.** `chat.open`, or `chat.refused` with `code=`, by user ID only: never the address,
   the subject or the link.
 
+## P. Status from the calendar (KyCalendar → KyMessages)
+
+Owner request 2026-11-15. KyMessages keeps a member's coarse status and is the contract's owner
+(KyMessages `docs/PRESENCE.md`, the durable copy of the wire format; design
+`docs/superpowers/specs/2026-11-15-presence-design.md` there). Pair: `kycalendar`↔`kymessage`.
+
+| Event type | Route on KyMessages console | KyCalendar sends |
+|---|---|---|
+| `kycalendar.presence.busy` | `POST /api/suite/presence/calendar` | `{"sub","issuer","revision","busy":[{"start","end"}]}` |
+| `kycalendar.presence.me` | `POST /api/suite/presence/me` | `{"sub","issuer","share"?,"manual"?}` |
+| `kycalendar.presence.lookup` | `POST /api/suite/presence/lookup` | `{"sub","issuer","subs":[≤50]}` |
+
+KyMessages decodes strictly: any other field is refused, so a title, location, attendee or
+event ID can never ride along. States: `available`, `busy`, `in_a_meeting` (with `until`),
+`away`, `out_of_office` (with `until`), `unknown`.
+
+**Busy blocks.** `davbackend.MeetingBlocks`: instances in the member's personal event
+calendars, from now to 48 hours ahead, that are opaque, not cancelled or tentative, and that the
+member organised (or that have no organizer) or accepted (`PARTSTAT=ACCEPTED` on the member's
+own `ATTENDEE`, per instance). Out-of-office events (`X-KYCALENDAR-OUT-OF-OFFICE:TRUE` or
+`X-MICROSOFT-CDO-BUSYSTATUS:OOF`) are left out: out-of-office reaches KyMessages from KyPost.
+Start and end only, RFC 3339 UTC; `revision` is the compute time in milliseconds.
+
+**When.** `presence_pushes` (migration 30) is one outbox row per everyday member with a KyIdentity
+subject. Every object write and calendar delete bumps the owner's row in the write's
+transaction (`touchPresence`); a sent row is due again after `store.PresenceRefresh` (6 h).
+`SyncPresence` runs on the meetings ticker (5 s), 20 rows a pass, only while KyMessages is
+linked. 429, 5xx and network errors back off as meetings do; a refusal (`no_user`, ...) waits
+for the next change or refresh. Nothing is kept in memory and nothing is scheduled per event.
+
+**Session routes** (everyday members, `meetingsFor`):
+- `GET`/`PUT /api/presence/me`: Settings → Status. `share` is "Show my status to colleagues"
+  (on by default, KyMessages' default); `manual` is `{"state":"available|busy|away","until"}`
+  within 7 days, or `null` for automatic. Unknown fields are 400. 30 a minute. 409
+  `status_off` without KyMessages or a KyIdentity sign-in; 409 `sharing_off` for a manual
+  status while sharing is off.
+- `POST /api/presence {"emails":[≤50]}`: `resolveAs` keeps organisation people only, then
+  one lookup for the subjects not cached; answers are cached per caller and subject for 60 seconds (one caller's answer never serves another: KyMessages decides per caller).
+  Answers `{"people":[{"email","state","until"?}]}`, organisation people only. 60 a minute;
+  400 `too_many` over 50.
+
+**UI.** `StatusLabel`: a dot and a text label ("In a meeting until 15:00", "Out of office until
+5 Dec", "Status unknown"); the dot is `aria-hidden` and colour never carries the meaning alone.
+Shown on attendee rows, the organizer line and, as text, in the Invite field's suggestions.
+
 ## I. KyDrive picker (KyCalendar is a caller, in the browser)
 
 `https://<kydrive-origin>/pick?origin=<caller origin>&mode=link|copy`, opened as a popup on a
@@ -409,9 +455,13 @@ is written the way `kypost.itip.respond` writes it.
   calendar boxes are ticked, and the remote reply goes to everyone with the administrator's
   permission.
 - KyPost records each remote comment, with the revision of the newest sync carrying it, before
-  sending. An `applied` answer for revision R forgets only texts last carried before R, so
-  answers may arrive in any order. A text changed, cleared or turned off while KyCalendar was
-  unreachable is still refused.
+  sending. An `applied` answer for revision R marks superseded only the texts last carried
+  before R, so answers may arrive in any order. A superseded text stays refused for 25 hours.
+  A REPLY KyCalendar built earlier may still be retried in that time, and a text changed,
+  cleared or turned off while KyCalendar was unreachable is still refused.
+- **KyCalendar's half of that bound:** its scheduling outbox abandons an unsent message 24 hours
+  after building it (`outboxGiveUp`, `internal/davbackend/scheduling.go`). Raising that limit
+  means raising KyPost's 25-hour retention (`config.OOORemoteRetention`) in the same change.
 - Logs and audit carry IDs only, never the period or the texts.
 
 ### How KyCalendar implements it
@@ -422,3 +472,34 @@ the event, re-reading the stored row so a newer revision wins. `Scheduler.autoTe
 `Inbound`'s new-invitation branch and the outbox's internal delivery; `itip.SetComment` and
 `attendeeReply` carry the comment. Tests: `TestKyPostOutOfOffice*`,
 `TestAttendeeReplyCarriesANewComment`.
+
+## S. Suite groups (KyCalendar's part)
+
+Contract: KyIdentity-server `docs/SUITE-DIRECTORY.md` (`GET /api/suite/groups`) and
+`docs/superpowers/specs/2026-11-15-suite-groups-design.md` (threat model, app contract). Client:
+`ky-primitives/suitedir` `Groups`.
+
+### How KyCalendar implements it
+
+- **Poll.** `Server.SyncSuiteGroups` (`internal/api/suite_groups.go`) runs at start and every
+  60 s from `cmd/server`, only while the live sign-in provider is KyIdentity, under KyCalendar's
+  own client credentials. Any error from the list changes nothing; a group missing from the
+  list is never archived. A removed member leaves at the next pass, at most about a minute.
+- **One calendar per group, keyed on the KyIdentity group ID** (`suite_group_calendars`,
+  migration 31), never the name or slug, so a recreated namesake gets a new calendar. The
+  members live in a local group of source `suite` named `suite-group:<id>` (admin writes
+  refuse it as managed elsewhere; SCIM never sees it), granted `editor` on the calendar, the
+  ordinary member role; a grant an administrator removes or changes (to manager, say) is put
+  back to `editor` at the next pass. The calendar takes the group's name and follows renames.
+- **Members** are exactly the listed subjects that have an active everyday account here
+  signed in or provisioned through the bound KyIdentity (`kysignon` or `scim` rows of the
+  binding); administrators never, and subjects with no account yet join on a later poll.
+- **Archived**: members removed and the calendar read-only for everyone (`Calendar.Archived`;
+  the store refuses every event write, so web, CalDAV, scheduling and agents all stop), kept
+  with its events and grants, and marked `archived` in `GET /api/admin/calendars`. Active
+  again: the same calendar, writable, members back.
+- **Never deleted** by reconcile. An administrator may still delete the calendar; a group
+  still active then gets a new, empty one on the same local group.
+- **Each group is one transaction** under the `group-names` lock and writes only the
+  differences, so the same list twice writes nothing and a pass cut short repeats safely.
+- **Never logged or audited:** names, subjects, addresses. Logs carry the group ID and counts.

@@ -327,6 +327,7 @@ only the process setting across base/build/LAN-DNS/static-IP combinations.
 - A group calendar is `owner_kind = 'group'` with `owner_id` = its own ID, so it survives the deletion of any KyIdentity group. Its grants cascade with the group. Its CalDAV segment in each member's home is `_<calendar-id>`.
 - A caller who cannot read a calendar gets 404 on every API and CalDAV route; one who can read but lacks the role gets 403.
 - Deleting a group calendar requires a sign-in younger than 10 minutes (403 `reauth_required` otherwise). The delete runs on a detached context and is tracked for shutdown.
+- Suite groups (contract `docs/SUITE-INTEGRATIONS.md` S; KyIdentity-server `docs/SUITE-DIRECTORY.md`): `Server.SyncSuiteGroups` polls KyIdentity's `GET /api/suite/groups` at start and every 60 s while the live provider is KyIdentity and gives each suite group one group calendar keyed on its KyIdentity ID only (`suite_group_calendars`), members in a `suite`-source local group granted `editor` (reconcile puts any other role back). A failed list changes nothing; absence never archives. Archived: members removed, calendar read-only (`Calendar.Archived`, `ErrReadOnly` on every write path), kept. Reconcile never deletes; logs carry IDs and counts only.
 - `internal/api/authz_matrix_test.go` covers every registered route and every CalDAV operation for anonymous, owner, reader, editor, manager, non-member, admin and deactivated callers, and fails when a route has no row.
 
 #### Plan 3 recurrence and event API contracts
@@ -418,7 +419,7 @@ Spec `docs/superpowers/specs/2026-11-15-tasks-design.md` (mapping table, routes,
 - Tasks are VTODO objects in calendars whose component set holds VTODO; lists are those calendars, group task lists follow the group roles. The web, CalDAV and MCP read the same rows; the event API and event tools ignore tasks.
 - Every property maps to RFC 5545 (priority 1/5/9, STATUS with COMPLETED and PERCENT-COMPLETE, DUE, DTSTART, DESCRIPTION, CATEGORIES, `RELATED-TO;RELTYPE=PARENT`, RRULE, VALARM, DTSTART+DURATION when placed). KyCalendar's own markers are `X-KY-ESTIMATE`, `X-KY-REPEAT-FROM:COMPLETION`, `X-KY-HABIT:TRUE` and `X-KY-SOURCE`. A web edit keeps every content line it does not own (`TestInteropFixturesSurviveWebEdits`, fixtures cited in `internal/tasks/testdata/SOURCES.md`).
 - Completing a repeating task moves the same VTODO to its next occurrence, as Tasks.org does, keeping the wall-clock time across DST.
-- Areas, saved views, the completion log and the search index are KyCalendar-only (migration 30); CalDAV clients see ordinary lists. Free/busy never reads VTODO, so a placed task is never busy.
+- Areas, saved views, the completion log and the search index are KyCalendar-only (migration 32); CalDAV clients see ordinary lists. Free/busy never reads VTODO, so a placed task is never busy.
 - MCP task tools follow the event tools' scopes and personal-only rule (`internal/api/mcp_tasks.go`); no tool deletes tasks or lists.
 
 #### Installer setup

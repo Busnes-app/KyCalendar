@@ -597,8 +597,21 @@ CREATE TABLE sso_logouts (
 	{Version: 27, Name: "booking_pages", SQLite: bookingPages("DATETIME"), Postgres: bookingPages("TIMESTAMPTZ")},
 	{Version: 28, Name: "resources", SQLite: resources("DATETIME"), Postgres: resources("TIMESTAMPTZ")},
 	{Version: 29, Name: "kypost_out_of_office", SQLite: kypostOutOfOffice, Postgres: kypostOutOfOffice},
-	{Version: 30, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
+	{Version: 30, Name: "presence_pushes", SQLite: presencePushes("DATETIME"), Postgres: presencePushes("TIMESTAMPTZ")},
+	{Version: 31, Name: "suite_group_calendars", SQLite: suiteGroupCalendars, Postgres: suiteGroupCalendars},
+	{Version: 32, Name: "tasks", SQLite: taskTables + taskSearchSQLite, Postgres: taskTables + taskSearchPostgres},
 }
+
+// suiteGroupCalendars: the group calendar each KyIdentity suite group has here, keyed on the
+// KyIdentity group ID only (never its name or slug), with the local group that holds its
+// members. archived makes the calendar read-only. A calendar an administrator deletes takes
+// its row with it; reconcile then makes a new one for a group that is still active.
+const suiteGroupCalendars = `CREATE TABLE suite_group_calendars (
+ suite_group_id TEXT PRIMARY KEY,
+ calendar_id TEXT NOT NULL UNIQUE REFERENCES calendars(id) ON DELETE CASCADE,
+ group_id TEXT NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
+ archived BOOLEAN NOT NULL DEFAULT FALSE
+);`
 
 // resources: rooms and equipment an administrator defines. Tags is a JSON list. A resource is
 // never deleted: disabling keeps its history. Groups who may book (audience groups) and
@@ -895,4 +908,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 	}
 
 	return nil
+}
+
+// presencePushes: one row per member, the outbox of their busy blocks for KyMessages
+// (docs/SUITE-INTEGRATIONS.md section P). A write to one of their calendars bumps rev in the
+// write's transaction; refresh_at makes the row due again every 6 hours. No event is stored.
+func presencePushes(ts string) string {
+	return `CREATE TABLE presence_pushes (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ rev BIGINT NOT NULL DEFAULT 1,
+ done_rev BIGINT NOT NULL DEFAULT 0,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ next_attempt_at ` + ts + ` NOT NULL,
+ refresh_at ` + ts + `
+);
+CREATE INDEX presence_pushes_due ON presence_pushes(next_attempt_at);`
 }

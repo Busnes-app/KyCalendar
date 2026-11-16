@@ -303,17 +303,20 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/tasks/views":                 {method: "POST", path: "/api/tasks/views", body: `{"name":"M","query":{}}`, want: everyday},
 		"PUT /api/tasks/views/{id}":             {method: "PUT", path: "/api/tasks/views/view_matrix", body: `{"name":"M","query":{"q":"x"}}`, want: ownerOnly},
 		"DELETE /api/tasks/views/{id}":          {method: "DELETE", path: "/api/tasks/views/view_doomed", want: ownerOnly},
+		"GET /api/tasks/{cal}/{uid}/images/{n}": {method: "GET", path: "/api/tasks/" + w.tasks.ID + "/image-task/images/0", want: expect{anon: 401, deactivated: 401, admin: 403, reader: allow, editor: allow, manager: allow, owner: 404, nonmember: 404}},
 		"GET /api/freebusy":                     {method: "GET", path: "/api/freebusy?users=owner@example.com&start=2026-11-01T00:00:00Z&end=2026-11-02T00:00:00Z", want: everyday},
 		"GET /api/suite/people":                 {method: "GET", path: "/api/suite/people?q=al", want: everyday},
 		"POST /api/suite/chat":                  {method: "POST", path: "/api/suite/chat", body: `{}`, want: everyday}, // 400 before any lookup
 		"GET /api/admin/resources":              {method: "GET", path: "/api/admin/resources", want: adminOnly},
 		"POST /api/admin/resources":             {method: "POST", path: "/api/admin/resources", body: `{}`, want: adminOnly}, // 400 before any write
 		"PUT /api/admin/resources/{id}":         {method: "PUT", path: "/api/admin/resources/" + matrixResource, body: `{}`, want: adminOnly},
+		"POST /api/presence":                    {method: "POST", path: "/api/presence", body: `{}`, want: everyday}, // 400 before any lookup
+		"GET /api/presence/me":                  {method: "GET", path: "/api/presence/me", want: everyday},
+		"PUT /api/presence/me":                  {method: "PUT", path: "/api/presence/me", body: `{}`, want: everyday},
 		"GET /api/admin/booking":                {method: "GET", path: "/api/admin/booking", want: adminOnly},
 		"PUT /api/admin/booking":                {method: "PUT", path: "/api/admin/booking", body: `{"allowed":false}`, want: adminOnly},
 		"GET /api/booking-types":                {method: "GET", path: "/api/booking-types", want: everyday},
 		"POST /api/booking-types":               {method: "POST", path: "/api/booking-types", body: `{}`, want: everyday}, // 400 before any write
-		"GET /api/tasks/{cal}/{uid}/images/{n}": {method: "GET", path: "/api/tasks/" + w.tasks.ID + "/image-task/images/0", want: expect{anon: 401, deactivated: 401, admin: 403, reader: allow, editor: allow, manager: allow, owner: 404, nonmember: 404}},
 		// A booking type is its owner's alone: anyone else's request is answered as if it were missing.
 		"PUT /api/booking-types/{id}":         {method: "PUT", path: "/api/booking-types/" + w.bookingType, body: `{}`, want: ownerOnly},
 		"POST /api/booking-types/{id}/rotate": {method: "POST", path: "/api/booking-types/" + w.bookingType + "/rotate", want: ownerOnly},

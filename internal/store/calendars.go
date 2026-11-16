@@ -60,26 +60,30 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Sl
 }
 
 const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, components, seq, created_at,
-(SELECT COUNT(*) FROM calendar_subscriptions s WHERE s.calendar_id = calendars.id)`
+(SELECT COUNT(*) FROM calendar_subscriptions s WHERE s.calendar_id = calendars.id),
+(SELECT COUNT(*) FROM suite_group_calendars a WHERE a.calendar_id = calendars.id AND a.archived)`
 
 func scanCalendar(row interface{ Scan(...any) error }) (*Calendar, error) {
 	var cal Calendar
-	var subscribed int
+	var subscribed, archived int
 	var comps string
-	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &comps, &cal.Seq, &cal.CreatedAt, &subscribed)
+	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &comps, &cal.Seq, &cal.CreatedAt, &subscribed, &archived)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	cal.Subscribed = subscribed > 0
+	cal.Archived = archived > 0
 	cal.Components = strings.Split(comps, ",")
 	return &cal, err
 }
 
-// refuseSubscribed is ErrReadOnly when calendarID mirrors an ICS link. Every event write checks
-// it inside its transaction, so no path (web, CalDAV, agent) can edit a subscribed calendar.
-func (c *calendarStore) refuseSubscribed(ctx context.Context, tx *sql.Tx, calendarID string) error {
+// refuseReadOnly is ErrReadOnly when calendarID mirrors an ICS link or is an archived suite
+// group's calendar. Every event write checks it inside its transaction, so no path (web, CalDAV,
+// scheduling, agent) can edit either.
+func (c *calendarStore) refuseReadOnly(ctx context.Context, tx *sql.Tx, calendarID string) error {
 	var n int
-	if err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*) FROM calendar_subscriptions WHERE calendar_id = ?`), calendarID).Scan(&n); err != nil {
+	if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT COUNT(*) FROM calendar_subscriptions WHERE calendar_id = ?)
++ (SELECT COUNT(*) FROM suite_group_calendars WHERE calendar_id = ? AND archived)`), calendarID, calendarID).Scan(&n); err != nil {
 		return err
 	}
 	if n > 0 {
@@ -128,6 +132,9 @@ func (c *calendarStore) DeleteCalendar(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := c.touchPresence(ctx, tx, id); err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendars WHERE id = ?`), id)
 	if err != nil {
 		return err
@@ -335,7 +342,7 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	if err := c.bump(ctx, tx, o.CalendarID, o.Name, false); err != nil {
 		return false, err
 	}
-	if err := c.refuseSubscribed(ctx, tx, o.CalendarID); err != nil {
+	if err := c.refuseReadOnly(ctx, tx, o.CalendarID); err != nil {
 		return false, err
 	}
 	etag, exists, err := c.currentETag(ctx, tx, o.CalendarID, o.Name)
@@ -443,6 +450,9 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 	if err := c.touchMeeting(ctx, tx, o.CalendarID, o.Name, o.WriterID, o.Meeting, false); err != nil {
 		return false, err
 	}
+	if err := c.touchPresence(ctx, tx, o.CalendarID); err != nil {
+		return false, err
+	}
 	if ownTx {
 		return !exists, tx.Commit()
 	}
@@ -470,7 +480,7 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 	if err := c.bump(ctx, tx, calendarID, name, true); err != nil {
 		return err
 	}
-	if err := c.refuseSubscribed(ctx, tx, calendarID); err != nil {
+	if err := c.refuseReadOnly(ctx, tx, calendarID); err != nil {
 		return err
 	}
 	etag, exists, err := c.currentETag(ctx, tx, calendarID, name)
@@ -500,6 +510,9 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 		return err
 	}
 	if err := c.touchMeeting(ctx, tx, calendarID, name, "", nil, true); err != nil {
+		return err
+	}
+	if err := c.touchPresence(ctx, tx, calendarID); err != nil {
 		return err
 	}
 	if ownTx {
