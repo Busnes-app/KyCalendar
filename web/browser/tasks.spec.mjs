@@ -54,7 +54,8 @@ test('tasks: quick add, complete, detail and capture', async ({ browser }, testI
 
   await row.getByRole('checkbox', { name: `Complete ${title}` }).click();
   await expect(row).toHaveCount(0);
-  await open('Completed');
+  await open('All tasks');
+  await page.getByRole('navigation', { name: 'All tasks views' }).getByRole('button', { name: 'Completed' }).click();
   await expect(page.locator('.tk-row', { hasText: title })).toBeVisible();
 
   // The capture box, from anywhere: n outside fields.

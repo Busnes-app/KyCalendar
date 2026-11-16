@@ -45,6 +45,7 @@ interface Props {
   defaultList: string;
   subtasks: Task[];
   drive?: string;
+  color?: string; // the list's colour, for a habit's grid
   initial?: TaskBody;
   onClose: () => void;
   onChanged: () => void;
@@ -52,7 +53,7 @@ interface Props {
 
 // TaskDialog shows and edits every field of a task, in the shared Modal. Save sends only what
 // changed, so properties the user did not touch stay exactly as the task's app wrote them.
-export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', initial = {}, onClose, onChanged }: Props) {
+export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', initial = {}, color, onClose, onChanged }: Props) {
   const readOnly = task ? !task.editable : false;
   const start: TaskBody = task ?? initial;
   const [list, setList] = useState(task?.calendar_id ?? defaultList);
@@ -229,7 +230,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
         {repeatOn && ['daily', 'weekdays', 'weekly'].includes(rule.preset) && (
           <label className="kc-check"><input type="checkbox" checked={isHabit} disabled={readOnly} onChange={(e) => setIsHabit(e.target.checked)} /> Track as a habit</label>
         )}
-        {task?.habit && <HabitPanel task={task} />}
+        {task?.habit && <HabitPanel task={task} color={color} />}
         <fieldset className="tk-reminders" disabled={readOnly}>
           <legend>Reminders</legend>
           {reminders.map((r, i) => (
