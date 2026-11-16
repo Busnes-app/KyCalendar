@@ -95,7 +95,7 @@ export function toFcEvent(ev: EventInfo, color: string): EventInput {
 
 // Tasks with a time (placed in the day, else due) show as outlined, non-blocking items that open
 // Tasks; they never count as busy and cannot be dragged here.
-function tasksOnCalendar(tasks: Task[], start: Date, end: Date): EventInput[] {
+function tasksOnCalendar(tasks: Task[], start: Date, end: Date, colorOf: (id: string) => string): EventInput[] {
   const out: EventInput[] = [];
   for (const t of tasks) {
     const at = t.start && t.start.length > 10 ? t.start : t.due && t.due.length > 10 ? t.due : '';
@@ -104,7 +104,7 @@ function tasksOnCalendar(tasks: Task[], start: Date, end: Date): EventInput[] {
     const minutes = at === t.start ? lengthOf(t) : 15;
     if (s >= end || s.getTime() + minutes * 60000 <= start.getTime()) continue;
     out.push({ id: `task:${t.calendar_id}/${t.uid}`, title: `Task: ${t.title}`, start: s, end: new Date(s.getTime() + minutes * 60000),
-      editable: false, classNames: ['kc-task'], extendedProps: { task: true } });
+      editable: false, classNames: ['kc-task'], borderColor: colorOf(t.calendar_id), extendedProps: { task: true } });
   }
   return out;
 }
@@ -241,7 +241,7 @@ export function CalendarPage({ scheduling = false, meetings = false, chat = fals
         .then(([evs, tasks]) => {
           setError(null);
           setEventsFailed(false);
-          success([...evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id))), ...tasksOnCalendar(tasks, info.start, info.end)]);
+          success([...evs.map((ev) => toFcEvent(ev, colorOf(ev.calendar_id))), ...tasksOnCalendar(tasks, info.start, info.end, colorOf)]);
           restoreEventFocus();
         })
         .catch((e: Error) => {

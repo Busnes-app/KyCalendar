@@ -247,5 +247,8 @@ dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw 
 .kc-calendar .fc .kc-task { border: 2px dashed var(--accent) !important; background: repeating-linear-gradient(135deg, var(--panel) 0 6px, var(--accent-soft) 6px 12px) !important; color: var(--ink-strong) !important; box-shadow: none; }
 /* Tasks on the calendar: a plain panel card with a thin accent edge, never filled like an event. */
 .kc-calendar .fc .kc-task { border: 1px solid var(--line-strong) !important; border-left: 3px solid var(--accent) !important; background: var(--panel) !important; color: var(--ink-strong) !important; box-shadow: none; }
+/* Tasks on the calendar: a plain panel card, never filled like an event. */
+/* The list's own colour marks the left edge (FullCalendar's borderColor), as an event's fill does. */
+.kc-calendar .fc .kc-task { border-width: 1px 1px 1px 3px !important; border-style: solid !important; background: var(--panel) !important; color: var(--ink-strong) !important; box-shadow: none; }
 .kc-calendar .fc .kc-task .fc-event-main, .kc-calendar .fc .kc-task .fc-event-title, .kc-calendar .fc .kc-task .fc-event-time { color: var(--ink-strong) !important; }
 .kc-calendar .fc .kc-task .fc-event-title::before { content: '☐ '; }

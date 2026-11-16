@@ -115,7 +115,7 @@ function SuggestionLine({ m, now, onDone, setError }: { m: Model; now: number; o
   return (
     <div className="td-suggest" role="status">
       <Lightbulb aria-hidden="true" />
-      <span>{hm(s.gap)} free at {clock(s.start)} fits <strong>{task.title}</strong> ({estimateText(lengthOf(task))})</span>
+      <span>{hm(s.gap)} free at {clock(s.start)} fits <strong>{task.title}</strong> <span className="nowrap">({estimateText(lengthOf(task))})</span></span>
       <button type="button" className="btn-ghost btn-sm" onClick={() => void place(task, s.start).then(onDone, (e) => setError(e.message))}>Place it</button>
       {list.length > 1 && (
         <span className="td-stepper">

@@ -120,3 +120,5 @@
 .tp-task { padding-bottom: 4px; }
 @media (max-width: 720px) { .tp-head { gap: 0 var(--ky-space-3); } .tp-head > button { min-height: 2rem; padding-block: 0; } }
 .tp-task[data-short] .tp-block-title { display: block; }
+.td-suggest .nowrap { white-space: nowrap; }
+.tp-candidates > button.btn-ghost { padding-inline: var(--ky-space-3); }
