@@ -270,7 +270,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
           {fileList}
-          <RoomList rooms={event!.resources ?? []} />
+          <RoomList rooms={event!.resources ?? []} place={form.location} />
           {room}
           {invitation}
           <div className="modal-actions">
@@ -289,7 +289,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {event?.recurring && scope === 'all' && <p role="note">{MOVE_ALL_WARNING}</p>}
           {room}
           {invitation}
-          {invited && <RoomList rooms={event!.resources ?? []} />}
+          {invited && <RoomList rooms={event!.resources ?? []} place={form.location} />}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
@@ -317,9 +317,10 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
               end={form.allDay ? addDays(parseLocal(form.end.slice(0, 10)), 1) : parseLocal(form.end)}
               event={event}
               repeats={form.freq !== ''}
+              place={form.location}
             />
           )}
-          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} />}
+          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} place={form.location} />}
           <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
           {scope === 'all' && (files.length > 0 || drive) && (

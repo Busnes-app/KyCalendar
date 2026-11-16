@@ -1,6 +1,7 @@
 // Captures the room and equipment screens: the administrator's Rooms and equipment list and
-// editor, and as members the room finder in the event editor, an event with rooms and Room
-// requests. Usage (from web/): node browser/resource-shots.mjs <server-binary> <out-dir> [mode]
+// editor, and as members the room finder (busy count, filters matching nothing, no free room,
+// scrolled to the end), events with rooms (booked room and equipment, pending, declined, a long
+// name, read only) and Room requests (several with a repeating one, and none). Usage (from web/): node browser/resource-shots.mjs <server-binary> <out-dir> [mode]
 // (not a spec: CI skips it). Modes: admin (default), before (the admin navigation without the
 // feature), booking (the member screens), booking-before (the event editor without the feature).
 // Starts its own throwaway server on 127.0.0.1:5391 (relays empty, scheduling off) and removes
@@ -25,8 +26,8 @@ const run = (args, pw) => {
   if (spawnSync(binary, args, { cwd: dir, env, input: pw + '\n', stdio: ['pipe', 'inherit', 'inherit'] }).status !== 0) throw new Error(args.join(' '));
 };
 run(['init-admin'], 'ShotsInitial123!');
-for (const name of ['walter', 'ann']) run(['create-user', '-username', name], 'ShotsInitial123!');
-const sql = `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("UPDATE users SET email='walter@example.com', display_name='Walter Reyes' WHERE username='walter'"); c.execute("UPDATE users SET display_name='Ann Okafor' WHERE username='ann'"); c.commit()`;
+for (const name of ['walter', 'ann', 'noor']) run(['create-user', '-username', name], 'ShotsInitial123!');
+const sql = `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("UPDATE users SET email='walter@example.com', display_name='Walter Reyes' WHERE username='walter'"); c.execute("UPDATE users SET display_name='Ann Okafor' WHERE username='ann'"); c.execute("UPDATE users SET display_name='Noor Haddad' WHERE username='noor'"); c.commit()`;
 if (spawnSync('python3', ['-I', '-c', sql, join(dir, 'data', 'kycalendar.db')], { stdio: 'inherit' }).status !== 0) throw new Error('seed people');
 const server = spawn(binary, [], { cwd: dir, env, stdio: 'inherit' });
 try {
@@ -48,7 +49,8 @@ try {
   };
   const admin = await signIn('admin', '203.0.113.80');
   const walterAPI = await signIn('walter', '203.0.113.81');
-  await signIn('ann', '203.0.113.82');
+  const annAPI = await signIn('ann', '203.0.113.82');
+  await signIn('noor', '203.0.113.84');
   const booking = mode.startsWith('booking');
   if (!mode.endsWith('before')) {
     const users = (await (await admin.call('GET', '/api/admin/users?q=ann')).json()).users;
@@ -58,18 +60,42 @@ try {
     await admin.call('POST', '/api/admin/resources', { ...room, kind: 'room', name: 'Harbour', location: 'Floor 4', capacity: 20, tags: ['screen', 'whiteboard'],
       audience: 'groups', groups: [group.id], approval: 'approvers', approvers: [users[0].id] });
     await admin.call('POST', '/api/admin/resources', { ...room, kind: 'equipment', name: 'Projector kit', location: 'Reception', capacity: 0, tags: [], max_minutes: 1440, enabled: false });
+    if (booking) {
+      await admin.call('POST', '/api/admin/resources', { ...room, kind: 'room', name: 'Boardroom at the Old Customs House, Harbourside', location: 'Ground floor, north entrance', capacity: 14, tags: ['whiteboard'] });
+      await admin.call('POST', '/api/admin/resources', { ...room, kind: 'equipment', name: 'Portable screen', location: 'Reception', capacity: 0, tags: ['video'] });
+      await admin.call('POST', '/api/admin/resources', { ...room, kind: 'room', name: 'Quiet room', location: 'Floor 3', capacity: 2, tags: [], approval: 'approvers', approvers: [users[0].id] });
+    }
     const walterID = (await (await admin.call('GET', '/api/admin/users?q=walter')).json()).users[0].id;
     await admin.call('PUT', '/api/admin/groups/' + group.id + '/members/' + walterID);
+    if (booking) {
+      // A group calendar walter reads and ann edits, for an event with a room walter cannot change.
+      const leads = await (await admin.call('POST', '/api/admin/groups', { display_name: 'Leads' })).json();
+      await admin.call('PUT', '/api/admin/groups/' + leads.id + '/members/' + users[0].id);
+      const team = await (await admin.call('POST', '/api/admin/calendars', { name: 'Studio', color: '', description: '', components: ['VEVENT'] })).json();
+      await admin.call('PUT', '/api/calendars/' + team.id + '/grants/' + group.id, { role: 'reader' });
+      await admin.call('PUT', '/api/calendars/' + team.id + '/grants/' + leads.id, { role: 'editor' });
+      // noor approves a room only Leads may book and nobody has asked for.
+      const noorID = (await (await admin.call('GET', '/api/admin/users?q=noor')).json()).users[0].id;
+      await admin.call('POST', '/api/admin/resources', { ...room, kind: 'room', name: 'Recording booth', location: 'Floor 1', capacity: 3, tags: [], audience: 'groups', groups: [leads.id], approval: 'approvers', approvers: [noorID] });
+    }
   }
-  // walter's event tomorrow at 10:00 local (UTC here) with Fjord, and Harbour waiting for ann.
+  // walter's events tomorrow (UTC): rooms booked, declined, pending, repeating and a long name.
   const day = new Date(Date.now() + 86400000);
-  const at = (h) => new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h)).toISOString().replace('.000Z', 'Z');
+  const at = (h, m = 0) => new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h, m)).toISOString().replace('.000Z', 'Z');
   if (mode === 'booking') {
     const walter = walterAPI;
-    const ids = (await (await walter.call('GET', '/api/resources')).json()).resources.map((r) => r.id);
-    const cal = (await (await walter.call('GET', '/api/calendars')).json())[0].id;
-    await walter.call('POST', '/api/calendars/' + cal + '/events', { title: 'Quarterly review', start: at(10), end: at(11), zone: 'UTC', resources: ids.slice(0, 1) });
-    await walter.call('POST', '/api/calendars/' + cal + '/events', { title: 'Workshop', start: at(16), end: at(17), zone: 'UTC', resources: ids.slice(1, 2) });
+    const byName = Object.fromEntries((await (await walter.call('GET', '/api/resources')).json()).resources.map((r) => [r.name, r.id]));
+    const cal = (await (await walter.call('GET', '/api/calendars')).json()).find((c) => c.kind === 'personal').id;
+    const ev = (title, from, to, rooms, extra = {}) => walter.call('POST', '/api/calendars/' + cal + '/events', { title, start: from, end: to, zone: 'UTC', resources: rooms.map((n) => byName[n]), ...extra });
+    await ev('All hands prep', at(8), at(9), Object.keys(byName));
+    await ev('Quarterly review', at(10), at(11), ['Fjord', 'Portable screen'], { location: 'Fjord, Floor 2, east wing' });
+    await ev('Budget check', at(10, 30), at(11, 30), ['Fjord']);
+    await ev('Board meeting', at(12), at(13), ['Boardroom at the Old Customs House, Harbourside']);
+    await ev('Standup sync', at(14), at(15), ['Fjord']);
+    await ev('Workshop', at(16), at(17), ['Harbour']);
+    await ev('Weekly planning', at(17, 30), at(18, 30), ['Harbour'], { repeat: { freq: 'weekly' } });
+    const team = (await (await annAPI.call('GET', '/api/calendars')).json()).find((c) => c.name === 'Studio').id;
+    await annAPI.call('POST', '/api/calendars/' + team + '/events', { title: 'Studio offsite', start: at(18, 45), end: at(19, 45), zone: 'UTC', resources: [byName['Fjord']] });
   }
 
   await mkdir(out, { recursive: true });
@@ -93,25 +119,48 @@ try {
         const dialog = page.getByRole('dialog');
         await dialog.locator('#kc-title').fill('Design review');
         if (mode === 'booking') {
-          await dialog.locator('#kc-start').fill(at(14).slice(0, 16));
-          await dialog.locator('#kc-end').fill(at(15).slice(0, 16));
+          // Centre it: the dialog's sticky footer would cover what scrollIntoViewIfNeeded leaves at the edge.
+          const reveal = (l) => l.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+          const setTime = async (a, b) => {
+            await dialog.locator('#kc-start').fill(a.slice(0, 16));
+            await dialog.locator('#kc-end').fill(b.slice(0, 16));
+          };
+          await setTime(at(14), at(15));
           await dialog.getByRole('button', { name: 'Add room' }).click();
           await dialog.getByRole('button', { name: 'Add Harbour' }).waitFor();
-          await dialog.getByRole('button', { name: 'Add room' }).or(dialog.getByRole('group', { name: 'Find a room' })).first().scrollIntoViewIfNeeded();
+          await reveal(dialog.getByLabel('People'));
           await shoot(page, 'room-finder', width, colorScheme);
+          await reveal(dialog.getByText(/busy then/));
+          await shoot(page, 'room-finder-end', width, colorScheme);
+          await dialog.getByLabel('People').fill('500');
+          await reveal(dialog.getByText('Nothing matches these filters.'));
+          await shoot(page, 'room-finder-no-match', width, colorScheme);
+          await dialog.getByLabel('People').fill('');
+          await setTime(at(8), at(9));
+          await reveal(dialog.getByText('Nothing that matches is free at this time.'));
+          await shoot(page, 'room-finder-none-free', width, colorScheme);
+          await setTime(at(14), at(15));
           await dialog.getByRole('button', { name: 'Add Harbour' }).click();
           await dialog.getByRole('button', { name: 'Save', exact: true }).click();
           await dialog.waitFor({ state: 'hidden' });
           await page.locator('.fc-listWeek-button').click();
-          const item = page.locator('.fc-list-event', { hasText: 'Quarterly review' });
-          if (!(await item.count())) await page.locator('.fc-next-button').click();
-          await item.click();
-          await page.getByRole('dialog').getByText('Rooms and equipment').scrollIntoViewIfNeeded();
-          await shoot(page, 'event-with-room', width, colorScheme);
-          await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+          const open = async (title, text, name) => {
+            const item = page.locator('.fc-list-event', { hasText: title }).first();
+            if (!(await item.count())) await page.locator('.fc-next-button').click();
+            await item.click();
+            await reveal(page.getByRole('dialog').getByText(text).first());
+            await shoot(page, name, width, colorScheme);
+            const d = page.getByRole('dialog');
+            await d.getByRole('button', { name: /^(Cancel|Close)$/ }).first().click();
+            await d.waitFor({ state: 'hidden' });
+          };
+          await open('Quarterly review', 'Rooms and equipment', 'event-with-room');
+          await open('Budget check', 'Declined: already booked', 'event-declined-room');
+          await open('Board meeting', 'Rooms and equipment', 'event-long-room');
+          await open('Studio offsite', 'Rooms and equipment', 'event-read-only');
           const pending = page.locator('.fc-list-event', { hasText: 'Design review' });
           await pending.click();
-          await page.getByRole('dialog').getByText('Waiting for approval').scrollIntoViewIfNeeded();
+          await reveal(page.getByRole('dialog').getByText('Waiting for approval'));
           await shoot(page, 'event-pending-room', width, colorScheme);
           page.once('dialog', (d) => void d.accept());
           await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
@@ -121,17 +170,19 @@ try {
         }
         await ctx.close();
         if (mode === 'booking') {
-          const actx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.85' } });
-          const ann = await actx.newPage();
-          await ann.goto('/');
-          await ann.getByLabel('Username', { exact: true }).fill('ann');
-          await ann.locator('input[type=password]').fill('ShotsUpdated456!');
-          await ann.getByRole('button', { name: 'Sign in', exact: true }).click();
-          await ann.locator('.ky-content').waitFor();
-          await ann.goto('/#/room-requests');
-          await ann.getByRole('heading', { name: 'Harbour' }).waitFor();
-          await shoot(ann, 'room-requests', width, colorScheme);
-          await actx.close();
+      for (const [who, name, ready] of [['ann', 'room-requests', 'Harbour'], ['noor', 'room-requests-empty', 'No requests waiting.']]) {
+            const actx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, timezoneId: 'UTC', extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.85' } });
+            const ap = await actx.newPage();
+            await ap.goto('/');
+            await ap.getByLabel('Username', { exact: true }).fill(who);
+            await ap.locator('input[type=password]').fill('ShotsUpdated456!');
+            await ap.getByRole('button', { name: 'Sign in', exact: true }).click();
+            await ap.locator('.ky-content').waitFor();
+            await ap.goto('/#/room-requests');
+            await ap.getByText(ready).first().waitFor();
+            await shoot(ap, name, width, colorScheme);
+            await actx.close();
+          }
         }
         continue;
       }

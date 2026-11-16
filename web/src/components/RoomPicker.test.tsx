@@ -40,8 +40,11 @@ describe('RoomPicker', () => {
     expect(new URL(finder.url, 'http://x').searchParams.get('start')).toBe('2026-12-07T09:00:00.000Z');
     expect(screen.queryByText('Busy one')).toBeNull();
     expect(screen.getByText('1 more is busy then.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add Harbour' }).previousElementSibling!.querySelector('.kc-hint')!.firstElementChild!.textContent).toBe('Needs approval');
     fireEvent.change(screen.getByLabelText('People'), { target: { value: '10' } });
     expect(screen.queryByRole('button', { name: 'Add Fjord' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '500' } });
+    expect(screen.getByText('Nothing matches these filters.')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('People'), { target: { value: '' } });
     fireEvent.click(screen.getByLabelText(/video/));
     expect(screen.queryByRole('button', { name: 'Add Fjord' })).toBeNull();
@@ -49,6 +52,11 @@ describe('RoomPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Fjord' }));
     expect((screen.getByLabelText(/^Location/) as HTMLInputElement).value).toBe('Fjord, Floor 2');
     expect(screen.getByText('Checked when you save')).toBeTruthy();
+    // Location already names the room's place, so the room line does not repeat it.
+    expect(screen.getByText('Fjord', { selector: '.kc-room-name' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close room finder' }));
+    expect(screen.queryByRole('group', { name: 'Find a room' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const post = calls.find((c) => c.method === 'POST')!;

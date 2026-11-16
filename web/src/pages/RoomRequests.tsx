@@ -41,7 +41,7 @@ export default function RoomRequests() {
   }
 
   return (
-    <section>
+    <section className="kc-requests">
       <PageHeader title="Room requests" lede="Requests for the rooms and equipment you approve. You see who asked and when, never what the event is." />
       {error && <p role="alert">{error}</p>}
       {requests === null ? (
