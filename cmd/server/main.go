@@ -189,6 +189,20 @@ func runServer() {
 			srv.SyncPresence(ctx)
 		}
 	}()
+	// KyIdentity suite groups: one group calendar each, reconciled once at start and then every
+	// minute. A pass writes only differences, so a pass cut short repeats safely.
+	go func() {
+		ticker := time.NewTicker(api.SuiteGroupsInterval)
+		defer ticker.Stop()
+		for {
+			srv.SyncSuiteGroups(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{

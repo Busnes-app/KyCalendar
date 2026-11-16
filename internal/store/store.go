@@ -222,6 +222,9 @@ type GroupStore interface {
 	AddGroupMember(ctx context.Context, groupID, userID string) error
 	RemoveGroupMember(ctx context.Context, groupID, userID string) error
 	GetUserGroups(ctx context.Context, userID string) ([]*Group, error)
+	// ReconcileSuiteGroup makes g's group calendar and members here match KyIdentity's suite
+	// group list in one transaction; members come from the accounts in scope. See suite_groups.go.
+	ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, g SuiteGroup) (SuiteGroupChange, error)
 }
 
 // AuditStore logs security events.
