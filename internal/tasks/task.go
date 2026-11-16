@@ -61,7 +61,7 @@ type Task struct {
 	FromCompletion     bool
 	Habit              bool
 	Reminders          []Reminder
-	URL, Source        string
+	URL, Source, Ref   string
 	Created, Modified  time.Time
 }
 
@@ -91,7 +91,7 @@ func Read(cal *ical.Calendar, viewer *time.Location) (*Task, error) {
 	}
 	text := func(name string) string { v, _ := m.Props.Text(name); return v }
 	t := &Task{UID: text(ical.PropUID), Title: text(ical.PropSummary), Notes: text(ical.PropDescription),
-		Status: strings.ToUpper(text(ical.PropStatus)), URL: text(ical.PropURL), Source: text(PropSource)}
+		Status: strings.ToUpper(text(ical.PropStatus)), URL: text(ical.PropURL), Source: text(PropSource), Ref: text(PropRef)}
 	if t.Status == "" {
 		t.Status = NeedsAction
 	}
@@ -227,7 +227,7 @@ func New(uid string, p Patch, url, source string, now time.Time) (*ical.Calendar
 		setRaw(td, ical.PropURL, url)
 	}
 	if source != "" {
-		td.Props.SetText(PropSource, source)
+		setRaw(td, PropSource, source)
 	}
 	cal.Children = append(cal.Children, td)
 	if p.Status == nil {

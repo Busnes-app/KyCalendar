@@ -24,9 +24,14 @@ const (
 	EventInbound = "kypost.itip.inbound"  // KyPost to KyCalendar: this arrived in the user's mailbox
 	EventRespond = "kypost.itip.respond"  // KyPost to KyCalendar: the user answered an invitation
 	EventOOO     = "kypost.ooo.set"       // KyPost to KyCalendar: the user's out-of-office period
-	SendPath     = "/api/calendar/itip/send"
-	maxReply     = 64 << 10
-	maxInbound   = 2 << 20 // a calendar object plus its JSON envelope
+	// EventTaskFlag: KyPost to KyCalendar, the user flagged or unflagged a message.
+	EventTaskFlag = "kypost.task.flag"
+	// EventTaskState: KyCalendar to KyPost, a flagged message's task was completed, reopened or deleted.
+	EventTaskState = "kycalendar.task.state"
+	TaskStatePath  = "/api/calendar/tasks/state"
+	SendPath       = "/api/calendar/itip/send"
+	maxReply       = 64 << 10
+	maxInbound     = 2 << 20 // a calendar object plus its JSON envelope
 )
 
 // User names who a request speaks for: their KyIdentity subject and issuer URL.
@@ -82,6 +87,25 @@ type OutOfOfficeRequest struct {
 	CommentRemote string `json:"comment_remote,omitempty"`
 }
 
+// TaskFlagRequest is a message the user flagged (or unflagged) in KyPost. It never carries the
+// body, the sender or the Message-ID: Ref is KyPost's opaque message reference and URL its own
+// link to the message.
+type TaskFlagRequest struct {
+	User
+	Ref     string `json:"ref"`
+	Subject string `json:"subject"`
+	URL     string `json:"url"`
+	Due     string `json:"due,omitempty"` // YYYY-MM-DD in the user's zone; absent: no date
+	Flagged bool   `json:"flagged"`
+}
+
+// TaskStateRequest tells KyPost the task for message Ref is done (clear the flag) or open again.
+type TaskStateRequest struct {
+	User
+	Ref  string `json:"ref"`
+	Done bool   `json:"done"`
+}
+
 // ErrRetry is a failure worth retrying: the network, 429 or a 5xx.
 var ErrRetry = errors.New("kypost: try again later")
 
@@ -101,6 +125,15 @@ type Client struct {
 // Send delivers req under event id (stable across retries of one message, so KyPost's replay
 // guard turns a retry into an acknowledgement).
 func (c *Client) Send(ctx context.Context, id string, req SendRequest) error {
+	return c.post(ctx, EventSend, SendPath, id, req)
+}
+
+// SendTaskState tells KyPost a flagged message's task changed, under event id.
+func (c *Client) SendTaskState(ctx context.Context, id string, req TaskStateRequest) error {
+	return c.post(ctx, EventTaskState, TaskStatePath, id, req)
+}
+
+func (c *Client) post(ctx context.Context, event, path, id string, req any) error {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return err
@@ -109,11 +142,11 @@ func (c *Client) Send(ctx context.Context, id string, req SendRequest) error {
 	if c.Now != nil {
 		now = c.Now
 	}
-	h, err := syncauth.Sign(c.Secret, now(), EventSend, id, body)
+	h, err := syncauth.Sign(c.Secret, now(), event, id, body)
 	if err != nil {
 		return err
 	}
-	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+SendPath, bytes.NewReader(body))
+	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

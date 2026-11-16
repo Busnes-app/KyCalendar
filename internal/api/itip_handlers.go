@@ -32,8 +32,18 @@ func (s *Server) kypostRequest(w http.ResponseWriter, r *http.Request, event str
 
 // kypostRequestLimited is kypostRequest charging the per-user limit under its own key prefix.
 func (s *Server) kypostRequestLimited(w http.ResponseWriter, r *http.Request, event, limit string, into any, who func() kypost.User) (*store.User, bool) {
+	if s.sched == nil {
+		http.NotFound(w, r)
+		return nil, false
+	}
+	return s.kypostPeerRequest(w, r, event, limit, itipPerUser, into, who)
+}
+
+// kypostPeerRequest is kypostRequestLimited for routes that need the KyPost link but not
+// scheduling, with their own per-user hourly limit.
+func (s *Server) kypostPeerRequest(w http.ResponseWriter, r *http.Request, event, limit string, perHour int, into any, who func() kypost.User) (*store.User, bool) {
 	peer := s.kypost.Peer()
-	if s.sched == nil || peer == nil {
+	if peer == nil || s.kypostReplay == nil { // never verify without the replay guard
 		http.NotFound(w, r)
 		return nil, false
 	}
@@ -58,7 +68,7 @@ func (s *Server) kypostRequestLimited(w http.ResponseWriter, r *http.Request, ev
 		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "No such user", "code": "no_user"})
 		return nil, false
 	}
-	if !s.allowAccountAttempt(limit+u.ID, itipPerUser, itipWindow) {
+	if !s.allowAccountAttempt(limit+u.ID, perHour, itipWindow) {
 		s.retryKyPost(r)
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many messages", "code": "rate_limited"})
 		return nil, false

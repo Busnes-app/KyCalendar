@@ -844,7 +844,8 @@ func (s *Server) patchTask(ctx context.Context, user *store.User, c *store.Calen
 		p.Zone = viewer
 	}
 	now := time.Now()
-	if _, err := tasks.Apply(cal, p, now, viewer); err != nil {
+	res, err := tasks.Apply(cal, p, now, viewer)
+	if err != nil {
 		return taskView{}, badTask(strings.TrimPrefix(err.Error(), "tasks: invalid task: "))
 	}
 	if files != nil {
@@ -858,12 +859,16 @@ func (s *Server) patchTask(ctx context.Context, user *store.User, c *store.Calen
 	if err != nil {
 		return taskView{}, &apiError{status: http.StatusInternalServerError, msg: "The saved task does not read"}
 	}
+	// A repeating task that moved on is open again: its flag stays.
+	if res.Completed && !res.Advanced || res.Reopened {
+		s.tellKyPost(ctx, user, t, res.Completed)
+	}
 	v := viewOfTask(c, saved, cal, t, viewer, true)
 	return v, nil
 }
 
 func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
-	c, o, _, etag, ok := s.loadTask(w, r)
+	c, o, cal, etag, ok := s.loadTask(w, r)
 	if !ok {
 		return
 	}
@@ -879,6 +884,10 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to delete the task")
 	default:
 		w.WriteHeader(http.StatusNoContent)
+		// A deleted flagged-mail task clears its flag.
+		if t, err := tasks.Read(cal, time.UTC); err == nil && t.Status != tasks.Completed {
+			s.tellKyPost(r.Context(), sessionUser(r.Context()), t, true)
+		}
 	}
 }
 
