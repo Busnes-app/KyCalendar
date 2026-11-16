@@ -146,41 +146,81 @@ button.tk-add-reminder.btn-sm { justify-self: start; padding-inline: 0; }
 .tb-col ul:empty { display: none; }
 .tb-move button.kc-icon { min-height: 2rem; width: 2rem; }
 .tb-card { align-items: center; }
-/* Insights, goals and habits: one neutral ink for marks; the table carries every number. */
-.ti, .tg { display: grid; gap: var(--ky-space-5); }
-.ti h2, .tg h2 { margin: 0; font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); }
+/* Insights, goals and habits. Marks take the accent (this week and today in full, earlier
+   weeks a tint at 3:1 or more) or a list's own colour; every number is also in words or a table. */
+.ti, .tg { display: grid; gap: var(--ky-space-4); }
+.ti { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); align-items: start; }
+.ti > .card { margin: 0; }
+.ti > :first-child { grid-column: 1 / -1; }
+.ti h2, .tg h2, .th-card h2 { margin: 0; font-size: var(--ky-type-section); font-weight: 600; color: var(--ink-strong); }
 .ti-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ky-space-3); }
-.ti-sum, .ti-key { margin: var(--ky-space-1) 0 var(--ky-space-2); color: var(--ink); font-size: var(--ky-type-meta); }
+.ti-sum, .ti-key { margin: var(--ky-space-1) 0 var(--ky-space-3); color: var(--ink); font-size: var(--ky-type-meta); }
+.ti-sum strong { color: var(--ink-strong); font-size: 1.25rem; }
 .ti-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-1) var(--ky-space-2); }
-.ti-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 3px; }
-.ti-swatch-planned { background: var(--ink-strong); }
-.ti-swatch-free { background: var(--line); }
-.ti-bars { width: 100%; max-width: 40rem; height: auto; }
-.ti-bar { fill: var(--ink-strong); }
+.ti-swatch { display: inline-block; flex: none; width: .75rem; height: .75rem; border-radius: 3px; }
+.ti-swatch-planned { background: var(--accent); }
+.ti-swatch-free, .ti-bullet { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 72%, var(--panel)); }
+.ti-plot { width: 100%; }
+.ti-bars { display: block; width: 100%; height: auto; overflow: visible; }
+.ti-bar { fill: color-mix(in srgb, var(--accent) 70%, var(--panel)); }
+.ti-bar-now { fill: var(--accent); }
+.ti-bar-zero { fill: var(--line-strong); }
 .ti-hit { fill: transparent; }
-.ti-hit:hover + .ti-bar { fill: var(--accent); }
 .ti-base { stroke: var(--line-strong); stroke-width: 1; }
-.ti-label { fill: var(--ink); font-size: 11px; text-anchor: middle; }
-.ti section { max-width: 40rem; }
+.ti-label, .ti-value { fill: var(--ink); font-size: 12px; text-anchor: middle; }
+.ti-value { fill: var(--ink-strong); font-variant-numeric: tabular-nums; }
+.ti-label-now { fill: var(--ink-strong); font-weight: 600; }
+.ti-table { width: 100%; border-collapse: collapse; font-size: var(--ky-type-nav); font-variant-numeric: tabular-nums; }
+.ti-table th { white-space: nowrap; padding: .375rem .5rem; border-bottom: 1px solid var(--line); color: var(--ink); font-size: var(--ky-type-meta); font-weight: 600; text-align: left; }
+.ti-table td { padding: .5rem; border-bottom: 1px solid var(--line); color: var(--ink-strong); }
+.ti-table tr:last-child td { border-bottom: 0; }
+.ti-table tr[data-now] td { font-weight: 600; }
+.ti-table tr[data-now] td:first-child { box-shadow: inset 3px 0 var(--accent); }
+.ti-today { margin-left: .375rem; color: var(--accent); font-size: var(--ky-type-meta); }
+.ti-days td:not(:last-child), .ti-lists td:nth-child(2), .ti-lists td:last-child { width: 1%; white-space: nowrap; }
+.ti-bullet { display: block; height: .625rem; border-radius: 999px; overflow: hidden; }
+.ti-bullet > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.ti-list, .ti-meter { --list-on: var(--list); }
+:root[data-scheme='dark'] :is(.ti-list, .ti-meter) { --list-on: color-mix(in srgb, var(--list) 60%, #fff); }
+.ti-list { display: inline-flex; align-items: center; gap: .5rem; }
+.ti-list .ti-swatch, .ti-meter > span { background: var(--list-on); }
+.ti-meter { display: block; min-width: 3rem; height: .5rem; }
+.ti-meter > span { display: block; height: 100%; border-radius: 999px; }
+.ti-late { display: inline-flex; align-items: center; gap: .25rem; color: var(--danger); font-weight: 600; white-space: nowrap; }
+.ti-none { color: var(--ink); }
 .tg .ti-table { max-width: none; }
-.ti-table { width: 100%; max-width: 40rem; border-collapse: collapse; font-size: var(--ky-type-nav); font-variant-numeric: tabular-nums; }
-.ti-table th { padding: .375rem .5rem; border-bottom: 1px solid var(--line); color: var(--ink); font-size: var(--ky-type-meta); font-weight: 600; text-align: left; }
-.ti-table td { padding: .375rem .5rem; border-bottom: 1px solid var(--line); color: var(--ink-strong); }
-.ti-days td:not(:last-child) { width: 1%; white-space: nowrap; }
-.ti-bullet { display: block; height: .5rem; border-radius: 999px; background: var(--line); overflow: hidden; }
-.ti-bullet > span { display: block; height: 100%; border-radius: 999px; background: var(--ink-strong); }
 .tg-goal { display: grid; gap: var(--ky-space-1); }
 .tg-stalled { color: var(--danger); font-weight: 600; }
-.th { display: grid; gap: var(--ky-space-2); }
-.th-streaks { margin: 0; color: var(--ink); font-size: var(--ky-type-meta); }
-.th-streaks strong { color: var(--ink-strong); }
-.th-chart { display: flex; gap: 6px; }
-.th-weekdays { display: grid; grid-template-rows: repeat(7, 14px); gap: 3px; color: var(--ink); font-size: 10px; line-height: 14px; }
-.th-grid { display: grid; grid-template-rows: repeat(7, 14px); grid-template-columns: repeat(12, 14px); grid-auto-flow: column; gap: 3px; }
-.th-day[data-future] { visibility: hidden; } /* days to come are not a third state */
+/* Habits: a card per habit; its list's colour marks done days (lightened on dark themes), a
+   tint of it missed days, an outline the days before it began. */
+.th-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ky-space-4); }
+.th-list > .card { margin: 0; display: grid; gap: var(--ky-space-3); }
+.th { --habit-on: var(--habit); container-type: inline-size; }
+.th-body { display: grid; gap: var(--ky-space-4); }
+:root[data-scheme='dark'] .th { --habit-on: color-mix(in srgb, var(--habit) 60%, #fff); }
+.th-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ky-space-3) var(--ky-space-4); margin: 0; align-content: start; }
+.th-stats > div { display: grid; gap: .125rem; padding-left: var(--ky-space-2); border-left: 3px solid var(--habit-on); }
+.th-stats dt { color: var(--ink); font-size: var(--ky-type-meta); }
+.th-stats dd { margin: 0; color: var(--ink-strong); font-size: 1.375rem; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.th-chart { display: grid; gap: var(--ky-space-2); min-width: 0; }
+.th-plot { display: grid; grid-template-columns: max-content minmax(0, 32rem); justify-content: start; gap: .5rem; }
+.th-weekdays { display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px; color: var(--ink); font-size: var(--ky-type-meta); align-items: center; }
+.th-grid { display: grid; grid-template-rows: repeat(7, auto); grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: column; gap: 4px; }
+.th-grid[data-weekly] { grid-template-rows: auto; grid-column: 1 / -1; }
+.th-grid .th-day { aspect-ratio: 1; }
+.th-day { border-radius: 4px; background: color-mix(in srgb, var(--habit-on) 30%, var(--panel)); }
+.th-day[data-done] { background: var(--habit-on); }
+.th-day[data-before] { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.th-day[data-future] { visibility: hidden; } /* days to come are not a state */
 .th-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ky-space-1) var(--ky-space-3); margin: 0; color: var(--ink); font-size: var(--ky-type-meta); }
 .th-key > span { display: inline-flex; align-items: center; gap: .375rem; }
 .th-key-swatch { display: inline-block; width: 12px; height: 12px; }
-.th-day { border-radius: 2px; background: var(--line); }
-.th-day[data-done] { background: var(--ink-strong); }
-.th-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ky-space-4); }
+@container (min-width: 40rem) {
+  .th-body { grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); align-items: start; gap: var(--ky-space-5); }
+  .th-stats { grid-template-columns: minmax(0, 1fr); }
+}
+/* Tabs for the views behind All tasks and Progress. */
+.tk-tabs { margin: calc(-1 * var(--ky-space-2)) 0 0; }
+.tk-tabs .tk-count { margin-left: .25rem; }
+.ti-label-start { text-anchor: start; }
+.ti-label-now { text-anchor: end; }
