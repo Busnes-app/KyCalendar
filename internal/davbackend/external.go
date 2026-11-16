@@ -97,7 +97,9 @@ const (
 // Inbound applies an iTIP message that arrived in u's mailbox from from, whose DKIM signature
 // KyPost found aligned. It is hostile input: a REPLY changes only that attendee's answer on an
 // event u organizes; a REQUEST or CANCEL changes only a copy whose organizer is the sender.
-// A new invitation is never written here; the user's own answer (Respond) writes it.
+// A new invitation is written here only as the user's standing answer: TENTATIVE while their
+// KyPost out-of-office period asks for it (autoTentative); otherwise their own answer
+// (Respond) writes it.
 func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Address, msg *ical.Calendar) (string, error) {
 	self, ok, err := Address(ctx, s.Store, u)
 	if err != nil {
@@ -137,6 +139,9 @@ func (s *Scheduler) Inbound(ctx context.Context, u *store.User, from itip.Addres
 	c, o, existing, err := s.find(ctx, u, uid, org)
 	switch {
 	case errors.Is(err, store.ErrNotFound) && method == itip.MethodRequest:
+		if s.autoTentative(ctx, u, uid, msg) {
+			return InboundApplied, nil // out of office: answered TENTATIVE, never declined
+		}
 		return InboundPending, nil
 	case errors.Is(err, store.ErrNotFound):
 		return InboundIgnored, nil
@@ -509,6 +514,11 @@ func isOverride(cal *ical.Calendar, rid string) bool {
 // what lets a sender put an event in their calendar. The answer then goes through the scheduled
 // write path, so the organizer gets a REPLY.
 func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceID, partstat string, invite *ical.Calendar) error {
+	return s.respond(ctx, u, uid, recurrenceID, partstat, invite, "")
+}
+
+// respond is Respond with an optional COMMENT on u's answer, which the REPLY carries.
+func (s *Scheduler) respond(ctx context.Context, u *store.User, uid, recurrenceID, partstat string, invite *ical.Calendar, comment string) error {
 	self, ok, err := Address(ctx, s.Store, u)
 	if err != nil {
 		return err
@@ -547,6 +557,9 @@ func (s *Scheduler) Respond(ctx context.Context, u *store.User, uid, recurrenceI
 	}
 	if err := itip.SetPartstat(cal, recurrenceID, self, partstat); err != nil {
 		return err
+	}
+	if comment != "" {
+		itip.SetComment(cal, recurrenceID, comment)
 	}
 	raw, err := encodeCal(cal)
 	if err != nil {

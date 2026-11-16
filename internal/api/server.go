@@ -469,6 +469,7 @@ func (s *Server) routes() {
 	// unless scheduling is on and KyPost linked.
 	s.handle("POST /api/itip/inbound", http.HandlerFunc(s.handleITIPInbound))
 	s.handle("POST /api/itip/respond", http.HandlerFunc(s.handleITIPRespond))
+	s.handle("POST /api/kypost/out-of-office", http.HandlerFunc(s.handleKyPostOutOfOffice))
 	s.handle("POST /api/subscriptions", s.requireEveryday(s.handleCreateSubscription))
 	s.handle("PATCH /api/subscriptions/{id}", s.requireEveryday(s.handlePatchSubscription))
 	s.handle("POST /api/calendars/{id}/refresh", s.requireEveryday(s.handleRefreshSubscription))

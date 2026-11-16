@@ -596,6 +596,7 @@ CREATE TABLE sso_logouts (
 	{Version: 26, Name: "meeting_guests", SQLite: meetingGuests("DATETIME"), Postgres: meetingGuests("TIMESTAMPTZ")},
 	{Version: 27, Name: "booking_pages", SQLite: bookingPages("DATETIME"), Postgres: bookingPages("TIMESTAMPTZ")},
 	{Version: 28, Name: "resources", SQLite: resources("DATETIME"), Postgres: resources("TIMESTAMPTZ")},
+	{Version: 29, Name: "kypost_out_of_office", SQLite: kypostOutOfOffice, Postgres: kypostOutOfOffice},
 }
 
 // resources: rooms and equipment an administrator defines. Tags is a JSON list. A resource is
@@ -631,6 +632,21 @@ CREATE TABLE resource_approvers (
 );
 CREATE INDEX resource_approvers_user ON resource_approvers(user_id);`
 }
+
+// kypostOutOfOffice: the out-of-office state KyPost last sent for a user (KyPost is the source
+// of truth). revision only grows; times are unix seconds.
+const kypostOutOfOffice = `CREATE TABLE kypost_out_of_office (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ revision BIGINT NOT NULL,
+ away BOOLEAN NOT NULL,
+ start_at BIGINT NOT NULL,
+ end_at BIGINT NOT NULL,
+ all_day BOOLEAN NOT NULL,
+ zone TEXT NOT NULL,
+ tentative BOOLEAN NOT NULL,
+ comment_local TEXT NOT NULL,
+ comment_remote TEXT NOT NULL
+);`
 
 // bookingPages: a member's booking types, each with its public slug, and one row per hold or
 // booking. A hold is status held until expires_at; a confirmed booking's event is an ordinary

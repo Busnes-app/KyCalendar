@@ -333,6 +333,9 @@ func attendeeReply(self, org Address, oldCal, newCal *ical.Calendar, now time.Ti
 			}
 		}
 		ev.Props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
+		if p := c.Props.Get(ical.PropComment); newCal != nil && p != nil && p.Value != commentOf(oldCal, recurrenceKey(c)) {
+			ev.Props.Set(clonedProp(*p)) // the attendee's own note on this answer
+		}
 		att := ical.NewProp(ical.PropAttendee)
 		att.Value = string(self)
 		att.Params.Set(ical.ParamParticipationStatus, ps)
@@ -345,6 +348,18 @@ func attendeeReply(self, org Address, oldCal, newCal *ical.Calendar, now time.Ti
 		}
 	}
 	return &Message{Method: MethodReply, Recipients: []Address{org}, Calendar: reply}
+}
+
+// commentOf is the COMMENT of cal's event with recurrence key key, or "".
+func commentOf(cal *ical.Calendar, key string) string {
+	for _, c := range events(cal) {
+		if recurrenceKey(c) == key {
+			if p := c.Props.Get(ical.PropComment); p != nil {
+				return p.Value
+			}
+		}
+	}
+	return ""
 }
 
 func clonedProp(p ical.Prop) *ical.Prop {

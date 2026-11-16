@@ -120,3 +120,12 @@ func SetPartstat(cal *ical.Calendar, recurrenceID string, self Address, partstat
 	}
 	return nil
 }
+
+// SetComment sets COMMENT on the occurrence recurrenceID, or on every event when it is "".
+func SetComment(cal *ical.Calendar, recurrenceID, comment string) {
+	for _, c := range events(cal) {
+		if recurrenceID == "" || recurrenceKey(c) == recurrenceID {
+			c.Props.SetText(ical.PropComment, comment)
+		}
+	}
+}

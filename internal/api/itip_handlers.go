@@ -27,6 +27,11 @@ const (
 // the refusal itself and returns ok false: 404 while KyPost is unlinked or scheduling is off, 401 for a
 // bad signature, 200 for a replay already acted on, 404 for an unknown user, 429 past the limit.
 func (s *Server) kypostRequest(w http.ResponseWriter, r *http.Request, event string, into any, who func() kypost.User) (*store.User, bool) {
+	return s.kypostRequestLimited(w, r, event, "itip:", into, who)
+}
+
+// kypostRequestLimited is kypostRequest charging the per-user limit under its own key prefix.
+func (s *Server) kypostRequestLimited(w http.ResponseWriter, r *http.Request, event, limit string, into any, who func() kypost.User) (*store.User, bool) {
 	peer := s.kypost.Peer()
 	if s.sched == nil || peer == nil {
 		http.NotFound(w, r)
@@ -53,7 +58,7 @@ func (s *Server) kypostRequest(w http.ResponseWriter, r *http.Request, event str
 		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "No such user", "code": "no_user"})
 		return nil, false
 	}
-	if !s.allowAccountAttempt("itip:"+u.ID, itipPerUser, itipWindow) {
+	if !s.allowAccountAttempt(limit+u.ID, itipPerUser, itipWindow) {
 		s.retryKyPost(r)
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many messages", "code": "rate_limited"})
 		return nil, false

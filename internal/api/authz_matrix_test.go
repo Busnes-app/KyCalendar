@@ -294,6 +294,7 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/book/manage/reschedule": {want: public},
 		"POST /api/itip/inbound":           {method: "POST", path: "/api/itip/inbound", body: `{}`, want: kypostOnly},
 		"POST /api/itip/respond":           {method: "POST", path: "/api/itip/respond", body: `{}`, want: kypostOnly},
+		"POST /api/kypost/out-of-office":   {method: "POST", path: "/api/kypost/out-of-office", body: `{}`, want: kypostOnly},
 		// http:// links are refused before any fetch, so the allowed cells never reach the network.
 		"POST /api/subscriptions":          {method: "POST", path: "/api/subscriptions", body: `{"url":"http://matrix.invalid/x.ics","name":"M"}`, want: everyday},
 		"PATCH /api/subscriptions/{id}":    {method: "PATCH", path: "/api/subscriptions/" + w.sub.ID, body: `{"url":"http://matrix.invalid/x.ics"}`, want: ownerOnly},

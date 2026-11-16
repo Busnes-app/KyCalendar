@@ -23,6 +23,7 @@ const (
 	EventSend    = "kycalendar.itip.send" // KyCalendar to KyPost: mail this message as the user
 	EventInbound = "kypost.itip.inbound"  // KyPost to KyCalendar: this arrived in the user's mailbox
 	EventRespond = "kypost.itip.respond"  // KyPost to KyCalendar: the user answered an invitation
+	EventOOO     = "kypost.ooo.set"       // KyPost to KyCalendar: the user's out-of-office period
 	SendPath     = "/api/calendar/itip/send"
 	maxReply     = 64 << 10
 	maxInbound   = 2 << 20 // a calendar object plus its JSON envelope
@@ -63,6 +64,22 @@ type RespondRequest struct {
 	RecurrenceID string `json:"recurrence_id,omitempty"`
 	Partstat     string `json:"partstat"`
 	ICS          string `json:"ics"`
+}
+
+// OutOfOfficeRequest is the user's whole out-of-office state for KyCalendar; KyPost is its only
+// source. Away false (or a request without dates) removes the event and the automatic answers.
+// Revision only grows: an older one than KyCalendar holds is ignored.
+type OutOfOfficeRequest struct {
+	User
+	Revision      int64  `json:"revision"`
+	Away          bool   `json:"away"`
+	Start         string `json:"start,omitempty"` // RFC 3339
+	End           string `json:"end,omitempty"`   // RFC 3339
+	AllDay        bool   `json:"all_day,omitempty"`
+	TimeZone      string `json:"time_zone,omitempty"`
+	Tentative     bool   `json:"tentative,omitempty"`
+	CommentLocal  string `json:"comment_local,omitempty"`
+	CommentRemote string `json:"comment_remote,omitempty"`
 }
 
 // ErrRetry is a failure worth retrying: the network, 429 or a 5xx.

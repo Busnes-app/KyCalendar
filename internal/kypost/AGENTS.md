@@ -10,7 +10,7 @@ kypost-server's `docs/` once written.
   secret of at least 32 bytes: `KYCALENDAR_KYPOST_SECRET_FILE`, or KyIdentity's 32-byte pair
   secret (`internal/api/kypost_link.go`). The event type names route and direction:
   - `kycalendar.itip.send`: KyCalendar to KyPost, `POST /api/calendar/itip/send`;
-  - `kypost.itip.inbound`, `kypost.itip.respond`: KyPost to KyCalendar.
+  - `kypost.itip.inbound`, `kypost.itip.respond`, `kypost.ooo.set`: KyPost to KyCalendar.
 
   A request is never accepted under another type, so one cannot be reflected back at its sender.
 - **The event ID** is stable across retries of one message (the outbox dedupe key). A verified

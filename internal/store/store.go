@@ -94,6 +94,11 @@ type UserStore interface {
 	// ErrNotFound when there is none or more than one.
 	CalendarUser(ctx context.Context, email string) (*User, error)
 	GetUserBySSO(ctx context.Context, provider, subject string) (*User, error)
+	// OutOfOffice is the out-of-office state KyPost last set for userID; ErrNotFound when none.
+	OutOfOffice(ctx context.Context, userID string) (*OutOfOffice, error)
+	// SetOutOfOffice stores o unless a newer revision is stored; false then. The same revision
+	// again is stored again, so a retry after a failed apply applies.
+	SetOutOfOffice(ctx context.Context, o *OutOfOffice) (bool, error)
 	UpdateUser(ctx context.Context, u *User) error
 	// ResetAdminPassword is ResetPassword for init-admin: it also reactivates the account and
 	// makes it an administrator.
