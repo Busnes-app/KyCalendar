@@ -256,3 +256,32 @@ func TestSuiteGroupIsNotLocal(t *testing.T) {
 		t.Fatalf("local groups %v %v", local, err)
 	}
 }
+
+// An administrator deletes the calendar, then KyIdentity archives the group: the local group,
+// which may hold grants on other calendars, still loses every member.
+func TestSuiteGroupArchivedAfterCalendarDeletedEmptiesMembers(t *testing.T) {
+	ctx := context.Background()
+	st := suiteWorld(t)
+	reconcile(t, st, store.SuiteGroup{ID: "kg5", Name: "Ops", Active: true, Subjects: []string{"sub-ann", "sub-bob"}})
+	g, c := suiteCalendar(t, st, "kg5")
+	other := &store.Calendar{ID: "cal_other", OwnerKind: "group", OwnerID: "cal_other", Slug: "group", Name: "Other", Components: []string{"VEVENT"}}
+	if err := st.Calendars().CreateCalendar(ctx, other, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: other.ID, GroupID: g.ID, Role: "reader"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Calendars().DeleteCalendar(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ch := reconcile(t, st, store.SuiteGroup{ID: "kg5", Name: "Ops"}); ch.Removed != 2 || ch.Created {
+		t.Fatalf("archive after delete %+v", ch)
+	}
+	g, err := st.Groups().GetGroupByName(ctx, store.SuiteGroupDisplayName("kg5"))
+	if err != nil || len(g.Members) != 0 {
+		t.Fatalf("members left %+v %v", g, err)
+	}
+	if ch := reconcile(t, st, store.SuiteGroup{ID: "kg5", Name: "Ops"}); ch.Changed() {
+		t.Fatalf("second pass wrote %+v", ch)
+	}
+}

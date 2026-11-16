@@ -56,7 +56,19 @@ func (g *groupStore) ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, s
 	now := time.Now().UTC()
 	if !sg.Active {
 		if missing {
-			return ch, nil
+			// The calendar may be gone (an administrator deleted it) while its local group
+			// keeps members and other grants: empty that group anyway.
+			err := tx.QueryRowContext(ctx, q(`SELECT id FROM groups WHERE source = ? AND external_id = ?`), GroupSourceSuite, sg.ID).Scan(&groupID)
+			if errors.Is(err, sql.ErrNoRows) {
+				return ch, nil
+			}
+			if err != nil {
+				return ch, err
+			}
+			if ch.Removed, err = g.setSuiteMembers(ctx, tx, groupID, nil); err != nil {
+				return ch, err
+			}
+			return ch, commitIf(tx, ch)
 		}
 		if ch.Removed, err = g.setSuiteMembers(ctx, tx, groupID, nil); err != nil {
 			return ch, err
