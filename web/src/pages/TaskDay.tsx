@@ -361,14 +361,14 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
           const minutes = d?.minutes ?? lengthOf(x.t);
           const prio = priorityName(x.t.priority);
           return (
-            <div key={`t${key(x.t)}`} className="tp-task" role="group" tabIndex={0} data-done={x.t.status === 'COMPLETED' || undefined} data-short={minutes < 30 || undefined}
+            <div key={`t${key(x.t)}`} className="tp-task" role="group" tabIndex={0} data-done={x.t.status === 'COMPLETED' || undefined} data-short={minutes < 60 || undefined}
               aria-label={`${x.t.title}, ${clock(start)}, ${hm(minutes)}${prio ? `, ${prio} priority` : ''}. Arrow keys move it, Shift with arrows changes its length.`}
               style={{ top: y(start), height: Math.max(22, (minutes / 60) * HOUR_PX) }}
               onPointerDown={(e) => { if (!(e.target as Element).closest('button, .tp-resize')) startDrag(e, x, 'move'); }}
               onKeyDown={(e) => keyMove(e, x)} onDoubleClick={() => onOpen(x.t)}>
               <span className="tp-mark" aria-hidden="true">{x.t.status === 'COMPLETED' && <Check size={12} />}</span>
               <button type="button" className="tp-block-title" onClick={() => onOpen(x.t)}>{x.t.title}</button>
-              <span className="tp-block-time">{minutes < 30 ? range(start, start + minutes * MIN) : `${range(start, start + minutes * MIN)} · ${hm(minutes)}${prio === 'High' ? ' · High' : ''}`}</span>
+              <span className="tp-block-time">{minutes < 60 ? range(start, start + minutes * MIN) : `${range(start, start + minutes * MIN)} · ${hm(minutes)}${prio === 'High' && x.t.status !== 'COMPLETED' ? ' · High' : ''}`}</span>
               <span className="tp-resize" aria-hidden="true" onPointerDown={(e) => { e.stopPropagation(); startDrag(e, x, 'resize'); }} />
             </div>
           );
