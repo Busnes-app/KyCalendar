@@ -121,13 +121,14 @@ c.commit()`;
         await page.locator('input[type=password]').fill('ShotsUpdated456!');
         await page.getByRole('button', { name: 'Sign in', exact: true }).click();
         await page.locator('.ky-content').waitFor();
-        for (const [name, view] of names) {
+        for (const [name, view, card] of names) {
           await page.evaluate((v) => localStorage.setItem('kycalendar.tasksView', JSON.stringify(v)), view);
           await page.goto('/#/tasks');
           await page.reload();
           await page.locator('.tk-head h1').waitFor();
           await page.waitForTimeout(700);
           await page.evaluate(() => { const s = document.querySelector('.app-sidebar-slot'); if (s) s.scrollTop = 0; });
+          if (card) await page.locator('.th-card', { hasText: card }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
           await shoot(page, name, width, colorScheme);
           if (name === 'today' && width === 390) {
             await page.locator('.kc-picker > summary').click();
@@ -144,7 +145,7 @@ c.commit()`;
   await capture([
     ['today', { kind: 'smart', id: 'today' }], ['list', { kind: 'list', id: work }], ['upcoming', { kind: 'smart', id: 'upcoming' }],
     ['overdue', { kind: 'smart', id: 'overdue' }], ['someday', { kind: 'smart', id: 'someday' }], ['flagged', { kind: 'smart', id: 'flagged' }],
-    ['completed', { kind: 'smart', id: 'completed' }], ['habits-3', { kind: 'smart', id: 'habits' }], ['goals', { kind: 'smart', id: 'goals' }],
+    ['completed', { kind: 'smart', id: 'completed' }], ['habits-3', { kind: 'smart', id: 'habits' }], ['habits-weekly', { kind: 'smart', id: 'habits' }, 'Weekly review'], ['goals', { kind: 'smart', id: 'goals' }],
     ['insights', { kind: 'smart', id: 'insights' }],
   ]);
   await browser.close();
