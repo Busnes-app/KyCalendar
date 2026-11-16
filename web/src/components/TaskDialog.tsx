@@ -247,7 +247,7 @@ export function TaskDialog({ task, lists, defaultList, subtasks, drive = '', ini
           </figure>
         ))}
         <label htmlFor="tk-notes">Notes</label>
-        {readOnly ? <p className="tk-notes">{linkify(notes)}</p> : <textarea id="tk-notes" value={notes} maxLength={65536} onChange={(e) => setNotes(e.target.value)} />}
+        {readOnly ? <p className="tk-notes">{linkify(task?.notes ?? "")}</p> : <textarea id="tk-notes" value={notes} maxLength={65536} onChange={(e) => setNotes(e.target.value)} />}
         {(files.length > 0 || (drive && !readOnly)) && (
           <fieldset>
             <legend>Files</legend>
