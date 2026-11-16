@@ -88,6 +88,15 @@ try {
     await patch('Write launch announcement', { start: at(0, 13, 30), duration_min: 45, zone });
     for (const title of ['Compress the hero images', 'Fix contact form validation', 'Draft outline', 'Set up staging server']) await patch(title, { status: 'COMPLETED' });
     await patch('Morning run', { habit: true });
+    // A habit history: completions on most of the last 40 days, written straight into the
+    // throwaway database (the log only records completions as they happen).
+    const run = (await json(walter.call('GET', '/api/tasks?tz=UTC'))).tasks.find((x) => x.title === 'Morning run');
+    const rows = [];
+    for (let d = 1; d <= 40; d++) if (d % 6 !== 0 && d !== 2) rows.push([run.calendar_id, run.uid, `seed:${d}`, Math.floor(Date.now() / 1000) - d * 86400]);
+    const ins = `import sqlite3,sys,json; c=sqlite3.connect(sys.argv[1]); u=c.execute("SELECT id FROM users WHERE username='walter'").fetchone()[0]
+for r in json.loads(sys.argv[2]): c.execute("INSERT INTO task_completions (user_id, calendar_id, uid, occurrence, completed_at) VALUES (?,?,?,?,?)", (u,*r))
+c.commit()`;
+    if (spawnSync('python3', ['-I', '-c', ins, join(dir, 'data', 'kycalendar.db'), JSON.stringify(rows)], { stdio: 'inherit' }).status !== 0) throw new Error('seed habit');
     await walter.call('POST', '/api/tasks/goals', { title: 'Launch the new website', period: 'quarter', starts: day(-30), ends: day(60), areas: ['work'], lists: [] }).catch(() => {});
   }
 
