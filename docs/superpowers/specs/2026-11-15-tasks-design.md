@@ -63,16 +63,17 @@ at the end.
 | Tags | `CATEGORIES` | one property, comma-separated, read from every CATEGORIES line |
 | Subtasks | `RELATED-TO;RELTYPE=PARENT:<parent UID>` | a missing RELTYPE is PARENT (RFC 5545 §3.2.15) |
 | Repeats | `RRULE` | daily, weekly (weekdays), monthly by day, monthly on the nth or last weekday (`BYDAY=2TU`, `BYDAY=-1FR`), last day of the month (`BYMONTHDAY=-1`), yearly, any `INTERVAL`, `UNTIL` or `COUNT` |
-| Repeat from completion | see the interop research doc | the Tasks.org encoding |
+| Repeat from completion | `X-KY-REPEAT-FROM:COMPLETION` beside the `RRULE` | Tasks.org writes nothing to CalDAV for it (Addendum 2, Interop research) |
 | Reminders | `VALARM` with `ACTION:DISPLAY` and a `TRIGGER` relative to DUE (or START when there is no DUE) | existing alarms are kept as they are |
-| Estimate | see the interop research doc | the length of a task, placed or not |
+| Estimate | `X-KY-ESTIMATE:<RFC 5545 duration>` | neither Tasks.org nor jtx Board writes one (Addendum 2) |
 | Placed in the day | `DTSTART` (date-time) and `DURATION` | `DURATION` only when the task has no `DUE` (RFC 5545 §3.6.2: DUE and DURATION never both); otherwise the estimate property carries the length |
 | Flagged from mail (deliverable 2) | `X-KY-SOURCE:kypost` and `URL` to KyPost's opaque message link | the link never carries the Message-ID |
 
-`docs/superpowers/specs/2026-11-15-tasks-interop-research.md` holds the client research with
-sources. `internal/tasks/testdata/` holds VTODOs as Tasks.org, Apple Reminders, Thunderbird and
+The client research with sources is in Addendum 2, Interop research. `internal/tasks/testdata/` holds VTODOs as Tasks.org, Apple Reminders, Thunderbird and
 jtx Board write them; `TestInteropFixturesSurviveWebEdits` loads each, applies every web edit
-and checks that each property the edit did not name is unchanged.
+and checks that every content line the edit does not own is still present byte for byte
+(`testdata/SOURCES.md` cites each fixture). The encoder writes parameters sorted; RFC 5545
+§3.2 gives their order no meaning, so the test compares a line's parameters as a set.
 
 ### Completing a repeating task
 
@@ -106,8 +107,8 @@ All are `requireEveryday` (session cookie, CSRF as every JSON route; administrat
 | GET | `/api/tasks?calendar=<ids>&completed=<bool>` | read on each list | tasks of every readable task list (or the named ones); completed ones only with `completed=true`, newest 500 |
 | POST | `/api/calendars/{id}/tasks` | editor or owner | create; 201 `{calendar_id,uid,etag}`; 422 `events_only` when the calendar holds no VTODO |
 | PATCH | `/api/tasks/{cal}/{uid}` | editor or owner; `If-Match` | change the named fields only; `status: COMPLETED` on a repeating task moves it to the next occurrence |
-| DELETE | `/api/tasks/{cal}/{uid}` | editor or owner; `If-Match` | 204; subtasks are kept and lose their parent |
-| GET | `/api/tasks/inbox` | everyday | the Inbox list's ID, creating "Tasks" if the user has no task list |
+| DELETE | `/api/tasks/{cal}/{uid}` | editor or owner; `If-Match` | 204; subtasks are kept and show at the top level (their `RELATED-TO` names a missing task) |
+| POST | `/api/tasks/inbox` | everyday | `{calendar_id}` of the Inbox list, creating "Tasks" when the user has none (POST: it can write) |
 | GET | `/api/tasks/areas` | everyday | the caller's areas |
 | PUT | `/api/tasks/areas` | everyday | replace the caller's areas (≤ 20, each ≤ 100 bytes, lists the caller can read) |
 | GET | `/api/tasks/stats?tz=` | everyday | `{done_this_week, streak}` (1b) |
@@ -295,3 +296,27 @@ Sources: Tasks.org `main` at `8f84221` (2026-11-15), jtx Board `main` the same d
    web completions only; the alternative is inferring completions from DUE moves.
 5. The "Note" hand-off needs a KyNotes capture route (`#/capture?text=`). Default: hidden until
    KyNotes ships it.
+
+## Addendum 3 (owner, 2026-11-15): no matrix; AI through MCP
+
+- **The Eisenhower matrix is dropped.** No matrix view, no urgent/important grouping and no "Do
+  first" view; the Matrix section of Addendum 2 is void. PR 1c is Kanban only.
+- **Agents use `/mcp`.** No AI drafting in the web UI; an agent drafts a day through these tools,
+  added in PR 1a under the existing scopes and tokens (`withMCPAuth`):
+
+| Tool | Scope | Does |
+|---|---|---|
+| `list_tasks` | `mcp:read` and up | the web's filters and search (`q`, `lists`, `tags`, `priority`, `due_from`, `due_to`, `status`, `sort`) over the caller's personal task lists |
+| `get_task` | `mcp:read` and up | one task by `calendar_id` and `uid` |
+| `day_gaps` | `mcp:read` and up | one day's busy blocks and free gaps (start and end only, never a title) from the caller's personal calendars, between `day_start` and `day_end` (default 08:00 to 18:00) |
+| `create_task` | `mcp:write-own`, `mcp:write-any` | a task in a personal task list; recorded in `mcp_events` |
+| `update_task` | `write-own`: only tasks this token created; `write-any`: any personal task | fields as the web PATCH, `status` included (complete, reopen), and placing (`start` + `duration_min`); needs the task's `etag` |
+
+- Group lists: MCP serves personal calendars only, as for events (a group calendar is answered as
+  missing on every tool), so "group lists follow the group role" means an agent never reaches one.
+- Never through MCP: deleting tasks or lists, sharing, areas, views, goals and habit
+  configuration (`habit` is not an input), files and images.
+- Bounds are the web's (`taskBody.patch`), plus notes capped at 2 KiB in results like event
+  descriptions. Tool calls audit `mcp.task_create` and `mcp.task_update` with IDs only.
+- Negative tests: wrong scope, another user's task, a write-own token on a task it did not
+  create, a `dav` token refused, a group list missing, oversize input.
