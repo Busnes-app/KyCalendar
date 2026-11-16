@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, browserZone, canAddEvents, chatLink, createEvent, deleteEvent, orgEmails, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person } from '../calendarApi';
+import { ApiError, browserZone, canAddEvents, chatLink, createEvent, deleteEvent, orgEmails, presenceOf, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person, type Presence } from '../calendarApi';
 import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
 import { pickFromDrive, type DriveFile } from '../drivePicker';
 import { linkify } from '../linkify';
 import { FreeBusyStrip } from './FreeBusyStrip';
+import { StatusLabel, statusText } from './StatusLabel';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
   scheduling?: boolean; // server sends invitations
   meetings?: boolean; // KyMessages is paired and in the user's suite apps
   chat?: boolean; // the same, with Element (kymessage-chat) in the suite apps: the Chat action
+  status?: boolean; // KyMessages paired and a KyIdentity sign-in (/api/settings meetings): colleagues' status
   me?: string; // signed-in user's email
   drive?: string; // KyDrive's https origin when it is in the user's suite apps
 }
@@ -60,7 +62,7 @@ function message(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, chat: chatOn = false, me = '', drive = '' }: Props) {
+export function EventDialog({ calendars, event, initial, initialPeople = [], onDone, onClose, scheduling = false, meetings = false, chat: chatOn = false, status: statusOn = false, me = '', drive = '' }: Props) {
   // An object with no recurrence_id cannot be edited per occurrence: no choice, series scope.
   const choose = !!event?.recurring && !!event.recurrence_id;
   const [scope, setScope] = useState<'this' | 'all'>(choose ? 'this' : 'all');
@@ -93,6 +95,22 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
       live = false;
     };
   }, [event, chatOn, me]);
+  // Colleagues' status (KyMessages): asked for everyone shown, at most 50, refreshed as the list changes.
+  const [statuses, setStatuses] = useState<Record<string, Presence>>({});
+  const shown = [...new Set([event?.organizer, ...(event?.attendees ?? []).map((a) => a.email), ...people.map((p) => p.email), ...suggestions.map((p) => p.email)]
+    .filter((e): e is string => !!e && !sameEmail(e, me)).map((e) => e.toLowerCase()))].sort().slice(0, 50).join(',');
+  useEffect(() => {
+    if (!statusOn || !shown) return;
+    let live = true;
+    const t = setTimeout(() => void presenceOf(shown.split(',')).then((found) => {
+      if (live) setStatuses(Object.fromEntries(found.map((p) => [p.email.toLowerCase(), p])));
+    }), 300);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [statusOn, shown]);
+  const statusOf = (email: string) => <StatusLabel presence={statuses[email.toLowerCase()]} />;
   // Linked files (contract I): kept by the server unless Save sends a changed list.
   const [files, setFiles] = useState<DriveFile[]>(() => event?.files ?? []);
   const filesChanged = files.length !== (event?.files ?? []).length || files.some((f, i) => f.url !== event!.files![i].url);
@@ -223,9 +241,9 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
 
   const invitation = invited && (
     <>
-      {event!.organizer && <p>Organized by {event!.organizer} {chatButton(event!.organizer)}</p>}
+      {event!.organizer && <p>Organized by {event!.organizer} {statusOf(event!.organizer)} {chatButton(event!.organizer)}</p>}
       <ul className="kc-people">
-        {(event!.attendees ?? []).map((p) => <li key={p.email}><span title={p.email}>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>{chatButton(p.email, true)}</li>)}
+        {(event!.attendees ?? []).map((p) => <li key={p.email}><span title={p.email}>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>{statusOf(p.email)}{chatButton(p.email, true)}</li>)}
       </ul>
       {!event!.cancelled && <div className="kc-actions" role="group" aria-label="Your answer">
         {BUTTONS.map(([value, label]) => (
@@ -342,6 +360,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
                   {people.map((p) => (
                     <li key={p.email}>
                       <span title={p.email}>{p.email}</span> <span className="kc-hint">{answerText(p.status)}</span>
+                      {statusOf(p.email)}
                       {chatButton(p.email, true)}
                       <button type="button" className={`btn-ghost btn-danger btn-sm${chatty.some((e) => sameEmail(e, p.email)) ? '' : ' kc-push'}`} aria-label={`Remove ${p.email}`} onClick={() => setPeople(people.filter((x) => x !== p))}>Remove</button>
                     </li>
@@ -352,7 +371,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
                 <input id="kc-invite" list="kc-invite-people" inputMode="email" autoComplete="off" placeholder="name@example.com" maxLength={320} value={invitee} onChange={(e) => setInvitee(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); invite(); } }} />
                 <button type="button" className="btn-secondary" onClick={invite}>Invite</button>
                 <datalist id="kc-invite-people">
-                  {suggestions.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}
+                  {suggestions.map((p) => <option key={p.email} value={p.email}>{statuses[p.email.toLowerCase()] ? `${p.name} · ${statusText(statuses[p.email.toLowerCase()])}` : p.name}</option>)}
                 </datalist>
               </div>
               <FreeBusyStrip emails={people.map((p) => p.email)} start={form.start} end={form.end} allDay={form.allDay} />

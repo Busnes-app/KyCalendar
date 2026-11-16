@@ -186,6 +186,7 @@ func runServer() {
 			case <-ticker.C:
 			}
 			srv.SyncMeetings(ctx)
+			srv.SyncPresence(ctx)
 		}
 	}()
 

@@ -9,10 +9,10 @@ const menu = () => document.getElementById('m') as HTMLElement;
 const labels = () => [...menu().querySelectorAll('[role="menuitem"]')].map((a) => a.textContent);
 
 describe('SettingsMenu', () => {
-  it('lists Account, Phones & apps, Booking pages and Appearance for everyday users', () => {
+  it('lists Account, Phones & apps, Booking pages, Status and Appearance for everyday users', () => {
     render(<SettingsMenu id="m" user={{ role: 'user' }} />);
-    expect(labels()).toEqual(['Account', 'Phones & apps', 'Booking pages', 'Appearance']);
-    expect([...menu().querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['#/settings/account', '#/settings/devices', '#/settings/booking', '#/settings/appearance']);
+    expect(labels()).toEqual(['Account', 'Phones & apps', 'Booking pages', 'Status', 'Appearance']);
+    expect([...menu().querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['#/settings/account', '#/settings/devices', '#/settings/booking', '#/settings/status', '#/settings/appearance']);
   });
 
   it('leaves Phones & apps and Booking pages out for administrators', () => {
