@@ -17,6 +17,8 @@ import { describe, dueLabel, priorityName } from '../taskRepeat';
 import { useNarrow } from '../useNarrow';
 import '../styles/calendar.css';
 import '../styles/tasks.css';
+import '../styles/tasks-day.css';
+import { PlanView, TodayView, useDay, useModel } from './TaskDay';
 
 export { TASKS_CHANGED } from '../components/CaptureBox';
 import { TASKS_CHANGED } from '../components/CaptureBox';
@@ -78,6 +80,8 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const [managing, setManaging] = useState(false);
   const [naming, setNaming] = useState<'list' | 'view' | null>(null);
   const [keysOpen, setKeysOpen] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [dayKey, setDayKey] = useState(0);
   const search = useRef<HTMLInputElement>(null);
   const listEl = useRef<HTMLUListElement>(null);
 
@@ -116,6 +120,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     try {
       setOpen(await listTasks({}));
       setShown(serverFilter ? await listTasks(serverFilter) : null);
+      setDayKey((k) => k + 1);
     } catch (e) {
       setError(e instanceof ApiError && e.code === 'rate_limited' ? 'Too many searches; wait a minute.' : e instanceof Error ? e.message : 'Tasks could not be loaded.');
     }
@@ -135,6 +140,9 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   // The chosen view's row stays in sight in the sidebar, without moving it when it already fits.
   useEffect(() => { document.querySelector('.tk-sidebar .tk-nav[aria-current="page"]')?.scrollIntoView({ block: 'nearest' }); }, [view]);
 
+  const isToday = view.kind === 'smart' && view.id === 'today' && !serverFilter;
+  const day = useDay(dayKey);
+  const model = useModel(isToday ? day.data : null, day.now);
   const today = dateOnly(new Date());
   const rows = useMemo(() => {
     const base = shown ?? open;
@@ -215,7 +223,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     return c;
   }, [open, today]);
 
-  const go = (v: TaskView) => { setView(v); setQ(''); setFilter({}); setPicker(false); };
+  const go = (v: TaskView) => { setView(v); setQ(''); setFilter({}); setPicker(false); setPlanning(false); };
   const navItem = (v: TaskView, label: string, Icon: typeof Sun, count?: number, extra?: string) => {
     const current = v.kind === view.kind && v.id === view.id;
     return (
@@ -304,9 +312,10 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     <section className="tk-layout" aria-labelledby="tk-title">
       <header className="tk-head">
         <div>
-          <h1 id="tk-title" className="ky-page-title">{title}</h1>
+          <h1 id="tk-title" className="ky-page-title">{isToday && planning ? `Plan ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}` : title}
+            {isToday && !planning && <span className="tk-date"> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>}</h1>
           <p className="tk-meta">
-            {flat.length === 1 ? '1 task' : `${flat.length} tasks`}
+            {isToday ? 'Your day: plan it, then work through it' : flat.length === 1 ? '1 task' : `${flat.length} tasks`}
             {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}
           </p>
         </div>
@@ -383,12 +392,16 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
       )}
 
       {error && <p role="alert">{error}</p>}
-      {flat.length === 0 && !error && (
+      {isToday && day.error && <p role="alert">{day.error}</p>}
+      {isToday && model && day.data && (planning
+        ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onAdd={() => setDialog({ task: null, initial: { due: today } })} onDone={() => setPlanning(false)} reload={() => void load()} />
+        : <TodayView m={model} data={day.data} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
+      {!isToday && flat.length === 0 && !error && (
         <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>
           {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}
         </EmptyState>
       )}
-      <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
+      {!isToday && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
         {groups.map((g) => (
           <li key={g.label || 'all'} className="tk-day">
             {g.label && <h2 className="tk-day-head">{g.label}</h2>}
@@ -427,7 +440,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             </ul>
           </li>
         ))}
-      </ul>
+      </ul>}
       {keysOpen && (
         <Modal title="Keyboard shortcuts" onClose={() => setKeysOpen(false)}>
           <dl className="tk-keys">

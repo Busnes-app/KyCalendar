@@ -453,6 +453,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/tasks/{cal}/{uid}/images/{n}", s.requireEveryday(s.handleTaskImage))
 	s.handle("POST /api/tasks/inbox", s.requireEveryday(s.handleTaskInbox))
 	s.handle("GET /api/tasks/areas", s.requireEveryday(s.handleGetAreas))
+	s.handle("GET /api/tasks/stats", s.requireEveryday(s.handleTaskStats))
 	s.handle("PUT /api/tasks/areas", s.requireEveryday(s.handlePutAreas))
 	s.handle("GET /api/tasks/views", s.requireEveryday(s.handleListViews))
 	s.handle("POST /api/tasks/views", s.requireEveryday(s.handleCreateView))

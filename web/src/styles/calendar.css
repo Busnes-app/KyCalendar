@@ -243,3 +243,7 @@ dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw 
 .kc-status[data-state="in_a_meeting"] .kc-status-dot { background: var(--ky-danger); border-color: var(--ky-danger); }
 .kc-status[data-state="away"] .kc-status-dot { background: var(--ky-warning); border-color: var(--ky-warning); }
 .kc-status[data-state="out_of_office"] .kc-status-dot { background: transparent; border: 2px solid var(--ky-danger); }
+/* Tasks on the calendar: outlined and hatched with a check mark, never filled like an event. */
+.kc-calendar .fc .kc-task { border: 2px dashed var(--accent) !important; background: repeating-linear-gradient(135deg, var(--panel) 0 6px, var(--accent-soft) 6px 12px) !important; color: var(--ink-strong) !important; box-shadow: none; }
+.kc-calendar .fc .kc-task .fc-event-main, .kc-calendar .fc .kc-task .fc-event-title, .kc-calendar .fc .kc-task .fc-event-time { color: var(--ink-strong) !important; }
+.kc-calendar .fc .kc-task .fc-event-title::before { content: '☐ '; }
