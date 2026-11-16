@@ -364,9 +364,12 @@ func TestExemptNetworksSaveNeedsStepUp(t *testing.T) {
 func TestOfficeBudgetFallsBackToThePerIPLoginLimit(t *testing.T) {
 	t.Setenv("KY_RATE_LIMIT_EXEMPT_NETWORKS", officeRange)
 	srv, _, _ := setupTestServer(t)
-	for i := 1; i <= api.OfficeBudgetForTest+20; i++ {
+	// Each failed sign-in pays a password derivation; 320 of them can outlast the budget's
+	// minute on a slow runner. Spend all but the last five directly.
+	api.SpendOfficeBudgetForTest(srv, "login", api.OfficeBudgetForTest-5)
+	for i := 1; i <= 5+20; i++ {
 		if code := limitStatus(t, srv, officePeer, ""); code == http.StatusTooManyRequests {
-			t.Fatalf("office attempt %d throttled, want the budget and then a window of 20", i)
+			t.Fatalf("office attempt %d throttled, want the budget's last five and then a window of 20", i)
 		}
 	}
 	if code := limitStatus(t, srv, officePeer, ""); code != http.StatusTooManyRequests {

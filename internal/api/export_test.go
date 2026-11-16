@@ -126,3 +126,11 @@ func DAVFailKeysForTest(s *Server) []string {
 
 // OfficeBudgetForTest is what allowlisted networks share per per-IP limit each minute.
 const OfficeBudgetForTest = officeBudget
+
+// SpendOfficeBudgetForTest spends n units of bucket's office budget without n slow sign-ins,
+// so a test finishes inside the budget's one-minute window. Test-only.
+func SpendOfficeBudgetForTest(s *Server, bucket string, n int) {
+	for range n {
+		s.allowAccountAttempt(officeKey(bucket), officeBudget, time.Minute)
+	}
+}
