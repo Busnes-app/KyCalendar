@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Lightbulb, Plus, RefreshCw } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Lightbulb, Plus } from 'lucide-react';
 import { browserZone, listCalendars, listEvents, type CalendarInfo, type EventInfo } from '../calendarApi';
 import { listTasks, patchTask, taskStats, type Status, type Task, type TaskStats } from '../tasksApi';
 import { dateOnly, localRFC3339 } from '../taskParse';
 import { dueLabel, priorityName } from '../taskRepeat';
-import { fit, gaps, hm, replan, suggestions, SNAP, type Block } from '../dayPlan';
+import { fit, gaps, hm, suggestions, SNAP, type Block } from '../dayPlan';
 import { estimateText } from '../components/TaskDialog';
 
 const MIN = 60000;
@@ -150,21 +150,16 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
     const s = fit(gaps(m.from, m.to, others), lengthOf(x.t), Math.max(now, x.end));
     if (s === null) setError('No later gap fits it today.'); else run(place(x.t, s));
   };
-  const replanAll = () => {
-    const unfinished = m.placed.filter((x) => x.t.status !== 'COMPLETED');
-    const keep = m.placed.filter((x) => x.t.status === 'COMPLETED').map((x) => ({ start: x.start, end: x.end }));
-    const plan = replan(m.from, m.to, [...m.eventBlocks, ...keep], unfinished.map((x) => ({ id: key(x.t), minutes: lengthOf(x.t) })), now);
-    run(Promise.all(unfinished.filter((x) => plan.has(key(x.t)) && plan.get(key(x.t)) !== x.start).map((x) => place(x.t, plan.get(key(x.t))!))));
-  };
   type Row = { at: number; kind: 'event'; e: EventInfo; end: number } | { at: number; kind: 'task'; t: Task; end: number };
+  // The Next task shows only in its card; tasks done before now fold into one line.
+  const doneEarlier = m.placed.filter((x) => x.t.status === 'COMPLETED' && x.start < now);
   const rows: Row[] = [
     ...m.events.map((x) => ({ at: x.start, kind: 'event' as const, e: x.e, end: x.end })),
-    ...m.placed.map((x) => ({ at: x.start, kind: 'task' as const, t: x.t, end: x.end })),
+    ...m.placed.filter((x) => x !== next && !doneEarlier.includes(x)).map((x) => ({ at: x.start, kind: 'task' as const, t: x.t, end: x.end })),
   ].sort((a, b) => a.at - b.at);
   const nowIndex = rows.findIndex((r) => r.at > now);
   const unplanned = m.candidates.filter((t) => { const d = dueLabel(t.due, new Date(now)); return d && (d.overdue || d.today); });
   const pct = m.total ? Math.round((m.done / m.total) * 100) : 0;
-  const calName = (id: string) => data.calendars.find((c) => c.id === id)?.name ?? '';
   const nowLine = (
     <li className="td-now" aria-label={`Now, ${clock(now)}`}><span>{clock(now)}</span></li>
   );
@@ -174,7 +169,6 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
         <p><strong>{m.done} of {m.total} done</strong> · {hm(m.leftMin)} left{data.stats && <> · {data.stats.done_this_week} done this week{data.stats.streak > 1 && ` · ${data.stats.streak}-day streak`}</>}</p>
         <progress max={Math.max(1, m.total)} value={m.done} aria-label={`${pct}% of today's tasks done`} />
         <div className="td-progress-actions">
-          <button type="button" className="btn-ghost btn-sm" onClick={replanAll} disabled={!m.placed.some((x) => x.t.status !== 'COMPLETED')}><RefreshCw size={14} aria-hidden="true" /> Replan</button>
           <button type="button" className="btn-secondary btn-sm" onClick={onPlan}>Plan my day</button>
         </div>
       </div>
@@ -194,6 +188,24 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
       )}
       {rows.length === 0 && <p className="td-empty">Nothing planned yet. <button type="button" className="btn-ghost btn-sm" onClick={onPlan}>Plan my day</button></p>}
       <ol className="td-rows" aria-label="Today in time order">
+        {doneEarlier.length > 0 && (
+          <li className="td-earlier">
+            <details>
+              <summary>{doneEarlier.length} done earlier</summary>
+              <ul>
+                {doneEarlier.map((x) => (
+                  <li key={key(x.t)} className="td-task" data-done>
+                    <span className="td-time">{clock(x.start)} · {hm(lengthOf(x.t))}</span>
+                    <span className="td-task-line">
+                      <DoneBox t={x.t} onChange={(st) => run(patchTask(x.t, { status: st }))} />
+                      <button type="button" className="td-task-title" onClick={() => onOpen(x.t)}>{x.t.title}</button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </li>
+        )}
         {rows.map((r, i) => {
           const line = i === nowIndex ? nowLine : null;
           if (r.kind === 'event') {
@@ -201,7 +213,6 @@ export function TodayView({ m, data, now, listName, onOpen, onPlan, reload }: {
               <li key={`e-${r.e.calendar_id}-${r.e.uid}-${r.e.recurrence_id ?? ''}`} className="td-event">
                 <span className="td-time">{clock(r.at)}–{clock(r.end)}</span>
                 <span className="td-event-title"><CalendarDays size={15} aria-hidden="true" /> {r.e.title || 'Busy'}</span>
-                <span className="td-cal">{calName(r.e.calendar_id)}</span>
               </li>
             )];
           }
@@ -312,7 +323,7 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
               onDragStart={(e) => { e.dataTransfer.setData('text/x-task', key(t)); e.dataTransfer.effectAllowed = 'move'; }}>
               <button type="button" className="td-task-title" onClick={() => onOpen(t)}>{t.title}</button>
               <span className="tp-cand-meta">
-                {d && <span className={d.overdue ? 'tk-late' : ''}>{d.overdue ? `Overdue · ${d.text}` : `Due ${d.text.toLowerCase()}`}</span>}
+                {d && <span className={d.overdue ? 'tk-late' : ''}>{d.overdue ? `Overdue · ${d.text}` : `Due ${d.text}`}</span>}
                 <span>{listName(t.calendar_id)}</span>
                 {!!(t.duration_min || t.estimate_min) && <span>{estimateText(lengthOf(t))}</span>}
                 {priorityName(t.priority) === 'High' && <span className="td-prio">High</span>}
@@ -356,7 +367,7 @@ export function PlanView({ m, now, listName, isNarrow, onOpen, onDone, reload }:
               style={{ top: y(start), height: Math.max(22, (minutes / 60) * HOUR_PX) }}
               onPointerDown={(e) => { if (!(e.target as Element).closest('button, .tp-resize')) startDrag(e, x, 'move'); }}
               onKeyDown={(e) => keyMove(e, x)} onDoubleClick={() => onOpen(x.t)}>
-              <span className="tp-mark" aria-hidden="true"><Check size={12} /></span>
+              <span className="tp-mark" aria-hidden="true">{x.t.status === 'COMPLETED' && <Check size={12} />}</span>
               <button type="button" className="tp-block-title" onClick={() => onOpen(x.t)}>{x.t.title}</button>
               <span className="tp-block-time">{clock(start)} · {hm(minutes)}{prio === 'High' && ' · High'}</span>
               <span className="tp-resize" aria-hidden="true" onPointerDown={(e) => { e.stopPropagation(); startDrag(e, x, 'resize'); }} />

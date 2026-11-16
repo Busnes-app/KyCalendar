@@ -7,8 +7,8 @@
 .td-progress p strong { color: var(--ink-strong); }
 .td-progress progress { grid-column: 1 / -1; grid-row: 2; width: 100%; height: .5rem; appearance: none; border: 0; border-radius: 999px; background: var(--line); overflow: hidden; }
 .td-progress progress::-webkit-progress-bar { background: var(--line); }
-.td-progress progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; }
-.td-progress progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
+.td-progress progress::-webkit-progress-value { background: var(--ink-strong); border-radius: 999px; }
+.td-progress progress::-moz-progress-bar { background: var(--ink-strong); border-radius: 999px; }
 .td-progress-actions { display: flex; gap: var(--ky-space-2); }
 
 .td-next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ky-space-3); padding: var(--ky-space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel); }
@@ -21,6 +21,7 @@
 .td-suggest > svg { width: .875rem; height: .875rem; color: var(--ink); flex: none; }
 .td-suggest > span:first-of-type { flex: 1 1 14rem; min-width: 0; }
 .td-stepper { display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.td-stepper button.kc-icon { width: 2.75rem; min-height: 2.75rem; }
 
 .td-rows, .td-unplanned ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ky-space-1); }
 .td-rows > li, .td-unplanned li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--ky-space-3); min-height: 2.75rem; }
@@ -66,11 +67,11 @@
 .tp-gap span { padding: 0 .5rem; border-radius: 999px; background: var(--bg); color: var(--ink); font-size: .75rem; }
 .tp-event, .tp-task { position: absolute; left: .5rem; right: .5rem; display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 0 .5rem; padding: .25rem .5rem; border-radius: 6px; overflow: hidden; font-size: var(--ky-type-meta); }
 /* Events: quiet, filled, read-only. */
-.tp-event { background: var(--bg); color: var(--ink); border: 1px dashed var(--line-strong); }
+.tp-event { min-height: 28px; z-index: 1; background: var(--panel-hover); color: var(--ink); border: 0; }
 .tp-event svg { flex: none; }
 /* Tasks: a calm solid card with a thin accent edge and a check mark; events have neither. */
-.tp-task { border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); background: var(--panel); color: var(--ink-strong); cursor: grab; touch-action: none; box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
-.tp-task[data-done] { opacity: .7; }
+.tp-task { min-height: 28px; z-index: 1; border: 1px solid var(--line-strong); border-left: 3px solid var(--ink); background: var(--panel); color: var(--ink-strong); cursor: grab; touch-action: none; box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+.tp-task[data-done] { color: var(--ink); }
 .tp-task[data-done] .tp-block-title { text-decoration: line-through; }
 .tp-task:focus-visible { outline: 3px solid var(--ink-strong); outline-offset: 1px; }
 .tp-mark { display: inline-grid; place-items: center; width: 1rem; height: 1rem; border: 1.5px solid var(--line-strong); border-radius: 4px; background: var(--panel); color: var(--ink-strong); }
@@ -83,7 +84,8 @@
 .tp-now span { position: absolute; right: 0; top: -1.25rem; color: var(--accent); font-size: .75rem; font-weight: 700; }
 .tp-tabs { display: flex; border-bottom: 1px solid var(--line); }
 .tp-tabs button { flex: 1; min-height: 2.75rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ink); font-weight: 600; }
-.tp-tabs button[aria-selected='true'] { border-bottom-color: var(--accent); color: var(--ink-strong); }
+.tp-tabs button[aria-selected='true'] { border-bottom-color: var(--ink-strong); color: var(--ink-strong); }
+.tp-tabs button:hover:not(:disabled), .tp-tabs button:focus { background: none; color: var(--ink-strong); }
 
 @media (max-width: 720px) {
   .td-progress { grid-template-columns: minmax(0, 1fr); }
@@ -95,3 +97,12 @@
   .td-next-actions > button { flex: 1; }
 }
 .tk-date { margin-left: .375rem; color: var(--ink); font-size: 1.125rem; font-weight: 500; }
+.td-earlier details > summary { padding: var(--ky-space-2) var(--ky-space-3); color: var(--ink); font-size: var(--ky-type-meta); cursor: pointer; }
+.td-earlier details > ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ky-space-1); }
+.td-earlier details > ul > li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); align-items: center; gap: var(--ky-space-3); min-height: 2.75rem; }
+@media (max-width: 720px) {
+  /* Phones: tasks and events share one borderless "time · title" row. */
+  .td-rows > li, .td-unplanned li, .td-earlier details > ul > li { grid-template-columns: 4.5rem minmax(0, 1fr); padding: var(--ky-space-1) 0; border: 0; background: none; }
+  .td-rows > li > .td-time, .td-unplanned li > .td-time { grid-column: auto; }
+  .td-event { padding: var(--ky-space-1) 0; }
+}

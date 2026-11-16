@@ -62,18 +62,4 @@ export function suggestions(free: Gap[], candidates: Candidate[], after: number)
   return out;
 }
 
-// replan places tasks (in order) one after another in the gaps after now, each where it first
-// fits; a task that fits nowhere is left out.
-export function replan(from: number, to: number, events: Block[], tasks: Candidate[], now: number): Map<string, number> {
-  const placed = new Map<string, number>();
-  const busy = [...events];
-  for (const t of tasks) {
-    const s = fit(gaps(from, to, busy), t.minutes, now);
-    if (s === null) continue;
-    placed.set(t.id, s);
-    busy.push({ start: s, end: s + t.minutes * MIN });
-  }
-  return placed;
-}
-
 export const hm = (minutes: number) => (minutes < 60 ? `${minutes}m` : minutes % 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes / 60}h`);
