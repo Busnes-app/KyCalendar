@@ -343,8 +343,17 @@ Scores: Opus 6.5 (gate 8.0), Sol 7.2. Accepted and applied: one accent use per s
 boxes, progress fill, task rails and the main navigation's Tasks row neutral); no mini progress
 bars; Today without Replan, the Next task only in its card, earlier done tasks folded into one
 line, borderless rows on phones and no calendar names; Plan blocks at least 28px and opaque,
-events a quiet fill, its mark checked only when done, 44px pager buttons; one 24-hour time format
-and capitalised relative dates; the calendar's Tasks link in muted ink; Sort inside Filters; the
+events a quiet fill, its mark checked only when done, 44px pager buttons; capitalised relative dates; the calendar's Tasks link in muted ink; Sort inside Filters; the
 shortcut list behind `?`; no repeated dates in Upcoming's groups; Due and Start a full row each
 with a full-width priority control and a visible close; a short phone placeholder and the parse
 feedback as one quiet line. Replan is gone: Plan my day covers it.
+
+## Council round 2 (2026-11-15)
+
+Scores: Opus 7.6, Sol 7.8. Applied: times follow the calendar's own format (the browser locale)
+with en-dash ranges, replacing round 1's forced 24-hour; Today counts exactly the tasks it shows
+and drops the week count; the phone's Tasks tab stays marked; the task dialog's actions are a
+sticky footer; phone list and candidate rows are borderless; the board keeps the list width,
+counts like the list, shows top-level tasks with their subtask progress, collapses empty columns
+and drops the list name inside a list; the List/Board control has no outer frame; Plan block meta
+lines up under the title and short blocks keep a one-line time.
