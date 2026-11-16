@@ -140,7 +140,8 @@ try {
       }
       }
       for (const name of ['Habits', 'Goals', 'Insights']) {
-        if (!(await page.getByRole('navigation', { name: 'Task lists' }).getByRole('button', { name: new RegExp(`^${name}`) }).count())) continue;
+        // Role queries skip buttons inside the closed phone disclosure, so ask the DOM.
+        if (!(await page.locator('.tk-sidebar .tk-nav', { hasText: name }).count())) continue;
         await view(name);
         await page.waitForTimeout(500);
         await shoot(page, name.toLowerCase(), width, colorScheme);
