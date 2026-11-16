@@ -83,27 +83,28 @@ type presenceEntry struct {
 	at     time.Time
 }
 
-// presenceCache holds KyMessages' answers by subject for presenceCacheTTL.
+// presenceCache holds KyMessages' answers for presenceCacheTTL, keyed by caller and subject:
+// KyMessages decides per caller, so one caller's answer never serves another.
 type presenceCache struct {
 	mu sync.Mutex
 	m  map[string]presenceEntry
 }
 
-func (c *presenceCache) get(sub string, now time.Time) (kymessages.Status, bool) {
+func (c *presenceCache) get(caller, sub string, now time.Time) (kymessages.Status, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.m[sub]
+	e, ok := c.m[caller+"\x00"+sub]
 	return e.status, ok && now.Sub(e.at) < presenceCacheTTL
 }
 
-func (c *presenceCache) put(m map[string]kymessages.Status, now time.Time) {
+func (c *presenceCache) put(caller string, m map[string]kymessages.Status, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.m == nil || len(c.m) > presenceCacheMax {
 		c.m = map[string]presenceEntry{}
 	}
 	for sub, st := range m {
-		c.m[sub] = presenceEntry{st, now}
+		c.m[caller+"\x00"+sub] = presenceEntry{st, now}
 	}
 }
 
@@ -225,7 +226,7 @@ func (s *Server) handlePresenceLookup(w http.ResponseWriter, r *http.Request) {
 	found := map[string]kymessages.Status{}
 	var ask []string
 	for _, p := range people {
-		if st, ok := s.presence.get(p.Sub, now); ok {
+		if st, ok := s.presence.get(u.ID, p.Sub, now); ok {
 			found[p.Sub] = st
 		} else {
 			ask = append(ask, p.Sub)
@@ -236,7 +237,7 @@ func (s *Server) handlePresenceLookup(w http.ResponseWriter, r *http.Request) {
 		if s.presenceFailed(w, err) {
 			return
 		}
-		s.presence.put(got, now)
+		s.presence.put(u.ID, got, now)
 		for sub, st := range got {
 			found[sub] = st
 		}

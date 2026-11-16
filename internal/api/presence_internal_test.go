@@ -225,6 +225,23 @@ func TestPresenceLookupIsBatchedAndCached(t *testing.T) {
 		t.Fatalf("kept past a minute: %d calls", n)
 	}
 
+	// The cache is per caller: KyMessages refuses dee (no KyMessages account), and ann's
+	// cached answer for bob never reaches her.
+	dee := ssoUser("usr_dee", "sub-dee", r.s.signin.Load())
+	dee.Email = "dee@example.com"
+	if err := r.s.store.Users().CreateUser(context.Background(), dee); err != nil {
+		t.Fatal(err)
+	}
+	r.do(t, r.ann, http.MethodPost, "/api/presence", `{"emails":["bob@example.com"]}`, r.s.handlePresenceLookup)
+	calls := len(r.calls())
+	r.reply = func(string) (int, string) { return 404, `{"error":"x","code":"no_user"}` }
+	if code, body := r.do(t, dee, http.MethodPost, "/api/presence", `{"emails":["bob@example.com"]}`, r.s.handlePresenceLookup); code != 404 || !strings.Contains(body, "no_user") {
+		t.Fatalf("another caller's cache served dee: %d %s", code, body)
+	}
+	if n := len(r.calls()); n != calls+1 {
+		t.Fatalf("dee was not asked about: %d calls", n)
+	}
+
 	many := make([]string, 51)
 	for i := range many {
 		many[i] = fmt.Sprintf(`"p%d@example.com"`, i)

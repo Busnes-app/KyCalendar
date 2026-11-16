@@ -258,7 +258,7 @@ for the next change or refresh. Nothing is kept in memory and nothing is schedul
   `status_off` without KyMessages or a KyIdentity sign-in; 409 `sharing_off` for a manual
   status while sharing is off.
 - `POST /api/presence {"emails":[≤50]}`: `resolveAs` keeps organisation people only, then
-  one lookup for the subjects not cached; answers are cached by subject for 60 seconds.
+  one lookup for the subjects not cached; answers are cached per caller and subject for 60 seconds (one caller's answer never serves another: KyMessages decides per caller).
   Answers `{"people":[{"email","state","until"?}]}`, organisation people only. 60 a minute;
   400 `too_many` over 50.
 
