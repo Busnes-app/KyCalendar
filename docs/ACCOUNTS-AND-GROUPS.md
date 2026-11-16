@@ -72,6 +72,8 @@ In KyCalendar, **Group calendars** lists every group calendar. Create one, then 
 
 A member's phone shows every group calendar they can read under the same app password, read-only below editor. Removing someone from a group cuts their access on their next sync. Deleting a KyIdentity group removes its access and leaves the calendar for you to re-grant or delete. Deleting a calendar needs a sign-in from the last 10 minutes.
 
+**Suite groups.** When KyCalendar signs in through KyIdentity, each group a KyIdentity administrator turns on as a suite group gets its own group calendar here within about a minute, named after the group, with the group's everyday members as editors. KyIdentity decides the members; changes arrive within a minute. A group turned off or deleted in KyIdentity keeps its calendar and events read-only, with no members, for you to re-grant or delete; turning it on again brings back the same calendar. A new group with an old group's name gets a new calendar. The members' group shows in Groups as `suite-group:<id>` and is changed only from KyIdentity.
+
 ## People
 
 **People** lists every account. Local accounts (people who sign in with a password) can be edited here; accounts from KyIdentity or SCIM carry a "Managed by ..." badge and change only in the identity provider.

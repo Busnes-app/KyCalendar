@@ -275,8 +275,10 @@ func (s *Server) handleDeleteCalendar(w http.ResponseWriter, r *http.Request) {
 // that deleting each event would send. as plans the deletes: the calendar's owner, or nil in a
 // group calendar (see groupOrganizer).
 func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *store.User) *apiError {
-	if s.sched == nil || c.Subscribed {
-		return nil // a subscription mirrors someone else's meetings: nothing is sent for them
+	if s.sched == nil || c.Subscribed || c.Archived {
+		// A subscription mirrors someone else's meetings, and an archived suite calendar is
+		// read-only: nothing is sent for them.
+		return nil
 	}
 	objs, err := s.store.Calendars().ListObjects(ctx, c.ID)
 	if err != nil {

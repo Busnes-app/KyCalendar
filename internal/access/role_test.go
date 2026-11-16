@@ -64,3 +64,17 @@ func TestRoleCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestCanEditEventsRefusesReadOnlyCalendars(t *testing.T) {
+	for _, c := range []struct {
+		cal  store.Calendar
+		want bool
+	}{{store.Calendar{}, true}, {store.Calendar{Subscribed: true}, false}, {store.Calendar{Archived: true}, false}} {
+		if got := access.CanEditEvents(&c.cal, access.Manager); got != c.want {
+			t.Errorf("%+v: %t", c.cal, got)
+		}
+	}
+	if access.CanEditEvents(&store.Calendar{}, access.Reader) {
+		t.Error("a reader edits events")
+	}
+}
