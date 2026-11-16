@@ -336,3 +336,15 @@ the candidates and none on Today; a checkbox per task on Today (status lives in 
 compact 24-hour times that never wrap; candidates with one meta line and a duration only when
 set; Plan's only way out is "Back to Today"; "Push to later" is a text button. Planned tasks are
 a calm solid card with a thin accent edge and a check mark; events are quiet and dashed.
+
+## Council round 1 (2026-11-15)
+
+Scores: Opus 6.5 (gate 8.0), Sol 7.2. Accepted and applied: one accent use per screen (checked
+boxes, progress fill, task rails and the main navigation's Tasks row neutral); no mini progress
+bars; Today without Replan, the Next task only in its card, earlier done tasks folded into one
+line, borderless rows on phones and no calendar names; Plan blocks at least 28px and opaque,
+events a quiet fill, its mark checked only when done, 44px pager buttons; one 24-hour time format
+and capitalised relative dates; the calendar's Tasks link in muted ink; Sort inside Filters; the
+shortcut list behind `?`; no repeated dates in Upcoming's groups; Due and Start a full row each
+with a full-width priority control and a visible close; a short phone placeholder and the parse
+feedback as one quiet line. Replan is gone: Plan my day covers it.
