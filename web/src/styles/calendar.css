@@ -220,6 +220,8 @@ button.kc-answer[aria-pressed='true'] { border-color: var(--accent); background:
 dialog.kc-dialog { width: min(34rem, 100vw - 2rem); max-width: min(34rem, 100vw - 2rem); }
 /* Free/busy strip in the event form: one row per guest across the chosen day. */
 .kc-freebusy { display: grid; gap: var(--ky-space-2); }
+.kc-room-finder { display: grid; gap: var(--ky-space-2); padding: var(--ky-space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.kc-room-finder .kc-people li > span:first-child { white-space: normal; }
 .kc-fb-row { display: grid; gap: var(--ky-space-1); overflow-wrap: anywhere; }
 .kc-fb-track { width: 100%; height: 12px; border: 1px solid var(--field-border); border-radius: var(--radius-sm); background: var(--bg); }
 .kc-fb-busy { fill: var(--ink); opacity: 0.55; }

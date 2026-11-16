@@ -25,7 +25,7 @@ KyCalendar answers for the resource in the same database transaction that stores
 
 ## Data
 
-Migrations 28 (definitions) and 29 (bookings) add five tables.
+Migrations 28 (definitions) and 35 (bookings) add five tables.
 
 - `resources`: `id` (32 hex), `kind` (`room` or `equipment`), `name` (unique ignoring case),
   `location`, `capacity` (0 = not stated), `tags` (JSON list), `audience` (`everyone` or
@@ -33,7 +33,7 @@ Migrations 28 (definitions) and 29 (bookings) add five tables.
   `created_at`, `updated_at`.
 - `resource_groups (resource_id, group_id)` and `resource_approvers (resource_id, user_id)`,
   cascading on both sides. Deleting a group drops it from every resource.
-- `resource_bookings` (migration 29): one row per resource per event object: `resource_id`,
+- `resource_bookings` (migration 35): one row per resource per event object: `resource_id`,
   `calendar_id`, `object_name` (cascading from `calendar_objects`, so deleting the event or its
   calendar releases the room), `booked_by`, `status` (`accepted`, `pending`, `declined`),
   `reason`, `detail`, `fingerprint`, `decided_by`, `open_after`, times.
@@ -52,12 +52,21 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    booking. Skip an attendee copy (ORGANIZER set and not the writer, and no booking).
 2. For each resource attendee (at most 10), compute a fingerprint of the event's timing
    properties (DTSTART, DTEND, DURATION, RRULE, RDATE, EXDATE, RECURRENCE-ID, STATUS of every
-   VEVENT). An existing booking with the same fingerprint keeps its answer. Editing the title,
+   VEVENT). An existing booking with the same fingerprint keeps an accepted, pending or
+   approver-rejected answer; any other decline holds nothing and is decided again, so a freed
+   room is booked at the next save. An accepted or pending booking also stands, whoever writes,
+   when the series rule (the components without RECURRENCE-ID) is unchanged and every occurrence
+   of the new object from now, expanded past the last override of either version, is an
+   occurrence of the previous object (`resource.Within`): an attendee's answer to one occurrence
+   adds an override and must not release the organizer's room, while a moved, detached, longer or
+   restored occurrence is new time and is decided again. Editing the title,
    description or other attendees never re-decides the room, and never re-declines a past one.
 3. Otherwise decide, in order: unknown resource (`unknown`) or disabled (`disabled`); the event
-   is over (`past`); a single event ending after now + horizon, or a series whose first
+   is over (`past`); an object that could be read two ways, a VEVENT with both DTEND and
+   DURATION or two components for one occurrence (`ambiguous`); a single event ending after now + horizon, or a series whose first
    occurrence is past it (`beyond_horizon`); more than 1000 occurrences within the horizon
-   (`too_many_occurrences`); an occurrence longer than the maximum (`too_long`); the writer may
+   (`too_many_occurrences`); an occurrence, a master, an override or an RDATE period anywhere in the series
+   longer than the maximum (`too_long`); the writer may
    not book it (`not_allowed`); an occurrence overlapping another booking (`busy`, with the
    conflicting dates). Cancelled occurrences (STATUS:CANCELLED) need no room. Passing all:
    `accepted`, or `pending` under the approver policy.
@@ -67,7 +76,15 @@ web and MCP writes all go through it. Pure rules are in `internal/resource`.
    event no longer names are deleted.
 
 **Recurring events.** Every occurrence from now to the horizon is checked. If any conflicts, the
-whole series is declined and the reason lists up to five conflicting dates. A series may run past
+whole series is declined and the reason lists up to five conflicting dates. Explicit overrides and
+RDATEs beyond the horizon are also checked against stored and open bookings in their own time
+windows; incoming rules are also checked in existing accepted or pending bookings’ explicit
+future windows, so insertion order cannot bypass the reservation. Both preserve EXDATE and
+cancellation. An explicit expansion that cannot be checked
+within the occurrence bound is declined. Rule-only future intersections are checked too: a complete
+finite expansion must fit the occurrence bound, or fixed same-day UTC clock ranges must prove
+separation. Otherwise the second booking is declined, including complex unbounded rules whose
+non-overlap cannot be proved; a finite sample never clears an infinite reservation. A series may run past
 the horizon, and with no end (the web's repeats have none): once accepted it reserves every later
 occurrence too. Its busy rows stop at the horizon, and the booking records where (`open_after`);
 every later check and the finder expand such a series past that point, so a later booking that

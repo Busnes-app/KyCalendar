@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, browserZone, canAddEvents, chatLink, createEvent, deleteEvent, orgEmails, presenceOf, rsvp, searchPeople, updateEvent, type Answer, type CalendarInfo, type EventInfo, type Freq, type Person, type Presence } from '../calendarApi';
-import { WEEKDAYS, bodyFromForm, formFromEvent, validZone, type FormState } from '../eventForm';
+import { WEEKDAYS, addDays, bodyFromForm, formFromEvent, parseLocal, validZone, type FormState } from '../eventForm';
 import { pickFromDrive, type DriveFile } from '../drivePicker';
 import { linkify } from '../linkify';
 import { FreeBusyStrip } from './FreeBusyStrip';
 import { StatusLabel, statusText } from './StatusLabel';
+import { RoomList, RoomPicker } from './RoomPicker';
 import { MOVE_ALL_WARNING } from './ScopeDialog';
 
 interface Props {
@@ -113,6 +114,10 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
   const statusOf = (email: string) => <StatusLabel presence={statuses[email.toLowerCase()]} />;
   // Linked files (contract I): kept by the server unless Save sends a changed list.
   const [files, setFiles] = useState<DriveFile[]>(() => event?.files ?? []);
+  // Rooms and equipment: the organizer's (or anyone's, before there is one) to change, for the whole series.
+  const canRoom = !readOnly && !invited && (!event?.organizer || sameEmail(event.organizer, me));
+  const [rooms, setRooms] = useState(() => event?.resources ?? []);
+  const roomsChanged = rooms.length !== (event?.resources ?? []).length || rooms.some((r, i) => r.id !== event!.resources![i].id);
   const filesChanged = files.length !== (event?.files ?? []).length || files.some((f, i) => f.url !== event!.files![i].url);
   // Organisation people for the Invite field, after a short pause in typing; free text still works.
   useEffect(() => {
@@ -174,6 +179,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
     if (organizes && scope === 'all' && (people.length !== loaded.length || people.some((p, i) => p.email !== loaded[i].email))) body.attendees = people.map((p) => p.email);
     if (canMeet && scope === 'all' && meeting !== !!event?.meeting) body.meeting = meeting;
     if (scope === 'all' && filesChanged) body.files = files;
+    if (canRoom && scope === 'all' && roomsChanged) body.resources = rooms.map((r) => r.id);
     void act(() => (event ? updateEvent(event, body) : createEvent(form.calendarId, body)), 'Could not save the event');
   }
 
@@ -264,6 +270,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {form.location && <p>{linkify(form.location)}</p>}
           {form.description && <p className="kc-description">{linkify(form.description)}</p>}
           {fileList}
+          <RoomList rooms={event!.resources ?? []} />
           {room}
           {invitation}
           <div className="modal-actions">
@@ -282,6 +289,7 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           {event?.recurring && scope === 'all' && <p role="note">{MOVE_ALL_WARNING}</p>}
           {room}
           {invitation}
+          {invited && <RoomList rooms={event!.resources ?? []} />}
           <label htmlFor="kc-title">Title</label>
           <input id="kc-title" ref={first} value={form.title} maxLength={1000} onChange={(e) => set({ title: e.target.value })} />
           <label className="kc-check"><input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked, start: form.start.slice(0, 10) + (e.target.checked ? '' : 'T09:00'), end: form.end.slice(0, 10) + (e.target.checked ? '' : 'T10:00') })} /> All day</label>
@@ -297,6 +305,21 @@ export function EventDialog({ calendars, event, initial, initialPeople = [], onD
           </div>
           <label htmlFor="kc-location">Location <span className="field-optional">(optional)</span></label>
           <input id="kc-location" value={form.location} maxLength={1000} onChange={(e) => set({ location: e.target.value })} />
+          {canRoom && scope === 'all' && (
+            <RoomPicker
+              rooms={rooms}
+              onChange={(next) => {
+                const added = next.find((r) => !rooms.includes(r));
+                if (added?.kind === 'room' && !form.location.trim()) set({ location: [added.name, added.location].filter(Boolean).join(', ') });
+                setRooms(next);
+              }}
+              start={form.allDay ? parseLocal(form.start.slice(0, 10)) : parseLocal(form.start)}
+              end={form.allDay ? addDays(parseLocal(form.end.slice(0, 10)), 1) : parseLocal(form.end)}
+              event={event}
+              repeats={form.freq !== ''}
+            />
+          )}
+          {canRoom && scope === 'this' && rooms.length > 0 && <RoomList rooms={rooms} />}
           <label htmlFor="kc-description">Description <span className="field-optional">(optional)</span></label>
           <textarea id="kc-description" value={form.description} maxLength={65536} onChange={(e) => set({ description: e.target.value })} />
           {scope === 'all' && (files.length > 0 || drive) && (

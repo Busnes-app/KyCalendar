@@ -26,6 +26,20 @@ type ResourceStore interface {
 	// (ErrAlreadyExists), ErrUnknownGroup and ErrBadApprover, and then write nothing.
 	CreateResource(ctx context.Context, r *resource.Resource) error
 	UpdateResource(ctx context.Context, r *resource.Resource) error
+
+	// Bookable lists the enabled resources userID may book.
+	Bookable(ctx context.Context, userID string) ([]*resource.Resource, error)
+	// Busy is a resource's busy spans overlapping [from, to), without event uid of calendarID.
+	Busy(ctx context.Context, id string, from, to int64, calendarID, uid string) ([]BusySpan, error)
+	// BookingsIn is calendarID's bookings by object name, then resource ID.
+	BookingsIn(ctx context.Context, calendarID string) (map[string]map[string]*ResourceBooking, error)
+	// Requests lists the pending bookings of the resources approverID approves.
+	Requests(ctx context.Context, approverID string) ([]*ResourceRequest, error)
+	IsApprover(ctx context.Context, userID string) (bool, error)
+	// Decide answers a pending booking as one of its resource's approvers (ErrNotFound for
+	// anyone else, ErrBookingState when it is no longer pending) and writes the answer into
+	// the event.
+	Decide(ctx context.Context, id, approverID string, accept bool) error
 }
 
 type resourceStore struct{ store *SQLStore }

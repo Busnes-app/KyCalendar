@@ -1,6 +1,8 @@
 // Captures the room and equipment screens: the administrator's Rooms and equipment list and
-// editor. Usage (from web/): node browser/resource-shots.mjs <server-binary> <out-dir> [before]
-// (not a spec: CI skips it). "before" captures the admin navigation without the feature.
+// editor, and as members the room finder in the event editor, an event with rooms and Room
+// requests. Usage (from web/): node browser/resource-shots.mjs <server-binary> <out-dir> [mode]
+// (not a spec: CI skips it). Modes: admin (default), before (the admin navigation without the
+// feature), booking (the member screens), booking-before (the event editor without the feature).
 // Starts its own throwaway server on 127.0.0.1:5391 (relays empty, scheduling off) and removes
 // its data afterwards.
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
@@ -45,9 +47,10 @@ try {
     return api;
   };
   const admin = await signIn('admin', '203.0.113.80');
-  await signIn('walter', '203.0.113.81');
+  const walterAPI = await signIn('walter', '203.0.113.81');
   await signIn('ann', '203.0.113.82');
-  if (mode !== 'before') {
+  const booking = mode.startsWith('booking');
+  if (!mode.endsWith('before')) {
     const users = (await (await admin.call('GET', '/api/admin/users?q=ann')).json()).users;
     const group = await (await admin.call('POST', '/api/admin/groups', { display_name: 'Studio' })).json();
     const room = { location: 'Floor 2, east wing', audience: 'everyone', approval: 'auto', max_minutes: 240, horizon_days: 180, enabled: true };
@@ -55,6 +58,18 @@ try {
     await admin.call('POST', '/api/admin/resources', { ...room, kind: 'room', name: 'Harbour', location: 'Floor 4', capacity: 20, tags: ['screen', 'whiteboard'],
       audience: 'groups', groups: [group.id], approval: 'approvers', approvers: [users[0].id] });
     await admin.call('POST', '/api/admin/resources', { ...room, kind: 'equipment', name: 'Projector kit', location: 'Reception', capacity: 0, tags: [], max_minutes: 1440, enabled: false });
+    const walterID = (await (await admin.call('GET', '/api/admin/users?q=walter')).json()).users[0].id;
+    await admin.call('PUT', '/api/admin/groups/' + group.id + '/members/' + walterID);
+  }
+  // walter's event tomorrow at 10:00 local (UTC here) with Fjord, and Harbour waiting for ann.
+  const day = new Date(Date.now() + 86400000);
+  const at = (h) => new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h)).toISOString().replace('.000Z', 'Z');
+  if (mode === 'booking') {
+    const walter = walterAPI;
+    const ids = (await (await walter.call('GET', '/api/resources')).json()).resources.map((r) => r.id);
+    const cal = (await (await walter.call('GET', '/api/calendars')).json())[0].id;
+    await walter.call('POST', '/api/calendars/' + cal + '/events', { title: 'Quarterly review', start: at(10), end: at(11), zone: 'UTC', resources: ids.slice(0, 1) });
+    await walter.call('POST', '/api/calendars/' + cal + '/events', { title: 'Workshop', start: at(16), end: at(17), zone: 'UTC', resources: ids.slice(1, 2) });
   }
 
   await mkdir(out, { recursive: true });
@@ -65,13 +80,61 @@ try {
   };
   for (const colorScheme of ['light', 'dark']) {
     for (const width of [1280, 390]) {
-      const ctx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.83' } });
+      const ctx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, timezoneId: 'UTC', extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.83' } });
       const page = await ctx.newPage();
       await page.goto('/');
-      await page.getByLabel('Username', { exact: true }).fill('admin');
+      await page.getByLabel('Username', { exact: true }).fill(booking ? 'walter' : 'admin');
       await page.locator('input[type=password]').fill('ShotsUpdated456!');
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await page.locator('.ky-content').waitFor();
+      if (booking) {
+        await page.goto('/#/calendar');
+        await page.getByRole('button', { name: 'New event' }).click();
+        const dialog = page.getByRole('dialog');
+        await dialog.locator('#kc-title').fill('Design review');
+        if (mode === 'booking') {
+          await dialog.locator('#kc-start').fill(at(14).slice(0, 16));
+          await dialog.locator('#kc-end').fill(at(15).slice(0, 16));
+          await dialog.getByRole('button', { name: 'Add room' }).click();
+          await dialog.getByRole('button', { name: 'Add Harbour' }).waitFor();
+          await dialog.getByRole('button', { name: 'Add room' }).or(dialog.getByRole('group', { name: 'Find a room' })).first().scrollIntoViewIfNeeded();
+          await shoot(page, 'room-finder', width, colorScheme);
+          await dialog.getByRole('button', { name: 'Add Harbour' }).click();
+          await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+          await dialog.waitFor({ state: 'hidden' });
+          await page.locator('.fc-listWeek-button').click();
+          const item = page.locator('.fc-list-event', { hasText: 'Quarterly review' });
+          if (!(await item.count())) await page.locator('.fc-next-button').click();
+          await item.click();
+          await page.getByRole('dialog').getByText('Rooms and equipment').scrollIntoViewIfNeeded();
+          await shoot(page, 'event-with-room', width, colorScheme);
+          await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+          const pending = page.locator('.fc-list-event', { hasText: 'Design review' });
+          await pending.click();
+          await page.getByRole('dialog').getByText('Waiting for approval').scrollIntoViewIfNeeded();
+          await shoot(page, 'event-pending-room', width, colorScheme);
+          page.once('dialog', (d) => void d.accept());
+          await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+          await page.getByRole('dialog').waitFor({ state: 'hidden' });
+        } else {
+          await shoot(page, 'event-editor-before', width, colorScheme);
+        }
+        await ctx.close();
+        if (mode === 'booking') {
+          const actx = await browser.newContext({ baseURL: base, viewport: { width, height: 900 }, colorScheme, extraHTTPHeaders: { 'X-Forwarded-For': '203.0.113.85' } });
+          const ann = await actx.newPage();
+          await ann.goto('/');
+          await ann.getByLabel('Username', { exact: true }).fill('ann');
+          await ann.locator('input[type=password]').fill('ShotsUpdated456!');
+          await ann.getByRole('button', { name: 'Sign in', exact: true }).click();
+          await ann.locator('.ky-content').waitFor();
+          await ann.goto('/#/room-requests');
+          await ann.getByRole('heading', { name: 'Harbour' }).waitFor();
+          await shoot(ann, 'room-requests', width, colorScheme);
+          await actx.close();
+        }
+        continue;
+      }
       if (mode === 'before') {
         await page.goto('/#/group-calendars');
         await page.getByRole('heading', { name: 'Group calendars' }).waitFor();

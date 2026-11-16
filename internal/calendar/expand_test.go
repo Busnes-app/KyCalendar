@@ -332,6 +332,12 @@ func TestExpandOverrideReplacesPartialMaster(t *testing.T) {
 	if err != nil || len(got) != 1 || !got[0].Override {
 		t.Fatalf("%v %v", got, err)
 	}
+	if _, err := ExpandComplete(cal, day(2026, 10, 1), day(2026, 10, 31), time.UTC, 5000); !errors.Is(err, ErrIncompleteExpansion) {
+		t.Fatalf("incomplete master hidden by override: %v", err)
+	}
+	if _, err := ExpandComplete(cal, day(2026, 10, 8), day(2026, 10, 31), time.UTC, 5000); !errors.Is(err, ErrIncompleteExpansion) {
+		t.Fatalf("incomplete master outside range: %v", err)
+	}
 }
 
 func TestExpandRecurrenceIDKeyedInMasterForm(t *testing.T) {

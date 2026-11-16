@@ -1,0 +1,298 @@
+package resource
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/emersion/go-ical"
+
+	"github.com/Busnes-app/kycalendar/internal/calendar"
+	"github.com/Busnes-app/kycalendar/internal/itip"
+)
+
+var roomID = strings.Repeat("ab", 16)
+
+func parse(t *testing.T, s string) *ical.Calendar {
+	t.Helper()
+	cal, err := ical.NewDecoder(strings.NewReader(strings.ReplaceAll(s, "\n", "\r\n"))).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cal
+}
+
+func event(start, end, extra string) string {
+	return "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nDTSTART:" + start +
+		"\nDTEND:" + end + "\nSUMMARY:Secret\nORGANIZER:mailto:ann@example.com\nATTENDEE;PARTSTAT=ACCEPTED;RSVP=TRUE:mailto:resource-" + roomID +
+		"@kycalendar.invalid\n" + extra + "END:VEVENT\nEND:VCALENDAR\n"
+}
+
+func lastEnd(t *testing.T, cal *ical.Calendar) *int64 {
+	t.Helper()
+	o, err := calendar.Inspect(cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return o.LastEnd
+}
+
+var room = &Resource{ID: roomID, Kind: Room, Name: "Fjord", Enabled: true, Audience: Everyone, Approval: Auto, MaxMinutes: 120, HorizonDays: 30}
+
+func TestPlan(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name, ics, status, reason string
+		r                         *Resource
+	}{
+		{"free", event("20261120T090000Z", "20261120T100000Z", ""), Accepted, "", room},
+		{"unknown", event("20261120T090000Z", "20261120T100000Z", ""), Declined, ReasonUnknown, nil},
+		{"past", event("20261101T090000Z", "20261101T100000Z", ""), Declined, ReasonPast, room},
+		{"beyond", event("20270120T090000Z", "20270120T100000Z", ""), Declined, ReasonBeyond, room},
+		{"long", event("20261120T090000Z", "20261120T120000Z", ""), Declined, ReasonTooLong, room},
+		{"open series", event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY\n"), Accepted, "", room},
+		{"far series", event("20270120T090000Z", "20270120T100000Z", "RRULE:FREQ=WEEKLY\n"), Declined, ReasonBeyond, room},
+		{"hourly", event("20261120T090000Z", "20261120T093000Z", "RRULE:FREQ=MINUTELY;INTERVAL=1\n"), Declined, ReasonOccurrences, room},
+	}
+	for _, c := range cases {
+		cal := parse(t, c.ics)
+		d := Plan(cal, c.r, lastEnd(t, cal), now)
+		if d.Status != c.status || d.Reason != c.reason {
+			t.Errorf("%s: %+v", c.name, d)
+		}
+	}
+	disabled := *room
+	disabled.Enabled = false
+	cal := parse(t, event("20261120T090000Z", "20261120T100000Z", ""))
+	if d := Plan(cal, &disabled, lastEnd(t, cal), now); d.Reason != ReasonDisabled {
+		t.Errorf("disabled: %+v", d)
+	}
+	approved := *room
+	approved.Approval = Approvers
+	if d := Plan(cal, &approved, lastEnd(t, cal), now); d.Status != Pending || len(d.Spans) != 1 {
+		t.Errorf("approval: %+v", d)
+	}
+	series := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY\n"))
+	d := Plan(series, room, lastEnd(t, series), now)
+	if d.OpenAfter != now.Add(30*24*time.Hour).Unix() || len(d.Spans) != 4 {
+		t.Fatalf("open series: %d spans, open after %d", len(d.Spans), d.OpenAfter)
+	}
+	if got := OpenSpans(series, d.OpenAfter, d.OpenAfter, d.OpenAfter+14*24*3600); len(got) != 2 {
+		t.Fatalf("open spans %v", got)
+	}
+}
+
+func TestConflicts(t *testing.T) {
+	want := []Span{{100, 200}, {300, 400}, {500, 600}}
+	busy := []Span{{150, 160}, {400, 500}, {590, 700}}
+	got := Conflicts(want, busy)
+	if len(got) != 2 || got[0] != 100 || got[1] != 500 {
+		t.Fatalf("conflicts %v", got)
+	}
+	day := int64(1795000000)
+	if d := ConflictDetail([]int64{day, day + 60, day + 86400}); strings.Count(d, ",") != 1 {
+		t.Fatalf("detail %q", d)
+	}
+}
+
+func TestFingerprintIgnoresText(t *testing.T) {
+	a := parse(t, event("20261120T090000Z", "20261120T100000Z", ""))
+	b := parse(t, strings.Replace(event("20261120T090000Z", "20261120T100000Z", "DESCRIPTION:x\n"), "SUMMARY:Secret", "SUMMARY:Other", 1))
+	c := parse(t, event("20261120T100000Z", "20261120T110000Z", ""))
+	if Fingerprint(a) != Fingerprint(b) || Fingerprint(a) == Fingerprint(c) {
+		t.Fatal("fingerprint must follow times only")
+	}
+}
+
+func TestSetAnswersOverridesTheClient(t *testing.T) {
+	cal := parse(t, event("20261120T090000Z", "20261120T100000Z", ""))
+	if !SetAnswers(cal, map[string]string{roomID: Declined}, map[string]*Resource{roomID: room}) {
+		t.Fatal("no change")
+	}
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.ReplaceAll(buf.String(), "\r\n ", "")
+	for _, want := range []string{"PARTSTAT=DECLINED", "CUTYPE=ROOM", "CN=Fjord", "ROLE=NON-PARTICIPANT"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "RSVP") || strings.Contains(out, "ACCEPTED") {
+		t.Errorf("client answer kept:\n%s", out)
+	}
+	if SetAnswers(cal, map[string]string{roomID: Declined}, map[string]*Resource{roomID: room}) {
+		t.Error("a second pass changed it again")
+	}
+}
+
+func TestSetList(t *testing.T) {
+	ann := itip.Address("mailto:ann@example.com")
+	cal := parse(t, "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//EN\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nDTSTART:20261120T090000Z\nDTEND:20261120T100000Z\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR\n")
+	room2 := *room
+	room2.Location = "Floor 2"
+	if err := SetList(cal, ann, []string{roomID}, map[string]*Resource{roomID: &room2}); err != nil {
+		t.Fatal(err)
+	}
+	if org, _ := itip.Organizer(cal); org != ann || IDs(cal)[0] != roomID {
+		t.Fatalf("organizer %s ids %v", org, IDs(cal))
+	}
+	if loc, _ := cal.Children[0].Props.Text(ical.PropLocation); loc != "Fjord, Floor 2" {
+		t.Fatalf("location %q", loc)
+	}
+	if err := SetList(cal, "mailto:bob@example.com", nil, nil); err != ErrNotOrganizer {
+		t.Fatalf("another organizer: %v", err)
+	}
+	if err := SetList(cal, ann, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := itip.Organizer(cal); ok || len(IDs(cal)) != 0 || cal.Children[0].Props.Get(ical.PropAttendee) != nil {
+		t.Fatal("removing the last room leaves a meeting")
+	}
+}
+
+func TestAmbiguousObjectsBookNothing(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	for name, extra := range map[string]string{
+		"DTEND and DURATION": "END:VEVENT\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nRECURRENCE-ID:20261127T090000Z\nDTSTART:20261127T090000Z\nDTEND:20261127T170000Z\nDURATION:PT1H\n",
+		"two overrides":      "END:VEVENT\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nRECURRENCE-ID:20261127T090000Z\nDTSTART:20261127T090000Z\nDTEND:20261127T100000Z\nEND:VEVENT\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nRECURRENCE-ID:20261127T090000Z\nDTSTART:20261127T090000Z\nDTEND:20261127T170000Z\n",
+	} {
+		cal := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY;COUNT=3\n"+extra))
+		if d := Plan(cal, room, lastEnd(t, cal), now); d.Status != Declined || d.Reason != ReasonAmbiguous {
+			t.Errorf("%s: %+v", name, d)
+		}
+	}
+}
+
+func TestWithin(t *testing.T) {
+	series := event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY\n")
+	withOverride := func(extra string) *ical.Calendar {
+		return parse(t, strings.Replace(series, "END:VCALENDAR", "BEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\n"+extra+"SUMMARY:x\nEND:VEVENT\nEND:VCALENDAR", 1))
+	}
+	prev := parse(t, series)
+	// An answer to the 30th occurrence, checked long after the booking was made.
+	answer := withOverride("RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T100000Z\n")
+	later := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	if !Within(prev, answer, later) {
+		t.Fatal("a timing-neutral answer asks for new time")
+	}
+	cancel := withOverride("RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T100000Z\nSTATUS:CANCELLED\n")
+	if !Within(prev, cancel, later) {
+		t.Fatal("cancelling an occurrence asks for new time")
+	}
+	for name, extra := range map[string]string{
+		"Windows zone": "RECURRENCE-ID;TZID=Eastern Standard Time:20270611T050000\nDTSTART;TZID=Eastern Standard Time:20270611T090000\nDTEND;TZID=Eastern Standard Time:20270611T100000\n",
+		"Mozilla zone": "RECURRENCE-ID;TZID=/mozilla.org/20050126_1/America/New_York:20270611T050000\nDTSTART;TZID=/mozilla.org/20050126_1/America/New_York:20270611T090000\nDTEND;TZID=/mozilla.org/20050126_1/America/New_York:20270611T100000\n",
+		"moved":        "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T130000Z\nDTEND:20270611T140000Z\n",
+		"detached":     "RECURRENCE-ID:20270615T090000Z\nDTSTART:20270615T090000Z\nDTEND:20270615T100000Z\n",
+		"longer":       "RECURRENCE-ID:20270611T090000Z\nDTSTART:20270611T090000Z\nDTEND:20270611T110000Z\n",
+	} {
+		if Within(prev, withOverride(extra), later) {
+			t.Errorf("%s occurrence counted as already held", name)
+		}
+	}
+	// Restoring a cancelled occurrence is new time too.
+	if Within(cancel, prev, later) {
+		t.Error("restoring a cancelled occurrence counted as held")
+	}
+}
+
+func TestFingerprintSeparatesTimingParameterTuples(t *testing.T) {
+	ics := event("20261120T090000", "20261120T100000", "RRULE:FREQ=WEEKLY\n")
+	withParams := func(params string) *ical.Calendar {
+		return parse(t, strings.ReplaceAll(strings.ReplaceAll(ics, "DTSTART:", "DTSTART"+params+":"), "DTEND:", "DTEND"+params+":"))
+	}
+	a := withParams(`;TZID="America/New_York;X";VALUE=DATE-TIME`)
+	b := withParams(`;TZID=America/New_York;VALUE="X;DATE-TIME"`)
+	if Fingerprint(a) == Fingerprint(b) {
+		t.Fatal("distinct timing parameter tuples collide")
+	}
+	if !strings.HasPrefix(Fingerprint(a), "v2:") {
+		t.Fatal("the new fingerprint must not match a stored legacy digest")
+	}
+}
+
+func TestExplicitFutureSpansHonorsExclusionsAndCancellation(t *testing.T) {
+	for name, extra := range map[string]string{
+		"excluded":  "RRULE:FREQ=WEEKLY\nEXDATE:20261120T090000Z\n",
+		"cancelled": "RRULE:FREQ=WEEKLY\nSTATUS:CANCELLED\n",
+	} {
+		cal := parse(t, event("20261120T090000Z", "20261120T100000Z", extra))
+		spans, ok := ExplicitFutureSpans(cal, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Unix())
+		if !ok || len(spans) != 0 {
+			t.Errorf("%s: %v %v", name, spans, ok)
+		}
+	}
+}
+
+func TestExplicitFutureSpansRefusesExcessDates(t *testing.T) {
+	start := time.Date(2027, 1, 1, 9, 0, 0, 0, time.UTC)
+	var dates []string
+	for i := 0; i <= MaxOccurrences; i++ {
+		dates = append(dates, start.AddDate(0, 0, i).Format("20060102T150405Z"))
+	}
+	cal := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY\nRDATE:"+strings.Join(dates, ",")+"\n"))
+	if _, ok := ExplicitFutureSpans(cal, start.Unix()); ok {
+		t.Fatal("uncheckable future dates admitted")
+	}
+}
+
+func TestFutureRuleConflictsRequiresProof(t *testing.T) {
+	after := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC).Unix()
+	a := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=DAILY;INTERVAL=31\n"))
+	b := parse(t, event("20261121T090000Z", "20261121T100000Z", "RRULE:FREQ=DAILY;INTERVAL=32\n"))
+	if _, ok := FutureRuleConflicts(a, b, after); ok {
+		t.Fatal("infinite future was treated as a checked sample")
+	}
+	late := parse(t, event("20261121T140000Z", "20261121T150000Z", "RRULE:FREQ=DAILY;INTERVAL=32\n"))
+	if hits, ok := FutureRuleConflicts(a, late, after); !ok || len(hits) != 0 {
+		t.Fatalf("separate UTC clocks: %v %v", hits, ok)
+	}
+	variable := parse(t, event("20261121T140000Z", "20261121T150000Z", "RRULE:FREQ=DAILY;INTERVAL=32;BYHOUR=9,14\n"))
+	if _, ok := FutureRuleConflicts(a, variable, after); ok {
+		t.Fatal("variable clock was treated as fixed")
+	}
+	finiteA := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=DAILY;INTERVAL=31;COUNT=3\n"))
+	finiteB := parse(t, event("20261121T090000Z", "20261121T100000Z", "RRULE:FREQ=DAILY;INTERVAL=32;COUNT=3\n"))
+	if hits, ok := FutureRuleConflicts(finiteA, finiteB, after); !ok || len(hits) != 0 {
+		t.Fatalf("complete finite expansion: %v %v", hits, ok)
+	}
+	collision := parse(t, event("20261221T090000Z", "20261221T100000Z", "RRULE:FREQ=DAILY;COUNT=1\n"))
+	if hits, ok := FutureRuleConflicts(finiteA, collision, after); !ok || len(hits) != 1 {
+		t.Fatalf("finite collision: %v %v", hits, ok)
+	}
+	excluded := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=DAILY;INTERVAL=31;COUNT=3\nEXDATE:20261221T090000Z\n"))
+	if hits, ok := FutureRuleConflicts(excluded, collision, after); !ok || len(hits) != 0 {
+		t.Fatalf("exclusion lost: %v %v", hits, ok)
+	}
+}
+
+func TestExplicitFutureSpansKeepsCrossingReservations(t *testing.T) {
+	cal := parse(t, event("20261120T090000Z", "20261120T120000Z", ""))
+	for _, hour := range []int{8, 9, 10, 12} {
+		after := time.Date(2026, 11, 20, hour, 0, 0, 0, time.UTC).Unix()
+		spans, ok := ExplicitFutureSpans(cal, after)
+		want := 1
+		if hour == 12 {
+			want = 0 // Half-open reservation ends at the boundary.
+		}
+		if !ok || len(spans) != want {
+			t.Errorf("boundary hour %d: %v, checkable=%v", hour, spans, ok)
+		}
+	}
+}
+
+func TestPlanRejectsIncompleteMasterHiddenByOverride(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	for _, start := range []string{"20261120T090000Z", "20261101T090000Z"} {
+		master := event(start, strings.Replace(start, "090000", "090500", 1), "RRULE:FREQ=MINUTELY\n")
+		override := event("20261120T120000Z", "20261120T120500Z", "RECURRENCE-ID:"+start+"\n")
+		text := strings.Replace(master, "END:VCALENDAR\n", "", 1) + override[strings.Index(override, "BEGIN:VEVENT"):]
+		cal := parse(t, text)
+		if got := Plan(cal, room, lastEnd(t, cal), now); got.Status != Declined || got.Reason != ReasonOccurrences {
+			t.Errorf("master %s: %+v", start, got)
+		}
+	}
+}
