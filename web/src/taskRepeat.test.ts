@@ -1,4 +1,5 @@
 import { describe as group, expect, it } from 'vitest';
+import { formatDate } from '@fullcalendar/core';
 import { buildRule, describe, dueLabel, nthOf, readRule } from './taskRepeat';
 
 // Tuesday 10 November 2026: the second Tuesday.
@@ -42,5 +43,13 @@ group('dueLabel', () => {
     expect(dueLabel('2026-11-13', now)).toMatchObject({ text: '2 days ago', overdue: true });
     expect(dueLabel(new Date(2026, 10, 15, 9, 0).toISOString(), now)?.overdue).toBe(true);
     expect(dueLabel(undefined, now)).toBeNull();
+  });
+});
+
+group('one time format', () => {
+  it('writes times exactly as the calendar\'s FullCalendar formatter does', () => {
+    const at = new Date(2026, 10, 16, 15, 30);
+    const fc = formatDate(at, { hour: 'numeric', minute: '2-digit', meridiem: 'short' });
+    expect(dueLabel(at.toISOString(), new Date(2026, 10, 16, 9, 0))?.text).toBe(`Today ${fc}`);
   });
 });

@@ -26,6 +26,14 @@ test('tasks: quick add, complete, detail and capture', async ({ browser }, testI
   // One left column: the lists live in the app sidebar slot.
   await expect(page.locator('.app-sidebar-slot .tk-sidebar')).toHaveCount(1);
   await open('Inbox');
+  if (!narrow) {
+    // Choosing a list that already fits never scrolls the sidebar (scrollIntoView "nearest").
+    const slot = page.locator('.app-sidebar-slot');
+    await slot.evaluate((el) => { el.scrollTop = 0; });
+    await lists.getByRole('button', { name: /^Today/ }).click();
+    expect(await slot.evaluate((el) => el.scrollTop)).toBe(0);
+    await open('Inbox');
+  }
 
   const title = `Spec ${testInfo.project.name} ${Date.now()}`;
   const quick = page.getByLabel('Quick add a task');
