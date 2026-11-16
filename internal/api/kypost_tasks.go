@@ -205,18 +205,26 @@ func (s *Server) tellKyPost(ctx context.Context, u *store.User, t *tasks.Task, d
 	if issuer == "" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), taskStateLimit)
-	defer cancel()
-	err := s.kypost.SendTaskState(ctx, uuid.NewString(), kypost.TaskStateRequest{User: kypost.User{Sub: u.SSOSubject, Issuer: issuer}, Ref: t.Ref, Done: done})
-	outcome := "sent"
-	var refused kypost.Refused
-	switch {
-	case errors.As(err, &refused):
-		outcome = "refused " + refused.Code
-	case err != nil:
-		outcome = "failed"
-	}
-	_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: u.ID, Action: "kypost.task_state", Details: "outcome=" + outcome})
+	// Capture values before returning to the handler; the worker owns its request.
+	userID := u.ID
+	req := kypost.TaskStateRequest{User: kypost.User{Sub: u.SSOSubject, Issuer: issuer}, Ref: t.Ref, Done: done}
+	auditCtx := context.WithoutCancel(ctx)
+	s.detached.add()
+	go func() {
+		defer s.detached.done()
+		sendCtx, cancel := context.WithTimeout(s.stopping, taskStateLimit)
+		defer cancel()
+		err := s.kypost.SendTaskState(sendCtx, uuid.NewString(), req)
+		outcome := "sent"
+		var refused kypost.Refused
+		switch {
+		case errors.As(err, &refused):
+			outcome = "refused " + refused.Code
+		case err != nil:
+			outcome = "failed"
+		}
+		_ = s.store.Audit().LogAudit(auditCtx, &store.AuditRecord{UserID: userID, Action: "kypost.task_state", Details: "outcome=" + outcome})
+	}()
 }
 
 type taskPrefs struct {

@@ -51,7 +51,9 @@ It rides the existing KyPost↔KyCalendar pair: same pairing, same shared secret
 - Flagging an already flagged message updates the task's due date; unflagging completes it.
 - KyCalendar sends `state` when a `kypost` task is completed, reopened or deleted through the
   web or MCP (delete sends `done: true`, so the flag clears). It is one attempt with a 5-second
-  limit after the user's write has landed, audited `kypost.task_state` with the outcome only; a
+  limit in tracked background work after the user's write has landed; it never delays the user's
+  response. Shutdown cancels the send and waits for its `kypost.task_state` outcome audit. The
+  audit context is independent of request cancellation, send timeout and shutdown; a
   failure leaves the flag set until the next flag change. A repeating task that moves on stays
   open, so its flag stays. Completions made in a CalDAV app are not sent (owner question 2).
 - KyCalendar answers `flag` only while KyPost is linked, which (as for out-of-office) happens

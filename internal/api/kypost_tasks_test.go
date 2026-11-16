@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Busnes-app/ky-primitives/syncauth"
 
@@ -125,6 +127,7 @@ func TestKyPostFlagMakesATask(t *testing.T) {
 	if w := taskReq(t, srv, "PATCH", "/api/tasks/"+done[0].CalendarID+"/"+done[0].UID, done[0].ETag, alice, map[string]any{"status": "NEEDS-ACTION"}); w.Code != http.StatusOK {
 		t.Fatalf("reopen %d", w.Code)
 	}
+	srv.WaitDetached()
 	if s := fake.take(); len(s) != 1 || s[0].Ref != "m1" || s[0].Done || s[0].Sub != "sub-alice" {
 		t.Fatalf("reopen state %+v", s)
 	}
@@ -132,6 +135,7 @@ func TestKyPostFlagMakesATask(t *testing.T) {
 	if w := taskReq(t, srv, "DELETE", "/api/tasks/"+open[0].CalendarID+"/"+open[0].UID, open[0].ETag, alice, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("delete %d", w.Code)
 	}
+	srv.WaitDetached()
 	if s := fake.take(); len(s) != 1 || !s[0].Done {
 		t.Fatalf("delete state %+v", s)
 	}
@@ -218,5 +222,119 @@ func TestKyPostFlagRefusals(t *testing.T) {
 	api.KyPostLinkForTest(srv).Set(nil)
 	if w := post("unpaired", good); w.Code != http.StatusNotFound {
 		t.Errorf("unpaired: %d", w.Code)
+	}
+}
+
+// taskStateTransport lets a peer stall until released, the send deadline, or shutdown.
+type taskStateTransport func(*http.Request) (*http.Response, error)
+
+func (f taskStateTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestKyPostTaskStateDetachedAndAudited(t *testing.T) {
+	for _, mode := range []string{"complete", "reopen", "delete", "timeout", "shutdown"} {
+		t.Run(mode, func(t *testing.T) {
+			srv, st, _, base, alice := flagWorld(t)
+			in := flag("m1", base, true, "")
+			in.Subject = "Flagged task"
+			if w := signedPost(t, srv, "/api/tasks/flag", kypost.EventTaskFlag, "create", in); w.Code != http.StatusOK {
+				t.Fatalf("create: %d", w.Code)
+			}
+			if mode == "reopen" {
+				in.Flagged = false
+				if w := signedPost(t, srv, "/api/tasks/flag", kypost.EventTaskFlag, "complete", in); w.Code != http.StatusOK {
+					t.Fatalf("complete: %d", w.Code)
+				}
+			}
+			query := "source=kypost"
+			if mode == "reopen" {
+				query += "&status=completed"
+			}
+			task := listTasks(t, srv, alice, query)[0]
+			release := make(chan struct{})
+			started := make(chan struct{})
+			var once sync.Once
+			api.KyPostLinkForTest(srv).HTTP = &http.Client{Transport: taskStateTransport(func(r *http.Request) (*http.Response, error) {
+				once.Do(func() { close(started) })
+				select {
+				case <-r.Context().Done():
+					return nil, r.Context().Err()
+				case <-release:
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+				}
+			})}
+			returned := make(chan *httptest.ResponseRecorder, 1)
+			t.Cleanup(func() { close(release); <-returned; srv.WaitDetached() })
+			go func() {
+				method, body := "PATCH", any(map[string]any{"status": "COMPLETED"})
+				if mode == "reopen" {
+					body = map[string]any{"status": "NEEDS-ACTION"}
+				}
+				if mode == "delete" {
+					method, body = "DELETE", ""
+				}
+				returned <- taskReq(t, srv, method, "/api/tasks/"+task.CalendarID+"/"+task.UID, task.ETag, alice, body)
+			}()
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("peer send never started")
+			}
+			var response *httptest.ResponseRecorder
+			responseLimit := time.Second
+			if mode == "timeout" {
+				responseLimit = 7 * time.Second
+			}
+			select {
+			case response = <-returned:
+				returned <- response
+			case <-time.After(responseLimit):
+				t.Fatal("user request waited for KyPost")
+			}
+			wantCode := http.StatusOK
+			if mode == "delete" {
+				wantCode = http.StatusNoContent
+			}
+			if response.Code != wantCode {
+				t.Fatalf("response: %d %s", response.Code, response.Body)
+			}
+			waited := make(chan struct{})
+			go func() { srv.WaitDetached(); close(waited) }()
+			select {
+			case <-waited:
+				if mode != "timeout" {
+					t.Fatal("shutdown did not track the blocked delivery")
+				}
+			default:
+			}
+			wantOutcome := "outcome=sent"
+			if mode == "shutdown" {
+				srv.StopDetached()
+				wantOutcome = "outcome=failed"
+			}
+			if mode == "timeout" {
+				wantOutcome = "outcome=failed"
+			}
+			if mode != "shutdown" && mode != "timeout" {
+				release <- struct{}{}
+			}
+			select {
+			case <-waited:
+			case <-time.After(7 * time.Second):
+				t.Fatal("delivery did not finish")
+			}
+			records, _, err := st.Audit().ListAuditRecords(context.Background(), 0, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, record := range records {
+				if record.Action == "kypost.task_state" && record.UserID == "usr_alice" && record.Details == wantOutcome {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing %s audit row", wantOutcome)
+			}
+		})
 	}
 }
