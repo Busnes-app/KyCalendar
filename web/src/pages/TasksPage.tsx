@@ -249,6 +249,12 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     c.flagged = top.filter((t) => t.source === 'kypost').length;
     return c;
   }, [open, today]);
+  // The chosen tab is centred in its row, which scrolls sideways on phones.
+  useEffect(() => {
+    const t = document.querySelector<HTMLElement>('.tk-tabs [aria-current="page"]');
+    const n = t?.parentElement;
+    if (t && n) n.scrollLeft += t.getBoundingClientRect().left - n.getBoundingClientRect().left - (n.clientWidth - t.offsetWidth) / 2;
+  }, [view, counts]); // counts widen the tabs once they load
   const named = lists.map((c) => (c.id === inboxId ? { ...c, name: 'Inbox' } : c));
 
   const go = (v: TaskView) => { setView(v); setQ(''); setFilter({}); setPicker(false); setPlanning(false); };
@@ -351,7 +357,6 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           )}
         </div>
         <div className="tk-head-actions">
-          {review === 'goals' && <button type="button" className="btn-secondary btn-sm" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> New goal</button>}
           {(view.kind === 'view' || (currentList && currentList.kind === 'personal' && currentList.id !== inboxId && currentList.role === 'owner')) && (
             <MoreMenu label={`${title} options`}>
               {(close) => view.kind === 'view' ? (
@@ -366,7 +371,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           )}
         </div>
       </header>
-      {row?.tabs && (
+      {row?.tabs && (<div className="tk-tabrow">
         <nav className="ky-settings-tabs tk-tabs" aria-label={`${row.label} views`}>
           {row.tabs.map((t) => (
             <button key={t.id} type="button" className="ky-nav-item" aria-current={view.kind === 'smart' && view.id === t.id ? 'page' : undefined} onClick={() => go({ kind: 'smart', id: t.id })}>
@@ -375,9 +380,10 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             </button>
           ))}
         </nav>
-      )}
+        {review === 'goals' && <button type="button" className="btn-secondary btn-sm tk-new-goal" aria-label="New goal" title="New goal" onClick={() => setNewGoal(true)}><Plus size={14} aria-hidden="true" /> <span>New goal</span></button>}
+      </div>)}
 
-      {!(isToday && planning) && !review && <form className="tk-quick" onSubmit={quickAdd}>
+      {!(isToday && planning) && !review && !(view.kind === 'smart' && (view.id === 'flagged' || view.id === 'completed')) && <form className="tk-quick" onSubmit={quickAdd}>
         <Plus aria-hidden="true" />
         <input id="tk-quick" aria-label="Quick add a task" aria-describedby="tk-quick-preview" placeholder={isNarrow ? 'Add a task' : 'Add a task: “Call Ana tomorrow 3pm !high #home”'}
           value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!targetList} />
@@ -449,15 +455,15 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         ? <PlanView m={model} now={day.now} listName={listName} isNarrow={isNarrow} onOpen={(t) => setDialog({ task: t })} onDone={() => setPlanning(false)} reload={() => void load()} />
         : <TodayView m={model} now={day.now} listName={listName} onOpen={(t) => setDialog({ task: t })} onPlan={() => setPlanning(true)} reload={() => void load()} />)}
       {review === 'insights' && <InsightsView lists={named} colors={colors} open={(id) => counts[id] ?? 0} overdue={(id) => counts[`overdue:${id}`] ?? 0} />}
-      {review === 'goals' && <GoalsView lists={named} areas={areas} open={(id) => counts[id] ?? 0} creating={newGoal} onCreated={() => setNewGoal(false)} />}
+      {review === 'goals' && <GoalsView lists={named} colors={colors} areas={areas} open={(id) => counts[id] ?? 0} creating={newGoal} onCreated={() => setNewGoal(false)} />}
       {review === 'habits' && <HabitsView tasks={open} colors={colors} onOpen={(t) => setDialog({ task: t })} />}
       {!isToday && !review && flat.length === 0 && !error && (
-        <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : 'Nothing here'}>
-          {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}
+        <EmptyState title={q ? 'No tasks match' : view.kind === 'smart' && view.id === 'completed' ? 'Nothing completed yet' : view.kind === 'smart' && view.id === 'flagged' ? 'No flagged mail' : 'Nothing here'}>
+          {q ? 'Try fewer words or another view.' : view.kind === 'smart' && view.id === 'flagged' ? 'Tasks you flag in KyPost appear here.' : view.kind === 'smart' && view.id === 'completed' ? 'Tasks you complete appear here.' : 'Add one above, or press n anywhere.'}
         </EmptyState>
       )}
       {board && !review && <TaskBoard tasks={topLevel(shown ?? [])} listName={view.kind === 'list' ? () => '' : listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
-      {!isToday && !board && !review && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
+      {!isToday && !board && !review && flat.length > 0 && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
         {groups.map((g) => (
           <li key={g.label || 'all'} className="tk-day">
             {g.label && <h2 className="tk-day-head">{g.label}</h2>}

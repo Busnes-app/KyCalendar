@@ -2,8 +2,9 @@
 // first calendar stored without one (the default calendar, CalDAV or agent-created) shows the
 // theme accent; any further one shows the next unused palette colour, so no two share a colour by
 // default. Every palette colour holds white text at 4.5:1; the accent carries `--button-text`.
+// The palette leaves out the Busnes accent (#bf3f18), so no list reads as the accent highlight.
 export const ACCENT = 'var(--accent)';
-export const PALETTE = ['#1f7a6d', '#bf3f18', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75'] as const;
+export const PALETTE = ['#1f7a6d', '#1b6f91', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75'] as const;
 
 const norm = (c: string) => c.slice(0, 7).toLowerCase();
 
