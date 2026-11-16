@@ -152,3 +152,16 @@ func TestSetList(t *testing.T) {
 		t.Fatal("removing the last room leaves a meeting")
 	}
 }
+
+func TestAmbiguousObjectsBookNothing(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	for name, extra := range map[string]string{
+		"DTEND and DURATION": "END:VEVENT\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nRECURRENCE-ID:20261127T090000Z\nDTSTART:20261127T090000Z\nDTEND:20261127T170000Z\nDURATION:PT1H\n",
+		"two overrides":      "END:VEVENT\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nRECURRENCE-ID:20261127T090000Z\nDTSTART:20261127T090000Z\nDTEND:20261127T100000Z\nEND:VEVENT\nBEGIN:VEVENT\nUID:u1\nDTSTAMP:20261101T000000Z\nRECURRENCE-ID:20261127T090000Z\nDTSTART:20261127T090000Z\nDTEND:20261127T170000Z\n",
+	} {
+		cal := parse(t, event("20261120T090000Z", "20261120T100000Z", "RRULE:FREQ=WEEKLY;COUNT=3\n"+extra))
+		if d := Plan(cal, room, lastEnd(t, cal), now); d.Status != Declined || d.Reason != ReasonAmbiguous {
+			t.Errorf("%s: %+v", name, d)
+		}
+	}
+}

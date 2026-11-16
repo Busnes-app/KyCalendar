@@ -35,6 +35,7 @@ const (
 	ReasonTooMany       = "too_many_resources"
 	ReasonBusy          = "busy"
 	ReasonRejected      = "rejected"
+	ReasonAmbiguous     = "ambiguous"
 	MaxPerEvent         = 10
 	MaxOccurrences      = 1000
 	maxConflictsNamed   = 5
@@ -130,6 +131,9 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 		}
 		return Decision{Status: Declined, Reason: ReasonPast}
 	}
+	if ambiguous(cal) {
+		return Decision{Status: Declined, Reason: ReasonAmbiguous}
+	}
 	if tooLong(cal, time.Duration(r.MaxMinutes)*time.Minute) {
 		return Decision{Status: Declined, Reason: ReasonTooLong, Detail: strconv.Itoa(r.MaxMinutes)}
 	}
@@ -157,6 +161,33 @@ func Plan(cal *ical.Calendar, r *Resource, lastEnd *int64, now time.Time) Decisi
 		}
 	}
 	return d
+}
+
+// ambiguous reports an object whose occurrences could be read two ways: a VEVENT with both DTEND
+// and DURATION, or two components for one occurrence. No resource is booked on a guess.
+func ambiguous(cal *ical.Calendar) bool {
+	seen := map[string]bool{}
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		if c.Props.Get(ical.PropDateTimeEnd) != nil && c.Props.Get(ical.PropDuration) != nil {
+			return true
+		}
+		key := ""
+		if rid := c.Props.Get(ical.PropRecurrenceID); rid != nil {
+			k, ok := calendar.OccurrenceKey(cal, rid)
+			if !ok {
+				return true
+			}
+			key = "rid:" + k
+		}
+		if seen[key] {
+			return true
+		}
+		seen[key] = true
+	}
+	return false
 }
 
 // tooLong reports a RECURRENCE-ID component or an RDATE period longer than max anywhere in the

@@ -694,3 +694,30 @@ func TestRoomChangedLaterOverrideNeedsApprovalAgain(t *testing.T) {
 		t.Fatalf("a moved occurrence past the horizon kept the approval: %s", st)
 	}
 }
+
+func TestRoomAmbiguousObjectIsDeclined(t *testing.T) {
+	srv, st, _ := setupTestServer(t)
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	room := makeResource(t, st, resource.Resource{Name: "Hall", MaxMinutes: 120, HorizonDays: 30, Approval: resource.Approvers, Approvers: []string{"usr_alice"}})
+	s, e := slot(1, 9)
+	master := "DTSTART:" + icsTime(s) + "\r\nDTEND:" + icsTime(e) + "\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\n"
+	fs, fe := slot(1+7*20, 9)
+	_, long := slot(1+7*20, 17)
+	// Two components for one occurrence, the same instant written two ways.
+	one := "RECURRENCE-ID:" + icsTime(fs) + "\r\nDTSTART:" + icsTime(fs) + "\r\nDTEND:" + icsTime(fe) + "\r\nSUMMARY:Weekly\r\n"
+	tt, _ := time.Parse(time.RFC3339, fs)
+	twin := "RECURRENCE-ID;TZID=Europe/Berlin:" + tt.In(mustZone(t, "Europe/Berlin")).Format("20060102T150405") + "\r\nDTSTART:" + icsTime(fs) + "\r\nDTEND:" + icsTime(long) + "\r\nSUMMARY:Weekly\r\n"
+	putRaw(t, st, aliceCal, "dup.ics", roomICS("dup", room, master, one, twin), "usr_alice")
+	if st, reason, _ := roomStatus(t, srv, alice, "dup"); st != "declined" || reason != "ambiguous" {
+		t.Fatalf("duplicate occurrence: %s %s", st, reason)
+	}
+}
+
+func mustZone(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}
