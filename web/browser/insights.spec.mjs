@@ -78,7 +78,7 @@ test('habit and insight marks hold 3:1', async ({ browser }, testInfo) => {
     document.querySelector('.ky-content').append(host);
     const card = rgb(host, 'backgroundColor');
     const out = [];
-    for (const color of ['var(--accent)', '#1f7a6d', '#7a6a12', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75']) {
+    for (const color of ['var(--accent)', '#1f7a6d', '#1b6f91', '#3b63b8', '#7b4fc0', '#a0661a', '#b8336a', '#4f7a28', '#5d6b75']) {
       host.innerHTML = `<section class="th" style="--habit: ${color}"><span class="th-day" data-state="done"></span><span class="th-day" data-state="missed"></span><span class="th-day" data-state="before"></span></section>`;
       const [d, m, b] = host.querySelectorAll('.th-day');
       const [done, missed] = [d, m].map((el) => rgb(el, 'backgroundColor'));

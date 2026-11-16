@@ -435,8 +435,7 @@ stored field or figure changes.
   pre-start outlines, the zero-week stub and every bar against the card hold 3:1 in light and
   dark for the accent and every palette colour (`web/browser/insights.spec.mjs`). Text stays on
   the existing ink tokens. The list palette leaves out the Busnes accent (#bf3f18, replaced by
-  olive-ochre #7a6a12, a warm hue apart from the teal and blue beside it), so no list reads as
-  the accent highlight.
+  petrol #1b6f91, owner's choice 2026-11-16), so no list reads as the accent highlight.
 - **Tabs on phones:** the chosen tab is centred in its row, which scrolls sideways. Flagged from
   mail and Completed have no quick add (flagged tasks come from KyPost); Flagged's empty state
   says "Tasks you flag in KyPost appear here." The Lists panel keeps its "Tasks" heading, so its
