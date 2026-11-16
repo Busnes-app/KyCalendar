@@ -106,3 +106,5 @@
   .td-rows > li > .td-time, .td-unplanned li > .td-time { grid-column: auto; }
   .td-event { padding: var(--ky-space-1) 0; }
 }
+.td-rows > li.td-earlier { display: block; min-height: 0; }
+.tp-now { z-index: 2; }
