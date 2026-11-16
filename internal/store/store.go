@@ -68,6 +68,7 @@ type Store interface {
 	Calendars() CalendarStore
 	Bookings() BookingStore
 	Resources() ResourceStore
+	Tasks() TaskStore
 	AppPasswords() AppPasswordStore
 	Audit() AuditStore
 	Settings() SettingsStore

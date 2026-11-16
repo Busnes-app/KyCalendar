@@ -30,11 +30,11 @@ func Files(ev *ical.Component) []File {
 	return out
 }
 
-// SetFiles makes files the file links of every VEVENT of cal, each as an ATTACH and a
+// SetFiles makes files the file links of every VEVENT and VTODO of cal, each as an ATTACH and a
 // "File: <name> <url>" description line before any "Join:" line. Other ATTACHes stay.
 func SetFiles(cal *ical.Calendar, files []File) {
 	for _, ev := range cal.Children {
-		if ev.Name != ical.CompEvent {
+		if ev.Name != ical.CompEvent && ev.Name != ical.CompToDo {
 			continue
 		}
 		old := Files(ev)

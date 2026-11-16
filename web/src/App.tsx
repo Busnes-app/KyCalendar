@@ -26,6 +26,9 @@ import { secureFetch } from './api';
 
 // FullCalendar is the bulk of the bundle; load it only for the calendar (same-origin chunk).
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+const TasksPage = lazy(() => import('./pages/TasksPage').then((m) => ({ default: m.TasksPage })));
+// The capture box parses and formats with the calendar's formatter: loaded on first use.
+const CaptureBox = lazy(() => import('./components/CaptureBox').then((m) => ({ default: m.CaptureBox })));
 
 const ADMIN_TABS = ['dashboard', 'people', 'groups', 'group-calendars', 'resources', 'signin', 'scim', 'backup', 'server-settings'];
 // Pages that became Settings sections keep their old addresses.
@@ -54,6 +57,7 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<any>(null);
   const [sidebarSlot, setSidebarSlot] = useState<HTMLDivElement | null>(null);
   const [apps, setApps] = useState<SuiteApp[]>([]);
+  const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
     const sync = () => setChosenTab(hashTab());
@@ -99,6 +103,20 @@ export const App: React.FC = () => {
     void loadSuiteApps().then((list) => { if (current) setApps(list); });
     return () => { current = false; };
   }, [railUser]);
+
+  // The capture box is one key away on every everyday screen: n, outside fields and dialogs.
+  const everyday = !!user && user.role !== 'admin' && !user.must_change_password;
+  useEffect(() => {
+    if (!everyday) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (e.key !== 'n' || e.metaKey || e.ctrlKey || e.altKey || el.closest('input, textarea, select, dialog, [contenteditable], [popover]') || document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      setCapturing(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [everyday]);
 
   // /api/settings returns more fields once authenticated, so re-read it after login.
   const loadSettings = async () => {
@@ -150,7 +168,7 @@ export const App: React.FC = () => {
   }
 
   const isAdmin = user.role === 'admin';
-  const tabs = [...(isAdmin ? ADMIN_TABS : ['calendar']), ...settingsSections(user).map((s) => `settings/${s.id}`)];
+  const tabs = [...(isAdmin ? ADMIN_TABS : ['calendar', 'tasks']), ...settingsSections(user).map((s) => `settings/${s.id}`)];
   // An unknown address lands on the role's first page, or Settings' first section.
   const fallback = chosenTab?.startsWith('settings/') ? 'settings/account' : tabs[0];
   const activeTab = chosenTab && tabs.includes(chosenTab) ? chosenTab : fallback;
@@ -167,10 +185,13 @@ export const App: React.FC = () => {
         sidebarSlot={setSidebarSlot}
         version={settings?.version}
         apps={apps}
+        onCapture={isAdmin ? undefined : () => setCapturing(true)}
       />
 
       <main className="ky-content">
         {activeTab === 'calendar' && <Suspense fallback={<p className="app-loading">Loading calendar…</p>}><CalendarPage scheduling={settings?.scheduling === true} meetings={settings?.meetings === true && apps.some((a) => a.id === 'kymessage')} chat={settings?.meetings === true && apps.some((a) => a.id === 'kymessage-chat')} status={settings?.meetings === true} me={user.email ?? ''} drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
+        {activeTab === 'tasks' && <Suspense fallback={<p className="app-loading">Loading tasks…</p>}><TasksPage drive={driveOrigin(apps)} sidebarSlot={sidebarSlot} /></Suspense>}
+        {capturing && <Suspense fallback={null}><CaptureBox onClose={() => setCapturing(false)} /></Suspense>}
         {activeTab.startsWith('settings/') && (
           <PersonalSettings section={activeTab.slice('settings/'.length)} user={user} onPasswordChanged={passwordChanged} />
         )}

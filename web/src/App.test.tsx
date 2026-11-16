@@ -79,7 +79,7 @@ describe('Settings', () => {
     signedInAs('user', { sso_provider: 'local' });
     render(<App />);
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
-    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Calendar']);
+    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Calendar', 'Tasks', 'Add']);
     expect(screen.queryByText('Sign out')).toBeNull();
     const gear = screen.getAllByRole('button', { name: 'Settings' })[0];
     fireEvent.click(gear);

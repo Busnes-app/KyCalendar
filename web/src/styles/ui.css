@@ -223,3 +223,7 @@ code.code-field { flex: 1; min-width: 0; padding: .55rem .75rem; border: 1px sol
 .book-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr)); gap: var(--space-2); }
 .book-done { display: grid; gap: var(--space-2); justify-items: start; }
 .book-done h2 { margin: 0; }
+/* A modal with a visible close: title and × in one row that stays on top while the body scrolls. */
+.modal-head { position: sticky; top: calc(var(--space-6, 1.5rem) * -1); z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin: calc(var(--space-6, 1.5rem) * -1) calc(var(--space-6, 1.5rem) * -1) var(--space-4); padding: var(--space-6, 1.5rem) var(--space-6, 1.5rem) var(--space-2); background: var(--panel); }
+.modal-head .modal-title { margin-bottom: 0; }
+@media (max-width: 720px) { .modal-head { top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-3); padding: var(--space-4) var(--space-4) var(--space-2); } }

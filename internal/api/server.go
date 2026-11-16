@@ -446,6 +446,18 @@ func (s *Server) routes() {
 	s.handle("DELETE /api/events/{cal}/{uid}", s.requireEveryday(s.handleDeleteEvent))
 	s.handle("POST /api/events/{cal}/{uid}/rsvp", s.requireEveryday(s.handleRSVP))
 	s.handle("GET /api/freebusy", s.requireEveryday(s.handleFreeBusy))
+	s.handle("GET /api/tasks", s.requireEveryday(s.handleListTasks))
+	s.handle("POST /api/calendars/{id}/tasks", s.requireEveryday(s.handleCreateTask))
+	s.handle("PATCH /api/tasks/{cal}/{uid}", s.requireEveryday(s.handlePatchTask))
+	s.handle("DELETE /api/tasks/{cal}/{uid}", s.requireEveryday(s.handleDeleteTask))
+	s.handle("GET /api/tasks/{cal}/{uid}/images/{n}", s.requireEveryday(s.handleTaskImage))
+	s.handle("POST /api/tasks/inbox", s.requireEveryday(s.handleTaskInbox))
+	s.handle("GET /api/tasks/areas", s.requireEveryday(s.handleGetAreas))
+	s.handle("PUT /api/tasks/areas", s.requireEveryday(s.handlePutAreas))
+	s.handle("GET /api/tasks/views", s.requireEveryday(s.handleListViews))
+	s.handle("POST /api/tasks/views", s.requireEveryday(s.handleCreateView))
+	s.handle("PUT /api/tasks/views/{id}", s.requireEveryday(s.handleUpdateView))
+	s.handle("DELETE /api/tasks/views/{id}", s.requireEveryday(s.handleDeleteView))
 
 	// Booking pages (booking.go). Members manage their own types; the /api/book routes are
 	// public, need the pre-session CSRF token on every POST, and answer 404 while unavailable.

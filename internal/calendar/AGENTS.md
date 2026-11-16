@@ -34,7 +34,8 @@ Pure iCalendar rules: what a calendar object must contain and how it is indexed;
 - Sync tokens (and CTags) are `urn:kycalendar:sync:<epoch>:<calendar-id>:<seq>`: the calendar ID binds a token to one calendar, so one deleted and recreated at the same path (its seq restarts at 0) never accepts the old token. Tokens of any other shape are malformed.
 
 - `SetConference(cal, url)` writes a KyMessages room on every VEVENT as `CONFERENCE;VALUE=URI;FEATURE=VIDEO;LABEL=KyMessages:<url>` and a final `Join: <url>` description line ("" removes both; other `CONFERENCE` properties stay). Edits mutate in place, so `CONFERENCE` survives them; `KeepJoin` restores the `File:` and `Join:` lines a replaced description lost; `StripJoin` removes the `Join:` line for display; `Conference(ev)` reads the link. `AddGuestLine(cal, url)` appends a final `Join as a guest: <url>` line to every VEVENT: only for one guest's own outgoing copy, never a stored object.
-- `SetFiles(cal, files)` writes file links (contract I) on every VEVENT as `ATTACH;FMTTYPE=<type>;FILENAME=<name>:<url>` and a block of `File: <name> <url>` lines after the text and before `Join:`; `Files(ev)` reads them (URI `ATTACH` with `https` and `FILENAME` only: any other `ATTACH` is never touched); `StripFiles` removes the block for display.
+- `SetFiles(cal, files)` writes file links (contract I) on every VEVENT and VTODO as `ATTACH;FMTTYPE=<type>;FILENAME=<name>:<url>` and a block of `File: <name> <url>` lines after the text and before `Join:`; `Files(ev)` reads them (URI `ATTACH` with `https` and `FILENAME` only: any other `ATTACH` is never touched); `StripFiles` removes the block for display.
 
 ## Verification
 - `go test ./internal/calendar/`
+- `SafeRule(opt, start)` is expansion's guard set (time set size, ordinals, month-day feasibility, reachable clock, a first occurrence) for other code that steps a rule; `internal/tasks` calls it before moving a repeating task on.

@@ -390,3 +390,4 @@ input[type='color'] { width: 3.25rem; padding: .2rem; cursor: pointer; }
   color-scheme: dark;
 }
 }
+@media (max-width: 720px) { .app-capture > span { display: none; } }

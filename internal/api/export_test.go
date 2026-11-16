@@ -81,6 +81,7 @@ func SetSignInForTest(s *Server, p *sso.Provider) { s.signin.Store(p) }
 const (
 	MCPReadOnlyForTest   = msgReadOnly
 	MCPNotOwnForTest     = msgNotOwn
+	MCPNotOwnTaskForTest = msgNotOwnTask
 	MCPMeetingForTest    = msgMeeting
 	MCPSubscribedForTest = msgSubscribed
 )
