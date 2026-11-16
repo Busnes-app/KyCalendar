@@ -357,3 +357,19 @@ sticky footer; phone list and candidate rows are borderless; the board keeps the
 counts like the list, shows top-level tasks with their subtask progress, collapses empty columns
 and drops the list name inside a list; the List/Board control has no outer frame; Plan block meta
 lines up under the title and short blocks keep a one-line time.
+## PR 1c: Kanban
+
+A List/Board switch on every list view (not Today or Plan), remembered per view in the browser.
+The board asks the server for open and done tasks of the view (`status=needs-action,in-process,completed`)
+and shows three columns by `STATUS`; cancelled tasks are not shown. Dragging a card to another
+column, or its arrow buttons (the keyboard and touch twin), sends `PATCH {status}`, so completing
+a repeating task on the board moves it to its next occurrence as anywhere else. No new route.
+
+## Council round 3 (2026-11-15)
+
+Scores: Opus 7.9, Sol 8.3 (satisfied). Applied: times from the calendar's own FullCalendar
+formatter and the calendar's now-line colour; one count everywhere (open top-level tasks, "1 open
+task"); no resting tint on a row; short Plan blocks show their range without priority; the
+progress fill in secondary ink; Done cards without strikethrough or High; the segment ring only
+on keyboard focus; a neutral quick-add plus; Add reminder aligned with the labels; tighter phone
+spacing on Plan.

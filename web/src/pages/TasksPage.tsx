@@ -7,6 +7,7 @@ import {
 import { MoreMenu } from '../components/MoreMenu';
 import { EmptyState, Modal } from '../components/ui';
 import { TaskDialog, estimateText } from '../components/TaskDialog';
+import { TaskBoard } from '../components/TaskBoard';
 import { ApiError, createCalendar, deleteCalendar, listCalendars, patchCalendar, type CalendarInfo } from '../calendarApi';
 import {
   createTask, createView, deleteView, inbox, listAreas, listTasks, listViews, patchTask, saveAreas,
@@ -34,9 +35,16 @@ const SMART: { id: Smart; label: string; icon: typeof Sun }[] = [
   { id: 'completed', label: 'Completed', icon: CheckCircle2 },
 ];
 const VIEW_KEY = 'kycalendar.tasksView';
+const LAYOUT_KEY = 'kycalendar.tasksLayout'; // view key -> 'board', for views shown as a board
 const SORTS = [{ v: 'smart', label: 'Smart (overdue, due, priority)' }, { v: 'due', label: 'Due date' }, { v: 'priority', label: 'Priority' }, { v: 'created', label: 'Newest' }, { v: 'title', label: 'Title' }] as const;
 
 const isTasks = (c: CalendarInfo) => c.components.includes('VTODO');
+// topLevel are the tasks whose parent is not among them: what a list and a board show as rows.
+export const topLevel = (ts: Task[]) => {
+  const here = new Set(ts.map((t) => `${t.calendar_id}/${t.uid}`));
+  return ts.filter((t) => !t.parent || !here.has(`${t.calendar_id}/${t.parent}`));
+};
+const isOpen = (t: Task) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
 const dayOf = (v?: string) => (v ? (v.length === 10 ? v : dateOnly(new Date(v))) : '');
 
 function savedView(): TaskView {
@@ -81,6 +89,9 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   const [naming, setNaming] = useState<'list' | 'view' | null>(null);
   const [keysOpen, setKeysOpen] = useState(false);
   const [planning, setPlanning] = useState(false);
+  const [boards, setBoards] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '{}') ?? {}; } catch { return {}; } });
+  const viewKey = `${view.kind}:${view.id}`;
+  const board = !!boards[viewKey] && !(view.kind === 'smart' && view.id === 'today');
   const [dayKey, setDayKey] = useState(0);
   const search = useRef<HTMLInputElement>(null);
   const listEl = useRef<HTMLUListElement>(null);
@@ -102,7 +113,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
 
   // The server filter this view and the filter bar ask for; null when the open list answers it.
   const serverFilter = useMemo((): TaskFilter | null => {
-    const base: TaskFilter = { ...filter, q: q.trim() || undefined, sort };
+    const base: TaskFilter = { ...filter, q: q.trim() || undefined, sort, ...(board && !filter.status?.length ? { status: ['needs-action', 'in-process', 'completed'] } : {}) };
     if (view.kind === 'view') {
       const v = views.find((x) => x.id === view.id);
       return v ? { ...v.query, ...base, q: base.q ?? v.query.q } : base;
@@ -111,9 +122,9 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
     if (view.kind === 'smart' && view.id === 'flagged') return { ...base, source: 'kypost' };
     if (view.kind === 'area') return { ...base, area: view.id };
     if (view.kind === 'list') return { ...base, lists: [view.id] };
-    const active = base.q || filter.tags?.length || filter.priority?.length || filter.due_from || filter.due_to || filter.status?.length || filter.lists?.length || sort !== 'smart';
+    const active = board || base.q || filter.tags?.length || filter.priority?.length || filter.due_from || filter.due_to || filter.status?.length || filter.lists?.length || sort !== 'smart';
     return active ? base : null;
-  }, [view, views, filter, q, sort]);
+  }, [view, views, filter, q, sort, board]);
 
   const load = useCallback(async () => {
     setError('');
@@ -216,10 +227,12 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
   });
 
   const counts = useMemo(() => {
+    // One count rule everywhere: open top-level tasks, as the page head and the board count.
     const c: Record<string, number> = {};
-    for (const s of ['today', 'overdue'] as Smart[]) c[s] = open.filter((t) => inView(t, s, today)).length;
-    for (const t of open) c[t.calendar_id] = (c[t.calendar_id] ?? 0) + 1;
-    c.flagged = open.filter((t) => t.source === 'kypost').length;
+    const top = topLevel(open);
+    for (const s of ['today', 'overdue'] as Smart[]) c[s] = top.filter((t) => inView(t, s, today)).length;
+    for (const t of top) c[t.calendar_id] = (c[t.calendar_id] ?? 0) + 1;
+    c.flagged = top.filter((t) => t.source === 'kypost').length;
     return c;
   }, [open, today]);
 
@@ -316,7 +329,7 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
             {isToday && !planning && <span className="tk-date"> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>}</h1>
           {!isToday && (
             <p className="tk-meta">
-              {flat.length === 1 ? '1 task' : `${flat.length} tasks`}
+              {(() => { const n = topLevel(board ? shown ?? [] : rows).filter((t) => view.kind === 'smart' && view.id === 'completed' ? true : isOpen(t)).length; const word = view.kind === 'smart' && view.id === 'completed' ? 'done' : 'open'; return `${n} ${word} task${n === 1 ? '' : 's'}`; })()}
               {currentList?.kind === 'group' && ` · shared list${currentList.role === 'reader' ? ', read-only' : ''}`}
             </p>
           )}
@@ -359,6 +372,16 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
         <button type="button" className="btn-secondary btn-sm" aria-expanded={filtersOpen} aria-controls="tk-filters" onClick={() => setFiltersOpen(!filtersOpen)}>
           <SlidersHorizontal size={14} aria-hidden="true" /> Filters{(Object.values(filter).some((v) => (Array.isArray(v) ? v.length : v)) || sort !== 'smart') ? ' (on)' : ''}
         </button>
+        <fieldset className="tk-segmented tk-layout-switch">
+          <legend className="sr-only">Layout</legend>
+          {([['list', 'List'], ['board', 'Board']] as const).map(([v, label]) => (
+            <label key={v} data-checked={(v === 'board') === board || undefined}>
+              <input type="radio" name="tk-layout" checked={(v === 'board') === board}
+                onChange={() => { const next = { ...boards, [viewKey]: v === 'board' }; setBoards(next); localStorage.setItem(LAYOUT_KEY, JSON.stringify(next)); }} />
+              {label}
+            </label>
+          ))}
+        </fieldset>
         {filtering && view.kind !== 'view' && <button type="button" className="btn-ghost btn-sm" onClick={() => setNaming('view')}><Star size={14} aria-hidden="true" /> Save view</button>}
       </div>}
       {filtersOpen && (
@@ -403,7 +426,8 @@ export function TasksPage({ sidebarSlot = null, drive = '' }: { sidebarSlot?: HT
           {q ? 'Try fewer words or another view.' : 'Add one above, or press n anywhere.'}
         </EmptyState>
       )}
-      {!isToday && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
+      {board && <TaskBoard tasks={topLevel(shown ?? [])} listName={view.kind === 'list' ? () => '' : listName} onOpen={(t) => setDialog({ task: t })} onMove={(t, st) => void patchTask(t, { status: st }).then(() => load(), (e) => setError(e instanceof Error ? e.message : 'The task could not be saved.'))} />}
+      {!isToday && !board && <ul className="tk-list" ref={listEl} aria-label={`${title} tasks`}>
         {groups.map((g) => (
           <li key={g.label || 'all'} className="tk-day">
             {g.label && <h2 className="tk-day-head">{g.label}</h2>}
