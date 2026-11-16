@@ -202,6 +202,18 @@ func (c *calendarStore) settleResources(ctx context.Context, tx *sql.Tx, o *Cale
 				if !ok {
 					d = resource.Decision{Status: resource.Declined, Reason: resource.ReasonOccurrences}
 				}
+				// Existing exceptions can meet the incoming rule even when its own explicit
+				// dates do not. Check both directions without expanding the intervening years.
+				held, checkable, err := c.explicitResourceSpans(ctx, tx, id, o.CalendarID, o.Name)
+				if err != nil {
+					return nil, err
+				}
+				if !checkable {
+					d = resource.Decision{Status: resource.Declined, Reason: resource.ReasonOccurrences}
+				}
+				for _, sp := range held {
+					windows = append(windows, resource.OpenSpans(cal, d.OpenAfter, sp.Start, sp.End))
+				}
 				// Keep distant dates separate: expanding a gap of centuries is not a busy check.
 				for _, sp := range future {
 					windows = append(windows, []resource.Span{sp})
@@ -290,6 +302,35 @@ fingerprint, open_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,
 		}
 		return nil
 	}, nil
+}
+
+// explicitResourceSpans returns the finite future reservations of other live bookings.
+func (c *calendarStore) explicitResourceSpans(ctx context.Context, q txQuerier, id, skipCal, skipName string) ([]resource.Span, bool, error) {
+	rows, err := q.QueryContext(ctx, c.q(`SELECT b.open_after, o.data FROM resource_bookings b
+JOIN calendar_objects o ON o.calendar_id = b.calendar_id AND o.name = b.object_name
+WHERE b.resource_id = ? AND b.status <> 'declined' AND b.open_after > 0 AND NOT (b.calendar_id = ? AND b.object_name = ?)`), id, skipCal, skipName)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var out []resource.Span
+	for rows.Next() {
+		var after int64
+		var data []byte
+		if err := rows.Scan(&after, &data); err != nil {
+			return nil, false, err
+		}
+		cal, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
+		if err != nil {
+			return nil, false, nil
+		}
+		spans, ok := resource.ExplicitFutureSpans(cal, after)
+		if !ok {
+			return nil, false, nil
+		}
+		out = append(out, spans...)
+	}
+	return out, true, rows.Err()
 }
 
 // busyOf is resource id's busy spans overlapping [from, to): the stored spans of accepted and
