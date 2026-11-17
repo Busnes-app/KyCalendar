@@ -39,9 +39,10 @@ require (
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
-	modernc.org/libc v1.81.2 // indirect
+	// Keep libc paired with the version required by modernc.org/sqlite.
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.13.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
 
 replace github.com/emersion/go-webdav => ./third_party/go-webdav
