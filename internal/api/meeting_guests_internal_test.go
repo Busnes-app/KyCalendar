@@ -224,7 +224,7 @@ func TestGuestKeysAndWindows(t *testing.T) {
 		b, _ := json.Marshal(map[string]any{"member_url": roomURL(id), "guest_urls": links})
 		return 200, string(b)
 	})
-	start := r.clock.UTC().Truncate(24 * time.Hour).Add(33 * time.Hour)
+	start := r.clock.UTC().Add(24 * time.Hour).Truncate(time.Minute)
 	r.create(t, map[string]any{"meeting": true, "start": start.Format(time.RFC3339), "end": start.Add(time.Hour).Format(time.RFC3339), "repeat": map[string]any{"freq": "daily"}, "attendees": []string{"out@elsewhere.example"}})
 	r.sync()
 	r.sync()
