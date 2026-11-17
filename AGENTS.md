@@ -495,3 +495,7 @@ credentials and all existing Compose overlays. Stored TOTP columns are kept
 unused (local MFA was removed). SSO owns verifier-matched JWKS parsing and configured direct HTTPS
 flows; retain signature/claim/replay and destination checks. Update the nearest
 SSO/config/auth/crypto contracts when these boundaries change.
+
+## Release notes
+
+- `CHANGELOG.md` owns pending application release notes and upgrade impact. A version bump alone does not publish a release.
