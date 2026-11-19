@@ -365,3 +365,44 @@ func TestPoolFloorLeavesARequestConnection(t *testing.T) {
 		t.Fatalf("no connection left for a request at four: %v", err)
 	}
 }
+
+// A snapshot reads one point in time: a calendar and an object written while it copies, after
+// the calendars table, are absent from it, and it still verifies (REPEATABLE READ).
+func TestSnapshotIsOnePointInTime(t *testing.T) {
+	dsn := pgTarget(t)
+	ctx := context.Background()
+	st, err := openPostgres(ctx, dsn, 8, 4, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Calendars().CreateCalendar(ctx, &Calendar{ID: "cal_1", OwnerKind: "user", OwnerID: "usr_a", Slug: "default", Name: "Cal"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	afterTable = func(table string) {
+		if table != "calendars" {
+			return
+		}
+		afterTable = nil
+		if err := st.Calendars().CreateCalendar(ctx, &Calendar{ID: "cal_late", OwnerKind: "user", OwnerID: "usr_a", Slug: "late", Name: "Late"}, 0); err != nil {
+			t.Error(err)
+		}
+		o := &CalendarObject{CalendarID: "cal_late", Name: "x.ics", UID: "x", Component: "VEVENT", Data: []byte("late"), FirstStart: 1}
+		if _, err := st.Calendars().PutObject(ctx, o, "", false, OwnerLimits{}); err != nil {
+			t.Error(err)
+		}
+	}
+	defer func() { afterTable = nil }()
+	path := filepath.Join(t.TempDir(), "snap.db")
+	if err := st.SnapshotToSQLite(ctx, path); err != nil {
+		t.Fatalf("a write during the copy broke the snapshot: %v", err)
+	}
+	lite, _ := sql.Open("sqlite", path)
+	defer lite.Close()
+	var cals, objs int
+	_ = lite.QueryRow(`SELECT COUNT(*) FROM calendars`).Scan(&cals)
+	_ = lite.QueryRow(`SELECT COUNT(*) FROM calendar_objects`).Scan(&objs)
+	if cals != 1 || objs != 0 {
+		t.Fatalf("snapshot holds %d calendars and %d objects, want the 1 and 0 from its start", cals, objs)
+	}
+}

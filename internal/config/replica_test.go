@@ -136,3 +136,17 @@ func TestEverySharedFieldIsCompared(t *testing.T) {
 		})
 	}
 }
+
+// The office networks are compared as a set: another order or spacing is the same setting.
+func TestExemptNetworksCompareCanonically(t *testing.T) {
+	a, b := replicaConfig(), replicaConfig()
+	a.Security.RateLimitExemptNetworks = "10.1.0.0/16,192.168.4.0/24"
+	b.Security.RateLimitExemptNetworks = " 192.168.4.0/24 , 10.1.0.0/16"
+	if d := DiffFingerprint(ReplicaFingerprint(a), ReplicaFingerprint(b)); len(d) != 0 {
+		t.Fatalf("the same networks in another order differ: %v", d)
+	}
+	b.Security.RateLimitExemptNetworks = "10.1.0.0/16"
+	if d := DiffFingerprint(ReplicaFingerprint(a), ReplicaFingerprint(b)); !slices.Equal(d, []string{"KY_RATE_LIMIT_EXEMPT_NETWORKS"}) {
+		t.Fatalf("a missing network: %v", d)
+	}
+}

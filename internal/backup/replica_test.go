@@ -383,3 +383,103 @@ func anyDriver(t *testing.T) (*config.Config, store.Store) {
 	t.Cleanup(func() { st.Close() })
 	return cfg, st
 }
+
+// repairing re-pairs (URL_A, token_A) to (URL_B, token_B) right after the first read of the
+// pairing URL, as another server would between two reads of one operation.
+type repairing struct {
+	store.SettingsStore
+	once   sync.Once
+	repair func()
+}
+
+func (r *repairing) after(keys ...string) {
+	for _, k := range keys {
+		if k == "kyrecovery_url" {
+			r.once.Do(r.repair)
+		}
+	}
+}
+
+func (r *repairing) GetSetting(ctx context.Context, key string) (string, error) {
+	v, err := r.SettingsStore.GetSetting(ctx, key)
+	r.after(key)
+	return v, err
+}
+
+func (r *repairing) GetSettings(ctx context.Context, keys ...string) (map[string]string, error) {
+	m, err := r.SettingsStore.GetSettings(ctx, keys...)
+	r.after(keys...)
+	return m, err
+}
+
+type repairingStore struct {
+	store.Store
+	settings *repairing
+}
+
+func (r repairingStore) Settings() store.SettingsStore { return r.settings }
+
+// pairs records which token each deposit carried to which URL.
+type pairs struct {
+	mu  sync.Mutex
+	got map[string]string
+}
+
+func (p *pairs) Deposit(_ context.Context, url, token string, raw []byte) (recoveryclient.Receipt, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.got[url] = token
+	return recoveryclient.Receipt{}, errors.New("recorded")
+}
+
+// One operation reads its pairing once, so a re-pairing between two of its reads never pairs
+// URL_A with token_B: deterministic, for LoadPairing and for a whole run (spec AC19; status is
+// TestStatusReadsThePairingOnce in internal/api).
+func TestOneOperationNeverMixesTwoPairings(t *testing.T) {
+	t.Setenv("KY_PORT", "8080")
+	t.Setenv("KY_DB_DRIVER", "sqlite")
+	cfg, st := anyDriver(t)
+	ctx := context.Background()
+	sealer, err := backup.NewSealer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backup.PinRecoveryKey(ctx, cfg, st, newKey(t, 2, 3)); err != nil {
+		t.Fatal(err)
+	}
+	pair := func(url, token string) {
+		s := backup.Settings(ctx, st.Settings())
+		_ = recoveryclient.ClearPairing(s)
+		if err := recoveryclient.StorePairing(s, sealer, url, token); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := map[string]string{"https://a.example": "token-a", "https://b.example": "token-b"}
+	wrap := func() *repairing {
+		pair("https://a.example", "token-a")
+		return &repairing{SettingsStore: st.Settings(), repair: func() { pair("https://b.example", "token-b") }}
+	}
+
+	p, err := recoveryclient.LoadPairing(cfg.Database.DataDir, backup.Settings(ctx, wrap()), sealer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want[p.URL] != p.Token {
+		t.Fatalf("LoadPairing paired %s with another pairing's token", p.URL)
+	}
+
+	rec := &pairs{got: map[string]string{}}
+	rc, err := backup.RunConfig(cfg, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = backup.Run(ctx, cfg, rc, repairingStore{st, wrap()}, rec)
+	if len(rec.got) != 1 {
+		t.Fatalf("deposits %v, want one", rec.got)
+	}
+	for url, token := range rec.got {
+		if want[url] != token {
+			t.Fatalf("a run sent %s another pairing's token", url)
+		}
+	}
+}

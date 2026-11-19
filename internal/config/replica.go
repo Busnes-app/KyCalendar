@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 )
@@ -35,6 +36,19 @@ func digest(b []byte) string {
 	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// canonicalList is a comma-separated list sorted and deduplicated, so two replicas listing the
+// same networks in another order or spacing agree.
+func canonicalList(raw string) string {
+	var items []string
+	for _, f := range strings.Split(raw, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			items = append(items, f)
+		}
+	}
+	slices.Sort(items)
+	return strings.Join(slices.Compact(items), ",")
 }
 
 // replicaFields classifies every Config field by its path. TestEveryConfigFieldIsClassified
@@ -70,7 +84,7 @@ var replicaFields = map[string]replicaField{
 	"Security.CookieDomain":            {"KY_COOKIE_DOMAIN", func(c *Config) string { return c.Security.CookieDomain }},
 	"Security.SessionTTL":              {"session lifetime", func(c *Config) string { return c.Security.SessionTTL.String() }},
 	"Security.TrustedProxies":          perHost("KY_TRUSTED_PROXIES"),
-	"Security.RateLimitExemptNetworks": {"KY_RATE_LIMIT_EXEMPT_NETWORKS", func(c *Config) string { return c.Security.RateLimitExemptNetworks }},
+	"Security.RateLimitExemptNetworks": {"KY_RATE_LIMIT_EXEMPT_NETWORKS", func(c *Config) string { return canonicalList(c.Security.RateLimitExemptNetworks) }},
 
 	"SSO.Enabled":            {"KY_SSO_ENABLED", func(c *Config) string { return strconv.FormatBool(c.SSO.Enabled) }},
 	"SSO.KySignOnIssuer":     {"KY_KYSIGNON_ISSUER", func(c *Config) string { return c.SSO.KySignOnIssuer }},

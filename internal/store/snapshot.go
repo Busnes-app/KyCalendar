@@ -76,6 +76,9 @@ func kindOf(pgType string) string {
 // skipNormalize disables one kind's normalization (tests prove the digest needs it).
 var skipNormalize string
 
+// afterTable runs after each table is copied (tests write between tables).
+var afterTable func(table string)
+
 type dbConn interface { // a database or one transaction
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
@@ -331,6 +334,9 @@ func copyTables(ctx context.Context, src, dst dbConn, cols map[string][]column, 
 			return nil, fmt.Errorf("copy %s: %w", t, err)
 		}
 		sums[t] = sum
+		if afterTable != nil {
+			afterTable(t)
+		}
 	}
 	return sums, nil
 }

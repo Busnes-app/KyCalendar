@@ -680,3 +680,64 @@ func mcpTokenFor(t *testing.T, st store.Store, username string) string {
 	}
 	return token
 }
+
+// repairAfterURL re-pairs once, right after the first read of the pairing URL.
+type repairAfterURL struct {
+	store.SettingsStore
+	once   sync.Once
+	repair func()
+}
+
+func (r *repairAfterURL) seen(keys ...string) {
+	for _, k := range keys {
+		if k == "kyrecovery_url" {
+			r.once.Do(r.repair)
+		}
+	}
+}
+
+func (r *repairAfterURL) GetSetting(ctx context.Context, key string) (string, error) {
+	v, err := r.SettingsStore.GetSetting(ctx, key)
+	r.seen(key)
+	return v, err
+}
+
+func (r *repairAfterURL) GetSettings(ctx context.Context, keys ...string) (map[string]string, error) {
+	m, err := r.SettingsStore.GetSettings(ctx, keys...)
+	r.seen(keys...)
+	return m, err
+}
+
+type repairStore struct {
+	store.Store
+	settings *repairAfterURL
+}
+
+func (r repairStore) Settings() store.SettingsStore { return r.settings }
+
+// Status reads the pairing once: a re-pairing between two of its reads cannot make it show one
+// pairing's URL for another's state (spec AC19).
+func TestStatusReadsThePairingOnce(t *testing.T) {
+	_, st, cfg := setupTestServer(t)
+	ctx := context.Background()
+	k, _ := recoverykey.Generate()
+	if err := backup.PinRecoveryKey(ctx, cfg, st, recoveryclient.RecoveryKey{Public: k.Public(), Threshold: 2, TotalShares: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storePairing(t, cfg, st, "https://a.example", "token-a"); err != nil {
+		t.Fatal(err)
+	}
+	wrap := &repairAfterURL{SettingsStore: st.Settings(), repair: func() {
+		s := backup.Settings(ctx, st.Settings())
+		_ = recoveryclient.ClearPairing(s)
+		if err := storePairing(t, cfg, st, "https://b.example", "token-b"); err != nil {
+			t.Error(err)
+		}
+	}}
+	srv := api.NewServer(cfg, repairStore{st, wrap})
+	admin := loginAs(t, srv, st, "mo", "admin")
+	got := statusOf(t, srv, admin)
+	if got["paired"] != true || got["recovery_url"] != "https://a.example" {
+		t.Fatalf("status mixed two pairings: paired=%v url=%v", got["paired"], got["recovery_url"])
+	}
+}

@@ -531,17 +531,22 @@ func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// securityHeaders are on every answer, the deadline's 503 included.
+func (s *Server) securityHeaders(h http.Header) {
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+	if s.config.Security.CookieSecure {
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	}
+}
+
 // ServeHTTP serves every request under the request deadline (lifecycle.go).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
-	if s.config.Security.CookieSecure {
-		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-	}
+	s.securityHeaders(w.Header())
 
 	origin := r.Header.Get("Origin")
 	// /mcp is for agents, never browsers: no CORS grant, and its preflight reaches withMCPAuth.
@@ -683,7 +688,7 @@ func (s *Server) writeError(w http.ResponseWriter, status int, message string) {
 func (s *Server) writeUnavailable(w http.ResponseWriter, err error) {
 	log.Printf("[API] store unavailable: %v", err)
 	w.Header().Set("Retry-After", "5")
-	s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "KyCalendar is temporarily unavailable; try again", "code": "unavailable"})
+	s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": s.config.Server.AppName + " is temporarily unavailable; try again", "code": "unavailable"})
 }
 
 // DeliverScheduled delivers due scheduling messages, a batch at a time, until none is due.

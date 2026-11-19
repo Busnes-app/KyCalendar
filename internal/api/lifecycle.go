@@ -137,6 +137,7 @@ func (s *Server) withDeadline(next http.Handler, d time.Duration) http.Handler {
 			tw.mu.Lock()
 			defer tw.mu.Unlock()
 			tw.timedOut = true
+			s.securityHeaders(w.Header())
 			w.Header().Set("Cache-Control", "no-store")
 			s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "request_timeout",
 				"error": "The server could not finish this request in time. It may still take effect; check before retrying."})
