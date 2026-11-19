@@ -280,6 +280,8 @@ func toTarget(v any, kind string) (any, error) {
 		return nil, fmt.Errorf("unexpected %T for text", v)
 	case kind == kindBytes && isString:
 		return []byte(str), nil // a BLOB stays bytes: SQLite's LENGTH counts text in characters
+	case kind == kindBytes && b == nil:
+		return []byte{}, nil // an empty BLOB reads back as nil, which the driver would send as NULL
 	case kind == kindText && isBytes:
 		return string(b), nil
 	}

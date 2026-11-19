@@ -6,13 +6,25 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
 func cancellationWorld(t *testing.T, cap, total int64) (*schedWorld, *sql.DB) {
+	t.Helper()
+	w, db, _ := cancellationWorldCfg(t, cap, total)
+	return w, db
+}
+
+func cancellationWorldCfg(t *testing.T, cap, total int64) (*schedWorld, *sql.DB, *config.Config) {
 	t.Helper()
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
 	t.Setenv("KY_CALENDAR_MAX_BYTES_PER_USER", fmt.Sprint(cap))
@@ -32,7 +44,7 @@ func cancellationWorld(t *testing.T, cap, total int64) (*schedWorld, *sql.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return w, db
+	return w, db, cfg
 }
 
 func reservationUsage(t *testing.T, db *sql.DB) (used, reserved int64, n int) {
@@ -62,8 +74,47 @@ func TestCancellationReservationRejectsInsufficientAdmission(t *testing.T) {
 }
 
 func TestAdmittedMeetingCancelsWithOrdinaryQuotaFull(t *testing.T) {
+	admittedMeetingCancels(t, nil)
+}
+
+// The same scenario, migrated from SQLite to PostgreSQL with the ordinary budget full: the
+// migrated reservation still lets the meeting cancel (spec AC24).
+func TestAdmittedMeetingCancelsAfterMigration(t *testing.T) {
+	pgDSN := os.Getenv("KY_TEST_POSTGRES_DSN")
+	if pgDSN == "" {
+		t.Skip("PostgreSQL only: set KY_TEST_POSTGRES_DSN")
+	}
+	t.Setenv("KY_TEST_POSTGRES_DSN", "") // the scenario starts on SQLite
+	admittedMeetingCancels(t, func(w *schedWorld, cfg *config.Config) (*schedWorld, *sql.DB) {
+		t.Setenv("KY_TEST_POSTGRES_DSN", pgDSN)
+		target := testdb.Config(t)
+		src, _, _ := strings.Cut(cfg.Database.DSN, "?")
+		if _, err := store.MigrateFromSQLite(context.Background(), src, target.DSN, false); err != nil {
+			t.Fatal(err)
+		}
+		pgCfg := *cfg
+		pgCfg.Database = target
+		pgCfg.Database.DataDir = cfg.Database.DataDir
+		st, err := store.Open(context.Background(), pgCfg.Database)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.Close() })
+		srv := api.NewServer(&pgCfg, st)
+		moved := &schedWorld{t: t, srv: srv, st: st, ts: httptest.NewServer(srv), tokens: w.tokens}
+		t.Cleanup(moved.ts.Close)
+		db, err := sql.Open("pgx", target.DSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { db.Close() })
+		return moved, db
+	})
+}
+
+func admittedMeetingCancels(t *testing.T, migrate func(*schedWorld, *config.Config) (*schedWorld, *sql.DB)) {
 	const cap int64 = 12000
-	w, db := cancellationWorld(t, cap, cap)
+	w, db, cfg := cancellationWorldCfg(t, cap, cap)
 	ctx := context.Background()
 	body := cancellationMeeting("reserve")
 	if code, _ := w.put("alice", "reserve.ics", body, ""); code != 201 {
@@ -105,6 +156,12 @@ func TestAdmittedMeetingCancelsWithOrdinaryQuotaFull(t *testing.T) {
 	used, reserved, n = reservationUsage(t, db)
 	if used != cap || n != 1 {
 		t.Fatalf("expected exact ordinary usable cap, got %d / %d", used, cap)
+	}
+	if migrate != nil {
+		w, db = migrate(w, cfg)
+		if u, r, k := reservationUsage(t, db); u != used || r != reserved || k != n {
+			t.Fatalf("migration changed capacity: %d/%d/%d, was %d/%d/%d", u, r, k, used, reserved, n)
+		}
 	}
 	if code, _ := w.put("bob", "steal.ics", meeting("steal", "bob"), ""); code != 507 {
 		t.Fatalf("another owner consumed reserved instance capacity: %d", code)
