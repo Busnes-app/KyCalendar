@@ -86,7 +86,11 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 			SSOSubject:  claims.Subject,
 			SSOIssuer:   binding,
 		}
-		if err := s.store.Users().CreateUser(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
+		create := s.store.Users().CreateUser
+		if s.shared != nil { // PostgreSQL: another server may have saved a new binding since the check
+			create = s.store.Users().CreateSSOUser
+		}
+		if err := create(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
 			return nil, errUsernameTaken
 		} else if err != nil {
 			return nil, err
@@ -245,6 +249,10 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	user, err := s.upsertSSOUser(r.Context(), claims, p.Binding)
 	switch {
+	case errors.Is(err, store.ErrBindingChanged):
+		go s.refreshSignIn(context.WithoutCancel(r.Context()))
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
 	case errors.Is(err, errNotProvisioned):
 		s.writeError(w, http.StatusForbidden, "User account not provisioned")
 		return
@@ -284,7 +292,16 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
+	binding := "" // SQLite: signinMu already holds every save out
+	if s.shared != nil {
+		binding = p.Binding
+	}
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, binding, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
+	if errors.Is(err, store.ErrBindingChanged) {
+		go s.refreshSignIn(context.WithoutCancel(r.Context()))
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	if errors.Is(err, store.ErrSSOSessionEnded) {
 		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
 		return

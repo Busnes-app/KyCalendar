@@ -35,6 +35,9 @@ var (
 	ErrAccessChanged = errors.New("account access changed since it was read")
 	// ErrInvalidMember: a SCIM group write named a member outside the SCIM scope.
 	ErrInvalidMember = errors.New("member outside the SCIM scope")
+	// ErrBindingChanged: the stored sign-in binding is no longer the one a sign-in started under
+	// (a save on another server); nothing was written.
+	ErrBindingChanged = errors.New("sign-in binding changed")
 	// ErrInvalidScope: an app password scope outside the known set.
 	ErrInvalidScope = errors.New("invalid app password scope")
 )
@@ -44,6 +47,7 @@ var (
 type Actor struct {
 	userID, sessionHash string
 	system              bool
+	binding             bool // a sign-in creating its own account (CreateSSOUser)
 }
 
 // System is the operator at the console.
@@ -91,6 +95,10 @@ type Store interface {
 // UserStore defines repository operations for accounts.
 type UserStore interface {
 	CreateUser(ctx context.Context, u *User) error
+	// CreateSSOUser is CreateUser for a sign-in's new account: under the local-admins lock the
+	// sign-in save holds, and only while the stored signin_bound is u.SSOIssuer
+	// (ErrBindingChanged otherwise).
+	CreateSSOUser(ctx context.Context, u *User) error
 	// CreateUserAs is CreateUser by actor: ErrActorRevoked unless actor is still an active
 	// administrator with a live session, checked under the local-admins lock.
 	CreateUserAs(ctx context.Context, actor Actor, u *User) error

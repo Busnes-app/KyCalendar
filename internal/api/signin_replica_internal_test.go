@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -114,5 +115,112 @@ func TestKyPostReplayIsSharedAcrossReplicas(t *testing.T) {
 	broken := sharedReplay{failingReplays{a.shared}}
 	if err := broken.Check("evt-other", now); !errors.Is(err, syncauth.ErrReplayGuardFull) {
 		t.Fatalf("a guard that cannot read: %v, want the fail-closed ErrReplayGuardFull", err)
+	}
+}
+
+// saveBetween is B's store with A's save run once, right before the account lookup (after
+// signinCurrent passed) or right before the session write.
+type saveBetween struct {
+	store.Store
+	save          func()
+	beforeLookup  bool
+	beforeSession bool
+	once          sync.Once
+}
+
+func (s *saveBetween) Users() store.UserStore { return saveUsers{s.Store.Users(), s} }
+func (s *saveBetween) Sessions() store.SessionStore {
+	return saveSessions{s.Store.Sessions(), s}
+}
+
+type saveUsers struct {
+	store.UserStore
+	s *saveBetween
+}
+
+func (u saveUsers) GetUserBySSO(ctx context.Context, provider, subject string) (*store.User, error) {
+	if u.s.beforeLookup {
+		u.s.once.Do(u.s.save)
+	}
+	return u.UserStore.GetUserBySSO(ctx, provider, subject)
+}
+
+type saveSessions struct {
+	store.SessionStore
+	s *saveBetween
+}
+
+func (ss saveSessions) CreateSession(ctx context.Context, sess *store.Session, c store.Credentials) error {
+	if ss.s.beforeSession {
+		ss.s.once.Do(ss.s.save)
+	}
+	return ss.SessionStore.CreateSession(ctx, sess, c)
+}
+
+// A save on A that lands after B's binding check but before B writes the account, or the
+// session, is still refused: the binding is rechecked in the write's own transaction under the
+// lock the save holds. Deterministic; both a new subject and an existing account.
+func TestSaveBetweenCheckAndWriteIsRefused(t *testing.T) {
+	if os.Getenv("KY_TEST_POSTGRES_DSN") == "" {
+		t.Skip("PostgreSQL only: set KY_TEST_POSTGRES_DSN")
+	}
+	for _, tc := range []struct {
+		name     string
+		existing bool
+	}{{"new subject", false}, {"existing account", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := davInternalServer(t)
+			ctx := context.Background()
+			stB, err := store.Open(ctx, a.config.Database)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stB.Close()
+			idp := newSigningIdP(t)
+			if _, _, err := a.bindAccounts(ctx, kyidentityAt(idp.URL)); err != nil {
+				t.Fatal(err)
+			}
+			sub := "sub-new"
+			if tc.existing {
+				sub = "sub-carol"
+				createUsers(t, a, &store.User{ID: "usr_carol", Username: "carol", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: sub, SSOIssuer: "kyidentity " + idp.URL})
+			}
+			// A keeps the provider kind and only moves the issuer, so nothing is disabled: the
+			// binding alone must stop B.
+			nextSt := kyidentityAt("https://next.example")
+			values, err := a.signinValues(nextSt, "sec")
+			if err != nil {
+				t.Fatal(err)
+			}
+			hook := &saveBetween{Store: stB, beforeLookup: !tc.existing, beforeSession: tc.existing, save: func() {
+				a.signinMu.Lock()
+				defer a.signinMu.Unlock()
+				if _, _, err := a.commitSignIn(ctx, store.System, nextSt, values); err != nil {
+					t.Error(err)
+				}
+			}}
+			b := NewServer(a.config, hook)
+			b.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client()))
+			w := httptest.NewRecorder()
+			b.ServeHTTP(w, idp.login(t, b, sub))
+			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "start again") {
+				t.Fatalf("callback across a save between check and write: %d %s", w.Code, w.Body.String())
+			}
+			for _, c := range w.Result().Cookies() {
+				if c.Name == "ky_session" && c.Value != "" {
+					t.Fatal("a session cookie was set under a binding the database no longer holds")
+				}
+			}
+			if !tc.existing {
+				if u, err := stB.Users().GetUserBySSO(ctx, "kysignon", sub); !errors.Is(err, store.ErrNotFound) {
+					t.Fatalf("an account was created under the old binding: %+v %v", u, err)
+				}
+			} else {
+				var n int
+				if err := rawSQL(t, a).QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id = 'usr_carol'`).Scan(&n); err != nil || n != 0 {
+					t.Fatalf("carol got %d sessions under the old binding (%v)", n, err)
+				}
+			}
+		})
 	}
 }

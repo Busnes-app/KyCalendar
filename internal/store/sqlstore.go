@@ -208,6 +208,28 @@ func (u *userStore) CreateUserAs(ctx context.Context, actor Actor, user *User) e
 	return u.createUser(ctx, actor, user)
 }
 
+func (u *userStore) CreateSSOUser(ctx context.Context, user *User) error {
+	if user.SSOProvider == "local" || user.SSOIssuer == "" {
+		return errors.New("store: CreateSSOUser needs a bound SSO account")
+	}
+	return u.createUser(ctx, ssoBinding, user)
+}
+
+// ssoBinding is the Actor of a sign-in's own account creation: no administrator to recheck,
+// but the binding must still be the stored one.
+var ssoBinding = Actor{system: true, binding: true}
+
+// checkBinding fails with ErrBindingChanged unless the stored signin_bound is binding. The
+// caller holds the local-admins lock, which every sign-in save (BindSignIn) takes too.
+func checkBinding(ctx context.Context, tx *sql.Tx, rebind func(string) string, binding string) error {
+	var stored string
+	err := tx.QueryRowContext(ctx, rebind(`SELECT value FROM server_settings WHERE key = 'signin_bound'`)).Scan(&stored)
+	if errorsIs(err, sql.ErrNoRows) || err == nil && stored != binding {
+		return ErrBindingChanged
+	}
+	return err
+}
+
 func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) error {
 	now := time.Now().UTC()
 	if user.CreatedAt.IsZero() {
@@ -235,14 +257,19 @@ INSERT INTO users (
 	}
 
 	keys := []string{"user-names"}
-	if !actor.system {
-		keys = []string{"local-admins", "user-names"} // serialised with demotions
+	if !actor.system || actor.binding {
+		keys = []string{"local-admins", "user-names"} // serialised with demotions and sign-in saves
 	}
 	tx, err := u.store.lockedTx(ctx, keys...)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if actor.binding {
+		if err := checkBinding(ctx, tx, u.store.rebind, user.SSOIssuer); err != nil {
+			return err
+		}
+	}
 	if user.SSOProvider != "local" {
 		var managed int
 		if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM server_settings WHERE key='installer.config'").Scan(&managed); err != nil {
@@ -544,7 +571,32 @@ func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string
 
 // withCredentials is withPassword for the credentials c a sign-in checked.
 func (s *SQLStore) withCredentials(ctx context.Context, userID string, c Credentials, apply func(*sql.Tx) error) error {
-	return s.withPassword(ctx, userID, c.PasswordHash, apply)
+	if c.Binding == "" {
+		return s.withPassword(ctx, userID, c.PasswordHash, apply)
+	}
+	// An SSO session across a save on another server: the binding is rechecked under the lock
+	// the save holds, then the row, which must still carry it.
+	tx, err := s.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := checkBinding(ctx, tx, s.rebind, c.Binding); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE users SET id = id WHERE id = ? AND password_hash = ? AND status = 'active' AND sso_issuer = ?`), userID, c.PasswordHash, c.Binding)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrNotFound
+	}
+	if err := apply(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // withLockedUser runs apply in a transaction that first write-locks the one user row where
