@@ -19,7 +19,7 @@ func TestKyPostReplayForgetsOnlyWhatItIsTold(t *testing.T) {
 	if err := g.Check("e1", now); !errors.Is(err, syncauth.ErrReplay) {
 		t.Fatalf("replay: %v", err)
 	}
-	g.forget("e1")
+	g.Forget("e1")
 	if err := g.Check("e1", now.Add(time.Minute)); err != nil {
 		t.Fatalf("retry after forget: %v", err)
 	}

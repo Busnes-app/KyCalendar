@@ -16,8 +16,10 @@ import (
 
 // SQLStore implements Store on top of database/sql.
 type SQLStore struct {
-	db           *sql.DB
-	driver       string
+	db     *sql.DB
+	driver string
+	// lockPath is the SQLite database file its flocks sit beside; "" on PostgreSQL.
+	lockPath     string
 	users        *userStore
 	sessions     *sessionStore
 	devices      *deviceStore
@@ -31,7 +33,7 @@ type SQLStore struct {
 }
 
 // newSQLStore creates and initializes a SQLStore, running migrations automatically.
-func newSQLStore(ctx context.Context, db *sql.DB, driver string) (*SQLStore, error) {
+func newSQLStore(ctx context.Context, db *sql.DB, driver, lockPath string) (*SQLStore, error) {
 	driver = strings.ToLower(driver)
 	if driver == "postgresql" {
 		driver = "postgres"
@@ -42,8 +44,9 @@ func newSQLStore(ctx context.Context, db *sql.DB, driver string) (*SQLStore, err
 	}
 
 	s := &SQLStore{
-		db:     db,
-		driver: driver,
+		db:       db,
+		driver:   driver,
+		lockPath: lockPath,
 	}
 
 	s.users = &userStore{store: s}
@@ -90,6 +93,20 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM scheduling_outbox"); err != nil {
 		return err
 	}
+	// The restored database starts a new set of replicas, whose configuration is recorded
+	// afresh, and with no rate windows. Spent CAPTCHA salts and KyPost event IDs only ever
+	// refuse, so the unexpired ones stay; expired ones go.
+	nowMs := time.Now().UnixMilli()
+	for _, q := range []string{
+		"DELETE FROM server_settings WHERE key = 'replica_config_fingerprint'",
+		"DELETE FROM security_windows",
+		"DELETE FROM spent_challenges WHERE expires_at < " + strconv.FormatInt(nowMs, 10),
+		"DELETE FROM kypost_replay WHERE expires_at < " + strconv.FormatInt(nowMs, 10),
+	} {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
 	// A restored server does not deposit on its own: a drill copy still holding the pairing would
 	// otherwise put its old state at KyRecovery as the newest capsule. The admin turns the schedule
 	// back on once this server is the one in service. The key is recoveryclient's schedule setting.
@@ -110,7 +127,7 @@ ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.up
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; scheduled backups off; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; replica record and rate windows cleared; scheduled backups off; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -191,6 +208,28 @@ func (u *userStore) CreateUserAs(ctx context.Context, actor Actor, user *User) e
 	return u.createUser(ctx, actor, user)
 }
 
+func (u *userStore) CreateSSOUser(ctx context.Context, user *User) error {
+	if user.SSOProvider == "local" || user.SSOIssuer == "" {
+		return errors.New("store: CreateSSOUser needs a bound SSO account")
+	}
+	return u.createUser(ctx, ssoBinding, user)
+}
+
+// ssoBinding is the Actor of a sign-in's own account creation: no administrator to recheck,
+// but the binding must still be the stored one.
+var ssoBinding = Actor{system: true, binding: true}
+
+// checkBinding fails with ErrBindingChanged unless the stored signin_bound is binding. The
+// caller holds the local-admins lock, which every sign-in save (BindSignIn) takes too.
+func checkBinding(ctx context.Context, tx *sql.Tx, rebind func(string) string, binding string) error {
+	var stored string
+	err := tx.QueryRowContext(ctx, rebind(`SELECT value FROM server_settings WHERE key = 'signin_bound'`)).Scan(&stored)
+	if errorsIs(err, sql.ErrNoRows) || err == nil && stored != binding {
+		return ErrBindingChanged
+	}
+	return err
+}
+
 func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) error {
 	now := time.Now().UTC()
 	if user.CreatedAt.IsZero() {
@@ -218,14 +257,19 @@ INSERT INTO users (
 	}
 
 	keys := []string{"user-names"}
-	if !actor.system {
-		keys = []string{"local-admins", "user-names"} // serialised with demotions
+	if !actor.system || actor.binding {
+		keys = []string{"local-admins", "user-names"} // serialised with demotions and sign-in saves
 	}
 	tx, err := u.store.lockedTx(ctx, keys...)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if actor.binding {
+		if err := checkBinding(ctx, tx, u.store.rebind, user.SSOIssuer); err != nil {
+			return err
+		}
+	}
 	if user.SSOProvider != "local" {
 		var managed int
 		if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM server_settings WHERE key='installer.config'").Scan(&managed); err != nil {
@@ -527,7 +571,32 @@ func (s *SQLStore) withPassword(ctx context.Context, userID, expectedHash string
 
 // withCredentials is withPassword for the credentials c a sign-in checked.
 func (s *SQLStore) withCredentials(ctx context.Context, userID string, c Credentials, apply func(*sql.Tx) error) error {
-	return s.withPassword(ctx, userID, c.PasswordHash, apply)
+	if c.Binding == "" {
+		return s.withPassword(ctx, userID, c.PasswordHash, apply)
+	}
+	// An SSO session across a save on another server: the binding is rechecked under the lock
+	// the save holds, then the row, which must still carry it.
+	tx, err := s.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := checkBinding(ctx, tx, s.rebind, c.Binding); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE users SET id = id WHERE id = ? AND password_hash = ? AND status = 'active' AND sso_issuer = ?`), userID, c.PasswordHash, c.Binding)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrNotFound
+	}
+	if err := apply(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // withLockedUser runs apply in a transaction that first write-locks the one user row where
@@ -861,15 +930,39 @@ func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (i
 	return n, err
 }
 
-func (u *userStore) SetOIDCEmail(ctx context.Context, userID, email string) error {
-	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'oidc'`), email, time.Now().UTC(), userID)
+func (u *userStore) SetOIDCEmail(ctx context.Context, userID, email, binding string) error {
+	tx, issuer, args, err := u.signinTx(ctx, binding)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'oidc'`+issuer), append([]any{email, time.Now().UTC(), userID}, args...)...)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
+}
+
+// signinTx begins a sign-in's write to an existing account. With binding set (PostgreSQL) it
+// holds the local-admins lock, as BindSignIn does, and has checked the stored binding; the
+// returned clause and args keep the write to a row that still carries it.
+func (u *userStore) signinTx(ctx context.Context, binding string) (*sql.Tx, string, []any, error) {
+	if binding == "" {
+		tx, err := u.store.beginTx(ctx)
+		return tx, "", nil, err
+	}
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if err := checkBinding(ctx, tx, u.store.rebind, binding); err != nil {
+		_ = tx.Rollback()
+		return nil, "", nil, err
+	}
+	return tx, " AND sso_issuer = ?", []any{binding}, nil
 }
 
 func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
@@ -883,15 +976,15 @@ func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, emai
 	return nil
 }
 
-func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
-	tx, err := u.store.beginTx(ctx)
+func (u *userStore) SetSSORole(ctx context.Context, userID, role, binding string) error {
+	tx, issuer, args, err := u.signinTx(ctx, binding)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	// Row first, as in changeAccess: an app-password issuance holding the row commits before the
 	// purge and is purged with the rest.
-	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND status = 'active' AND sso_provider <> 'local'`+issuer), append([]any{role, time.Now().UTC(), userID}, args...)...)
 	if err != nil {
 		return err
 	}
@@ -1795,6 +1888,63 @@ func (s *settingsStore) GetAllSettings(ctx context.Context) (map[string]string, 
 		settings[k] = v
 	}
 	return settings, rows.Err()
+}
+
+func (s *settingsStore) GetSettings(ctx context.Context, keys ...string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		args[i] = k
+	}
+	q := "SELECT key, value FROM server_settings WHERE key IN (?" + strings.Repeat(", ?", len(keys)-1) + ")"
+	rows, err := s.store.db.QueryContext(ctx, s.store.rebind(q), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, rows.Err()
+}
+
+func (s *settingsStore) SetSettingIfAbsent(ctx context.Context, key, val string) (string, error) {
+	if strings.HasPrefix(key, "installer.") || strings.HasPrefix(key, "signin_") {
+		return "", errors.New("setting is not write-once")
+	}
+	// The no-op update makes RETURNING answer the stored row on a conflict.
+	q := s.store.rebind(`INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT (key) DO UPDATE SET value = server_settings.value RETURNING value`)
+	var stored string
+	err := s.store.db.QueryRowContext(ctx, q, key, val, time.Now().UTC()).Scan(&stored)
+	return stored, err
+}
+
+func (s *settingsStore) SetSettingAudited(ctx context.Context, key, val string, rec *AuditRecord) error {
+	if strings.HasPrefix(key, "installer.") || strings.HasPrefix(key, "signin_") {
+		return errors.New("setting is written by its own path")
+	}
+	tx, err := s.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO server_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`), key, val, now); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+		rec.UserID, rec.Action, rec.Resource, rec.Details, rec.IPAddress, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func errorsIs(err, target error) bool {

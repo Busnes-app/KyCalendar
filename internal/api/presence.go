@@ -138,7 +138,7 @@ func (s *Server) handlePresenceMe(w http.ResponseWriter, r *http.Request) {
 		s.presenceRefuse(w, http.StatusConflict, "status_off", "Status needs KyMessages and a KyIdentity sign-in")
 		return
 	}
-	if !s.allowAccountAttempt("presence-me:"+u.ID, 30, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "presence-me:"+u.ID, 30, time.Minute) {
 		s.presenceRefuse(w, http.StatusTooManyRequests, "rate_limited", "Too many changes; wait a minute")
 		return
 	}
@@ -212,7 +212,7 @@ func (s *Server) handlePresenceLookup(w http.ResponseWriter, r *http.Request) {
 		s.presenceRefuse(w, http.StatusConflict, "status_off", "Status needs KyMessages and a KyIdentity sign-in")
 		return
 	}
-	if !s.allowAccountAttempt("presence:"+u.ID, 60, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "presence:"+u.ID, 60, time.Minute) {
 		s.presenceRefuse(w, http.StatusTooManyRequests, "rate_limited", "Too many status requests; wait a minute")
 		return
 	}

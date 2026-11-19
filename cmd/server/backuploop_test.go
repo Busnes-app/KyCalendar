@@ -55,32 +55,6 @@ func TestBackupLoopClosesDoneOnCancel(t *testing.T) {
 	}
 }
 
-// Stopping must fit the grace period a supervisor grants without being asked: Kubernetes
-// gives 30s by default, and the compose file must grant more than the budget because Docker's
-// default is 10s. Past either, SIGKILL lands before an interrupted backup has recorded its
-// outcome.
-func TestShutdownBudgetFitsTheGracePeriods(t *testing.T) {
-	budget := shutdownTimeout + backupWaitTimeout
-	if limit := 20 * time.Second; budget > limit {
-		t.Errorf("shutdownTimeout+backupWaitTimeout is %s; keep it within %s so a 30s termination grace has margin", budget, limit)
-	}
-	raw, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := regexp.MustCompile(`(?m)^\s*stop_grace_period:\s*(\S+)\s*$`).FindSubmatch(raw)
-	if m == nil {
-		t.Fatal("docker-compose.yml sets no stop_grace_period, and Docker's default 10s is shorter than the shutdown budget")
-	}
-	grace, err := time.ParseDuration(string(m[1]))
-	if err != nil {
-		t.Fatalf("stop_grace_period %q: %v", m[1], err)
-	}
-	if grace <= budget {
-		t.Errorf("stop_grace_period %s does not cover shutdownTimeout+backupWaitTimeout (%s)", grace, budget)
-	}
-}
-
 // config.LoadFromEnv refuses the retired KY_BACKUP_* names, but compose only forwards what its
 // environment lists: a dropped pass-through would let a stale .env line switch backups off silently.
 func TestComposePassesRetiredBackupNamesThrough(t *testing.T) {

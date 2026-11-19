@@ -29,7 +29,7 @@ func payloadConfig(t *testing.T) (*config.Config, []byte) {
 // KyRecovery token) are AES-GCM under it, so a restore without it loses them for good.
 func TestCollectCarriesTheEncryptionKey(t *testing.T) {
 	cfg, key := payloadConfig(t)
-	payload, err := backup.Collect(context.Background(), cfg, "1.0.0")
+	payload, err := backup.Collect(context.Background(), cfg, nil, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestCollectCarriesTheRecoveryPublicKeyWhenPaired(t *testing.T) {
 	cfg, _ := payloadConfig(t)
 	ctx := context.Background()
 
-	unpaired, err := backup.Collect(ctx, cfg, "1.0.0")
+	unpaired, err := backup.Collect(ctx, cfg, nil, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestCollectCarriesTheRecoveryPublicKeyWhenPaired(t *testing.T) {
 	if err := os.WriteFile(pubPath, pub, 0600); err != nil {
 		t.Fatal(err)
 	}
-	paired, err := backup.Collect(ctx, cfg, "1.0.0")
+	paired, err := backup.Collect(ctx, cfg, nil, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func findFile(files []recoveryclient.File, path string) *recoveryclient.File {
 func TestCollectRefusesAShortKey(t *testing.T) {
 	cfg, _ := payloadConfig(t)
 	cfg.Security.EncryptionKey = cfg.Security.EncryptionKey[:16]
-	if _, err := backup.Collect(context.Background(), cfg, "1.0.0"); err == nil {
+	if _, err := backup.Collect(context.Background(), cfg, nil, "1.0.0"); err == nil {
 		t.Fatal("a 16-byte encryption key was accepted")
 	}
 }
@@ -124,7 +124,7 @@ func TestSnapshotSeesUncheckpointedCommit(t *testing.T) {
 	if err := st.Settings().SetSetting(ctx, "canary", "still-in-the-wal"); err != nil {
 		t.Fatal(err)
 	}
-	payload, err := backup.Collect(ctx, cfg, "1.0.0")
+	payload, err := backup.Collect(ctx, cfg, nil, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,11 +150,11 @@ func TestSnapshotSeesUncheckpointedCommit(t *testing.T) {
 }
 
 // A driver the collectors cannot snapshot must refuse, not seal a keys-and-config capsule
-// that a receipt would then call a backup.
-func TestCollectRefusesADriverItCannotSnapshot(t *testing.T) {
+// that a receipt would then call a backup. SQLite and PostgreSQL both snapshot.
+func TestCollectRefusesAnUnknownDriver(t *testing.T) {
 	cfg, _ := payloadConfig(t)
-	cfg.Database.Driver = "postgres"
-	if _, err := backup.Collect(context.Background(), cfg, "1.0.0"); !errors.Is(err, backup.ErrNoDatabaseSnapshot) {
+	cfg.Database.Driver = "mysql"
+	if _, err := backup.Collect(context.Background(), cfg, nil, "1.0.0"); !errors.Is(err, backup.ErrNoDatabaseSnapshot) {
 		t.Fatalf("got %v, want ErrNoDatabaseSnapshot", err)
 	}
 }
@@ -163,7 +163,7 @@ func TestCollectRefusesADriverItCannotSnapshot(t *testing.T) {
 func TestCollectRefusesADatabaseOutsideTheDefaultPath(t *testing.T) {
 	cfg, _ := payloadConfig(t)
 	cfg.Database.DSN = config.SQLiteDSN(filepath.Join(t.TempDir(), "kycalendar.db"))
-	_, err := backup.Collect(context.Background(), cfg, "1.0.0")
+	_, err := backup.Collect(context.Background(), cfg, nil, "1.0.0")
 	if !errors.Is(err, backup.ErrNoDatabaseSnapshot) || !strings.Contains(err.Error(), "KY_DB_DSN") {
 		t.Fatalf("got %v, want ErrNoDatabaseSnapshot naming KY_DB_DSN", err)
 	}
@@ -187,7 +187,7 @@ func TestCapsuleCarriesTheDatabaseTheServerOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	p, err := backup.Collect(context.Background(), cfg, "test")
+	p, err := backup.Collect(context.Background(), cfg, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestCollectRecordsCalendarCounts(t *testing.T) {
 	seedCalendars(t, cfg.Database.DSN, map[string]map[string]string{
 		"cal-a": {"a1.ics": fmt.Sprintf(validEvent, "a1"), "a2.ics": fmt.Sprintf(validEvent, "a2")},
 	})
-	p, err := backup.Collect(context.Background(), cfg, "test")
+	p, err := backup.Collect(context.Background(), cfg, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestCollectAcceptsAnAbsoluteDSNForARelativeDataDir(t *testing.T) {
 	cfg, _ := payloadConfig(t)
 	t.Chdir(filepath.Dir(cfg.Database.DataDir))
 	cfg.Database.DataDir = "./" + filepath.Base(cfg.Database.DataDir)
-	if _, err := backup.Collect(context.Background(), cfg, "1.0.0"); err != nil {
+	if _, err := backup.Collect(context.Background(), cfg, nil, "1.0.0"); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 }

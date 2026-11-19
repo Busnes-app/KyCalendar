@@ -13,7 +13,7 @@ The links below open repository documents and need network access.
 - [Standalone installation](https://github.com/Busnes-app/KyCalendar/blob/main/INSTALL.md)
 - [product-owned setup contract](https://github.com/Busnes-app/KyCalendar/blob/main/docs/INSTALLER_SETUP.md)
 - [Key strength and TLS](https://github.com/Busnes-app/KyCalendar/blob/main/docs/STRONG-CRYPTO.md)
-- [Running](https://github.com/Busnes-app/KyCalendar/blob/main/docs/RUNNING.md)
+- [Running](https://github.com/Busnes-app/KyCalendar/blob/main/docs/RUNNING.md), including [PostgreSQL and replicas](https://github.com/Busnes-app/KyCalendar/blob/main/docs/RUNNING.md#postgresql-and-replicas): replicas are not database high availability, and no capacity claim is made
 - [Accounts and groups](https://github.com/Busnes-app/KyCalendar/blob/main/docs/ACCOUNTS-AND-GROUPS.md)
 - [Clients](https://github.com/Busnes-app/KyCalendar/blob/main/docs/CLIENTS.md)
 - [Recovery](https://github.com/Busnes-app/KyCalendar/blob/main/docs/RECOVERY.md)

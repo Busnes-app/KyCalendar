@@ -239,7 +239,9 @@ func TestActorRowSerialisesWithSSORevocation(t *testing.T) {
 	}{
 		"SetSSORole": {
 			raw: `UPDATE users SET role = 'user' WHERE id = 'usr_sso'`,
-			run: func(ctx context.Context, st store.Store) error { return st.Users().SetSSORole(ctx, "usr_sso", "user") },
+			run: func(ctx context.Context, st store.Store) error {
+				return st.Users().SetSSORole(ctx, "usr_sso", "user", "")
+			},
 		},
 		"RevokeSSOUser": {
 			raw: `UPDATE users SET status = 'inactive' WHERE id = 'usr_sso'`,

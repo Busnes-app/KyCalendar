@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -136,25 +137,30 @@ const davOfficeBudget = "dav-fail"
 // key is full. The returned release hands the reservation (and the office budget) back.
 func (s *Server) reserveDAVFailure(w http.ResponseWriter, r *http.Request, prefix, name string, now time.Time) (release func(), ok bool) {
 	key := prefix + s.limitIP(r)
-	office := s.officeExempt(r, davOfficeBudget)
+	refundOffice, office := s.officeExempt(r, davOfficeBudget)
 	if office {
 		key += "|" + crypto.SHA256Hex([]byte(strings.ToLower(name)))[:32]
 	}
-	release = func() {
-		s.davFails.release(key)
-		if office {
-			s.refundAccountAttempt(officeKey(davOfficeBudget))
-		}
-	}
-	if ok, wait := s.davFails.reserve(key, davFailsPerIP, now); !ok {
-		if office {
-			s.refundAccountAttempt(officeKey(davOfficeBudget))
+	releaseKey, ok, wait, err := s.davReserve(r.Context(), key, davFailsPerIP, now)
+	if err != nil || !ok {
+		refundOffice()
+		if err != nil {
+			davUnavailable(w, err)
+			return nil, false
 		}
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 		http.Error(w, "Too many failed attempts", http.StatusTooManyRequests)
 		return nil, false
 	}
-	return release, true
+	return func() { releaseKey(); refundOffice() }, true
+}
+
+// davUnavailable answers a credential check the database could not make: 503, never 401, so
+// a client keeps its credentials and nothing counts as a failure.
+func davUnavailable(w http.ResponseWriter, err error) {
+	log.Printf("[AUTH] app-password check unavailable: %v", err)
+	w.Header().Set("Retry-After", "5")
+	http.Error(w, "Temporarily unavailable", http.StatusServiceUnavailable)
 }
 
 // makeRoom drops expired entries, then the single oldest one; live lockouts are never mass-reset.
@@ -204,14 +210,19 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 		var user *store.User
 		var secretOK bool
 		if parsed {
-			user, secretOK = s.resolveAppPassword(r.Context(), username, id, secret)
+			var err error
+			if user, secretOK, err = s.resolveAppPassword(r.Context(), username, id, secret); err != nil {
+				release()
+				davUnavailable(w, err)
+				return
+			}
 		}
 		// Only a holder of one of the user's token IDs can count against them (R28).
 		resource := "user:unknown"
 		if user != nil {
 			resource = user.ID
-			if s.davLimited(w, "user:"+user.ID, davFailsPerUser, now) {
-				if secretOK { // the right secret is no guess; a wrong one stays counted
+			if limited, err := s.davLimited(w, r, "user:"+user.ID, davFailsPerUser, now); limited {
+				if secretOK || err != nil { // the right secret is no guess; a wrong one stays counted
 					release()
 				}
 				return
@@ -219,7 +230,7 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 		}
 		if user == nil || !secretOK || user.Status != "active" {
 			if user != nil && !secretOK {
-				s.davFails.fail("user:"+user.ID, now)
+				s.davFail(r.Context(), "user:"+user.ID, davFailsPerUser, now)
 			}
 			// Not shaped like an app password (an account password, a probe): no row to flood with.
 			if parsed && (user != nil || s.unknownAudit.admit(now)) {
@@ -252,44 +263,63 @@ func validDAVUsername(name string) bool {
 	return true
 }
 
-func (s *Server) davLimited(w http.ResponseWriter, key string, limit int, now time.Time) bool {
-	blocked, wait := s.davFails.blocked(key, limit, now)
-	if blocked {
+// davLimited answers 429 when key is full, or 503 when the window cannot be read (err set).
+func (s *Server) davLimited(w http.ResponseWriter, r *http.Request, key string, limit int, now time.Time) (bool, error) {
+	blocked, wait, err := s.davBlocked(r.Context(), key, limit, now)
+	switch {
+	case err != nil:
+		davUnavailable(w, err)
+		return true, err
+	case blocked:
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 		http.Error(w, "Too many failed attempts", http.StatusTooManyRequests)
 	}
-	return blocked
+	return blocked, nil
 }
 
 // resolveAppPassword returns the owner of token ID id when it exists and belongs to the named
 // user (case-insensitively), and whether the secret matches a dav token. An MCP token's right
-// secret is refused like a wrong one. It touches last-used on a match.
-func (s *Server) resolveAppPassword(ctx context.Context, username, id, secret string) (*store.User, bool) {
-	p, user, ok := s.appPasswordOwner(ctx, id, secret)
+// secret is refused like a wrong one. It touches last-used on a match. err is a store failure,
+// never a missing token or user.
+func (s *Server) resolveAppPassword(ctx context.Context, username, id, secret string) (*store.User, bool, error) {
+	p, user, ok, err := s.appPasswordOwner(ctx, id, secret)
+	if err != nil {
+		return nil, false, err
+	}
 	if user == nil || !strings.EqualFold(user.Username, username) {
-		return nil, false
+		return nil, false, nil
 	}
 	if !ok || p.Scope != store.ScopeDAV {
-		return user, false
+		return user, false, nil
 	}
 	_ = s.store.AppPasswords().TouchLastUsed(ctx, p.ID, time.Now())
-	return user, true
+	return user, true, nil
 }
 
 // appPasswordOwner loads token ID id and its owner, and reports whether secret matches and the
-// owner may sign in. It writes nothing.
-func (s *Server) appPasswordOwner(ctx context.Context, id, secret string) (*store.AppPassword, *store.User, bool) {
+// owner may sign in. It writes nothing. A missing token or owner is no error; any other store
+// failure is, and the caller answers 503 instead of a failed sign-in.
+func (s *Server) appPasswordOwner(ctx context.Context, id, secret string) (*store.AppPassword, *store.User, bool, error) {
 	p, err := s.store.AppPasswords().Get(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil, false, nil
+	}
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, false, err
 	}
 	user, err := s.store.Users().GetUserByID(ctx, p.UserID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil, false, nil
+	}
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, false, err
 	}
-	allowed, ownershipErr := s.store.InstallerUserAllowed(ctx, user)
-	if ownershipErr != nil || !allowed {
-		return p, user, false
+	allowed, err := s.store.InstallerUserAllowed(ctx, user)
+	if err != nil {
+		return nil, nil, false, err
 	}
-	return p, user, apppass.Matches(p.Hash, secret)
+	if !allowed {
+		return p, user, false, nil
+	}
+	return p, user, apppass.Matches(p.Hash, secret), nil
 }

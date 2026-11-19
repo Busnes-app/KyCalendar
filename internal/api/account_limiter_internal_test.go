@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -15,12 +16,12 @@ func TestAccountLimiterDropsOnlyExpiredWindows(t *testing.T) {
 		s.accounts[fmt.Sprintf("login:usr_admin@203.0.113.%d/%d", i%250, i)] = attemptWindow{count: 10, reset: gone}
 	}
 	for range 11 {
-		s.allowAccountAttempt("login:usr_admin@198.51.100.7", 10, 15*time.Minute)
+		s.allowAccountAttempt(context.Background(), "login:usr_admin@198.51.100.7", 10, 15*time.Minute)
 	}
-	if s.allowAccountAttempt("login:usr_new@192.0.2.1", 10, 15*time.Minute); len(s.accounts) != 2 {
+	if s.allowAccountAttempt(context.Background(), "login:usr_new@192.0.2.1", 10, 15*time.Minute); len(s.accounts) != 2 {
 		t.Fatalf("%d windows kept, want the 2 live ones", len(s.accounts))
 	}
-	if s.allowAccountAttempt("login:usr_admin@198.51.100.7", 10, 15*time.Minute) {
+	if s.allowAccountAttempt(context.Background(), "login:usr_admin@198.51.100.7", 10, 15*time.Minute) {
 		t.Fatal("pruning reset a live lockout")
 	}
 }

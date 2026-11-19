@@ -13,17 +13,15 @@ ceremony) can reconstruct. Nothing on this server, and nothing on KyRecovery, ca
 The mechanics are `github.com/Busnes-app/ky-primitives/recoveryclient`; this repository
 supplies what it seals and how it checks a drill.
 
-**Capsules are SQLite-only today.** The snapshot is `VACUUM INTO` against the local database
-file; on `KY_DB_DRIVER=postgres` there is no snapshot and every backup refuses with "no
-consistent database snapshot for this driver". A Postgres deployment must back its database up
-itself, with `pg_dump` on its own schedule and its own retention, and must protect that dump:
-it is the plaintext of everything a capsule would have sealed. Nothing travels in a capsule
-there, because no capsule is made. The recovery key pin, the pairing and the schedule live in
-the database and so ride in the `pg_dump`; `data/encryption.key` and `data/recovery.pub` do
-not, and you must copy them separately. Without `encryption.key` no sign-in client secret and no
-KyRecovery token in that dump can be decrypted.
+**Both drivers make capsules.** On SQLite the snapshot is `VACUUM INTO` against the local
+database file. On `KY_DB_DRIVER=postgres` it is a verified SQLite copy of the database, made
+from one read-only PostgreSQL transaction and checked table by table, sealed as the same
+`data/kycalendar.db` member, in the same parts, with the same drill. Restoring a PostgreSQL
+capsule is the SQLite restore followed by `migrate-postgres` into an empty database
+([RESTORE.md](RESTORE.md#postgresql)). Replicas share one backup schedule and one `backup-run`
+lock ([RUNNING.md](RUNNING.md#postgresql-and-replicas)).
 
-Backups also require the default database path: a capsule restores the database as
+On SQLite, backups also require the default database path: a capsule restores the database as
 `<KY_DATA_DIR>/kycalendar.db`, so a backup refuses while `KY_DB_DSN` opens any other file.
 Unset `KY_DB_DSN` or point it at `<KY_DATA_DIR>/kycalendar.db`.
 

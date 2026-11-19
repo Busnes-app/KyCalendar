@@ -111,11 +111,11 @@ func TestSetSSORoleTouchesOnlyActiveSSORoles(t *testing.T) {
 	off := &store.User{ID: "usr_off", Username: "off", Role: "user", Status: "inactive", SSOProvider: "kysignon", SSOSubject: "s2"}
 	lo := &store.User{ID: "usr_lo", Username: "lo", Role: "user", Status: "active", SSOProvider: "local"}
 	seedUsers(t, st, ky, off, lo)
-	if err := st.Users().SetSSORole(ctx, ky.ID, "admin"); err != nil {
+	if err := st.Users().SetSSORole(ctx, ky.ID, "admin", ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{off.ID, lo.ID, "usr_missing"} {
-		if err := st.Users().SetSSORole(ctx, id, "admin"); !errors.Is(err, store.ErrNotFound) {
+		if err := st.Users().SetSSORole(ctx, id, "admin", ""); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("%s: %v, want ErrNotFound", id, err)
 		}
 	}
@@ -201,10 +201,10 @@ func TestSSOAccessWritesRevokeInTheSameTransaction(t *testing.T) {
 		return len(list)
 	}
 
-	if err := st.Users().SetSSORole(ctx, eve.ID, "admin"); err != nil || grants(eve.ID) != 0 {
+	if err := st.Users().SetSSORole(ctx, eve.ID, "admin", ""); err != nil || grants(eve.ID) != 0 {
 		t.Fatalf("SetSSORole: %v, %d grants left", err, grants(eve.ID))
 	}
-	if err := st.Users().SetSSORole(ctx, loc.ID, "admin"); !errors.Is(err, store.ErrNotFound) || grants(loc.ID) != 2 {
+	if err := st.Users().SetSSORole(ctx, loc.ID, "admin", ""); !errors.Is(err, store.ErrNotFound) || grants(loc.ID) != 2 {
 		t.Fatalf("SetSSORole on a local account: %v, %d grants", err, grants(loc.ID))
 	}
 

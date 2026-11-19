@@ -166,7 +166,7 @@ func (s *Server) resourceRange(w http.ResponseWriter, r *http.Request, required 
 }
 
 func (s *Server) resourceReadAllowed(w http.ResponseWriter, r *http.Request) bool {
-	if !s.allowAccountAttempt("resources:"+sessionUser(r.Context()).ID, 120, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "resources:"+sessionUser(r.Context()).ID, 120, time.Minute) {
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many room requests; wait a minute", "code": "rate_limited"})
 		return false
 	}

@@ -94,13 +94,20 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 		var user *store.User
 		var secretOK bool
 		if parsed {
-			p, user, secretOK = s.appPasswordOwner(r.Context(), id, secret)
-		}
-		if user != nil && s.davLimited(w, "mcp-user:"+user.ID, davFailsPerUser, now) {
-			if secretOK { // the right secret is no guess; a wrong one stays counted
+			var err error
+			if p, user, secretOK, err = s.appPasswordOwner(r.Context(), id, secret); err != nil {
 				release()
+				davUnavailable(w, err)
+				return
 			}
-			return
+		}
+		if user != nil {
+			if limited, err := s.davLimited(w, r, "mcp-user:"+user.ID, davFailsPerUser, now); limited {
+				if secretOK || err != nil { // the right secret is no guess; a wrong one stays counted
+					release()
+				}
+				return
+			}
 		}
 		// A dav token and an idle one fail like a wrong secret: the answer never says which.
 		allowed := secretOK && store.IsMCPScope(p.Scope) && user.Status == "active"
@@ -112,7 +119,7 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 		}
 		if !allowed {
 			if user != nil && !secretOK {
-				s.davFails.fail("mcp-user:"+user.ID, now)
+				s.davFail(r.Context(), "mcp-user:"+user.ID, davFailsPerUser, now)
 			}
 			if parsed && (p != nil || s.unknownAudit.admit(now)) {
 				rec := &store.AuditRecord{Action: "mcp.auth_failed", Resource: "user:unknown", IPAddress: s.requestIP(r)}

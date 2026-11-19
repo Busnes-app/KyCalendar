@@ -53,7 +53,7 @@ func TestSCIMProfilePatchNeverRestoresAccess(t *testing.T) {
 		wantRole, wantSt string
 	}{
 		{"webhook deactivation", func(st store.Store) { _ = st.Users().RevokeSSOUser(context.Background(), "usr_ada", true) }, "admin", "inactive"},
-		{"login demotion", func(st store.Store) { _ = st.Users().SetSSORole(context.Background(), "usr_ada", "user") }, "user", "active"},
+		{"login demotion", func(st store.Store) { _ = st.Users().SetSSORole(context.Background(), "usr_ada", "user", "") }, "user", "active"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, st, token := racingSCIM(t, tc.race)

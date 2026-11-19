@@ -34,6 +34,9 @@ type User struct {
 // Credentials is the sign-in state a session was earned against: the password hash.
 type Credentials struct {
 	PasswordHash string
+	// Binding, when set, must still be the stored signin_bound and the account's sso_issuer:
+	// checked under the local-admins lock the sign-in save holds (ErrBindingChanged).
+	Binding string
 }
 
 // Credentials returns the sign-in state u was read with.

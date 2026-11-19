@@ -67,6 +67,7 @@ func TestSSORoleChangeWaitsForAnIssuanceInFlight(t *testing.T) {
 		t.Skip("postgres only: SQLite's single connection serialises the two")
 	}
 	ctx := context.Background()
+	boundTo(t, s, kyBinding)
 	createUsers(t, s, &store.User{ID: "usr_eve", Username: "eve", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-e", SSOIssuer: kyBinding})
 	raw, held := heldIssuance(t, s.config.Database.DSN, "usr_eve")
 	done := make(chan error, 1)

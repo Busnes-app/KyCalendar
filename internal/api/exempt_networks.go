@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Busnes-app/ky-primitives/netallow"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -32,7 +33,19 @@ func (s *Server) storedExemptNetworks(ctx context.Context) (string, error) {
 // loadExemptNetworks builds the allowlist at startup. A stored value that cannot be read or no
 // longer parses is dropped with a log line, leaving the environment's: fewer exemptions, never more.
 func (s *Server) loadExemptNetworks() {
-	stored, err := s.storedExemptNetworks(context.Background())
+	s.exemptMu.Lock()
+	defer s.exemptMu.Unlock()
+	s.reloadExempt(context.Background())
+}
+
+// reloadExempt reads the admin's half again; caller holds exemptMu. The list is replaced only
+// when the stored value changed, so the exempted count keeps counting.
+func (s *Server) reloadExempt(ctx context.Context) {
+	s.exemptLoaded = time.Now()
+	stored, err := s.storedExemptNetworks(ctx)
+	if err == nil && stored == s.exemptStored && s.exempt.Load() != nil {
+		return
+	}
 	var list *netallow.List
 	if err == nil {
 		list, err = s.combineExemptNetworks(stored)
@@ -40,8 +53,30 @@ func (s *Server) loadExemptNetworks() {
 	if err != nil {
 		log.Printf("[SECURITY] stored rate-limit exempt networks ignored: %v", err)
 		list, _ = s.combineExemptNetworks("")
+		stored = "\x00unreadable" // read again next time
 	}
+	s.exemptStored = stored
 	s.exempt.Store(list)
+}
+
+// exemptMaxAge is how stale a PostgreSQL replica's copy of the office list may be, so a
+// network removed on one replica stops being exempt on every other within it.
+const exemptMaxAge = 5 * time.Second
+
+// exemptList is the office allowlist a request is judged by. SQLite: the one this process
+// saved. PostgreSQL: the database's, read again once the copy is exemptMaxAge old.
+func (s *Server) exemptList(ctx context.Context) *netallow.List {
+	if s.shared == nil {
+		return s.exempt.Load()
+	}
+	s.exemptMu.Lock()
+	defer s.exemptMu.Unlock()
+	if time.Since(s.exemptLoaded) >= exemptMaxAge {
+		c, cancel := context.WithTimeout(ctx, windowTimeout)
+		s.reloadExempt(c)
+		cancel()
+	}
+	return s.exempt.Load()
 }
 
 func (s *Server) exemptNetworksStatus(stored string) map[string]any {
@@ -91,7 +126,10 @@ func (s *Server) handleSetExemptNetworks(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusInternalServerError, "Failed to save the networks")
 		return
 	}
+	s.exemptMu.Lock()
 	s.exempt.Store(combined)
+	s.exemptStored, s.exemptLoaded = stored, time.Now()
+	s.exemptMu.Unlock()
 	if err := s.store.Audit().LogAudit(ctx, &store.AuditRecord{
 		UserID:    sessionUser(r.Context()).ID,
 		Action:    "admin.rate_limit_networks",

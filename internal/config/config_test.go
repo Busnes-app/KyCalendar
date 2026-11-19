@@ -33,11 +33,20 @@ func TestConfigLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestConfigLoadFromEnvOverrides(t *testing.T) {
+// postgresEnv is the least a PostgreSQL replica must be given.
+func postgresEnv(t *testing.T) {
+	t.Helper()
 	t.Setenv("KY_DATA_DIR", t.TempDir())
-	t.Setenv("KY_PORT", "9090")
 	t.Setenv("KY_DB_DRIVER", "postgres")
 	t.Setenv("KY_DB_DSN", "postgres://user:pass@localhost:5432/testdb")
+	t.Setenv("KY_SESSION_SECRET", strings.Repeat("s", 32))
+	t.Setenv("KY_ENCRYPTION_KEY", strings.Repeat("ab", 32))
+	t.Setenv("KYCALENDAR_SCHEDULING", "false")
+}
+
+func TestConfigLoadFromEnvOverrides(t *testing.T) {
+	postgresEnv(t)
+	t.Setenv("KY_PORT", "9090")
 	t.Setenv("KY_APP_NAME", "CustomBusnesApp")
 	t.Setenv("KY_CAPTCHA_PROVIDER", "none")
 
@@ -174,18 +183,76 @@ func TestCalendarQuotaDefaultsAndValidation(t *testing.T) {
 	}
 }
 
-// Capsules are SQLite-only, so only SQLite needs the instance cap that keeps one within its limit.
+// Both drivers seal their database into a capsule, so both default to the instance cap that
+// keeps one tenant from outgrowing it (owner choice O1); an explicit value, 0 included, wins.
 func TestCalendarInstanceCap(t *testing.T) {
-	t.Setenv("KY_DATA_DIR", t.TempDir())
-	t.Setenv("KY_DB_DRIVER", "postgres")
-	cfg, err := config.LoadFromEnv()
-	if err != nil || cfg.Calendar.MaxBytesTotal != 0 || cfg.Calendar.MaxBytesPerUser != 16<<20 {
-		t.Fatalf("postgres default: %+v %v", cfg, err)
+	for name, setup := range map[string]func(*testing.T){
+		"sqlite":   func(t *testing.T) { t.Setenv("KY_DATA_DIR", t.TempDir()) },
+		"postgres": postgresEnv,
+	} {
+		t.Run(name, func(t *testing.T) {
+			setup(t)
+			cfg, err := config.LoadFromEnv()
+			if err != nil || cfg.Calendar.MaxBytesTotal != 40<<20 || cfg.Calendar.MaxBytesPerUser != 4<<20 {
+				t.Fatalf("default: %+v %v", cfg, err)
+			}
+			t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", "0")
+			if cfg, err := config.LoadFromEnv(); err != nil || cfg.Calendar.MaxBytesTotal != 0 || cfg.Calendar.MaxBytesPerUser != 16<<20 {
+				t.Fatalf("explicit 0: %+v %v", cfg, err)
+			}
+			t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", strconv.Itoa(300<<20))
+			if cfg, err := config.LoadFromEnv(); err != nil || cfg.Calendar.MaxBytesTotal != 300<<20 {
+				t.Fatalf("explicit cap: %+v %v", cfg, err)
+			}
+			t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", "-1")
+			if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_CALENDAR_MAX_BYTES_TOTAL") {
+				t.Fatalf("want KY_CALENDAR_MAX_BYTES_TOTAL error, got %v", err)
+			}
+		})
 	}
-	t.Setenv("KY_CALENDAR_MAX_BYTES_TOTAL", "-1")
-	if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KY_CALENDAR_MAX_BYTES_TOTAL") {
-		t.Fatalf("want KY_CALENDAR_MAX_BYTES_TOTAL error, got %v", err)
+}
+
+// Each PostgreSQL guard refuses with the setting's name, before any key file is created.
+func TestPostgresStartupGuards(t *testing.T) {
+	for name, tc := range map[string]struct{ key, value, want string }{
+		"missing DSN":             {"KY_DB_DSN", "", "KY_DB_DSN"},
+		"built-in password":       {"KY_DB_DSN", "postgres://postgres:postgres@db:5432/cal", "KY_DB_DSN"},
+		"no session secret (dev)": {"KY_SESSION_SECRET", "", "KY_SESSION_SECRET"},
+		"no encryption key":       {"KY_ENCRYPTION_KEY", "", "KY_ENCRYPTION_KEY"},
+		"automatic scheduling":    {"KYCALENDAR_SCHEDULING", "auto", "KYCALENDAR_SCHEDULING"},
+		"scheduling unset":        {"KYCALENDAR_SCHEDULING", "", "KYCALENDAR_SCHEDULING"},
+		"three connections":       {"KY_DB_MAX_OPEN_CONNS", "3", "KY_DB_MAX_OPEN_CONNS"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			postgresEnv(t)
+			t.Setenv("KY_ENV", "development")
+			t.Setenv(tc.key, tc.value)
+			_, err := config.LoadFromEnv()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want a %s refusal, got %v", tc.want, err)
+			}
+			if _, err := os.Stat(filepath.Join(os.Getenv("KY_DATA_DIR"), "encryption.key")); !os.IsNotExist(err) {
+				t.Fatalf("a refused start created a key file: %v", err)
+			}
+		})
 	}
+	t.Run("existing key file", func(t *testing.T) {
+		postgresEnv(t)
+		t.Setenv("KY_ENCRYPTION_KEY", "")
+		if err := os.WriteFile(filepath.Join(os.Getenv("KY_DATA_DIR"), "encryption.key"), []byte(strings.Repeat("cd", 32)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := config.LoadFromEnv(); err != nil {
+			t.Fatalf("an existing key file is a shared key: %v", err)
+		}
+	})
+	t.Run("four connections", func(t *testing.T) {
+		postgresEnv(t)
+		t.Setenv("KY_DB_MAX_OPEN_CONNS", "4")
+		if _, err := config.LoadFromEnv(); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 // An HTTPS deployment gets Secure cookies (and HSTS) without also having to set KY_ENV.

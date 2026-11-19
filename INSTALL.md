@@ -81,6 +81,10 @@ pull` followed by `docker compose up -d` updates a published-image installation;
 must be deliberately changed after verification. A source install must keep its build
 overlay and rebuild. `docker compose down -v` deletes managed volumes: it is not an upgrade.
 
+This installation is single-host SQLite. To run several replicas on PostgreSQL, or to move an
+existing SQLite install there, follow [PostgreSQL and replicas](docs/RUNNING.md#postgresql-and-replicas);
+replicas are not database high availability.
+
 ## What verification means
 
 The startup checks above prove only the checks they perform. Use the README’s development

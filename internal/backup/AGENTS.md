@@ -18,12 +18,11 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
 - `NewSealer` seals the KyRecovery token under the deployment key with label
   `ky_server_base:setting:kyrecovery_token`, domain-separated so a row copied from another
   setting will not open.
-- `Collect` snapshots SQLite with the lib's `SQLiteSnapshot` (`VACUUM INTO`; the store runs in
-  WAL mode, so a plain file read misses uncheckpointed commits) and returns
-  `ErrNoDatabaseSnapshot` for any other driver, so a capsule without a consistent database is
-  never sealed. It also carries the encryption key (`data/encryption.key`, required — restores
-  a database whose sealed secrets are unreadable otherwise) and the pinned recovery public key
-  (`data/recovery.pub`, only when paired).
+- `Collect(ctx, cfg, st, version)` snapshots the database into locked scratch (`NewScratch`, below): SQLite with the lib's `SQLiteSnapshot` (`VACUUM INTO`; the store runs in WAL mode, so a plain file read misses uncheckpointed commits), PostgreSQL with `st.SnapshotToSQLite` (a verified SQLite copy). Any other driver is `ErrNoDatabaseSnapshot`, so a capsule without a consistent database is never sealed. It also carries the encryption key (`data/encryption.key`, required — restores a database whose sealed secrets are unreadable otherwise) and the pinned recovery public key (`data/recovery.pub`, only when paired).
+- Snapshot scratch: `NewScratch` makes a 0700 `snapshot-*` directory under the data directory and holds a flock on it until release removes it. `RemoveStaleSnapshots` (server start) removes only unlocked directories owned by this UID, never a symlink, rechecking the inode under the lock, so a running CLI deposit keeps its own. The lib's drill sweep stays.
+- `Settings(ctx, st)` is one operation's adapter: the first read of any pairing or pin row (`coherentKeys`: URL, sealed token, key ID, threshold, total, the sealed record) reads them all in one `GetSettings` statement, so a pairing changed on another server never pairs one URL with another token; a write drops the cached rows. The pin rows are written with `SetSettingIfAbsent`: the database keeps the first key and split, even for a writer that lost its lock; another key is `PinnedError`, another split `ErrTopologyPinned` (both `fs.ErrExist`, 409). `Paired` reports a read failure as an error, never "unpaired" (status answers 503).
+- Recovery pin (`recoverykey.go`): `PinRecoveryKey` and `PinLocked` (pin plus pairing persistence) run under the `recovery-pin` lock (`WithPinLock`, waiting up to 10 s, `ErrPinBusy`), refuse the pinned key with another split before the lib writes, read the pin back, remove a `recovery.pub` they created for a key that did not stick (a pin that stuck keeps its file, so a failed record write heals at the next sync), and on PostgreSQL write `kyrecovery_public_key`: the key and k-of-n sealed with AES-GCM under `DeriveKey(EncryptionKey, "kycalendar:setting:recovery_public_key")` with the key ID as associated data. `SyncRecoveryKey` (PostgreSQL; startup, every run, export and status) writes a missing `recovery.pub` from that record, records a pin made before records existed from a matching file, and refuses (`ErrRecoveryKeyTampered`, `recoveryclient.ErrKeyMismatch`, `ErrRecoveryKeyUnavailable`) a record that does not open or match the pin, or a file naming another key. SQLite keeps `recovery.pub` as before. Replacing the key is manual (`docs/RUNNING.md`).
+- `WithRunLock` is the `backup-run` lock every seal-and-deliver run holds (scheduled, Back up now, CLI `deposit` and `export-capsule`); `Run` assumes it is held and synchronizes the recovery key first.
 - `ServiceName` (`kycalendar`) is what is claimed, sealed and used for local copies; `KY_APP_NAME` is display only. `DatabaseMember` (`data/kycalendar.db`) must equal the file the default DSN opens, so a restored tree starts on restored data; `Collect` refuses (`ErrNoDatabaseSnapshot`) a DSN whose file is not `<DataDir>/kycalendar.db`.
 - A snapshot larger than one capsule member (`MaxCapsuleFileBytes`, 64 MiB) travels as ordered members `data/kycalendar.db.part-0001`, `-0002`, ... (`databaseFiles`, `parts.go`), named in order in the recipe's `database_parts`; `required_files` lists the parts and `data/kycalendar.db`. A snapshot that fits stays the single member `data/kycalendar.db`, as in every older capsule. `Checks` joins the parts in the scratch directory before any other check (the parts must be the capsule's, in order, with no whole database beside them), so the drill checks the database a restore gets; `restore` and `restore-reset` join them (`JoinRestoredDatabase`: from 0001 without a gap, through a temporary file renamed into place) and remove them last part first before the reset; run again after an interruption, it keeps a joined database only if it begins with exactly the remaining parts' bytes, and refuses anything else. Past 80% of the capsule total (`MaxCapsuleTotalBytes`, 256 MiB) `Collect` logs a warning; past the total, sealing fails as before. The library limits are never raised (DECISIONS: large databases in backups).
 - `Checks(dir, opened)` reads the opened capsule's manifest, normalizes JSON lists and
@@ -45,10 +44,12 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
   prefix, so a rename in the lib cannot leak. An admin sees the paired `kyrecovery_url`,
   never the credential.
 - `Run` (`run.go`) is the only caller of `recoveryclient.Run` in the server, scheduler and
-  CLI. Cancelling its context aborts the snapshot and the upload; settings writes use
+  CLI. Cancelling its context (shutdown, or a lost `backup-run` lock) aborts the snapshot and
+  the upload; the lib's seal and local-copy write are not cancellable mid-call; settings writes use
   `context.WithoutCancel`, so a receipt already returned is recorded. An interrupted run
   restores the previous `backup_last_attempt` row (or deletes it when there was none) and
-  returns `ErrInterrupted`. A run that fails for another reason keeps its stamp.
+  returns `ErrInterrupted` ("interrupted by shutdown or a lost backup lock"). A run that fails
+  for another reason keeps its stamp.
   `backup_last_attempt` is the lib's unexported key; `run_test.go` fails if it changes.
 - Pairing, the write-once key pin, the lib's `Run` (one seal, every destination), the schedule, local
   copies and their pruning, drill mechanics, restore and the decrypt guard are the lib's;

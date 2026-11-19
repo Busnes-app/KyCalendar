@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -25,6 +27,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/worker"
 )
 
 func main() {
@@ -65,6 +68,24 @@ func main() {
 		case "restore-reset":
 			runRestoreReset(os.Args[2:])
 			return
+		case "migrate-postgres":
+			if err := migratePostgres(context.Background(), os.Args[2:], os.Stdout, os.Stderr); err != nil {
+				if errors.Is(err, flag.ErrHelp) {
+					return
+				}
+				fmt.Fprintln(os.Stderr, "migrate-postgres:", err)
+				os.Exit(1)
+			}
+			return
+		case "accept-replica-config":
+			if err := runAcceptReplicaConfig(os.Args[2:], os.Stdout); err != nil {
+				if errors.Is(err, flag.ErrHelp) {
+					return
+				}
+				fmt.Fprintln(os.Stderr, "accept-replica-config:", err)
+				os.Exit(1)
+			}
+			return
 		case "version":
 			fmt.Printf("kycalendar %s (Busnes.app calendar)\n", appversion.String())
 			return
@@ -74,22 +95,81 @@ func main() {
 	runServer()
 }
 
+// readinessDrainDelay is how long a stopping PostgreSQL replica keeps serving with /readyz at
+// 503: five one-second proxy probes, so a proxy routes elsewhere before the listener closes.
+// SQLite is one server with nowhere else to route, so it does not wait.
+const readinessDrainDelay = 5 * time.Second
+
 // shutdownTimeout drains in-flight HTTP requests. Backup work is cancelled before the drain
 // starts, so an interrupted deposit request can still answer inside it.
 const shutdownTimeout = 5 * time.Second
 
-// backupWaitTimeout bounds the wait for cancelled backup work to unwind. The snapshot and the
-// upload stop at once; what may still be running is the sealing and local copy of one capsule
-// already collected, and the database writes that record the outcome. The two timeouts
-// together must stay inside Kubernetes' default 30s termination grace and docker-compose.yml's
-// stop_grace_period; TestShutdownBudgetFitsTheGracePeriods holds them in step.
+// backupWaitTimeout bounds the wait for cancelled background work to unwind: the elected
+// jobs, an interrupted scheduled backup's sealing and outcome, and detached handlers. With
+// the drain and shutdown it must stay inside Kubernetes' default 30s termination grace and
+// docker-compose.yml's stop_grace_period; TestShutdownBudgetFitsTheGracePeriods holds them.
 const backupWaitTimeout = 10 * time.Second
+
+// drainDelay is readinessDrainDelay on PostgreSQL and nothing on SQLite.
+func drainDelay(driver string) time.Duration {
+	if driver == "postgres" {
+		return readinessDrainDelay
+	}
+	return 0
+}
 
 func runServer() {
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+	if cfg.Database.Driver != "postgres" {
+		// One server per SQLite file: a second server or migrate-postgres is refused. CLI
+		// backups and user commands share the file without this lock.
+		path, _, _ := strings.Cut(cfg.Database.DSN, "?")
+		won, err := store.WithSQLiteInstance(context.Background(), path, func(context.Context) error {
+			runConfiguredServer(cfg)
+			return nil
+		})
+		if err != nil {
+			log.Fatalf("SQLite instance lock: %v", err)
+		}
+		if !won {
+			log.Fatal("Another KyCalendar server or migrate-postgres is using this SQLite database; stop it first. Run replicas on PostgreSQL.")
+		}
+		return
+	}
+	runConfiguredServer(cfg)
+}
+
+// prepareStart is everything that must pass before the server listens: the first admin and,
+// on PostgreSQL, the replica configuration check, both under the bootstrap lock migrations
+// hold too; removal of plaintext snapshots a killed process left; the recovery key.
+func prepareStart(ctx context.Context, cfg *config.Config, st store.Store) error {
+	if err := st.Coordination().Serialized(ctx, "bootstrap", func(ctx context.Context) error {
+		if err := bootstrapAdmin(ctx, st, cfg.Database.DataDir); err != nil {
+			return fmt.Errorf("bootstrap the admin account: %w", err)
+		}
+		if st.Driver() != "postgres" {
+			return nil
+		}
+		return checkReplicaConfig(ctx, cfg, st.Settings())
+	}); err != nil {
+		return err
+	}
+	if n, err := backup.RemoveStaleSnapshots(cfg.Database.DataDir); err != nil {
+		log.Printf("[BACKUP] leftover snapshot scratch under %s not removed: %v", cfg.Database.DataDir, err)
+	} else if n > 0 {
+		log.Printf("[BACKUP] removed %d snapshot scratch directories a stopped process left", n)
+	}
+	// A key this server cannot prove refuses every backup run; it is said at startup too.
+	if err := backup.SyncRecoveryKey(ctx, cfg, st); err != nil {
+		log.Printf("[BACKUP] recovery key: %s", recoveryclient.AuditSafe(err.Error()))
+	}
+	return nil
+}
+
+func runConfiguredServer(cfg *config.Config) {
 	if cfg.Backup.AllowPrivateRecovery {
 		log.Printf("[BACKUP] KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY is on: RFC1918 and CGNAT destinations admitted; loopback, link-local and other reserved addresses remain refused (HTTPS still required)")
 	}
@@ -105,107 +185,28 @@ func runServer() {
 	if err := loadInstallerConfiguration(ctx, cfg, st); err != nil {
 		log.Fatalf("Installer configuration unavailable: %v", err)
 	}
-
-	if err := bootstrapAdmin(ctx, st, cfg.Database.DataDir); err != nil {
-		log.Fatalf("Failed to bootstrap the admin account: %v", err)
+	if err := prepareStart(ctx, cfg, st); err != nil {
+		log.Fatal(err)
 	}
-
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for {
-			if err := st.Calendars().PruneChanges(ctx, time.Now().Add(-90*24*time.Hour)); err != nil {
-				log.Printf("calendar change prune failed: %v", err)
-			}
-			// A year of audit: covers an annual access review and a late-found incident.
-			if err := st.Audit().PruneAudit(ctx, time.Now().Add(-365*24*time.Hour)); err != nil {
-				log.Printf("audit prune failed: %v", err)
-			}
-			// Finished scheduling messages keep their dedupe keys for 30 days, never their bodies.
-			if err := st.Calendars().PruneOutbox(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
-				log.Printf("scheduling outbox prune failed: %v", err)
-			}
-			// The completion log feeds streaks and insights (12 weeks); search rows of deleted lists go too.
-			if err := st.Tasks().PruneTasks(ctx, time.Now().Add(-400*24*time.Hour)); err != nil {
-				log.Printf("task log prune failed: %v", err)
-			}
-			if err := api.ExpireIdleMCPTokens(ctx, st, time.Now()); err != nil {
-				log.Printf("idle agent token sweep failed: %v", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
 
 	srv := api.NewServer(cfg, st)
 	if err := srv.LoadSignIn(ctx); err != nil {
 		log.Printf("[SSO] sign-in closed: settings not applied: %v", err)
 	}
-	// Before serving: automatic scheduling is decided on the first KyPost lookup.
+	// Before serving: automatic scheduling is decided on the first KyPost lookup. Links and
+	// their secrets stay per process; every replica keeps its own.
 	srv.StartKyPost(ctx)
 	srv.StartKyMessages(ctx)
-	backupCtx, stopBackups := context.WithCancel(ctx)
-	defer stopBackups()
-	backupDone := make(chan struct{})
-	go backupLoop(backupCtx, cfg, st, recoveryclient.NewClient(recoveryclient.Options{AllowPrivate: cfg.Backup.AllowPrivateRecovery}), time.Minute, backupDone)
+	go srv.FollowSignIn(ctx)
+
+	// Elected background work: one server at a time runs it (internal/worker).
+	workCtx, stopWork := context.WithCancel(ctx)
+	defer stopWork()
+	workDone := make(chan struct{})
+	client := recoveryclient.NewClient(recoveryclient.Options{AllowPrivate: cfg.Backup.AllowPrivateRecovery})
 	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			srv.RefreshDueSubscriptions(ctx)
-			srv.PruneBookings(ctx)
-		}
-	}()
-	// Scheduling deliveries. An interrupted delivery stays pending and runs again: each one is
-	// idempotent (copies are written against their ETag; a reply sets the same answer again).
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			srv.DeliverScheduled(ctx)
-		}
-	}()
-	// Video meetings, apart so a slow KyMessages never delays invitations. Each attempt is
-	// idempotent: a PUT reconciles the room, and closing a closed room succeeds.
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			srv.SyncMeetings(ctx)
-			srv.SyncPresence(ctx)
-		}
-	}()
-	// KyIdentity suite groups: one group calendar each, reconciled once at start and then every
-	// minute. A pass writes only differences, so a pass cut short repeats safely.
-	go func() {
-		ticker := time.NewTicker(api.SuiteGroupsInterval)
-		defer ticker.Stop()
-		for {
-			srv.SyncSuiteGroups(ctx)
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
+		defer close(workDone)
+		worker.Run(workCtx, st.Coordination(), workerOptions(st), scheduledJobs(cfg, st, srv, client, time.Minute))
 	}()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -235,35 +236,46 @@ func runServer() {
 	}
 	defer closeInstaller()
 
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("HTTP server error: %v", err)
+	}
 	go func() {
 		log.Printf("[KY-BASE] %s listening on http://%s (DB: %s)", cfg.Server.AppName, addr, cfg.Database.Driver)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
 
 	<-stop
-	log.Println("[KY-BASE] Shutting down gracefully...")
+	gracefulStop(srv, httpServer, stopWork, cancel, workDone, drainDelay(cfg.Database.Driver))
+}
 
-	// Backups first: a snapshot or upload in flight is aborted now and runs again after the
-	// restart, so the waits below take seconds whatever the backup was doing.
-	stopBackups()
+// gracefulStop is the SIGTERM order: /readyz turns 503 and new backup requests are refused;
+// elected work and detached backup legs are cancelled, so another replica can take over;
+// on PostgreSQL the server keeps serving for drain, so a proxy probing every second routes
+// elsewhere; then the listener drains in-flight requests and the cancelled work unwinds.
+func gracefulStop(srv *api.Server, httpServer *http.Server, stopWork, cancel func(), workDone <-chan struct{}, drain time.Duration) {
+	srv.StartDraining()
+	log.Printf("[KY-BASE] draining: /readyz answers 503; serving %s more before closing the listener", drain)
+	stopWork()
 	srv.StopDetached()
+	time.Sleep(drain)
 
+	log.Println("[KY-BASE] Shutting down gracefully...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
-
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Shutdown error: %v", err)
 	}
 	cancel()
 	waitCtx, waitCancel := context.WithTimeout(context.Background(), backupWaitTimeout)
 	defer waitCancel()
-	waitForBackupWork(waitCtx, backupDone, srv.WaitDetached)
+	waitForBackupWork(waitCtx, workDone, srv.WaitDetached)
 	log.Println("[KY-BASE] Server stopped")
 }
 
-// waitForBackupWork blocks until the scheduler loop and every detached handler have finished,
+// waitForBackupWork blocks until the elected work and every detached handler have finished,
 // or until ctx expires. Their slow steps are already cancelled; what is waited out here is the
 // unwinding, so the receipt, key pin and audit rows are written before the store closes.
 //
@@ -280,11 +292,11 @@ func waitForBackupWork(ctx context.Context, backupDone <-chan struct{}, waitDeta
 	select {
 	case <-backupDone:
 	default:
-		log.Println("[KY-BASE] waiting for the interrupted scheduled backup to unwind...")
+		log.Println("[KY-BASE] waiting for the interrupted scheduled work to unwind...")
 		select {
 		case <-backupDone:
 		case <-ctx.Done():
-			log.Printf("[KY-BASE] abandoning a scheduled backup still unwinding after %s; its outcome may be unrecorded", backupWaitTimeout)
+			log.Printf("[KY-BASE] abandoning scheduled work still unwinding after %s; its outcome may be unrecorded", backupWaitTimeout)
 		}
 	}
 	select {
@@ -294,53 +306,112 @@ func waitForBackupWork(ctx context.Context, backupDone <-chan struct{}, waitDeta
 	}
 }
 
-// runBackup seals one capsule and delivers it to every configured destination, for the CLI:
-// it builds its own RunConfig because a one-shot failure is reported to the operator and ends.
-func runBackup(ctx context.Context, cfg *config.Config, st store.Store) (recoveryclient.Result, error) {
-	rc, err := backup.RunConfig(cfg, appversion.String())
-	if err != nil {
-		return recoveryclient.Result{}, err
+// workerOptions times the election: a new PostgreSQL owner waits out the lock's probe bound
+// before its first job; SQLite's flock cannot be lost, so it starts at once.
+func workerOptions(st store.Store) worker.Options {
+	if st.Driver() == "postgres" {
+		return worker.Options{Retry: 2 * time.Second, Grace: store.ProbeBound() + time.Second}
 	}
-	client := recoveryclient.NewClient(recoveryclient.Options{AllowPrivate: cfg.Backup.AllowPrivateRecovery})
-	return backup.Run(ctx, cfg, rc, st.Settings(), client)
+	return worker.Options{Retry: 2 * time.Second}
 }
 
-// backupLoop polls the admin's schedule every tick; a change in the UI needs no restart and a
-// restart never loses its place, the last attempt is in the database. Cancelling ctx stops the
-// wait and interrupts a run in flight (backup.Run); done is closed once the loop has returned,
-// after the interrupted run's outcome is recorded.
-func backupLoop(ctx context.Context, cfg *config.Config, st store.Store, client recoveryclient.Depositor, tick time.Duration, done chan<- struct{}) {
-	defer close(done)
-	// Built once: a deployment key that cannot seal is a configuration fault, not a run that
-	// might succeed next minute. Run never gets far enough to stamp the attempt, so retrying
-	// would log and audit a failure every tick forever.
+// scheduledJobs is the work exactly one server runs, at today's intervals, each on its own
+// goroutine so a slow KyMessages never delays invitations. Every job tolerates a repeat: an
+// interrupted delivery stays pending (copies are written against their ETag, a reply sets
+// the same answer again, KyPost dedupes on the outbox key as its event ID), a KyMessages PUT
+// reconciles and closing a closed room succeeds, and suite groups write only differences.
+func scheduledJobs(cfg *config.Config, st store.Store, srv *api.Server, client recoveryclient.Depositor, backupTick time.Duration) []worker.Job {
+	jobs := []worker.Job{
+		{Name: "prune", Every: 24 * time.Hour, AtStart: true, Run: func(ctx context.Context) { prune(ctx, st) }},
+		{Name: "subscriptions", Every: time.Minute, Run: func(ctx context.Context) {
+			srv.RefreshDueSubscriptions(ctx)
+			srv.PruneBookings(ctx)
+		}},
+		{Name: "deliveries", Every: 5 * time.Second, Run: srv.DeliverScheduled},
+		{Name: "meetings", Every: 5 * time.Second, Run: func(ctx context.Context) {
+			srv.SyncMeetings(ctx)
+			srv.SyncPresence(ctx)
+		}},
+		{Name: "suite-groups", Every: api.SuiteGroupsInterval, AtStart: true, Run: srv.SyncSuiteGroups},
+		// Every new client address adds a rate-window row on PostgreSQL; expired ones go often,
+		// so a spread of addresses cannot grow the table for a day.
+		{Name: "coordination-cleanup", Every: 10 * time.Minute, AtStart: true, Run: func(ctx context.Context) {
+			if err := st.Coordination().CleanExpired(ctx); err != nil {
+				log.Printf("expired rate windows, CAPTCHA salts and KyPost event IDs not removed: %v", err)
+			}
+		}},
+	}
+	if j, ok := backupJob(cfg, st, client, backupTick); ok {
+		jobs = append(jobs, j)
+	}
+	return jobs
+}
+
+// prune is the daily housekeeping.
+func prune(ctx context.Context, st store.Store) {
+	if err := st.Calendars().PruneChanges(ctx, time.Now().Add(-90*24*time.Hour)); err != nil {
+		log.Printf("calendar change prune failed: %v", err)
+	}
+	// A year of audit: covers an annual access review and a late-found incident.
+	if err := st.Audit().PruneAudit(ctx, time.Now().Add(-365*24*time.Hour)); err != nil {
+		log.Printf("audit prune failed: %v", err)
+	}
+	// Finished scheduling messages keep their dedupe keys for 30 days, never their bodies.
+	if err := st.Calendars().PruneOutbox(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
+		log.Printf("scheduling outbox prune failed: %v", err)
+	}
+	// The completion log feeds streaks and insights (12 weeks); search rows of deleted lists go too.
+	if err := st.Tasks().PruneTasks(ctx, time.Now().Add(-400*24*time.Hour)); err != nil {
+		log.Printf("task log prune failed: %v", err)
+	}
+	if err := api.ExpireIdleMCPTokens(ctx, st, time.Now()); err != nil {
+		log.Printf("idle agent token sweep failed: %v", err)
+	}
+}
+
+// backupJob is the scheduled backup: each tick it takes the backup-run lock, then reads
+// whether a run is due (after the lock, so a server that waited never runs a stale due run),
+// then runs it. ok is false when no RunConfig can be built: a deployment key that cannot seal
+// is a configuration fault, not a run that might succeed next minute, and retrying would log
+// and audit a failure every tick forever.
+func backupJob(cfg *config.Config, st store.Store, client recoveryclient.Depositor, tick time.Duration) (worker.Job, bool) {
 	rc, err := backup.RunConfig(cfg, appversion.String())
 	if err != nil {
 		log.Printf("[BACKUP] scheduler disabled: %v", err)
+		return worker.Job{}, false
+	}
+	return worker.Job{Name: "backup", Every: tick, Run: func(ctx context.Context) {
+		won, err := backup.WithRunLock(ctx, st, func(ctx context.Context) error {
+			next, on, err := recoveryclient.NextRun(cfg.Backup.DepositInterval, backup.Settings(ctx, st.Settings()))
+			if err != nil {
+				recordRun(context.WithoutCancel(ctx), st, "system", recoveryclient.Result{}, fmt.Errorf("schedule unreadable: %w", err))
+				return nil
+			}
+			if !on || time.Now().Before(next) {
+				return nil
+			}
+			res, err := backup.Run(ctx, cfg, rc, st, client)
+			if errors.Is(err, recoveryclient.ErrNotPaired) || errors.Is(err, recoveryclient.ErrNoDestination) {
+				return nil // never configured; nothing to report
+			}
+			recordRun(context.WithoutCancel(ctx), st, "system", res, err)
+			return nil
+		})
+		if err != nil && !won {
+			log.Printf("[BACKUP] scheduled run skipped: the backup lock is unavailable: %v", err)
+		}
+	}}, true
+}
+
+// backupLoop runs the scheduled backup alone under the election, for tests; done is closed
+// once it has returned, after an interrupted run's outcome is recorded.
+func backupLoop(ctx context.Context, cfg *config.Config, st store.Store, client recoveryclient.Depositor, tick time.Duration, done chan<- struct{}) {
+	defer close(done)
+	j, ok := backupJob(cfg, st, client, tick)
+	if !ok || ctx.Err() != nil {
 		return
 	}
-	ticker := time.NewTicker(tick)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		next, on, err := recoveryclient.NextRun(cfg.Backup.DepositInterval, backup.Settings(ctx, st.Settings()))
-		if err != nil {
-			log.Printf("[BACKUP] schedule unreadable: %s", recoveryclient.AuditSafe(err.Error()))
-			continue
-		}
-		if !on || time.Now().Before(next) {
-			continue
-		}
-		res, err := backup.Run(ctx, cfg, rc, st.Settings(), client)
-		if errors.Is(err, recoveryclient.ErrNotPaired) || errors.Is(err, recoveryclient.ErrNoDestination) {
-			continue // never configured; nothing to report
-		}
-		recordRun(context.WithoutCancel(ctx), st, "system", res, err)
-	}
+	worker.Run(ctx, st.Coordination(), workerOptions(st), []worker.Job{j})
 }
 
 // recordRun audits one run the same way the admin route does, under the actor that started it.
@@ -357,6 +428,31 @@ func recordRun(ctx context.Context, st store.Store, actor string, res recoverycl
 	log.Printf("[BACKUP] %s: capsule %s (%d bytes) local=%q deposited=%t", actor, res.Manifest.CapsuleID, res.SizeBytes, res.LocalPath, res.Receipt != nil)
 }
 
+// errBusy is a CLI backup refused because another holds the backup-run lock.
+var errBusy = errors.New("another backup is running (scheduled, Back up now or another CLI run); try again when it has finished")
+
+// runBackup seals one capsule and delivers it to every configured destination, for the CLI,
+// under the backup-run lock: a one-shot failure is reported to the operator and ends.
+func runBackup(ctx context.Context, cfg *config.Config, st store.Store) (recoveryclient.Result, error) {
+	rc, err := backup.RunConfig(cfg, appversion.String())
+	if err != nil {
+		return recoveryclient.Result{}, err
+	}
+	client := recoveryclient.NewClient(recoveryclient.Options{AllowPrivate: cfg.Backup.AllowPrivateRecovery})
+	var res recoveryclient.Result
+	won, lockErr := backup.WithRunLock(ctx, st, func(ctx context.Context) error {
+		res, err = backup.Run(ctx, cfg, rc, st, client)
+		return nil
+	})
+	if !won {
+		if lockErr == nil {
+			lockErr = errBusy
+		}
+		return recoveryclient.Result{}, lockErr
+	}
+	return res, err
+}
+
 // runDeposit seals and delivers one capsule now, for cron or an operator at a shell.
 func runDeposit() {
 	ctx := context.Background()
@@ -364,6 +460,10 @@ func runDeposit() {
 	defer st.Close()
 
 	res, err := runBackup(ctx, cfg, st)
+	if errors.Is(err, errBusy) {
+		st.Close()
+		log.Fatalf("Backup: %v", err)
+	}
 	recordRun(ctx, st, "cli", res, err)
 	if err != nil {
 		log.Fatalf("Backup: %v", err)
@@ -433,8 +533,8 @@ func runInitAdmin(args []string) {
 }
 
 // collectFiles is what every CLI seal uses; the sealed-only members are safe here and nowhere else.
-func collectFiles(ctx context.Context, cfg *config.Config) recoveryclient.Payload {
-	payload, err := backup.Collect(ctx, cfg, appversion.String())
+func collectFiles(ctx context.Context, cfg *config.Config, st store.Store) recoveryclient.Payload {
+	payload, err := backup.Collect(ctx, cfg, st, appversion.String())
 	if err != nil {
 		log.Fatalf("Failed to collect backup files: %v", err)
 	}
@@ -447,7 +547,7 @@ func runBackupDrill(args []string) bool {
 	cfg, st := openForBackup(ctx)
 	defer st.Close()
 
-	payload := collectFiles(ctx, cfg)
+	payload := collectFiles(ctx, cfg, st)
 	result, err := backup.RunDrill(ctx, cfg, payload)
 	if err != nil {
 		log.Fatalf("Drill execution error: %v", err)
@@ -494,22 +594,35 @@ func runExportCapsule(args []string) {
 	cfg, st := openForBackup(ctx)
 	defer st.Close()
 
-	key, err := recoveryclient.LoadRecoveryKey(cfg.Database.DataDir, backup.Settings(ctx, st.Settings()))
+	won, err := backup.WithRunLock(ctx, st, func(ctx context.Context) error {
+		if err := backup.SyncRecoveryKey(ctx, cfg, st); err != nil {
+			return fmt.Errorf("recovery key: %w", err)
+		}
+		key, err := recoveryclient.LoadRecoveryKey(cfg.Database.DataDir, backup.Settings(ctx, st.Settings()))
+		if err != nil {
+			return fmt.Errorf("recovery key: %w", err)
+		}
+		raw, m, err := recoveryclient.Seal(collectFiles(ctx, cfg, st), key)
+		if err != nil {
+			return fmt.Errorf("seal: %w", err)
+		}
+		path := *out
+		if path == "" {
+			path = recoveryclient.FilenameSafe(m.CapsuleID) + ".kycap"
+		}
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		log.Printf("✓ Capsule %s sealed to recovery key %s, written to %s (%d bytes)", m.CapsuleID, m.RecoveryKeyID, path, len(raw))
+		return nil
+	})
+	if err == nil && !won {
+		err = errBusy
+	}
 	if err != nil {
-		log.Fatalf("Recovery key: %v", err)
+		st.Close()
+		log.Fatalf("Export: %v", err)
 	}
-	raw, m, err := recoveryclient.Seal(collectFiles(ctx, cfg), key)
-	if err != nil {
-		log.Fatalf("Seal: %v", err)
-	}
-	path := *out
-	if path == "" {
-		path = recoveryclient.FilenameSafe(m.CapsuleID) + ".kycap"
-	}
-	if err := os.WriteFile(path, raw, 0600); err != nil {
-		log.Fatalf("Write: %v", err)
-	}
-	log.Printf("✓ Capsule %s sealed to recovery key %s, written to %s (%d bytes)", m.CapsuleID, m.RecoveryKeyID, path, len(raw))
 }
 
 // restore is the product-side half of the ceremony, owned by the lib: k custodian shares

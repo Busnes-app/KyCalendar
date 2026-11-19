@@ -86,7 +86,11 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 			SSOSubject:  claims.Subject,
 			SSOIssuer:   binding,
 		}
-		if err := s.store.Users().CreateUser(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
+		create := s.store.Users().CreateUser
+		if s.shared != nil { // PostgreSQL: another server may have saved a new binding since the check
+			create = s.store.Users().CreateSSOUser
+		}
+		if err := create(ctx, user); errors.Is(err, store.ErrAlreadyExists) {
 			return nil, errUsernameTaken
 		} else if err != nil {
 			return nil, err
@@ -104,10 +108,14 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	if user.SSOIssuer == "" || user.SSOIssuer != binding {
 		return nil, errOtherIssuer
 	}
+	recheck := "" // SQLite: signinMu already holds every save out
+	if s.shared != nil {
+		recheck = binding // PostgreSQL: another server may have saved a new binding since the check
+	}
 	// A generic OIDC account's email follows the token at every sign-in: verified, or none. An
 	// account made before verification was checked loses an unverified email here.
 	if claims.Provider == "oidc" && user.Email != claims.Email {
-		if err := s.store.Users().SetOIDCEmail(ctx, user.ID, claims.Email); err != nil {
+		if err := s.store.Users().SetOIDCEmail(ctx, user.ID, claims.Email, recheck); err != nil {
 			return nil, err
 		}
 		user.Email = claims.Email
@@ -118,7 +126,7 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	// Role only (a status read above may be stale), with the grants revoked in the same
 	// transaction, row first: no old session runs under the new role. A failed promotion changes
 	// nothing; a failed demotion still revokes the grants below.
-	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
+	if err := s.store.Users().SetSSORole(ctx, user.ID, role, recheck); errors.Is(err, store.ErrNotFound) {
 		return nil, errAccountInactive
 	} else if err != nil {
 		// A demotion fails closed: the role stays, but the administrator's grants do not.
@@ -233,8 +241,22 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
 		return
 	}
+	// Another replica may have saved new settings: never write an account under a binding the
+	// database no longer holds.
+	if current, err := s.signinCurrent(r.Context(), p); err != nil {
+		s.writeUnavailable(w, err)
+		return
+	} else if !current {
+		go s.refreshSignIn(context.WithoutCancel(r.Context()))
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	user, err := s.upsertSSOUser(r.Context(), claims, p.Binding)
 	switch {
+	case errors.Is(err, store.ErrBindingChanged):
+		go s.refreshSignIn(context.WithoutCancel(r.Context()))
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
 	case errors.Is(err, errNotProvisioned):
 		s.writeError(w, http.StatusForbidden, "User account not provisioned")
 		return
@@ -274,7 +296,16 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
+	binding := "" // SQLite: signinMu already holds every save out
+	if s.shared != nil {
+		binding = p.Binding
+	}
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, binding, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
+	if errors.Is(err, store.ErrBindingChanged) {
+		go s.refreshSignIn(context.WithoutCancel(r.Context()))
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	if errors.Is(err, store.ErrSSOSessionEnded) {
 		s.writeError(w, http.StatusUnauthorized, "This sign-in was ended at the provider; start again")
 		return

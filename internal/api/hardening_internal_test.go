@@ -70,7 +70,11 @@ func TestDAVAuthDoesNotAuditUnparseableCredentials(t *testing.T) {
 	if n := auditCount(t, s); n != 0 {
 		t.Fatalf("audit rows: %d", n)
 	}
-	if n := s.davFails.seen["ip:"+"192.0.2.1"].count; n != 3 {
+	n := s.davFails.seen["ip:"+"192.0.2.1"].count
+	if s.shared != nil {
+		n = SharedHitsForTest(s, "dav:ip:192.0.2.1")
+	}
+	if n != 3 {
 		t.Fatalf("limiter count: %d", n)
 	}
 }

@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -52,6 +56,14 @@ func (s *Server) kypostPeerRequest(w http.ResponseWriter, r *http.Request, event
 		s.writeJSON(w, http.StatusOK, map[string]string{"outcome": "duplicate"})
 		return nil, false
 	}
+	if errors.Is(err, syncauth.ErrReplayGuardFull) {
+		// The guard cannot decide (full, or its database unreachable): refuse, and let KyPost
+		// retry instead of reading this as a bad signature. The guard already undid any record
+		// this attempt wrote; releasing the ID here could release an earlier request's record.
+		w.Header().Set("Retry-After", "5")
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Temporarily unavailable", "code": "unavailable"})
+		return nil, false
+	}
 	if err != nil {
 		if peer.Source == kypost.SourceKyIdentity {
 			s.kickKyPost() // KyPost may hold a rotated pair secret; lookups stay rate limited
@@ -68,7 +80,7 @@ func (s *Server) kypostPeerRequest(w http.ResponseWriter, r *http.Request, event
 		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "No such user", "code": "no_user"})
 		return nil, false
 	}
-	if !s.allowAccountAttempt(limit+u.ID, perHour, itipWindow) {
+	if !s.allowAccountAttempt(r.Context(), limit+u.ID, perHour, itipWindow) {
 		s.retryKyPost(r)
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many messages", "code": "rate_limited"})
 		return nil, false
@@ -111,7 +123,7 @@ func (g *kypostReplay) Check(id string, at time.Time) error {
 	return nil
 }
 
-func (g *kypostReplay) forget(id string) {
+func (g *kypostReplay) Forget(id string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.seen, id)
@@ -119,8 +131,48 @@ func (g *kypostReplay) forget(id string) {
 
 // retryKyPost lets KyPost's retry of r's event through the replay guard.
 func (s *Server) retryKyPost(r *http.Request) {
-	if g, ok := s.kypostReplay.(*kypostReplay); ok {
-		g.forget(syncauth.FromRequest(r).EventID)
+	if g, ok := s.kypostReplay.(syncauth.Forgetter); ok {
+		g.Forget(syncauth.FromRequest(r).EventID)
+	}
+}
+
+// sharedReplay is the KyPost replay guard of PostgreSQL replicas: an event ID verified on one
+// is a replay on every other. It decides on bounded statements and fails closed.
+type sharedReplay struct{ shared store.CoordinationStore }
+
+func (g sharedReplay) Check(id string, at time.Time) error {
+	// Twice the signature window: freshness is judged on this server's clock, retention on the
+	// database's, so a few minutes of skew between them cannot reopen a replay.
+	window := 2 * syncauth.DefaultWindow
+	if ahead := time.Until(at); ahead > 0 { // kept past its signed time, as in memory
+		window += ahead
+	}
+	attempt := rand.Text()
+	c, cancel := context.WithTimeout(context.Background(), windowTimeout)
+	defer cancel()
+	fresh, err := g.shared.RecordReplay(c, id, attempt, window)
+	switch {
+	case err != nil:
+		// The record may have committed before the error: undo it if, and only if, it is ours,
+		// so KyPost's retry is processed rather than called a duplicate.
+		undo, cancelUndo := context.WithTimeout(context.Background(), windowTimeout)
+		defer cancelUndo()
+		if uerr := g.shared.UndoReplay(undo, id, attempt); uerr != nil {
+			log.Printf("[KYPOST] replay record not undone; KyPost's retry may be answered as a duplicate: %v", uerr)
+		}
+		log.Printf("[KYPOST] replay guard unavailable, refusing: %v", err)
+		return fmt.Errorf("%w: %v", syncauth.ErrReplayGuardFull, err)
+	case !fresh:
+		return syncauth.ErrReplay
+	}
+	return nil
+}
+
+func (g sharedReplay) Forget(id string) {
+	c, cancel := context.WithTimeout(context.Background(), windowTimeout)
+	defer cancel()
+	if err := g.shared.ForgetReplay(c, id); err != nil {
+		log.Printf("[KYPOST] replay record not released; KyPost's retry is answered as a duplicate: %v", err)
 	}
 }
 

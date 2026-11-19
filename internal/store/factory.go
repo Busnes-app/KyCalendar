@@ -71,7 +71,12 @@ func openSQLite(ctx context.Context, dsn string) (Store, error) {
 		return nil, fmt.Errorf("sqlite foreign keys are off; every ON DELETE CASCADE depends on them")
 	}
 
-	return newSQLStore(ctx, db, "sqlite")
+	lockPath, err := canonicalPath(filePath)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return newSQLStore(ctx, db, "sqlite", lockPath)
 }
 
 func openPostgres(ctx context.Context, dsn string, maxOpen, maxIdle int, maxLifetime time.Duration) (Store, error) {
@@ -99,5 +104,5 @@ func openPostgres(ctx context.Context, dsn string, maxOpen, maxIdle int, maxLife
 		return nil, fmt.Errorf("failed to ping postgres database: %w", err)
 	}
 
-	return newSQLStore(ctx, db, "postgres")
+	return newSQLStore(ctx, db, "postgres", "")
 }

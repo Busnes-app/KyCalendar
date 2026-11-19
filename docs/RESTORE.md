@@ -44,13 +44,9 @@ The drill requires these members independently of the recipe; it does not contac
 The restored directory is the live directory in the clear. Treat it like the running server's
 `data/`.
 
-**This procedure is for SQLite deployments.** A capsule carries `data/kycalendar.db` because the
-collector snapshots SQLite with `VACUUM INTO`; on `KY_DB_DRIVER=postgres` no snapshot is
-possible, so no capsule is made at all and there is nothing here to restore from. Back a
-Postgres deployment up with `pg_dump` on its own schedule, guard that dump as the plaintext of
-everything above, and copy `data/encryption.key` and `data/recovery.pub` separately — the
-recovery key pin, the pairing and the schedule are rows in the database and come back with the
-dump, but nothing in it can be decrypted without `encryption.key`.
+A capsule from a PostgreSQL server holds the same `data/kycalendar.db`: a verified SQLite
+snapshot. Open and reset it with this procedure, then move it into an empty PostgreSQL
+database ([PostgreSQL](#postgresql) below).
 
 Backups require the default database path, `<KY_DATA_DIR>/kycalendar.db`: the capsule restores
 the database there, so a backup refuses while `KY_DB_DSN` opens another file. Unset
@@ -382,6 +378,33 @@ would work again; Step 3 reset those before the service opened.
 
    Then confirm with a Back up now so the recovered server has a capsule that reflects the
    rotation.
+
+## PostgreSQL
+
+A PostgreSQL deployment restores through SQLite: Step 1 opens the capsule and resets the
+database in `<target>/data` as usual. Then copy it into an **empty** PostgreSQL database, with
+every replica stopped. The target's address goes in a mode-600 file, never on the command line.
+With the binary, the file holds the address alone:
+
+```bash
+(umask 077; cat > migration.dsn)     # paste postgres://<user>:<password>@<host>:5432/<db>?sslmode=disable (password percent-encoded), then Ctrl-D
+KY_MIGRATE_POSTGRES_DSN_FILE=./migration.dsn KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --check --source <target>/data/kycalendar.db
+KY_MIGRATE_POSTGRES_DSN_FILE=./migration.dsn KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --source <target>/data/kycalendar.db
+```
+
+With the image (Docker Compose 2.34 or later, `docker compose version`), put the restored
+`data` directory where Compose mounts `/app/data`, write
+`migration.env` as in [RUNNING.md](RUNNING.md#moving-a-sqlite-install-to-postgresql) (one line,
+`KY_MIGRATE_POSTGRES_DSN=...`) and run
+`docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --source /app/data/kycalendar.db`.
+The copy refuses a database that already holds data. The reset already ended sessions, MFA
+challenges, device pairings and app passwords, emptied the scheduling queue, turned scheduled
+backups off, wrote a new sync epoch, and removed the replicas' configuration record and rate
+windows; spent CAPTCHA solutions and KyPost event IDs that have not expired are kept, because
+they only ever refuse. Start the replicas with the settings in
+[RUNNING.md](RUNNING.md#postgresql-and-replicas) and the restored `data/encryption.key`; the
+first start records the configuration again, and each replica writes its `recovery.pub` from the
+restored pin.
 
 ## Afterwards
 

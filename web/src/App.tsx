@@ -66,33 +66,43 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('hashchange', sync);
   }, []);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const [authResp, setResp] = useResponses(
-          await fetch('/api/auth/me'),
-          await fetch('/api/settings')
-        );
-
-        if (setResp.ok) {
-          const s = await setResp.json();
-          setSettings(s);
-        }
-
-        if (authResp.ok) {
-          const a = await authResp.json();
-          if (a.authenticated) {
-            setUser(a.user);
-          }
-        }
-      } catch (err) {
-        console.error('Initialization error:', err);
-      } finally {
-        setLoading(false);
+  // A failed session lookup (503, or no answer) is not a sign-out: the sign-in form is only
+  // for a real "authenticated: false".
+  const [unavailable, setUnavailable] = useState(false);
+  // A retry keeps the unavailable view until it is answered. The busy button is aria-disabled,
+  // not disabled: disabling the focused button would drop keyboard focus to the page.
+  const [retrying, setRetrying] = useState(false);
+  const checkAuth = async (retry = false) => {
+    if (retry) setRetrying(true);
+    else setLoading(true);
+    let down = false;
+    try {
+      const [authResp, setResp] = await Promise.all([fetch('/api/auth/me'), fetch('/api/settings').catch(() => null)]);
+      if (setResp?.ok) {
+        setSettings(await setResp.json());
       }
-    };
+      // The server answers 503 when it cannot reach its database; a proxy may answer 502/504
+      // or 429. Anything else (a 401 or 404 from a proxy) is not an outage: sign in.
+      if (authResp.status >= 500 || authResp.status === 429) {
+        down = true;
+        return;
+      }
+      const a = authResp.ok ? await authResp.json() : { authenticated: false };
+      if (a.authenticated) {
+        setUser(a.user);
+      }
+    } catch (err) {
+      console.error('Initialization error:', err);
+      down = true;
+    } finally {
+      setUnavailable(down);
+      setRetrying(false);
+      setLoading(false);
+    }
+  };
 
-    checkAuth();
+  useEffect(() => {
+    void checkAuth();
   }, []);
 
   // The app rail: once per signed-in user, never for a pending password change.
@@ -141,6 +151,25 @@ export const App: React.FC = () => {
       <div className="app-loading" role="status">
         Loading {settings?.app_name || 'KyCalendar'}…
       </div>
+    );
+  }
+
+  if (unavailable) {
+    return (
+      <main className="ky-auth">
+        <div className="ky-auth-body">
+          <div className="ky-auth-brand">
+            <img className="brand-mark" src="/app-icon.png" width={56} height={56} alt="" />
+            <h1>{settings?.app_name || 'KyCalendar'}</h1>
+          </div>
+          <div className="ky-auth-card" role="alert">
+            <p>{settings?.app_name || 'KyCalendar'} is temporarily unavailable. You have not been signed out; try again in a moment.</p>
+            <button type="button" className="ky-auth-submit" onClick={() => { if (!retrying) void checkAuth(true); }} aria-disabled={retrying}>
+              {retrying ? 'Trying…' : 'Try again'}
+            </button>
+          </div>
+        </div>
+      </main>
     );
   }
 
@@ -214,7 +243,3 @@ export const App: React.FC = () => {
     </div>
   );
 };
-
-function useResponses(r1: Response, r2: Response): [Response, Response] {
-  return [r1, r2];
-}

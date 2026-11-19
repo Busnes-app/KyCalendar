@@ -120,3 +120,82 @@ describe('Settings', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Server settings' })).toBeTruthy();
   });
 });
+
+describe('App when the server cannot answer', () => {
+  it.each([
+    ['a 503', () => new Response('{"error":"unavailable","code":"unavailable"}', { status: 503 })],
+    ['a network failure', () => { throw new TypeError('Failed to fetch'); }],
+  ])('shows the unavailable state for %s, never the sign-in form, and retries', async (_name, fail) => {
+    let down = true;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path === '/api/auth/me') {
+        if (down) return fail();
+        return new Response(JSON.stringify({ authenticated: true, user: { id: 'u1', username: 'u', role: 'admin' } }), { status: 200 });
+      }
+      if (path === '/api/admin/groups') return new Response('{"groups":[],"total":0}', { status: 200 });
+      return new Response('{}', { status: 200 });
+    });
+    render(<App />);
+    expect(await screen.findByText(/temporarily unavailable/)).toBeTruthy();
+    expect(screen.queryByLabelText(/password/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
+    // A retry that fails again keeps the view and its button.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByText(/temporarily unavailable/)).toBeTruthy();
+    down = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('navigation', { name: 'Primary' })).toBeTruthy();
+    expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
+  });
+
+  it('keeps the view and focus while retrying: the button is aria-disabled, not disabled', async () => {
+    let answer: (r: Response) => void = () => {};
+    let calls = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path !== '/api/auth/me') return new Response('{}', { status: 200 });
+      calls++;
+      if (calls === 1) return new Response('{}', { status: 503 });
+      return new Promise<Response>((resolve) => { answer = resolve; });
+    });
+    render(<App />);
+    const button = await screen.findByRole('button', { name: 'Try again' });
+    button.focus();
+    fireEvent.click(button);
+    const busy = await screen.findByRole('button', { name: 'Trying…' });
+    // A disabled focused button drops focus to the page in real browsers (jsdom does not show it).
+    expect(busy).toBe(button);
+    expect((busy as HTMLButtonElement).disabled).toBe(false);
+    expect(busy.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(busy);
+    fireEvent.click(busy);
+    expect(calls).toBe(2);
+    expect(screen.getByText(/temporarily unavailable/)).toBeTruthy();
+    answer(new Response('{"authenticated":false}', { status: 200 }));
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeTruthy();
+  });
+
+  it('treats a proxy 401 or 404 as signed out, not as an outage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path === '/api/auth/me') return new Response('nope', { status: 404 });
+      return new Response('{}', { status: 200 });
+    });
+    render(<App />);
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeTruthy();
+    expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
+  });
+
+  it('still shows sign-in for a real signed-out answer', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path === '/api/auth/me') return new Response('{"authenticated":false}', { status: 200 });
+      return new Response('{}', { status: 200 });
+    });
+    render(<App />);
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeTruthy();
+    expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
+  });
+});

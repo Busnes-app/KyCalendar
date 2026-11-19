@@ -172,22 +172,24 @@ button:where(:not(.ky-nav-item, .ky-icon-button)), .btn {
   transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
 }
 /* Navigation rows and the shell's quiet controls take ky-ui's own hover; :where keeps this rule's specificity unchanged. */
-button:not(:where(.ky-nav-item, .ky-icon-button, .ky-license-link, .ky-about-close, .ky-auth-link, .app-menu-trigger, .app-menu-item)):hover:not(:disabled), .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); }
-button:active:not(:disabled), .btn:active { transform: translateY(1px); }
-button:disabled, .btn:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); cursor: not-allowed; }
+button:not(:where(.ky-nav-item, .ky-icon-button, .ky-license-link, .ky-about-close, .ky-auth-link, .app-menu-trigger, .app-menu-item)):hover:not(:disabled, [aria-disabled='true']), .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink-strong)); }
+button:active:not(:disabled, [aria-disabled='true']), .btn:active { transform: translateY(1px); }
+button:disabled, button[aria-disabled='true'], .btn:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); cursor: not-allowed; }
 
 .btn-secondary, button.btn-secondary { background: var(--panel); color: var(--ink-strong); border-color: var(--field-border); }
-.btn-secondary:hover:not(:disabled), button.btn-secondary:hover:not(:disabled) { background: var(--panel-hover); border-color: var(--ink); }
+.btn-secondary:hover:not(:disabled, [aria-disabled='true']), button.btn-secondary:hover:not(:disabled, [aria-disabled='true']) { background: var(--panel-hover); border-color: var(--ink); }
 
 .btn-ghost, button.btn-ghost { background: transparent; color: var(--ink-strong); border-color: transparent; }
-.btn-ghost:hover:not(:disabled), button.btn-ghost:hover:not(:disabled) { background: var(--panel-hover); }
+.btn-ghost:hover:not(:disabled, [aria-disabled='true']), button.btn-ghost:hover:not(:disabled, [aria-disabled='true']) { background: var(--panel-hover); }
 
 .btn-danger, button.btn-danger { background: var(--panel); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
-.btn-danger:hover:not(:disabled), button.btn-danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
+.btn-danger:hover:not(:disabled, [aria-disabled='true']), button.btn-danger:hover:not(:disabled, [aria-disabled='true']) { background: var(--danger-soft); border-color: var(--danger); }
 button.btn-ghost.btn-danger { background: transparent; border-color: transparent; }
-button.btn-ghost.btn-danger:hover:not(:disabled) { background: var(--danger-soft); }
+button.btn-ghost.btn-danger:hover:not(:disabled, [aria-disabled='true']) { background: var(--danger-soft); }
 /* One disabled look for filled and outlined buttons alike; ghost buttons stay transparent. */
-button.btn-secondary:disabled, button.btn-danger:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
+button.btn-secondary:is(:disabled, [aria-disabled='true']), button.btn-danger:is(:disabled, [aria-disabled='true']) { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
+/* A busy button is aria-disabled so it keeps keyboard focus; ky-ui's sign-in hover must not light it. */
+button.ky-auth-submit[aria-disabled='true']:hover { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
 button.btn-ghost:disabled { background: transparent; color: var(--ink); border-color: transparent; }
 
 /* Smaller text and padding for rows; the 40px target stays. */

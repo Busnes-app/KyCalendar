@@ -18,8 +18,8 @@ func TestLargeDatabaseTravelsInPartsAndDrills(t *testing.T) {
 	t.Setenv("KY_PORT", "8080")
 	t.Setenv("KY_DB_DRIVER", "sqlite")
 	defer backup.SetPartBytesForTest(4096)()
-	cfg, _ := payloadConfig(t)
-	payload, err := backup.Collect(context.Background(), cfg, "1.0.0")
+	cfg, st := anyDriver(t) // SQLite, or PostgreSQL's snapshot under KY_TEST_POSTGRES_DSN
+	payload, err := backup.Collect(context.Background(), cfg, st, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}

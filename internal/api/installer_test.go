@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -24,7 +25,7 @@ import (
 
 func TestInstallerLiveActivationRolesAndSignedRevocation(t *testing.T) {
 	ctx := context.Background()
-	_, st, cfg := setupTestServer(t)
+	_, st, cfg := setupSQLiteServer(t) // installer-managed deployments are single-server SQLite
 	cfg.Server.AppURL = "https://message.example.test"
 	dir := t.TempDir()
 	secret, directory := filepath.Join(dir, "client"), filepath.Join(dir, "directory")
@@ -199,5 +200,32 @@ func TestInstallerOffboardingRevokesDAVAndPreservesCalendars(t *testing.T) {
 		if _, err = st.Users().GetUserByID(ctx, user.ID); err != nil {
 			t.Fatal("offboarding erased identity", err)
 		}
+	}
+}
+
+// postgresDriver reports PostgreSQL for a SQLite fixture, so the PostgreSQL refusal is tested
+// on every run.
+type postgresDriver struct{ store.Store }
+
+func (postgresDriver) Driver() string { return "postgres" }
+
+// On PostgreSQL apply-setup activation is refused before anything is written; --check still
+// inspects.
+func TestInstallerRefusedOnPostgres(t *testing.T) {
+	ctx := context.Background()
+	_, st, cfg := setupSQLiteServer(t)
+	srv := api.NewServer(cfg, postgresDriver{st})
+	b := applysetup.Common{Schema: applysetup.Schema, Service: "kycalendar", SetupID: "271333e2-c221-4601-b249-563b3d828530",
+		SSO:    &applysetup.SSO{IssuerURL: "https://identity.example.test", ClientID: "cal", ClientSecretFile: filepath.Join(t.TempDir(), "c"), DirectorySecretFile: filepath.Join(t.TempDir(), "d"), RedirectURI: cfg.Server.AppURL + "/api/sso/kysignon/callback"},
+		Admins: []applysetup.Identity{{Issuer: "https://identity.example.test", Subject: "owner-sub", Username: "owner-admin"}}}
+	raw, _ := json.Marshal(b)
+	if _, err := srv.ApplyInstaller(ctx, raw, false); !errors.Is(err, api.ErrInstallerPostgres) {
+		t.Fatalf("apply on PostgreSQL: %v", err)
+	}
+	if _, err := st.Settings().GetSetting(ctx, store.InstallerConfigKey); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a refused apply wrote the installer configuration: %v", err)
+	}
+	if _, err := srv.ApplyInstaller(ctx, raw, true); errors.Is(err, api.ErrInstallerPostgres) {
+		t.Fatal("--check must still inspect on PostgreSQL")
 	}
 }

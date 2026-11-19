@@ -40,7 +40,7 @@ func (s *Server) loadLink(w http.ResponseWriter, r *http.Request, calendarID, ra
 		s.writeError(w, http.StatusBadRequest, feed.Message(err))
 		return "", "", nil, nil, false
 	}
-	if !s.allowAttempt("feed:"+sessionUser(r.Context()).ID, feedAttempts, feedAttemptWindow) {
+	if !s.allowAttempt(r.Context(), "feed:"+sessionUser(r.Context()).ID, feedAttempts, feedAttemptWindow) {
 		w.Header().Set("Retry-After", "900")
 		s.writeError(w, http.StatusTooManyRequests, "Too many links tried; wait a few minutes")
 		return "", "", nil, nil, false

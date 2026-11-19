@@ -293,6 +293,8 @@ func (s *Server) handleSaveSignIn(w http.ResponseWriter, r *http.Request) {
 		s.auditAction(ctx, r, "admin.signin_provider_change", st.Provider.Value, bindDetails(prev, st, disabled))
 	}
 	s.setSignIn(s.buildProvider(st))
+	empty := "" // FollowSignIn reloads from what the database holds now
+	s.signinDigest.Store(&empty)
 	s.auditAction(ctx, r, "admin.signin_save", st.Provider.Value, "outcome=success issuer="+strconv.Quote(st.Issuer.Value))
 	// The view is what was stored, read back as GET reads it.
 	saved, err = s.store.Settings().GetAllSettings(ctx)

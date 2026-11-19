@@ -455,7 +455,7 @@ func (s *Server) listTasks(ctx context.Context, user *store.User, f taskFilter, 
 	if apiErr := f.check(); apiErr != nil {
 		return nil, apiErr
 	}
-	if f.Q != "" && !s.allowAccountAttempt("tasks-search:"+user.ID, searchesPerMin, time.Minute) {
+	if f.Q != "" && !s.allowAccountAttempt(ctx, "tasks-search:"+user.ID, searchesPerMin, time.Minute) {
 		return nil, &apiError{status: http.StatusTooManyRequests, msg: "Too many searches; wait a minute", code: "rate_limited"}
 	}
 	cals, grants, err := s.visibleCalendars(ctx, user)

@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
+	"database/sql"
+	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/kypost"
@@ -26,6 +30,9 @@ const AttemptsCapForTest = attemptsCap
 // AttemptKeysForTest returns the limiter's live keys. Test-only: this file is not part of the
 // package build.
 func AttemptKeysForTest(s *Server) []string {
+	if s.shared != nil {
+		return sharedKeysForTest(s, "ip:")
+	}
 	s.attemptsMu.Lock()
 	defer s.attemptsMu.Unlock()
 	keys := make([]string, 0, len(s.attempts))
@@ -38,7 +45,7 @@ func AttemptKeysForTest(s *Server) []string {
 // AllowAttemptForTest drives the limiter directly so a test can fill it without paying for
 // 10 000 HTTP requests. Test-only.
 func AllowAttemptForTest(s *Server, key string, limit int, window time.Duration) bool {
-	return s.allowAttempt(key, limit, window)
+	return s.allowAttempt(context.Background(), key, limit, window)
 }
 
 // RegisterDetachedForTest registers one detached handler and returns its unregister func, so a
@@ -115,6 +122,9 @@ func SetPasswordVerifyForTest(f func(pass, hash string) (bool, error)) func() {
 
 // DAVFailKeysForTest returns the DAV and /mcp failure limiter's keys. Test-only.
 func DAVFailKeysForTest(s *Server) []string {
+	if s.shared != nil {
+		return sharedKeysForTest(s, "dav:")
+	}
 	s.davFails.mu.Lock()
 	defer s.davFails.mu.Unlock()
 	keys := make([]string, 0, len(s.davFails.seen))
@@ -131,6 +141,49 @@ const OfficeBudgetForTest = officeBudget
 // so a test finishes inside the budget's one-minute window. Test-only.
 func SpendOfficeBudgetForTest(s *Server, bucket string, n int) {
 	for range n {
-		s.allowAccountAttempt(officeKey(bucket), officeBudget, time.Minute)
+		s.allowAccountAttempt(context.Background(), officeKey(bucket), officeBudget, time.Minute)
 	}
 }
+
+// sharedKeysForTest lists the live PostgreSQL windows under prefix, prefix removed, through a
+// connection of the test's own on the server's database.
+func sharedKeysForTest(s *Server, prefix string) []string {
+	db, err := sql.Open("pgx", s.config.Database.DSN)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT key FROM security_windows WHERE key LIKE $1 AND hits > 0 AND expires_at > CAST(EXTRACT(EPOCH FROM now()) * 1000 AS BIGINT)`, prefix+"%")
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			panic(err)
+		}
+		keys = append(keys, strings.TrimPrefix(k, prefix))
+	}
+	return keys
+}
+
+// SharedHitsForTest is a PostgreSQL window's hit count under its stored key.
+func SharedHitsForTest(s *Server, key string) int {
+	n, _, err := s.shared.AttemptHits(context.Background(), key)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
+// SetRequestDeadlineForTest shortens the request deadline and returns the restore func.
+func SetRequestDeadlineForTest(d time.Duration) func() {
+	old := requestDeadline
+	requestDeadline = d
+	return func() { requestDeadline = old }
+}
+
+// LongRoutesForTest is the deadline's exemption list.
+func LongRoutesForTest() map[string]string { return maps.Clone(longRoutes) }

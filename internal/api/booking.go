@@ -518,7 +518,7 @@ func (s *Server) handleBookingPage(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, apiErr)
 		return
 	}
-	if !s.allowAccountAttempt("book-view-type:"+h.t.ID, 600, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "book-view-type:"+h.t.ID, 600, time.Minute) {
 		s.limited(w)
 		return
 	}
@@ -580,7 +580,7 @@ func (s *Server) handleBookingHold(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Choose a time", "code": "invalid"})
 		return
 	}
-	if !s.allowAccountAttempt("book-hold-type:"+h.t.ID, 20, time.Hour) {
+	if !s.allowAccountAttempt(r.Context(), "book-hold-type:"+h.t.ID, 20, time.Hour) {
 		s.limited(w)
 		return
 	}

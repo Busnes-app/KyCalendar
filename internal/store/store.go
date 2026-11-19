@@ -35,6 +35,9 @@ var (
 	ErrAccessChanged = errors.New("account access changed since it was read")
 	// ErrInvalidMember: a SCIM group write named a member outside the SCIM scope.
 	ErrInvalidMember = errors.New("member outside the SCIM scope")
+	// ErrBindingChanged: the stored sign-in binding is no longer the one a sign-in started under
+	// (a save on another server); nothing was written.
+	ErrBindingChanged = errors.New("sign-in binding changed")
 	// ErrInvalidScope: an app password scope outside the known set.
 	ErrInvalidScope = errors.New("invalid app password scope")
 )
@@ -44,6 +47,7 @@ var (
 type Actor struct {
 	userID, sessionHash string
 	system              bool
+	binding             bool // a sign-in creating its own account (CreateSSOUser)
 }
 
 // System is the operator at the console.
@@ -73,6 +77,11 @@ type Store interface {
 	AppPasswords() AppPasswordStore
 	Audit() AuditStore
 	Settings() SettingsStore
+	Coordination() CoordinationStore
+
+	// SnapshotToSQLite writes a verified SQLite copy of this PostgreSQL database to path
+	// (snapshot.go). SQLite stores refuse: VACUUM INTO is their snapshot.
+	SnapshotToSQLite(ctx context.Context, path string) error
 
 	// ResetAfterRestore ends every session, MFA challenge and app password and writes a new
 	// sync epoch, in one transaction, so nothing issued after the backup is believed.
@@ -86,6 +95,10 @@ type Store interface {
 // UserStore defines repository operations for accounts.
 type UserStore interface {
 	CreateUser(ctx context.Context, u *User) error
+	// CreateSSOUser is CreateUser for a sign-in's new account: under the local-admins lock the
+	// sign-in save holds, and only while the stored signin_bound is u.SSOIssuer
+	// (ErrBindingChanged otherwise).
+	CreateSSOUser(ctx context.Context, u *User) error
 	// CreateUserAs is CreateUser by actor: ErrActorRevoked unless actor is still an active
 	// administrator with a live session, checked under the local-admins lock.
 	CreateUserAs(ctx context.Context, actor Actor, u *User) error
@@ -126,8 +139,9 @@ type UserStore interface {
 	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
 	// back a status it read before a concurrent deactivation, and in the same transaction (row
 	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,
-	// local or missing: ErrNotFound.
-	SetSSORole(ctx context.Context, userID, role string) error
+	// local or missing: ErrNotFound. A non-empty binding (a PostgreSQL sign-in) is rechecked as in
+	// CreateSSOUser, and the row must still carry it: ErrBindingChanged otherwise.
+	SetSSORole(ctx context.Context, userID, role, binding string) error
 	// UpdateSCIMUser writes the username, email and display name of an account in scope and only
 	// the access the request changes relative to what SCIM read (expectedRole, expectedStatus). A
 	// removal (deactivation, demotion) always lands first, with the revocation of every grant, in
@@ -164,8 +178,8 @@ type UserStore interface {
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	// SetOIDCEmail writes the email of a generic OIDC account (sso_provider oidc); ErrNotFound
-	// for any other row.
-	SetOIDCEmail(ctx context.Context, userID, email string) error
+	// for any other row. binding is rechecked as in SetSSORole.
+	SetOIDCEmail(ctx context.Context, userID, email, binding string) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
 	// SCIMUserIDs returns those of ids that name an account in scope, in any order.
@@ -250,6 +264,14 @@ type SettingsStore interface {
 	SetSetting(ctx context.Context, key, val string) error
 	DeleteSetting(ctx context.Context, key string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
+	// GetSettings reads keys in one statement, so related rows come from one snapshot;
+	// a key never written is absent from the map.
+	GetSettings(ctx context.Context, keys ...string) (map[string]string, error)
+	// SetSettingIfAbsent writes key only if it has no row and returns the stored value,
+	// which is val unless another writer was first: a write-once row enforced by the database.
+	SetSettingIfAbsent(ctx context.Context, key, val string) (string, error)
+	// SetSettingAudited writes key and the audit record in one transaction.
+	SetSettingAudited(ctx context.Context, key, val string, rec *AuditRecord) error
 }
 
 // Grantor is who issues an app password: a signed-in session, rechecked inside the insert's
