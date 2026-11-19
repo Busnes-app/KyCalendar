@@ -9,7 +9,9 @@
 #   4. .env switched to PostgreSQL, `docker compose up -d app`: /readyz 200, the admin signs
 #      in and the person reads the event;
 #   5. Back up now writes a local capsule and backup-drill passes;
-#   6. with the app stopped, `accept-replica-config` runs.
+#   6. with the app stopped, `accept-replica-config` runs;
+#   7. with COMPOSE_PROFILES=postgres in .env, a plain `docker compose down` stops PostgreSQL too
+#      and a plain `docker compose up -d` brings both back, serving the same data.
 # A test override changes only what a throwaway run needs: the image under test, unique
 # names, a random loopback port, named volumes, a digest-pinned PostgreSQL 17 on an
 # --internal network, empty push relay variables and no CAPTCHA. Everything this run made is
@@ -130,8 +132,8 @@ fi
 case $again in *"already holds data"*) ;; *) fail "the repeat was refused for another reason: $again" ;; esac
 
 echo "4. .env switched to PostgreSQL; the app starts on it"
-printf 'KY_DB_DRIVER=postgres\nKY_DB_DSN=%s\n' "$dsn" >>"$work/.env"
-dc up -d app >/dev/null 2>&1 || fail "docker compose up on PostgreSQL failed"
+printf 'COMPOSE_PROFILES=postgres\nKY_DB_DRIVER=postgres\nKY_DB_DSN=%s\n' "$dsn" >>"$work/.env"
+dc up -d >/dev/null 2>&1 || fail "docker compose up on PostgreSQL failed"
 url=$(base)
 ready "$url" || fail "the server never became ready on PostgreSQL"
 python3 "$here/cutover-client.py" verify "$url" || fail "the migrated data is not served"
@@ -148,4 +150,14 @@ dc stop app >/dev/null 2>&1
 accepted=$(dc run --rm --no-deps -T app accept-replica-config 2>&1) || fail "accept-replica-config failed: $accepted"
 case $accepted in *"Replica configuration"*) ;; *) fail "unexpected accept-replica-config output: $accepted" ;; esac
 
-echo "cutover check passed through docker compose: source digest $before unchanged, event served from PostgreSQL, capsule written and drilled"
+echo "7. plain docker compose down and up -d"
+out=$(dc down 2>&1) || fail "docker compose down failed: $out"
+case $out in *"still in use"*) fail "docker compose down left the network in use: $out" ;; esac
+left=$(docker ps -aq --filter "label=com.docker.compose.project=$name")
+[ -z "$left" ] || fail "docker compose down left containers running"
+dc up -d >/dev/null 2>&1 || fail "the plain docker compose up failed"
+url=$(base)
+ready "$url" || fail "the server never became ready after a plain up"
+python3 "$here/cutover-client.py" verify "$url" || fail "the data is not served after a plain down and up"
+
+echo "cutover check passed through docker compose: source digest $before unchanged, event served from PostgreSQL, capsule written and drilled, plain down and up keep PostgreSQL"

@@ -387,12 +387,13 @@ every replica stopped. The target's address goes in a mode-600 file, never on th
 With the binary, the file holds the address alone:
 
 ```bash
-(umask 077; cat > migration.dsn)     # paste postgres://<user>:<password>@<host>:5432/<db>?sslmode=disable, then Ctrl-D
+(umask 077; cat > migration.dsn)     # paste postgres://<user>:<password>@<host>:5432/<db>?sslmode=disable (password percent-encoded), then Ctrl-D
 KY_MIGRATE_POSTGRES_DSN_FILE=./migration.dsn KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --check --source <target>/data/kycalendar.db
 KY_MIGRATE_POSTGRES_DSN_FILE=./migration.dsn KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --source <target>/data/kycalendar.db
 ```
 
-With the image, put the restored `data` directory where Compose mounts `/app/data`, write
+With the image (Docker Compose 2.34 or later, `docker compose version`), put the restored
+`data` directory where Compose mounts `/app/data`, write
 `migration.env` as in [RUNNING.md](RUNNING.md#moving-a-sqlite-install-to-postgresql) (one line,
 `KY_MIGRATE_POSTGRES_DSN=...`) and run
 `docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --source /app/data/kycalendar.db`.

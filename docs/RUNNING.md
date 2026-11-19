@@ -262,15 +262,20 @@ sealing finishes that step before it stops.
 - Retry only idempotent requests whose connection failed, never after a timeout.
 - Upstream timeout about 15 seconds for ordinary requests, which end at 14 seconds with 503
   `request_timeout`. That 503 does not prove the request had no effect: check before retrying.
-  The routes below keep longer budgets of their own; give each at least this much:
+  The routes below keep longer budgets of their own. Give each a little more than its budget, so
+  the server's own answer at the end of the budget still reaches the client:
 
-  | Route | Upstream timeout |
-  |---|---|
-  | `POST /api/backup/deposit`, `POST /api/backup/drill`, `POST /api/backup/export-capsule` | 16 minutes |
-  | `POST /api/calendars/{id}/import` (CSV import) | 5 minutes |
-  | `POST /api/subscriptions`, `PATCH /api/subscriptions/{id}`, `POST /api/calendars/{id}/refresh` (published calendars) | 2 minutes |
-  | `POST /api/backup/pair-remote` | 1 minute |
-  | `/api/sso/kysignon/callback`, `PUT /api/admin/signin`, `POST /api/admin/signin/test`, `POST /api/book/{slug}/hold`, `POST /api/presence`, `GET /api/presence/me`, `PUT /api/presence/me`, `POST /api/suite/chat` | 30 seconds |
+  | Route | Server budget | Upstream timeout |
+  |---|---|---|
+  | `POST /api/backup/deposit`, `POST /api/backup/drill`, `POST /api/backup/export-capsule` | 16 minutes | 17 minutes |
+  | `POST /api/calendars/{id}/import` (CSV import) | 5 minutes | 6 minutes |
+  | `POST /api/subscriptions`, `PATCH /api/subscriptions/{id}`, `POST /api/calendars/{id}/refresh` (published calendars) | 2 minutes | 3 minutes |
+  | `POST /api/backup/pair-remote` | 1 minute | 2 minutes |
+  | `/api/sso/kysignon/callback`, `PUT /api/admin/signin`, `POST /api/admin/signin/test`, `POST /api/book/{slug}/hold`, `POST /api/presence`, `GET /api/presence/me`, `PUT /api/presence/me`, `POST /api/suite/chat` | 20-second outbound client | 30 seconds |
+
+  Simplest, and the only choice in Nginx Proxy Manager, which cannot set per-route timeouts on
+  `{id}` paths: one 17-minute upstream timeout for the whole site (nginx `proxy_read_timeout 17m;`).
+  The server still ends every ordinary request at 14 seconds itself.
 - nginx and Nginx Proxy Manager passive health checks only notice failed connections; they cannot
   see `/readyz`, so they keep sending requests to a draining replica until it closes. That
   behaviour is not exercised here.
@@ -314,9 +319,13 @@ rm ./data/recovery.pub        # on every replica host
 docker compose up -d app
 ```
 
-On SQLite run the same `DELETE` with the server stopped: `sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN (...)"`.
+On SQLite run the same `DELETE` with the server stopped, using the host's `sqlite3` package (the
+image has none). `./data` belongs to the container's user, so: `sudo sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN (...)"`.
 
 ### Moving a SQLite install to PostgreSQL
+
+Needs Docker Compose 2.34 or later (`docker compose version`): older releases refuse
+`run --env-from-file` with `unknown flag`.
 
 With the bundled `postgres` service (database `ky_server`, user `postgres`, its password
 `KY_POSTGRES_PASSWORD` in `.env`):
@@ -324,26 +333,35 @@ With the bundled `postgres` service (database `ky_server`, user `postgres`, its 
 ```bash
 docker compose stop app                                  # it checkpoints its -wal
 docker compose --profile postgres up -d postgres         # --no-deps below needs it running
-(umask 077; cat > migration.env)                         # paste one line, then Ctrl-D:
+(umask 077; cat > migration.env)                         # paste the line below without its #, then Ctrl-D
 # KY_MIGRATE_POSTGRES_DSN=postgres://postgres:<KY_POSTGRES_PASSWORD>@postgres:5432/ky_server?sslmode=disable
 docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --check --source /app/data/kycalendar.db
 docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --source /app/data/kycalendar.db
 ```
 
-The address stays in a mode-600 file, never in argv or shell history. `--check` verifies and
+The address stays in a mode-600 file, never in argv or shell history. It is a URL: a password
+holding `@`, `/`, `:` or another reserved character must be percent-encoded there (or use a hex
+password, `openssl rand -hex 24`). `--check` verifies and
 rolls back. The copy is one transaction under the bootstrap lock: it refuses a database that
 already holds data, a newer schema, a running server and an unflushed `-wal`, never writes the
 source, checks it, compares every table row for row before it commits and moves the audit
 sequence past the copied rows.
 
-Then add to `.env` and start the app; it keeps `data/encryption.key` and `data/recovery.pub`:
+Then add to `.env` and start the app with `docker compose up -d`; it keeps
+`data/encryption.key` and `data/recovery.pub`:
 
 ```bash
+COMPOSE_PROFILES=postgres          # every up and down now includes the postgres service
 KY_DB_DRIVER=postgres
 KY_DB_DSN=postgres://postgres:<KY_POSTGRES_PASSWORD>@postgres:5432/ky_server?sslmode=disable
 KYCALENDAR_SCHEDULING=false        # or true if KyPost is linked
-KY_SESSION_SECRET=<already set for production>
+KY_SESSION_SECRET=<keep yours; if unset: openssl rand -hex 32>
 ```
+
+Without `COMPOSE_PROFILES`, a plain `docker compose down` leaves PostgreSQL running and the next
+`docker compose up -d` starts the app alone, which restarts in a loop on `lookup postgres: no
+such host`. PostgreSQL requires `KY_SESSION_SECRET` in every `KY_ENV`; setting it for the first
+time signs everyone out once.
 
 `docker-compose.yml` passes `KY_DB_DRIVER`, `KY_DB_DSN`, `KY_ENCRYPTION_KEY`,
 `KY_DB_MAX_OPEN_CONNS` and the calendar caps from `.env`. `scripts/check-postgres-cutover.sh` runs
@@ -352,7 +370,8 @@ these steps through `docker-compose.yml` with the built image in CI, including
 
 - **Retry:** a target that already holds data is refused, including one a PostgreSQL start
   already wrote an `admin` into. Empty it and run again:
-  `docker compose exec postgres psql -U postgres -c 'DROP DATABASE ky_server' -c 'CREATE DATABASE ky_server'`.
+  `docker compose stop app && docker compose exec postgres psql -U postgres -c 'DROP DATABASE ky_server' -c 'CREATE DATABASE ky_server'`
+  (the app holds connections, so the drop fails while it runs).
 - **Roll back:** stop the app, remove `KY_DB_DRIVER` and `KY_DB_DSN` from `.env`, start. The SQLite
   file was never written, so it is as you stopped it; anything written on PostgreSQL since stays
   there.
