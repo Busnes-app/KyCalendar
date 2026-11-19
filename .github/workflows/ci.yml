@@ -318,7 +318,7 @@ jobs:
     name: Docker image build & run
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -359,6 +359,11 @@ jobs:
             http://127.0.0.1:18080/api/auth/login | grep -q '"authenticated":true'
           # docker-compose.yml's healthcheck command, inside the image it runs in
           docker exec ky_ci wget -q -O /dev/null http://127.0.0.1:8080/healthz
+
+      # The documented SQLite -> PostgreSQL cutover, with this image and a pinned PostgreSQL 17
+      # on an internal network; it removes everything it made.
+      - name: SQLite to PostgreSQL cutover
+        run: scripts/check-postgres-cutover.sh kycalendar:ci
 
       # Hand the exact image the checks above ran against to the publish job,
       # so what gets pushed is what was tested, never a second build.
