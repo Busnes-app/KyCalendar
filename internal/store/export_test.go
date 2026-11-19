@@ -31,3 +31,10 @@ func TerminateBackendForTest(st Store, pid int) error {
 	_, err := st.(*SQLStore).db.Exec(`SELECT pg_terminate_backend($1)`, pid)
 	return err
 }
+
+// RowCountForTest counts table's rows matching where.
+func RowCountForTest(st Store, table, where string) (int, error) {
+	var n int
+	err := st.(*SQLStore).db.QueryRow(`SELECT COUNT(*) FROM ` + table + ` WHERE ` + where).Scan(&n)
+	return n, err
+}

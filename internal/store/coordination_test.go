@@ -274,3 +274,51 @@ func TestSQLiteLocksAreFlocks(t *testing.T) {
 		t.Fatal("the lock was not released")
 	}
 }
+
+// A restore starts a new set of replicas: the configuration record and rate windows go; spent
+// CAPTCHA salts and KyPost event IDs only ever refuse, so unexpired ones stay.
+func TestResetAfterRestoreKeepsOnlyLiveRefusals(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	c := st.Coordination()
+	live, gone := time.Now().Add(time.Hour).UnixMilli(), time.Now().Add(-time.Hour).UnixMilli()
+	if err := st.Settings().SetSetting(ctx, "replica_config_fingerprint", "{}"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := c.TakeAttempt(ctx, "acct:x", 5, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	for salt, exp := range map[string]int64{"live-salt": live, "gone-salt": gone} {
+		if _, err := c.SpendChallenge(ctx, salt, exp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := c.RecordReplay(ctx, "live-evt", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RecordReplay(ctx, "gone-evt", time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := st.ResetAfterRestore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Settings().GetSetting(ctx, "replica_config_fingerprint"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the replica record survived the reset: %v", err)
+	}
+	if hits, _, _ := c.AttemptHits(ctx, "acct:x"); hits != 0 {
+		t.Fatalf("a rate window survived the reset: %d", hits)
+	}
+	if ok, _ := c.SpendChallenge(ctx, "live-salt", live); ok {
+		t.Fatal("an unexpired spent salt was forgotten by the reset")
+	}
+	if ok, _ := c.SpendChallenge(ctx, "gone-salt", live); !ok {
+		t.Fatal("an expired salt was kept by the reset")
+	}
+	if fresh, _ := c.RecordReplay(ctx, "live-evt", time.Hour); fresh {
+		t.Fatal("an unexpired KyPost event ID was forgotten by the reset")
+	}
+	if n, _ := store.RowCountForTest(st, "kypost_replay", "event_id = 'gone-evt'"); n != 0 {
+		t.Fatal("an expired KyPost event ID was kept by the reset")
+	}
+}
