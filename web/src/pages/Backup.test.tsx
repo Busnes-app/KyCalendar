@@ -201,6 +201,54 @@ describe('Backup', () => {
     expect(screen.getByText(/Capsule cap-1 .* written to \/backups\/cap-1.kycap/)).toBeTruthy();
   });
 
+  it('shows a failed pairing in the KyRecovery panel and moves focus to it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/backup/status')) return new Response(JSON.stringify({ ...PAIRED, paired: false, recovery_url: undefined }), { status: 200 });
+      if (url.endsWith('/api/backup/pair-remote')) return new Response(JSON.stringify({ error: 'The pairing code has expired' }), { status: 400 });
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+    render(<Backup />);
+    fireEvent.change(await screen.findByLabelText('Server URL'), { target: { value: 'https://recovery.example' } });
+    fireEvent.change(screen.getByLabelText('Pairing code'), { target: { value: '123456' } });
+    const button = screen.getByRole('button', { name: /^pair$/i });
+    fireEvent.click(button);
+    const alert = (await screen.findByText('The pairing code has expired')).closest('.dr-alert') as HTMLElement;
+    expect(alert.closest('.panel')?.contains(button)).toBe(true);
+    expect(document.activeElement).toBe(alert);
+  });
+
+  it('keeps Back up now and Pair focusable while busy and ignores a second press', async () => {
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/backup/status')) return Promise.resolve(new Response(JSON.stringify(PAIRED), { status: 200 }));
+      calls++;
+      return new Promise<Response>(() => {}); // the deposit and the pairing never answer
+    }));
+    render(<Backup />);
+    const backUp = await screen.findByRole('button', { name: /back up now/i });
+    fireEvent.change(screen.getByLabelText('Pairing code'), { target: { value: '123456' } });
+    const rePair = screen.getByRole('button', { name: /re-pair/i });
+    for (const [button, busy] of [[backUp, /sealing/i], [rePair, /re-pair/i]] as const) {
+      button.focus();
+      fireEvent.click(button);
+      expect(await screen.findByRole('button', { name: busy })).toBe(button);
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      expect(document.activeElement).toBe(button);
+      const before = calls;
+      fireEvent.click(button);
+      expect(calls).toBe(before);
+    }
+  });
+
+  it('never shows a placeholder letter for the custodian count', async () => {
+    mockStatus({ ...PAIRED, key_pinned: false, paired: false, threshold: undefined });
+    render(<Backup />);
+    expect(await screen.findByText(/that takes the custodian cards together/)).toBeTruthy();
+  });
+
   it('shows a failed last run, which the schedule alone would hide', async () => {
     mockStatus({ ...PAIRED, last_run: { at: '2026-10-06T10:00:00Z', outcome: 'failure', error: 'capsule too large' } });
     render(<Backup />);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -139,6 +139,18 @@ const Alert: React.FC<{ kind: 'error' | 'warn' | 'success'; children: React.Reac
   </div>
 );
 
+/** An action's result: focused when it appears, so it scrolls into view and keyboard focus lands on it. */
+const Result: React.FC<{ kind: 'error' | 'success'; children: React.ReactNode }> = ({ kind, children }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  return (
+    <div ref={ref} tabIndex={-1} className={`dr-alert dr-alert-${kind}`} role={kind === 'success' ? 'status' : 'alert'}>
+      {kind === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+      <span>{children}</span>
+    </div>
+  );
+};
+
 /** A ky-ui status pill; no status is neutral. */
 const Status: React.FC<{ status?: 'success' | 'danger'; children: React.ReactNode }> = ({ status, children }) => (
   <span className="ky-status" data-ky-status={status}>{children}</span>
@@ -251,6 +263,7 @@ export const Backup: React.FC = () => {
 
   const saveSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (scheduleSaving) return;
     setScheduleSaving(true);
     setScheduleMessage('');
     setScheduleError('');
@@ -271,6 +284,7 @@ export const Backup: React.FC = () => {
 
   const pair = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pairing) return;
     setPairing(true);
     setPairMessage('');
     setPairError('');
@@ -317,6 +331,7 @@ export const Backup: React.FC = () => {
 
   const pin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pinning) return;
     setPinning(true);
     setPinError('');
     try {
@@ -347,6 +362,18 @@ export const Backup: React.FC = () => {
   const scheduleBlock = !keyPinned ? 'Waiting for recovery key' : !canBackUp ? 'Waiting for a destination' : null;
   const copies = status?.local_copies ?? [];
   const newestLocal = copies[0];
+  const runAlerts = (
+    <>
+      {runMessage && <Result kind="success">{runMessage}</Result>}
+      {runError && <Result kind="error">{runError}</Result>}
+    </>
+  );
+  const pairAlerts = (
+    <>
+      {pairMessage && <Result kind="success">{pairMessage}</Result>}
+      {pairError && <Result kind="error">{pairError}</Result>}
+    </>
+  );
 
   return (
     <div className="dr-page">
@@ -362,11 +389,13 @@ export const Backup: React.FC = () => {
       />
 
       {loadingStatus && !status && <p className="dr-hint" role="status">Loading backup status…</p>}
-      {/* Action results stay outside the status block: a failed re-read must not hide what succeeded. */}
-      {runMessage && <Alert kind="success">{runMessage}</Alert>}
-      {runError && <Alert kind="error">{runError}</Alert>}
-      {pairMessage && <Alert kind="success">{pairMessage}</Alert>}
-      {pairError && <Alert kind="error">{pairError}</Alert>}
+      {/* Without a status the sections are gone: their results show here, so a failed re-read never hides what succeeded. */}
+      {!status && (
+        <>
+          {runAlerts}
+          {pairAlerts}
+        </>
+      )}
       {statusError && <Alert kind="error">{statusError}</Alert>}
       {status?.recovery_key_error && <Alert kind="error">{status.recovery_key_error}</Alert>}
       {status && status.database_driver === 'postgres' && (
@@ -434,7 +463,7 @@ export const Backup: React.FC = () => {
           <div className="panel-header">
             <h3>Back up now</h3>
             <div className="dr-actions">
-              <button type="button" onClick={runBackup} disabled={running || !canBackUp}>
+              <button type="button" onClick={() => { if (!running) void runBackup(); }} disabled={!canBackUp} aria-disabled={running}>
                 {running ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 <span>{running ? 'Sealing…' : 'Back up now'}</span>
               </button>
@@ -442,7 +471,7 @@ export const Backup: React.FC = () => {
                 <Download size={14} />
                 <span>Download capsule</span>
               </button>
-              <button type="button" className="btn-secondary" onClick={runDrill} disabled={runningDrill}>
+              <button type="button" className="btn-secondary" onClick={() => { if (!runningDrill) void runDrill(); }} aria-disabled={runningDrill}>
                 {runningDrill ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                 <span>{runningDrill ? 'Restoring…' : 'Run restore drill'}</span>
               </button>
@@ -450,8 +479,8 @@ export const Backup: React.FC = () => {
           </div>
           <p className="dr-hint">
             One sealed capsule goes to every destination above: the local directory, and KyRecovery when paired. Download saves the same
-            capsule to this browser instead. Nothing on this server can open a capsule; that takes {status?.threshold ?? 'k'} custodian cards
-            together.
+            capsule to this browser instead. Nothing on this server can open a capsule; that takes{' '}
+            {status?.threshold ? `${status.threshold} custodian cards` : 'the custodian cards'} together.
           </p>
           <div className="dr-hint">A capsule carries</div>
           <ul className="dr-members">
@@ -459,6 +488,7 @@ export const Backup: React.FC = () => {
               <li key={m}>{m}</li>
             ))}
           </ul>
+          {runAlerts}
           {copies.length > 0 && (
             <ul className="dr-copies">
               {copies.map((c) => (
@@ -506,7 +536,7 @@ export const Backup: React.FC = () => {
                 ))}
               </select>
             </label>
-            <button type="submit" disabled={scheduleSaving || scheduleSec === (status?.interval_sec ?? -1)}>
+            <button type="submit" disabled={!scheduleSaving && scheduleSec === (status?.interval_sec ?? -1)} aria-disabled={scheduleSaving}>
               {scheduleSaving ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
               <span>Save</span>
             </button>
@@ -550,18 +580,19 @@ export const Backup: React.FC = () => {
                     required
                   />
                 </label>
-                <button type="submit" disabled={pairing}>
+                <button type="submit" aria-disabled={pairing}>
                   {pairing ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
                   <span>{paired ? 'Re-pair' : 'Pair'}</span>
                 </button>
               </div>
             </form>
             {paired && (
-              <button type="button" className="btn-danger" onClick={unpair} disabled={unpairing}>
+              <button type="button" className="btn-danger" onClick={() => { if (!unpairing) void unpair(); }} aria-disabled={unpairing}>
                 {unpairing ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
                 <span>Unpair</span>
               </button>
             )}
+            {pairAlerts}
           </div>
 
           <div className="panel dr-section">
@@ -603,7 +634,7 @@ export const Backup: React.FC = () => {
                       <span>Of</span>
                       <input type="number" min={2} max={255} value={pinN} onChange={(e) => setPinN(e.target.value)} required />
                     </label>
-                    <button type="submit" disabled={pinning}>
+                    <button type="submit" aria-disabled={pinning}>
                       {pinning ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
                       <span>Pin key</span>
                     </button>

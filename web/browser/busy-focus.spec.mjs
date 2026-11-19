@@ -70,3 +70,79 @@ test('busy focus: Refresh on Backups keeps keyboard focus while it reloads', asy
   expect(await focusedName(page)).toBe('Refresh');
   await context.close();
 });
+
+const PAIRED = {
+  key_pinned: true, paired: true, interval_sec: 86400, recovery_url: 'https://recovery.example', recovery_key_id: 'k1',
+  threshold: 2, total_shares: 3, database_driver: 'sqlite', members: ['data/kycalendar.db'], local_dir: '/app/backups', local_keep: 7, local_copies: [],
+};
+const UNPINNED = { key_pinned: false, paired: false, interval_sec: 0, database_driver: 'sqlite', members: ['data/kycalendar.db'] };
+
+// Holds the next request to url until released, then answers it with a 400.
+async function held(page, url) {
+  let arrived, release;
+  const seen = new Promise((r) => { arrived = r; });
+  const gate = new Promise((r) => { release = r; });
+  await page.route(url, async (route) => {
+    arrived();
+    await gate;
+    await route.fulfill({ status: 400, json: { error: 'Refused by the test' } });
+  });
+  return { seen, release: () => release() };
+}
+
+// Every busy Backups action keeps keyboard focus (aria-disabled, not disabled), and its result
+// shows in its own section, focused and on screen. Status and actions are staged in the page:
+// the disposable server has nothing paired or pinned.
+test('busy focus: every Backups action keeps keyboard focus, and its result is on screen', async ({ browser }, testInfo) => {
+  const { context, page } = await newPage(browser, testInfo);
+  let status = PAIRED;
+  await page.route('/api/backup/status', (r) => r.fulfill({ json: status }));
+  page.on('dialog', (d) => d.accept());
+  await page.goto('/');
+  await page.getByLabel('Username', { exact: true }).fill('admin');
+  await page.locator('input[type=password]').fill('BrowserUpdated456!');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Backups', exact: true }).click();
+
+  const actions = [
+    { name: 'Back up now', url: '/api/backup/deposit', result: true },
+    { name: 'Run restore drill', url: '/api/backup/drill' },
+    { name: 'Save', url: '/api/backup/schedule', before: () => page.getByLabel('Back up automatically').selectOption({ label: 'Weekly' }) },
+    { name: 'Re-pair', url: '/api/backup/pair-remote', result: true, before: () => page.getByLabel('Pairing code').fill('123456') },
+    { name: 'Unpair', url: '/api/backup/pairing', result: true },
+    { name: 'Pin key', url: '/api/backup/pin-key', unpinned: true, before: () => page.getByLabel('Suite recovery public key').fill('not-a-key') },
+    { name: 'Pair', url: '/api/backup/pair-remote', unpinned: true, result: true, before: async () => {
+      await page.getByLabel('Server URL').fill('https://recovery.example');
+      await page.getByLabel('Pairing code').fill('123456');
+    } },
+  ];
+  for (const a of actions) {
+    if (a.unpinned && status !== UNPINNED) {
+      status = UNPINNED;
+      await page.getByRole('button', { name: 'Refresh' }).click();
+    }
+    await a.before?.();
+    const button = page.getByRole('button', { name: a.name, exact: true });
+    await button.evaluate((el) => { el.dataset.probe = 'busy'; });
+    const gate = await held(page, a.url);
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await gate.seen;
+    await settled(page);
+    expect(await page.evaluate(() => document.activeElement?.dataset.probe), `${a.name} while busy`).toBe('busy');
+    expect(await page.evaluate(() => document.querySelector('[data-probe=busy]')?.getAttribute('aria-disabled')), a.name).toBe('true');
+    gate.release();
+    await expect.poll(() => page.evaluate(() => document.querySelector('[data-probe=busy]')?.getAttribute('aria-disabled')), `${a.name} done`).toBe('false');
+    if (a.result) {
+      // The error shows beside the action, focused, inside the viewport.
+      await expect.poll(() => page.evaluate(() => {
+        const el = document.activeElement;
+        return el?.getAttribute('role') === 'alert' && el.textContent.includes('Refused by the test') && !!el.closest('.panel')?.querySelector('[data-probe=busy]');
+      }), `${a.name}'s result focused in its own section`).toBe(true);
+      await expect(page.locator(':focus')).toBeInViewport();
+    }
+    await page.unroute(a.url);
+    await page.evaluate(() => document.querySelector('[data-probe=busy]')?.removeAttribute('data-probe'));
+  }
+  await context.close();
+});
