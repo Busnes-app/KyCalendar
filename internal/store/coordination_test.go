@@ -98,7 +98,7 @@ func TestRefundRestoresOnlyItsOwnWindow(t *testing.T) {
 }
 
 // A CAPTCHA salt and a KyPost event ID are spent once across replicas; a forgotten event ID
-// is accepted again and an expired one is replaced.
+// is accepted again, an expired one is replaced, and only its own attempt undoes a record.
 func TestReplayAndSpendAcrossReplicas(t *testing.T) {
 	onPostgres(t)
 	_, a, b := openTwice(t)
@@ -110,21 +110,34 @@ func TestReplayAndSpendAcrossReplicas(t *testing.T) {
 	if ok, _ := b.Coordination().SpendChallenge(ctx, "0123456789abcdef0123456789abcdef", exp); ok {
 		t.Fatal("a salt was spent twice across replicas")
 	}
-	if fresh, err := a.Coordination().RecordReplay(ctx, "evt-1", time.Minute); !fresh || err != nil {
+	if fresh, err := a.Coordination().RecordReplay(ctx, "evt-1", "t", time.Minute); !fresh || err != nil {
 		t.Fatalf("first record: %v %v", fresh, err)
 	}
-	if fresh, _ := b.Coordination().RecordReplay(ctx, "evt-1", time.Minute); fresh {
+	if fresh, _ := b.Coordination().RecordReplay(ctx, "evt-1", "t", time.Minute); fresh {
 		t.Fatal("an event ID recorded on A was new on B")
 	}
 	if err := b.Coordination().ForgetReplay(ctx, "evt-1"); err != nil {
 		t.Fatal(err)
 	}
-	if fresh, _ := a.Coordination().RecordReplay(ctx, "evt-1", 50*time.Millisecond); !fresh {
+	if fresh, _ := a.Coordination().RecordReplay(ctx, "evt-1", "t", 50*time.Millisecond); !fresh {
 		t.Fatal("a forgotten event ID was refused")
 	}
 	time.Sleep(100 * time.Millisecond)
-	if fresh, _ := b.Coordination().RecordReplay(ctx, "evt-1", time.Minute); !fresh {
+	if fresh, _ := b.Coordination().RecordReplay(ctx, "evt-1", "t", time.Minute); !fresh {
 		t.Fatal("an expired event ID was refused")
+	}
+	// Only the attempt that wrote a record undoes it.
+	if err := a.Coordination().UndoReplay(ctx, "evt-1", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if fresh, _ := a.Coordination().RecordReplay(ctx, "evt-1", "u", time.Minute); fresh {
+		t.Fatal("another attempt's undo released the record")
+	}
+	if err := a.Coordination().UndoReplay(ctx, "evt-1", "t"); err != nil {
+		t.Fatal(err)
+	}
+	if fresh, _ := a.Coordination().RecordReplay(ctx, "evt-1", "u", time.Minute); !fresh {
+		t.Fatal("the writing attempt's undo kept the record")
 	}
 	if err := a.Coordination().CleanExpired(ctx); err != nil {
 		t.Fatal(err)
@@ -293,10 +306,10 @@ func TestResetAfterRestoreKeepsOnlyLiveRefusals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := c.RecordReplay(ctx, "live-evt", time.Hour); err != nil {
+	if _, err := c.RecordReplay(ctx, "live-evt", "t", time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.RecordReplay(ctx, "gone-evt", time.Millisecond); err != nil {
+	if _, err := c.RecordReplay(ctx, "gone-evt", "t", time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -315,7 +328,7 @@ func TestResetAfterRestoreKeepsOnlyLiveRefusals(t *testing.T) {
 	if ok, _ := c.SpendChallenge(ctx, "gone-salt", live); !ok {
 		t.Fatal("an expired salt was kept by the reset")
 	}
-	if fresh, _ := c.RecordReplay(ctx, "live-evt", time.Hour); fresh {
+	if fresh, _ := c.RecordReplay(ctx, "live-evt", "t", time.Hour); fresh {
 		t.Fatal("an unexpired KyPost event ID was forgotten by the reset")
 	}
 	if n, _ := store.RowCountForTest(st, "kypost_replay", "event_id = 'gone-evt'"); n != 0 {

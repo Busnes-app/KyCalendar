@@ -609,7 +609,8 @@ CREATE TABLE sso_logouts (
 
 // replicaCoordination: state PostgreSQL replicas share, on database time in milliseconds.
 // security_windows holds rate windows (expires_at is the window's generation),
-// spent_challenges the used CAPTCHA salts, kypost_replay the verified KyPost event IDs. SQLite
+// spent_challenges the used CAPTCHA salts, kypost_replay the verified KyPost event IDs (attempt:
+// the request that wrote the record, so it alone can undo it). SQLite
 // keeps all three in memory and leaves these tables empty.
 const replicaCoordination = `CREATE TABLE security_windows (
  key TEXT PRIMARY KEY,
@@ -624,7 +625,8 @@ CREATE TABLE spent_challenges (
 CREATE INDEX idx_spent_challenges_expiry ON spent_challenges(expires_at);
 CREATE TABLE kypost_replay (
  event_id TEXT PRIMARY KEY,
- expires_at BIGINT NOT NULL
+ expires_at BIGINT NOT NULL,
+ attempt TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX idx_kypost_replay_expiry ON kypost_replay(expires_at);`
 

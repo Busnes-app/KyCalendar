@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,9 +58,8 @@ func (s *Server) kypostPeerRequest(w http.ResponseWriter, r *http.Request, event
 	}
 	if errors.Is(err, syncauth.ErrReplayGuardFull) {
 		// The guard cannot decide (full, or its database unreachable): refuse, and let KyPost
-		// retry instead of reading this as a bad signature. A record that may have committed
-		// before the error is released, so the retry is processed, not called a duplicate.
-		s.retryKyPost(r)
+		// retry instead of reading this as a bad signature. The guard already undid any record
+		// this attempt wrote; releasing the ID here could release an earlier request's record.
 		w.Header().Set("Retry-After", "5")
 		s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Temporarily unavailable", "code": "unavailable"})
 		return nil, false
@@ -147,11 +147,19 @@ func (g sharedReplay) Check(id string, at time.Time) error {
 	if ahead := time.Until(at); ahead > 0 { // kept past its signed time, as in memory
 		window += ahead
 	}
+	attempt := rand.Text()
 	c, cancel := context.WithTimeout(context.Background(), windowTimeout)
 	defer cancel()
-	fresh, err := g.shared.RecordReplay(c, id, window)
+	fresh, err := g.shared.RecordReplay(c, id, attempt, window)
 	switch {
 	case err != nil:
+		// The record may have committed before the error: undo it if, and only if, it is ours,
+		// so KyPost's retry is processed rather than called a duplicate.
+		undo, cancelUndo := context.WithTimeout(context.Background(), windowTimeout)
+		defer cancelUndo()
+		if uerr := g.shared.UndoReplay(undo, id, attempt); uerr != nil {
+			log.Printf("[KYPOST] replay record not undone; KyPost's retry may be answered as a duplicate: %v", uerr)
+		}
 		log.Printf("[KYPOST] replay guard unavailable, refusing: %v", err)
 		return fmt.Errorf("%w: %v", syncauth.ErrReplayGuardFull, err)
 	case !fresh:

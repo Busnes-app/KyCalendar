@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/syncauth"
+	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -82,7 +84,7 @@ func TestCallbackOnAnotherReplicaAcrossASaveIsRefused(t *testing.T) {
 // failingReplays is a coordination store whose replay record cannot be read.
 type failingReplays struct{ store.CoordinationStore }
 
-func (failingReplays) RecordReplay(context.Context, string, time.Duration) (bool, error) {
+func (failingReplays) RecordReplay(context.Context, string, string, time.Duration) (bool, error) {
 	return false, errors.New("injected")
 }
 
@@ -115,6 +117,91 @@ func TestKyPostReplayIsSharedAcrossReplicas(t *testing.T) {
 	broken := sharedReplay{failingReplays{a.shared}}
 	if err := broken.Check("evt-other", now); !errors.Is(err, syncauth.ErrReplayGuardFull) {
 		t.Fatalf("a guard that cannot read: %v, want the fail-closed ErrReplayGuardFull", err)
+	}
+}
+
+// faultyReplays fails every RecordReplay; with commit set, the record is written first, as when
+// a commit's answer is lost.
+type faultyReplays struct {
+	store.CoordinationStore
+	commit bool
+}
+
+func (f faultyReplays) RecordReplay(ctx context.Context, id, attempt string, window time.Duration) (bool, error) {
+	if f.commit {
+		if _, err := f.CoordinationStore.RecordReplay(ctx, id, attempt, window); err != nil {
+			return false, err
+		}
+	}
+	return false, errors.New("injected")
+}
+
+// Replicas linked to KyPost from the environment share the replay guard (spec AC7). A replay
+// whose guard check fails must not release the original's record, or the next copy is
+// processed twice; an attempt whose own record committed before the failure undoes it, so
+// KyPost's retry is processed, not called a duplicate.
+func TestFailedReplayCheckReleasesOnlyItsOwnRecord(t *testing.T) {
+	if os.Getenv("KY_TEST_POSTGRES_DSN") == "" {
+		t.Skip("PostgreSQL only: set KY_TEST_POSTGRES_DSN")
+	}
+	secret := []byte("kypost-test-secret-0123456789abcdef")
+	file := filepath.Join(t.TempDir(), "kypost.secret")
+	if err := os.WriteFile(file, secret, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	t.Setenv("KYCALENDAR_KYPOST_URL", "https://kypost.example")
+	t.Setenv("KYCALENDAR_KYPOST_SECRET_FILE", file)
+	s, _ := davInternalServer(t)
+	stB, err := store.Open(context.Background(), s.config.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stB.Close()
+	b := NewServer(s.config, stB) // replica B, linked to KyPost from the environment as well
+	body := []byte(`{"user":{"sub":"nobody","issuer":"https://id.example"}}`)
+	sendTo := func(srv *Server, h syncauth.Headers) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/itip/inbound", strings.NewReader(string(body)))
+		h.Apply(r)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, r)
+		return w
+	}
+	send := func(h syncauth.Headers) *httptest.ResponseRecorder { return sendTo(s, h) }
+	sign := func(id string) syncauth.Headers {
+		h, err := syncauth.Sign(secret, time.Now(), kypost.EventInbound, id, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+	real := s.kypostReplay
+	accepted := func(w *httptest.ResponseRecorder) bool { return w.Code == http.StatusNotFound } // verified; no such user
+
+	original := sign("evt-original")
+	if w := send(original); !accepted(w) {
+		t.Fatalf("original: %d %s", w.Code, w.Body)
+	}
+	if w := sendTo(b, original); !strings.Contains(w.Body.String(), "duplicate") {
+		t.Fatalf("A's event on replica B: %d %s, want a duplicate", w.Code, w.Body)
+	}
+	s.kypostReplay = sharedReplay{faultyReplays{s.shared, false}}
+	if w := send(original); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("replay through a failing guard: %d %s, want 503", w.Code, w.Body)
+	}
+	s.kypostReplay = real
+	if w := send(original); !strings.Contains(w.Body.String(), "duplicate") {
+		t.Fatalf("the next replay: %d %s; the failed check released the original's record", w.Code, w.Body)
+	}
+
+	lost := sign("evt-lost-commit")
+	s.kypostReplay = sharedReplay{faultyReplays{s.shared, true}}
+	if w := send(lost); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("a lost commit: %d %s, want 503", w.Code, w.Body)
+	}
+	s.kypostReplay = real
+	if w := send(lost); !accepted(w) {
+		t.Fatalf("KyPost's retry after a lost commit: %d %s, want it processed", w.Code, w.Body)
 	}
 }
 

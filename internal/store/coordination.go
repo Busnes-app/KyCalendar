@@ -28,11 +28,14 @@ type CoordinationStore interface {
 	// SpendChallenge records a CAPTCHA salt until expiresMs (unix milliseconds) and reports
 	// whether it was unspent.
 	SpendChallenge(ctx context.Context, salt string, expiresMs int64) (bool, error)
-	// RecordReplay records event ID id for window and reports whether it was new; an expired
-	// record is replaced.
-	RecordReplay(ctx context.Context, id string, window time.Duration) (bool, error)
+	// RecordReplay records event ID id for window as attempt and reports whether it was new; an
+	// expired record is replaced.
+	RecordReplay(ctx context.Context, id, attempt string, window time.Duration) (bool, error)
 	// ForgetReplay releases id so the sender's retry is accepted.
 	ForgetReplay(ctx context.Context, id string) error
+	// UndoReplay releases id only if attempt wrote its record: an attempt that failed with an
+	// unknown outcome never releases an earlier request's record.
+	UndoReplay(ctx context.Context, id, attempt string) error
 	// CleanExpired deletes expired windows, salts and event IDs.
 	CleanExpired(ctx context.Context) error
 	// WithLock runs work as the single holder of name and reports whether it won. work's
@@ -117,17 +120,17 @@ func (c *coordinationStore) SpendChallenge(ctx context.Context, salt string, exp
 	return n == 1, err
 }
 
-func (c *coordinationStore) RecordReplay(ctx context.Context, id string, window time.Duration) (bool, error) {
+func (c *coordinationStore) RecordReplay(ctx context.Context, id, attempt string, window time.Duration) (bool, error) {
 	if id == "" || len(id) > 200 {
 		return false, errors.New("store: invalid event ID")
 	}
 	now := c.nowMillis()
 	// Insert, or take over an expired record; a live one stays and nothing is returned.
-	q := `INSERT INTO kypost_replay (event_id, expires_at) VALUES (?, ` + now + ` + ?)
-ON CONFLICT (event_id) DO UPDATE SET expires_at = excluded.expires_at WHERE kypost_replay.expires_at <= ` + now + `
+	q := `INSERT INTO kypost_replay (event_id, expires_at, attempt) VALUES (?, ` + now + ` + ?, ?)
+ON CONFLICT (event_id) DO UPDATE SET expires_at = excluded.expires_at, attempt = excluded.attempt WHERE kypost_replay.expires_at <= ` + now + `
 RETURNING event_id`
 	var got string
-	err := c.store.db.QueryRowContext(ctx, c.store.rebind(q), id, window.Milliseconds()).Scan(&got)
+	err := c.store.db.QueryRowContext(ctx, c.store.rebind(q), id, window.Milliseconds(), attempt).Scan(&got)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -136,6 +139,11 @@ RETURNING event_id`
 
 func (c *coordinationStore) ForgetReplay(ctx context.Context, id string) error {
 	_, err := c.store.db.ExecContext(ctx, c.store.rebind(`DELETE FROM kypost_replay WHERE event_id = ?`), id)
+	return err
+}
+
+func (c *coordinationStore) UndoReplay(ctx context.Context, id, attempt string) error {
+	_, err := c.store.db.ExecContext(ctx, c.store.rebind(`DELETE FROM kypost_replay WHERE event_id = ? AND attempt = ?`), id, attempt)
 	return err
 }
 

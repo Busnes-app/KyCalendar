@@ -262,7 +262,7 @@ func TestPostgresCapsuleRestoresAndStarts(t *testing.T) {
 	}
 	c := st.Coordination()
 	_, _, _, _ = c.TakeAttempt(ctx, "acct:x", 5, time.Hour)
-	_, _ = c.RecordReplay(ctx, "live-evt", time.Hour)
+	_, _ = c.RecordReplay(ctx, "live-evt", "t", time.Hour)
 	_, _ = c.SpendChallenge(ctx, "live-salt", time.Now().Add(time.Hour).UnixMilli())
 	_, _ = c.SpendChallenge(ctx, "gone-salt", time.Now().Add(-time.Hour).UnixMilli())
 	epoch, _ := st.Calendars().SyncEpoch(ctx)

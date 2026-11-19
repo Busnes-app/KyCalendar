@@ -226,11 +226,11 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	// No provider is live yet: LoadSignIn stores one after binding accounts to it.
 	s.signinHTTP = sso.NewGuardedClient(sso.RefuseLocal, nil)
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
+	if st.Driver() == "postgres" {
+		s.shared = st.Coordination() // before newKyPost: its replay guard is shared on PostgreSQL
+	}
 	s.newKyPost()
 	s.newKyMessages()
-	if st.Driver() == "postgres" {
-		s.shared = st.Coordination()
-	}
 	s.stopping, s.stopDetached = context.WithCancel(context.Background())
 	s.loadExemptNetworks()
 	s.routes()
