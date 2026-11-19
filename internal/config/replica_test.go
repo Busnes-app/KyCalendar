@@ -78,3 +78,61 @@ func TestFingerprintMergesNewNames(t *testing.T) {
 		t.Fatal("merge did not add the new name once")
 	}
 }
+
+// fieldByPath is the Config field at a dotted path.
+func fieldByPath(c *Config, path string) reflect.Value {
+	v := reflect.ValueOf(c).Elem()
+	for _, name := range strings.Split(path, ".") {
+		v = v.FieldByName(name)
+	}
+	return v
+}
+
+// mutate changes v to another value of its type.
+func mutate(t *testing.T, v reflect.Value) {
+	t.Helper()
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString(v.String() + "-changed")
+	case reflect.Bool:
+		v.SetBool(!v.Bool())
+	case reflect.Int, reflect.Int64:
+		v.SetInt(v.Int() + 1)
+	case reflect.Slice:
+		if v.Type().Elem().Kind() == reflect.Uint8 {
+			v.SetBytes(append([]byte("changed"), v.Bytes()...))
+			return
+		}
+		v.Set(reflect.Append(v, reflect.Zero(v.Type().Elem())))
+	case reflect.Pointer:
+		v.Set(reflect.New(v.Type().Elem()))
+	default:
+		t.Fatalf("cannot mutate %s", v.Kind())
+	}
+}
+
+// A second replica differing in any shared setting is refused, the setting named and its
+// value never shown; one differing only in per-host settings is not (spec AC14).
+func TestEverySharedFieldIsCompared(t *testing.T) {
+	base := replicaConfig()
+	want := ReplicaFingerprint(base)
+	for path, f := range replicaFields {
+		if path == "Security.EncryptionKey" {
+			continue // reported alone, TestReplicaFingerprintIsKeyed
+		}
+		t.Run(path, func(t *testing.T) {
+			c := replicaConfig()
+			mutate(t, fieldByPath(c, path))
+			diff := DiffFingerprint(want, ReplicaFingerprint(c))
+			if f.value == nil {
+				if len(diff) != 0 {
+					t.Fatalf("per-host %s differs as %v", path, diff)
+				}
+				return
+			}
+			if !slices.Equal(diff, []string{f.env}) {
+				t.Fatalf("shared %s: diff %v, want [%s]", path, diff, f.env)
+			}
+		})
+	}
+}
