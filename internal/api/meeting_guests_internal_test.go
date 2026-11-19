@@ -99,7 +99,9 @@ func TestGuestLinkReachesOnlyItsOwnAttendee(t *testing.T) {
 		t.Fatalf("PUT %+v", put)
 	}
 	raw, _ := json.Marshal(put)
-	for _, leak := range []string{"elsewhere", "other.example", "Out", "eve"} {
+	// Address fragments only: "@" and "." never occur in the random guest keys, whose base64
+	// text can spell "eve" by chance.
+	for _, leak := range []string{"elsewhere.example", "other.example", "Out@", "eve@"} {
 		if strings.Contains(string(raw), leak) {
 			t.Fatalf("KyMessages saw %q: %s", leak, raw)
 		}

@@ -51,6 +51,10 @@ var (
 	lockProbeTimeout   = time.Second
 )
 
+// ProbeBound is the longest a lost lock goes unnoticed: one probe interval plus its timeout.
+// A new owner waits longer than this before its first job.
+func ProbeBound() time.Duration { return lockProbeInterval + lockProbeTimeout }
+
 // ErrLockAcquire is a lock attempt that could not reach the database in time.
 var ErrLockAcquire = errors.New("store: lock acquisition timed out")
 

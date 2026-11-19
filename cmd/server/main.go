@@ -310,7 +310,7 @@ func waitForBackupWork(ctx context.Context, backupDone <-chan struct{}, waitDeta
 // before its first job; SQLite's flock cannot be lost, so it starts at once.
 func workerOptions(st store.Store) worker.Options {
 	if st.Driver() == "postgres" {
-		return worker.Options{Retry: 2 * time.Second, Grace: 3 * time.Second}
+		return worker.Options{Retry: 2 * time.Second, Grace: store.ProbeBound() + time.Second}
 	}
 	return worker.Options{Retry: 2 * time.Second}
 }
@@ -333,6 +333,13 @@ func scheduledJobs(cfg *config.Config, st store.Store, srv *api.Server, client r
 			srv.SyncPresence(ctx)
 		}},
 		{Name: "suite-groups", Every: api.SuiteGroupsInterval, AtStart: true, Run: srv.SyncSuiteGroups},
+		// Every new client address adds a rate-window row on PostgreSQL; expired ones go often,
+		// so a spread of addresses cannot grow the table for a day.
+		{Name: "coordination-cleanup", Every: 10 * time.Minute, AtStart: true, Run: func(ctx context.Context) {
+			if err := st.Coordination().CleanExpired(ctx); err != nil {
+				log.Printf("expired rate windows, CAPTCHA salts and KyPost event IDs not removed: %v", err)
+			}
+		}},
 	}
 	if j, ok := backupJob(cfg, st, client, backupTick); ok {
 		jobs = append(jobs, j)
@@ -359,9 +366,6 @@ func prune(ctx context.Context, st store.Store) {
 	}
 	if err := api.ExpireIdleMCPTokens(ctx, st, time.Now()); err != nil {
 		log.Printf("idle agent token sweep failed: %v", err)
-	}
-	if err := st.Coordination().CleanExpired(ctx); err != nil {
-		log.Printf("expired rate windows, CAPTCHA salts and KyPost event IDs not removed: %v", err)
 	}
 }
 

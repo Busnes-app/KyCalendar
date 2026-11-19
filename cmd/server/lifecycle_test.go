@@ -390,24 +390,29 @@ func pairedBackup(t *testing.T, cfg *config.Config, st store.Store) {
 // write are not cancellable mid-call: that window is the documented exception, not fenced here
 // (spec AC11).
 func TestTakeoverNeverOverlapsDeposits(t *testing.T) {
-	requirePostgres(t)
+	dsn := requirePostgres(t)
 	db := testdb.Config(t)
-	cfgA := serverConfig(t, db)
+	// A reaches the database through a relay: frozen, A notices its lost locks only when its
+	// probe times out, the longest a predecessor can go on.
+	relay := testdb.NewRelay(t, testdb.PostgresTarget(t, dsn))
+	cfgA := serverConfig(t, testdb.Via(t, db, relay))
 	stA := openStore(t, cfgA)
 	pairedBackup(t, cfgA, stA)
 	cfgB := serverConfig(t, db)
 	cfgB.Backup.DepositInterval = time.Hour
 	stB := openStore(t, cfgB)
 	dep := &intervals{first: make(chan struct{})}
-	opts := worker.Options{Retry: time.Second, Grace: 3 * time.Second}
+	opts := workerOptions(stA)         // the production grace is what keeps B out
+	opts.Retry = 50 * time.Millisecond // B retries at once, so only the grace delays its first job
 	run := func(cfg *config.Config, st store.Store) {
 		job, ok := backupJob(cfg, st, dep, 100*time.Millisecond)
 		if !ok {
 			t.Fatal("no backup job")
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-		go worker.Run(ctx, st.Coordination(), opts, []worker.Job{job})
+		done := make(chan struct{})
+		go func() { defer close(done); worker.Run(ctx, st.Coordination(), opts, []worker.Job{job}) }()
+		t.Cleanup(func() { cancel(); <-done }) // the workers stop before their stores close
 	}
 	run(cfgA, stA)
 	select {
@@ -416,7 +421,16 @@ func TestTakeoverNeverOverlapsDeposits(t *testing.T) {
 		t.Fatal("A never started its deposit")
 	}
 	run(cfgB, stB)
-	terminate(t, cfgA, lockHolder(t, cfgA, worker.Lock))
+	// The database drops both of A's sessions while A cannot hear it: neither the election nor
+	// the backup-run lock keeps B out any more, only the grace B waits after winning.
+	relay.Freeze()
+	terminate(t, cfgB, lockHolder(t, cfgB, "backup-run"))
+	terminate(t, cfgB, lockHolder(t, cfgB, worker.Lock))
+	// A would hand its attempt stamp back as it stops, but cannot reach the database; do it
+	// for A, so B's run is due as soon as B may run it.
+	if _, err := pgDB(t, cfgB.Database.DSN).Exec(`DELETE FROM server_settings WHERE key = 'backup_last_attempt'`); err != nil {
+		t.Fatal(err)
+	}
 	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(100 * time.Millisecond) {
 		dep.mu.Lock()
 		n := len(dep.spans)
@@ -435,20 +449,41 @@ func TestTakeoverNeverOverlapsDeposits(t *testing.T) {
 	if a[1].IsZero() || !b[0].After(a[1]) {
 		t.Fatalf("deposits overlap: A %v-%v, B from %v", a[0], a[1], b[0])
 	}
-	recs, _, _ := stA.Audit().ListAuditRecords(context.Background(), 0, 50)
+	relay.Thaw() // A records its interrupted run
+	// Both outcomes are audited; each row lands after its deposit returns, so wait for them.
 	var interrupted, succeeded bool
-	for _, r := range recs {
-		if r.Action == "admin.backup_run" && strings.Contains(r.Details, "interrupted") {
-			interrupted = true
+	for deadline := time.Now().Add(10 * time.Second); !(interrupted && succeeded); time.Sleep(100 * time.Millisecond) {
+		recs, _, err := stB.Audit().ListAuditRecords(context.Background(), 0, 50)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if r.Action == "admin.backup_run" && strings.Contains(r.Details, `outcome="success"`) {
-			succeeded = true
+		for _, r := range recs {
+			interrupted = interrupted || r.Action == "admin.backup_run" && strings.Contains(r.Details, "interrupted")
+			succeeded = succeeded || r.Action == "admin.backup_run" && strings.Contains(r.Details, `outcome="success"`)
 		}
-	}
-	if !interrupted || !succeeded {
-		t.Fatalf("runs not audited (interrupted %v, success %v): %+v", interrupted, succeeded, recs)
+		if time.Now().After(deadline) {
+			t.Fatalf("runs not audited (interrupted %v, success %v): %+v", interrupted, succeeded, recs)
+		}
 	}
 }
+
+// A new PostgreSQL owner waits out the longest a predecessor's lost lock can go unnoticed.
+func TestOwnershipGraceOutlastsTheProbe(t *testing.T) {
+	if g := workerOptions(postgresOnly{}).Grace; g <= store.ProbeBound() {
+		t.Fatalf("grace %v does not exceed the probe bound %v", g, store.ProbeBound())
+	}
+	if g := workerOptions(sqliteOnly{}).Grace; g != 0 {
+		t.Fatalf("SQLite grace %v; a flock cannot be lost", g)
+	}
+}
+
+type postgresOnly struct{ store.Store }
+
+func (postgresOnly) Driver() string { return "postgres" }
+
+type sqliteOnly struct{ store.Store }
+
+func (sqliteOnly) Driver() string { return "sqlite" }
 
 // Due is read after the backup-run lock: three servers ticking at once make one capsule
 // (spec AC13), on either driver.
@@ -547,4 +582,50 @@ func TestUnreadableScheduleIsAuditedAsAFailedRun(t *testing.T) {
 		}
 	}
 	t.Fatalf("no failed admin.backup_run row: %+v", recs)
+}
+
+// A new owner's first job starts only after its predecessor's jobs were cancelled, even when
+// the predecessor cannot hear the database drop its session and notices only at its probe
+// bound: the production grace covers that gap.
+func TestNewOwnerStartsAfterThePredecessorStops(t *testing.T) {
+	dsn := requirePostgres(t)
+	db := testdb.Config(t)
+	relay := testdb.NewRelay(t, testdb.PostgresTarget(t, dsn))
+	cfgA, cfgB := serverConfig(t, testdb.Via(t, db, relay)), serverConfig(t, db)
+	stA, stB := openStore(t, cfgA), openStore(t, cfgB)
+	var aStopped, bStarted atomic.Int64
+	running := make(chan struct{}, 1)
+	start := func(st store.Store, job func(context.Context)) {
+		opts := workerOptions(st)
+		opts.Retry = 50 * time.Millisecond
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			worker.Run(ctx, st.Coordination(), opts, []worker.Job{{Name: "probe", Every: time.Hour, AtStart: true, Run: job}})
+		}()
+		t.Cleanup(func() { relay.Thaw(); cancel(); <-done })
+	}
+	start(stA, func(ctx context.Context) {
+		running <- struct{}{}
+		<-ctx.Done()
+		aStopped.Store(time.Now().UnixNano())
+	})
+	select {
+	case <-running:
+	case <-time.After(15 * time.Second):
+		t.Fatal("A never ran its job")
+	}
+	start(stB, func(context.Context) { bStarted.CompareAndSwap(0, time.Now().UnixNano()) })
+	relay.Freeze()
+	terminate(t, cfgB, lockHolder(t, cfgB, worker.Lock))
+	for deadline := time.Now().Add(15 * time.Second); bStarted.Load() == 0; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("B never took over")
+		}
+	}
+	a, b := aStopped.Load(), bStarted.Load()
+	if a == 0 || b <= a {
+		t.Fatal("B's first job started while A's job still ran")
+	}
 }

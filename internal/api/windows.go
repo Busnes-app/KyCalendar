@@ -12,8 +12,9 @@ import (
 )
 
 // windowTimeout bounds one shared-window statement. A window the database cannot answer
-// denies: the caller's 429 (or DAV's 503), never a fallback to process memory.
-const windowTimeout = 2 * time.Second
+// denies: the caller's 429 (or DAV's 503), never a fallback to process memory. It is long
+// enough that a loaded database is not an outage, and well inside the 14 s request deadline.
+const windowTimeout = 5 * time.Second
 
 // Rate windows live in process memory on SQLite (one server) and in the database on
 // PostgreSQL (s.shared), where every replica counts against the same limit on database time.
