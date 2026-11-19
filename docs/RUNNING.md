@@ -320,7 +320,8 @@ docker compose up -d app
 ```
 
 On SQLite run the same `DELETE` with the server stopped, using the host's `sqlite3` package (the
-image has none). `./data` belongs to the container's user, so: `sudo sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN (...)"`.
+image has none), as the data directory's owner (UID 10001), so no file it writes is left owned by
+root: `sudo -u '#10001' sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN (...)"`.
 
 ### Moving a SQLite install to PostgreSQL
 
@@ -360,7 +361,8 @@ KY_SESSION_SECRET=<keep yours; if unset: openssl rand -hex 32>
 
 Without `COMPOSE_PROFILES`, a plain `docker compose down` leaves PostgreSQL running and the next
 `docker compose up -d` starts the app alone, which restarts in a loop on `lookup postgres: no
-such host`. PostgreSQL requires `KY_SESSION_SECRET` in every `KY_ENV`; setting it for the first
+such host`. With it set, one such restart after a reboot, while PostgreSQL comes up, is normal.
+PostgreSQL requires `KY_SESSION_SECRET` in every `KY_ENV`; setting it for the first
 time signs everyone out once.
 
 `docker-compose.yml` passes `KY_DB_DRIVER`, `KY_DB_DSN`, `KY_ENCRYPTION_KEY`,
