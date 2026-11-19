@@ -139,8 +139,9 @@ type UserStore interface {
 	// SetSSORole sets the role of an active SSO account and nothing else, so a login never writes
 	// back a status it read before a concurrent deactivation, and in the same transaction (row
 	// first) deletes its sessions, MFA challenges, device pairings and app passwords. Inactive,
-	// local or missing: ErrNotFound.
-	SetSSORole(ctx context.Context, userID, role string) error
+	// local or missing: ErrNotFound. A non-empty binding (a PostgreSQL sign-in) is rechecked as in
+	// CreateSSOUser, and the row must still carry it: ErrBindingChanged otherwise.
+	SetSSORole(ctx context.Context, userID, role, binding string) error
 	// UpdateSCIMUser writes the username, email and display name of an account in scope and only
 	// the access the request changes relative to what SCIM read (expectedRole, expectedStatus). A
 	// removal (deactivation, demotion) always lands first, with the revocation of every grant, in
@@ -177,8 +178,8 @@ type UserStore interface {
 	CountSSOAccounts(ctx context.Context, providers []string) (int, error)
 	CompletePasswordChange(ctx context.Context, userID, oldHash, newHash, ip string) error
 	// SetOIDCEmail writes the email of a generic OIDC account (sso_provider oidc); ErrNotFound
-	// for any other row.
-	SetOIDCEmail(ctx context.Context, userID, email string) error
+	// for any other row. binding is rechecked as in SetSSORole.
+	SetOIDCEmail(ctx context.Context, userID, email, binding string) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, offset, limit int, filter UserFilter) ([]*User, int, error)
 	// SCIMUserIDs returns those of ids that name an account in scope, in any order.

@@ -110,7 +110,7 @@ func TestInstallerNativeSettingsAndBindingStayOwned(t *testing.T) {
 	if err := st.Users().UpdateUser(ctx, u); err == nil {
 		t.Fatal("overwrote owned role")
 	}
-	if err := st.Users().SetSSORole(ctx, u.ID, "user"); err == nil {
+	if err := st.Users().SetSSORole(ctx, u.ID, "user", ""); err == nil {
 		t.Fatal("overwrote owned SSO role")
 	}
 	if err := st.Users().DeleteUser(ctx, u.ID); err == nil {

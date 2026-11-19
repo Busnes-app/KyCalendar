@@ -108,10 +108,14 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	if user.SSOIssuer == "" || user.SSOIssuer != binding {
 		return nil, errOtherIssuer
 	}
+	recheck := "" // SQLite: signinMu already holds every save out
+	if s.shared != nil {
+		recheck = binding // PostgreSQL: another server may have saved a new binding since the check
+	}
 	// A generic OIDC account's email follows the token at every sign-in: verified, or none. An
 	// account made before verification was checked loses an unverified email here.
 	if claims.Provider == "oidc" && user.Email != claims.Email {
-		if err := s.store.Users().SetOIDCEmail(ctx, user.ID, claims.Email); err != nil {
+		if err := s.store.Users().SetOIDCEmail(ctx, user.ID, claims.Email, recheck); err != nil {
 			return nil, err
 		}
 		user.Email = claims.Email
@@ -122,7 +126,7 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	// Role only (a status read above may be stale), with the grants revoked in the same
 	// transaction, row first: no old session runs under the new role. A failed promotion changes
 	// nothing; a failed demotion still revokes the grants below.
-	if err := s.store.Users().SetSSORole(ctx, user.ID, role); errors.Is(err, store.ErrNotFound) {
+	if err := s.store.Users().SetSSORole(ctx, user.ID, role, recheck); errors.Is(err, store.ErrNotFound) {
 		return nil, errAccountInactive
 	} else if err != nil {
 		// A demotion fails closed: the role stays, but the administrator's grants do not.

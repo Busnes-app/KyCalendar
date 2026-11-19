@@ -114,7 +114,7 @@ type failingUpdates struct{ store.Store }
 type failingUserStore struct{ store.UserStore }
 
 func (f failingUpdates) Users() store.UserStore { return failingUserStore{f.Store.Users()} }
-func (failingUserStore) SetSSORole(context.Context, string, string) error {
+func (failingUserStore) SetSSORole(context.Context, string, string, string) error {
 	return errors.New("update failed")
 }
 

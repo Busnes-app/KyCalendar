@@ -1,5 +1,7 @@
 package store
 
+import "context"
+
 // SetBetweenSCIMWritesForTest runs f between UpdateSCIMUser's removal and grant transactions and
 // returns the restore func. Test-only.
 func SetBetweenSCIMWritesForTest(f func()) func() {
@@ -37,4 +39,21 @@ func RowCountForTest(st Store, table, where string) (int, error) {
 	var n int
 	err := st.(*SQLStore).db.QueryRow(`SELECT COUNT(*) FROM ` + table + ` WHERE ` + where).Scan(&n)
 	return n, err
+}
+
+// HoldLockForTest begins a transaction holding key's advisory lock, as BindSignIn holds
+// local-admins, and returns a func that runs stmt in it and commits.
+func HoldLockForTest(st Store, key string) (func(stmt string, args ...any) error, error) {
+	s := st.(*SQLStore)
+	tx, err := s.lockedTx(context.Background(), key)
+	if err != nil {
+		return nil, err
+	}
+	return func(stmt string, args ...any) error {
+		defer tx.Rollback()
+		if _, err := tx.Exec(s.rebind(stmt), args...); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}, nil
 }

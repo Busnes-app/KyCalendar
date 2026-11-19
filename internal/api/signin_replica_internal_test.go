@@ -211,6 +211,7 @@ type saveBetween struct {
 	store.Store
 	save          func()
 	beforeLookup  bool
+	afterLookup   bool
 	beforeSession bool
 	once          sync.Once
 }
@@ -229,7 +230,11 @@ func (u saveUsers) GetUserBySSO(ctx context.Context, provider, subject string) (
 	if u.s.beforeLookup {
 		u.s.once.Do(u.s.save)
 	}
-	return u.UserStore.GetUserBySSO(ctx, provider, subject)
+	user, err := u.UserStore.GetUserBySSO(ctx, provider, subject)
+	if u.s.afterLookup && err == nil {
+		u.s.once.Do(u.s.save)
+	}
+	return user, err
 }
 
 type saveSessions struct {
@@ -272,8 +277,9 @@ func TestSaveBetweenCheckAndWriteIsRefused(t *testing.T) {
 				sub = "sub-carol"
 				createUsers(t, a, &store.User{ID: "usr_carol", Username: "carol", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: sub, SSOIssuer: "kyidentity " + idp.URL})
 			}
-			// A keeps the provider kind and only moves the issuer, so nothing is disabled: the
-			// binding alone must stop B.
+			// A keeps the provider kind and moves the issuer. Its save disables the old kind's
+			// rows, so an existing account would also fail the row check (a 500); the binding
+			// recheck answers the usual 400 instead.
 			nextSt := kyidentityAt("https://next.example")
 			values, err := a.signinValues(nextSt, "sec")
 			if err != nil {
@@ -309,5 +315,53 @@ func TestSaveBetweenCheckAndWriteIsRefused(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A save disables the old provider's accounts, and SetOIDCEmail has no status check: a save
+// landing after B looked the account up must not let the old provider rewrite its email. The
+// email and role writes recheck the binding in their own transaction (code review round 2, F3).
+func TestSaveBetweenLookupAndAccountWriteIsRefused(t *testing.T) {
+	if os.Getenv("KY_TEST_POSTGRES_DSN") == "" {
+		t.Skip("PostgreSQL only: set KY_TEST_POSTGRES_DSN")
+	}
+	a, _ := davInternalServer(t)
+	ctx := context.Background()
+	stB, err := store.Open(ctx, a.config.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stB.Close()
+	idp := newSigningIdP(t)
+	idp.extra = map[string]any{"email": "new@example.com", "email_verified": true}
+	if _, _, err := a.bindAccounts(ctx, oidcAt(idp.URL)); err != nil {
+		t.Fatal(err)
+	}
+	createUsers(t, a, &store.User{ID: "usr_dana", Username: "dana", Email: "old@example.com", Role: "user", Status: "active", SSOProvider: "oidc", SSOSubject: "sub-dana", SSOIssuer: oidcAt(idp.URL).Identity()})
+	nextSt := kyidentityAt("https://next.example")
+	values, err := a.signinValues(nextSt, "sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := &saveBetween{Store: stB, afterLookup: true, save: func() {
+		a.signinMu.Lock()
+		defer a.signinMu.Unlock()
+		if _, _, err := a.commitSignIn(ctx, store.System, nextSt, values); err != nil {
+			t.Error(err)
+		}
+	}}
+	b := NewServer(a.config, hook)
+	b.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", idp.Client()))
+	w := httptest.NewRecorder()
+	b.ServeHTTP(w, idp.login(t, b, "sub-dana"))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "start again") {
+		t.Fatalf("callback across a save between lookup and account write: %d %s", w.Code, w.Body.String())
+	}
+	u, err := stB.Users().GetUserByID(ctx, "usr_dana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Email != "old@example.com" || u.Role != "user" {
+		t.Fatalf("dana is %s %s; the old provider changed the account after the save", u.Email, u.Role)
 	}
 }

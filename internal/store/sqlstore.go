@@ -930,15 +930,39 @@ func (u *userStore) CountSSOAccounts(ctx context.Context, providers []string) (i
 	return n, err
 }
 
-func (u *userStore) SetOIDCEmail(ctx context.Context, userID, email string) error {
-	res, err := u.store.db.ExecContext(ctx, u.store.rebind(`UPDATE users SET email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'oidc'`), email, time.Now().UTC(), userID)
+func (u *userStore) SetOIDCEmail(ctx context.Context, userID, email, binding string) error {
+	tx, issuer, args, err := u.signinTx(ctx, binding)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET email = ?, updated_at = ? WHERE id = ? AND sso_provider = 'oidc'`+issuer), append([]any{email, time.Now().UTC(), userID}, args...)...)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
+}
+
+// signinTx begins a sign-in's write to an existing account. With binding set (PostgreSQL) it
+// holds the local-admins lock, as BindSignIn does, and has checked the stored binding; the
+// returned clause and args keep the write to a row that still carries it.
+func (u *userStore) signinTx(ctx context.Context, binding string) (*sql.Tx, string, []any, error) {
+	if binding == "" {
+		tx, err := u.store.beginTx(ctx)
+		return tx, "", nil, err
+	}
+	tx, err := u.store.lockedTx(ctx, "local-admins")
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if err := checkBinding(ctx, tx, u.store.rebind, binding); err != nil {
+		_ = tx.Rollback()
+		return nil, "", nil, err
+	}
+	return tx, " AND sso_issuer = ?", []any{binding}, nil
 }
 
 func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, email string) error {
@@ -952,15 +976,15 @@ func (u *userStore) UpdateProfile(ctx context.Context, userID, displayName, emai
 	return nil
 }
 
-func (u *userStore) SetSSORole(ctx context.Context, userID, role string) error {
-	tx, err := u.store.beginTx(ctx)
+func (u *userStore) SetSSORole(ctx context.Context, userID, role, binding string) error {
+	tx, issuer, args, err := u.signinTx(ctx, binding)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	// Row first, as in changeAccess: an app-password issuance holding the row commits before the
 	// purge and is purged with the rest.
-	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND status = 'active' AND sso_provider <> 'local'`), role, time.Now().UTC(), userID)
+	res, err := tx.ExecContext(ctx, u.store.rebind(`UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) AND status = 'active' AND sso_provider <> 'local'`+issuer), append([]any{role, time.Now().UTC(), userID}, args...)...)
 	if err != nil {
 		return err
 	}
