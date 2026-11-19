@@ -94,6 +94,7 @@ func TestKyPostReplayIsSharedAcrossReplicas(t *testing.T) {
 	if os.Getenv("KY_TEST_POSTGRES_DSN") == "" {
 		t.Skip("PostgreSQL only: set KY_TEST_POSTGRES_DSN")
 	}
+	t.Setenv("KYCALENDAR_SCHEDULING", "true") // NewServer builds the guard, as in production
 	a, _ := davInternalServer(t)
 	stB, err := store.Open(context.Background(), a.config.Database)
 	if err != nil {
@@ -101,8 +102,6 @@ func TestKyPostReplayIsSharedAcrossReplicas(t *testing.T) {
 	}
 	defer stB.Close()
 	b := NewServer(a.config, stB)
-	a.startScheduling()
-	b.startScheduling()
 	now := time.Now()
 	if err := a.kypostReplay.Check("evt-shared", now); err != nil {
 		t.Fatal(err)

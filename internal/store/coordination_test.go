@@ -123,17 +123,18 @@ func TestReplayAndSpendAcrossReplicas(t *testing.T) {
 		t.Fatal("a forgotten event ID was refused")
 	}
 	time.Sleep(100 * time.Millisecond)
-	if fresh, _ := b.Coordination().RecordReplay(ctx, "evt-1", "t", time.Minute); !fresh {
+	if fresh, _ := b.Coordination().RecordReplay(ctx, "evt-1", "t2", time.Minute); !fresh {
 		t.Fatal("an expired event ID was refused")
 	}
-	// Only the attempt that wrote a record undoes it.
-	if err := a.Coordination().UndoReplay(ctx, "evt-1", "other"); err != nil {
+	// Only the attempt that wrote a record undoes it; a takeover of an expired record is the
+	// taker's (t2), no longer the expired writer's (t).
+	if err := a.Coordination().UndoReplay(ctx, "evt-1", "t"); err != nil {
 		t.Fatal(err)
 	}
 	if fresh, _ := a.Coordination().RecordReplay(ctx, "evt-1", "u", time.Minute); fresh {
 		t.Fatal("another attempt's undo released the record")
 	}
-	if err := a.Coordination().UndoReplay(ctx, "evt-1", "t"); err != nil {
+	if err := a.Coordination().UndoReplay(ctx, "evt-1", "t2"); err != nil {
 		t.Fatal(err)
 	}
 	if fresh, _ := a.Coordination().RecordReplay(ctx, "evt-1", "u", time.Minute); !fresh {
