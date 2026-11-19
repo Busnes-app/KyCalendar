@@ -141,7 +141,7 @@ positive or startup fails.
 | `KY_CALENDAR_MAX_OBJECTS_PER_USER` | `20000` | Events across all of a user's calendars. |
 | `KY_CALENDAR_MAX_CALENDARS_PER_USER` | `50` | Calendars a user may own. |
 | `KY_CALENDAR_MAX_BYTES_PER_USER` | `16777216` (16 MiB), capped at a tenth of `KY_CALENDAR_MAX_BYTES_TOTAL` when that is set (4 MiB on SQLite) | Stored event bytes across all of a user's calendars, and separately per group calendar, so no single owner can fill the instance. |
-| `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite, `0` (off) on Postgres | Stored event bytes across every user. |
+| `KY_CALENDAR_MAX_BYTES_TOTAL` | `41943040` (40 MiB) on SQLite and PostgreSQL; `0` turns it off | Stored event bytes across every user. |
 | `KYCALENDAR_SCHEDULING` | empty (automatic) | Server-side invitations. On, calendar apps hand invitations to the server, people on this instance get them in their calendar, and KyPost mails people outside it. Empty is automatic: on when KyPost is linked at startup, off otherwise. Startup waits up to a minute for a KyIdentity that does not answer yet. `true` or `false` forces it. The choice is made once at startup; restart after linking KyPost to turn automatic scheduling on. One person may invite at most 1000 new people an hour (sending a changed meeting to the same guests does not count); past that, saving answers with the time they can send again. A meeting called off is removed from the calendars of people who never answered it, and kept, marked cancelled and without reminders, for those who did (also when a later change asked them again). |
 | `KYCALENDAR_KYPOST_URL` | empty | KyPost's `https://` address. KyPost mails invitations to people outside the instance from the organizer's own mailbox, and hands their replies back. Needs `KYCALENDAR_KYPOST_SECRET_FILE`. Leave both empty to link KyPost through KyIdentity ([Sign-in](#sign-in)); set, they override it. |
 | `KYCALENDAR_KYPOST_SECRET_FILE` | empty | A file holding the secret KyCalendar and KyPost share, at least 32 bytes (`openssl rand -hex 32`), mode 600. In Compose, put it in `./data` and name it `/app/data/kypost.secret`. |
@@ -149,8 +149,11 @@ positive or startup fails.
 
 The instance cap exists because a capsule carries at most 256 MiB (the SQLite database travels in
 64 MiB parts) and past that every backup fails for everyone; the log warns at 80%. The database
-is several times the stored event bytes (indexes, change history, the audit log). Raising the cap on SQLite trades that
-guarantee away. Postgres deployments make no capsules, so the cap is off there. The cap is
+is several times the stored event bytes (indexes, change history, the audit log), so the cap keeps
+one tenant from outgrowing every capsule; it does not prove the whole database fits. Raising it
+trades that margin away. PostgreSQL capsules carry a SQLite snapshot, so the same default applies
+there: an existing PostgreSQL install already above 40 MiB must set a higher value, or new
+calendar writes answer 507. The cap is
 shared: once it is full, every user's writes get 507 until data is removed, which is visible,
 where a backup that silently stopped is not. Keep the per-user cap well below it; deleting a user
 deletes their calendars and frees their share.

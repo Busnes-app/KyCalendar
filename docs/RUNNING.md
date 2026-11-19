@@ -169,3 +169,144 @@ takes effect. `KY_ENV=production` refuses to start without an `https://` `KY_APP
 [Sign-in](ACCOUNTS-AND-GROUPS.md#sign-in)). To keep the old behaviour, delete those lines from `.env`. The published port is
 unchanged (`127.0.0.1` unless `KY_BIND_ADDRESS` says otherwise), and the container now has a
 healthcheck on `/healthz`.
+
+## PostgreSQL and replicas
+
+SQLite is the default: one server, one host. On PostgreSQL, KyCalendar can run as several
+identical replicas behind a load balancer that health-checks them. This section is what that
+needs. Application replicas are **not** database high availability: every replica depends on
+the one PostgreSQL database, and nothing here makes PostgreSQL itself redundant. No capacity
+or throughput claim is made. The design follows ky_server_base pull request #121, which is
+still open and unapproved.
+
+### Prerequisites
+
+- Every replica uses the same database and schema, with a direct connection or session
+  pooling. Transaction pooling (PgBouncer `pool_mode=transaction`) breaks the session locks
+  that elect background work.
+- A PostgreSQL start refuses, naming the setting, unless:
+  - `KY_DB_DSN` is set, and not with the `postgres:postgres` credentials;
+  - `KY_SESSION_SECRET` is set, in every `KY_ENV`;
+  - the encryption key comes from `KY_ENCRYPTION_KEY` or an existing `<KY_DATA_DIR>/encryption.key`
+    (a PostgreSQL start never mints one: replicas must share it);
+  - `KYCALENDAR_SCHEDULING` is `true` or `false` (automatic mode decides per process);
+  - `KY_DB_MAX_OPEN_CONNS` is at least 4 (the worker lock, the backup lock, a snapshot and a
+    request each hold a connection).
+- `KY_CALENDAR_MAX_BYTES_TOTAL` defaults to 40 MiB on PostgreSQL as on SQLite, so one tenant
+  cannot outgrow every capsule. It caps calendar-object bytes only; it does not guarantee that
+  the whole database fits in a capsule (the audit log, change history and indexes add to it). An
+  existing PostgreSQL install already above 40 MiB must set a higher value, or new calendar
+  writes are refused (507). A capsule still carries at most 256 MiB, and the log warns at 80%.
+- Installer-managed deployments (`apply-setup`) are single-server SQLite; `apply-setup` is
+  refused on PostgreSQL (`--check` still inspects).
+- A mixed-version rolling upgrade is not supported: stop every old replica first.
+
+### Shared and per-host settings
+
+At its first start a replica records a fingerprint of the settings all replicas must share,
+each value keyed under a key derived from the encryption key, in the `server_settings` row
+`replica_config_fingerprint`. A later start that differs refuses, naming the settings and
+never their values. A different encryption key is reported alone and is never accepted.
+
+- **Shared:** `KY_APP_URL`, `KY_APP_NAME`, `KY_ENV`, `KY_SESSION_SECRET`, the encryption key,
+  `KY_COOKIE_SECURE`, `KY_COOKIE_DOMAIN`, `KY_RATE_LIMIT_EXEMPT_NETWORKS`, the CAPTCHA settings,
+  SCIM, `KY_SSO_ENABLED`, `KY_KYSIGNON_*`, the SAML settings, `KYCALENDAR_SCHEDULING`, the KyPost
+  and KyMessages URL, secret-file contents and allow-private switches, `KYCALENDAR_BACKUP_DEPOSIT_INTERVAL`,
+  `KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY`, every `KY_CALENDAR_MAX_*` cap.
+- **Per host:** `KY_HOST`, `KY_PORT`, `KY_DATA_DIR`, `KY_DB_DSN`, the pool sizes,
+  `KY_TRUSTED_PROXIES`, `KYCALENDAR_BACKUP_DIR`, `KYCALENDAR_BACKUP_KEEP`, `KY_ADMIN_PASSWORD`
+  (bootstrap only).
+
+To change a shared setting: stop every replica, change it everywhere, record it once, start them:
+
+```bash
+docker compose run --rm --no-deps app accept-replica-config
+```
+
+It prints the names of the changed settings and writes an `admin.replica_config_accepted` audit
+row. It is never the way to change the encryption key.
+
+### What replicas share, and what stays per process
+
+Sign-in limits, DAV and MCP failure budgets, the office budget, CAPTCHA solutions and KyPost
+event IDs live in the database on database time, so every replica counts against one limit. A
+database that cannot answer a limit denies the request. Sign-in settings saved on one replica
+reach the others within 10 seconds, and a sign-in that started under the old provider is
+refused ("start again"); office networks follow the database within 5 seconds. Per process,
+so N replicas allow N times as much: the invite-count window (the 64 MiB invitation byte budget
+is shared), the audit budget for unknown credentials, the suite caches and the displayed count of
+exempted requests. Each replica looks up its own KyPost and KyMessages links.
+
+### Background work
+
+One replica at a time runs the scheduled jobs (deliveries, meetings, suite groups,
+subscriptions, pruning, the backup schedule), elected by a PostgreSQL session lock that is
+probed every second; a replica that loses its database connection stops them within about two
+seconds, and the next owner waits three seconds before it starts. This is single ownership,
+not exactly-once: the jobs are already idempotent (copies are written against their ETag, a
+KyPost send carries the outbox key as its event ID, a KyMessages PUT reconciles). Every backup
+run, scheduled, Back up now or CLI `deposit`/`export-capsule`, holds one `backup-run` lock: a
+second answers 409 `busy` (the CLI exits 1). The library's seal and local-copy write cannot be
+interrupted mid-call; that window is an upstream follow-up, so a run whose lock is lost while
+sealing finishes that step before it stops.
+
+### Load balancer
+
+- Probe `GET /readyz` every second. It answers 503 while the replica drains or when the database
+  does not answer within a second, with only a status word. `GET /livez` answers 200 whenever the
+  process serves and never touches the database; restart on it, never on `/readyz`.
+  `/healthz` stays the KyPulse health check.
+- Retry only idempotent requests whose connection failed, never after a timeout.
+- Upstream timeout about 15 seconds; 16 minutes for `POST /api/backup/deposit`, `/drill` and
+  `/export-capsule`. Ordinary requests end at 14 seconds with 503 `request_timeout`. That 503 does
+  not prove the request had no effect: check before retrying.
+- nginx and Nginx Proxy Manager passive health checks only notice failed connections; they cannot
+  see `/readyz`, so they keep sending requests to a draining replica until it closes. That
+  behaviour is not exercised here.
+
+On SIGTERM a PostgreSQL replica turns `/readyz` to 503, refuses new deposits, drills and exports,
+cancels its background work, keeps serving for 5 seconds, then drains requests for 5 seconds and
+waits up to 10 seconds for cancelled work to record its outcome: 20 seconds, inside Compose's
+30-second `stop_grace_period` and Kubernetes' default grace. SQLite skips the 5-second wait.
+
+A Kubernetes sketch, **not executed** (KyCalendar's Kubernetes placement is optional):
+
+```yaml
+terminationGracePeriodSeconds: 30
+readinessProbe: {httpGet: {path: /readyz, port: 8080}, periodSeconds: 1, failureThreshold: 1}
+livenessProbe: {httpGet: {path: /livez, port: 8080}, periodSeconds: 10}
+```
+
+### Backups on replicas
+
+On PostgreSQL a capsule carries a verified SQLite snapshot of the database as
+`data/kycalendar.db`, the same member, parts and drill as on SQLite. `KYCALENDAR_BACKUP_DIR` is
+per replica by default; a directory shared by every replica is also fine, because every write
+and prune happens under the `backup-run` lock.
+
+The recovery key pin lives in the database: a pin or a pairing also stores the key and its k-of-n,
+sealed under a key derived from the encryption key. Each replica writes its own `recovery.pub`
+from it at startup and before each run. A `recovery.pub` naming another key, or a record that does
+not open, refuses every run and shows on **Backup & recovery**. To replace the pinned key on
+purpose: stop every replica, delete the `kyrecovery_key_id`, `kyrecovery_threshold`,
+`kyrecovery_total_shares` and `kyrecovery_public_key` rows and every replica's
+`data/recovery.pub`, start, and pin again. There is no button for it.
+
+### Moving a SQLite install to PostgreSQL
+
+Stop the SQLite server (`docker compose stop app`, so it checkpoints its `-wal`), put the empty
+target's address in `migration.env` (mode 600, never on the command line), and run:
+
+```bash
+printf 'KY_MIGRATE_POSTGRES_DSN=postgres://kycalendar:...@db:5432/kycalendar?sslmode=disable\n' > migration.env
+chmod 600 migration.env
+docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --check --source /app/data/kycalendar.db
+docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --source /app/data/kycalendar.db
+```
+
+`--check` verifies and rolls back. The copy is one transaction under the bootstrap lock: it
+refuses a database that already holds data, a newer schema, a running server and an unflushed
+`-wal`, never writes the source, checks it, compares every table row for row before it commits
+and moves the audit sequence past the copied rows. Then set `KY_DB_DRIVER=postgres` and the
+settings above and start the server; it keeps `data/encryption.key` and `data/recovery.pub`.
+`scripts/check-postgres-cutover.sh` runs exactly this with the built image in CI.

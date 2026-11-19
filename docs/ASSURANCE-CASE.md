@@ -76,6 +76,17 @@ key (they are the server), and a malicious administrator.
    trust: KyIdentity can already sign anyone in. The secret stays in memory, never logged or
    shown (`internal/api/kypost_link.go`).
 7. **KyCalendar → its database.** Credentials are hashed and secrets sealed before they are stored.
+8. **PostgreSQL replica → its peers.** Replicas never talk to each other; they trust the shared
+   database credentials, session secret and encryption key. A keyed fingerprint of the shared
+   settings (`replica_config_fingerprint`, HMAC under a key derived from the encryption key)
+   refuses a misconfigured replica, naming settings only (`cmd/server/replica.go`). On PostgreSQL
+   the recovery key pin is also stored sealed under a key derived from the encryption key, with
+   the key ID as associated data, so a database writer without that key cannot substitute the
+   key capsules are sealed to (`internal/backup/recoverykey.go`); a database writer can still deny
+   service. Rate windows, CAPTCHA spend and KyPost replay records are on database time and deny
+   when the database cannot answer. Scheduled work is elected by a probed session lock: single
+   ownership, not exactly-once; idempotent writes carry correctness, and the recovery library's
+   seal and local-copy write window is not fenced (`internal/worker`).
 
 ## Secure design principles applied
 
@@ -121,7 +132,9 @@ key (they are the server), and a malicious administrator.
   requests on the victim's session.
 - Sign-in from a browser too old to send `Origin` or `Sec-Fetch-Site` skips the pre-session
   token, as a native client does.
-- Rate limits are process-local and reset on restart.
+- On SQLite, rate limits are process-local and reset on restart. On PostgreSQL they are shared
+  through the database; the invite-count window and the unknown-credential audit budget stay per
+  process, so N replicas allow N times as much.
 - An administrator can exempt office networks from the per-address limits
   (`KY_RATE_LIMIT_EXEMPT_NETWORKS`, Server settings → Office networks). A listed shared or public
   network loses those limits for everyone on it; per-account limits and the CAPTCHA remain.
