@@ -186,6 +186,7 @@ func (u deactivateAfterReadUsers) GetUserBySSO(ctx context.Context, provider, su
 func TestUpsertSSOUserRoleChangeKeepsAConcurrentDeactivation(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
+	boundTo(t, s, kyBinding)
 	createUsers(t, s, &store.User{ID: "usr_fay", Username: "fay", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sub-f", SSOIssuer: kyBinding})
 	real := s.store
 	s.store = deactivateAfterRead{real}

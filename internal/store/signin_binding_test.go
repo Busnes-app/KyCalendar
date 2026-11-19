@@ -42,8 +42,9 @@ func TestSignInWritesRecheckTheBindingUnderTheLock(t *testing.T) {
 	}
 	results := make(map[string]chan error, len(writes))
 	for name, write := range writes {
-		results[name] = make(chan error, 1)
-		go func() { results[name] <- write() }()
+		res := make(chan error, 1)
+		results[name] = res
+		go func() { res <- write() }()
 	}
 	// Every write waits for the lock before the save commits.
 	for deadline := time.Now().Add(10 * time.Second); ; {

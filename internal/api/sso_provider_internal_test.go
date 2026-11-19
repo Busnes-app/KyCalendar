@@ -224,6 +224,7 @@ func TestCallbackExchangeErrorIsGeneric(t *testing.T) {
 func TestOIDCLoginDemotesAStoredAdmin(t *testing.T) {
 	s, _ := davInternalServer(t)
 	ctx := context.Background()
+	boundTo(t, s, "oidc https://acme.example")
 	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_olga", Username: "olga", Role: "admin", Status: "active", SSOProvider: "oidc", SSOSubject: "o-9", SSOIssuer: "oidc https://acme.example"}); err != nil {
 		t.Fatal(err)
 	}
