@@ -69,7 +69,8 @@ export const App: React.FC = () => {
   // A failed session lookup (503, or no answer) is not a sign-out: the sign-in form is only
   // for a real "authenticated: false".
   const [unavailable, setUnavailable] = useState(false);
-  // A retry keeps the unavailable view (and keyboard focus on its button) until it is answered.
+  // A retry keeps the unavailable view until it is answered. The busy button is aria-disabled,
+  // not disabled: disabling the focused button would drop keyboard focus to the page.
   const [retrying, setRetrying] = useState(false);
   const checkAuth = async (retry = false) => {
     if (retry) setRetrying(true);
@@ -163,7 +164,7 @@ export const App: React.FC = () => {
           </div>
           <div className="ky-auth-card" role="alert">
             <p>{settings?.app_name || 'KyCalendar'} is temporarily unavailable. You have not been signed out; try again in a moment.</p>
-            <button type="button" className="ky-auth-submit" onClick={() => void checkAuth(true)} disabled={retrying}>
+            <button type="button" className="ky-auth-submit" onClick={() => { if (!retrying) void checkAuth(true); }} aria-disabled={retrying}>
               {retrying ? 'Trying…' : 'Try again'}
             </button>
           </div>

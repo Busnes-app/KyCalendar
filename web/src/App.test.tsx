@@ -150,7 +150,7 @@ describe('App when the server cannot answer', () => {
     expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
   });
 
-  it('keeps the view while retrying, with the button disabled', async () => {
+  it('keeps the view and focus while retrying: the button is aria-disabled, not disabled', async () => {
     let answer: (r: Response) => void = () => {};
     let calls = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -161,9 +161,17 @@ describe('App when the server cannot answer', () => {
       return new Promise<Response>((resolve) => { answer = resolve; });
     });
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    const button = await screen.findByRole('button', { name: 'Try again' });
+    button.focus();
+    fireEvent.click(button);
     const busy = await screen.findByRole('button', { name: 'Trying…' });
-    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    // A disabled focused button drops focus to the page in real browsers (jsdom does not show it).
+    expect(busy).toBe(button);
+    expect((busy as HTMLButtonElement).disabled).toBe(false);
+    expect(busy.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(busy);
+    fireEvent.click(busy);
+    expect(calls).toBe(2);
     expect(screen.getByText(/temporarily unavailable/)).toBeTruthy();
     answer(new Response('{"authenticated":false}', { status: 200 }));
     expect(await screen.findByRole('button', { name: /sign in/i })).toBeTruthy();

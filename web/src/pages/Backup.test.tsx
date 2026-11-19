@@ -120,6 +120,87 @@ describe('Backup', () => {
     expect(screen.getAllByText('Unusable').length).toBeGreaterThan(0);
   });
 
+  it('says the pinned key is unusable without contradicting itself', async () => {
+    mockStatus({ ...PAIRED, key_pinned: false, paired: false, recovery_key_error: 'recovery.pub on this server names another key than the pin' });
+    render(<Backup />);
+    expect(await screen.findByText(/until this server can use the pinned key/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing can be sealed until a key is pinned/)).toBeNull();
+    expect(screen.queryByText('No off-site copy')).toBeNull();
+    expect(screen.getByText('https://recovery.example')).toBeTruthy();
+  });
+
+  it('says it is loading until the first status arrives', async () => {
+    let answer: (r: Response) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { answer = resolve; })));
+    render(<Backup />);
+    expect(screen.getByRole('status').textContent).toBe('Loading backup status…');
+    answer(new Response(JSON.stringify(PAIRED), { status: 200 }));
+    expect(await screen.findByText('https://recovery.example')).toBeTruthy();
+    expect(screen.queryByText('Loading backup status…')).toBeNull();
+  });
+
+  it('keeps Refresh focusable while busy and ignores a second press', async () => {
+    let answer: (r: Response) => void = () => {};
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(() => {
+      calls++;
+      if (calls === 1) return Promise.resolve(new Response(JSON.stringify(PAIRED), { status: 200 }));
+      return new Promise<Response>((resolve) => { answer = resolve; });
+    }));
+    render(<Backup />);
+    expect(await screen.findByText('https://recovery.example')).toBeTruthy();
+    const refresh = screen.getByRole('button', { name: /refresh/i });
+    refresh.focus();
+    fireEvent.click(refresh);
+    // disabled would drop focus to the page in real browsers; aria-disabled keeps it.
+    expect((refresh as HTMLButtonElement).disabled).toBe(false);
+    expect(refresh.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(refresh);
+    fireEvent.click(refresh);
+    expect(calls).toBe(2);
+    answer(new Response(JSON.stringify(PAIRED), { status: 200 }));
+    await vi.waitFor(() => expect(refresh.getAttribute('aria-disabled')).toBe('false'));
+  });
+
+  it('keeps an unpair result and its revoke advice when the re-read fails', async () => {
+    vi.stubGlobal('confirm', () => true);
+    let unpaired = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/backup/status')) {
+        return unpaired ? new Response('<html>Bad gateway</html>', { status: 502 }) : new Response(JSON.stringify(PAIRED), { status: 200 });
+      }
+      if (url.endsWith('/api/backup/pairing') && init?.method === 'DELETE') {
+        unpaired = true;
+        return new Response('{}', { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+    render(<Backup />);
+    fireEvent.click(await screen.findByRole('button', { name: /unpair/i }));
+    expect(await screen.findByText(/Could not load backup status/)).toBeTruthy();
+    expect(screen.getByText(/ask the KyRecovery admin to revoke this service there/)).toBeTruthy();
+  });
+
+  it('keeps a sealed capsule result when the re-read fails', async () => {
+    let ran = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/backup/status')) {
+        return ran ? new Response('{"error":"unavailable"}', { status: 503 }) : new Response(JSON.stringify(PAIRED), { status: 200 });
+      }
+      if (url.endsWith('/api/backup/deposit')) {
+        ran = true;
+        return new Response(JSON.stringify({ manifest: { capsule_id: 'cap-1' }, size_bytes: 2048, local_path: '/backups/cap-1.kycap' }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+    render(<Backup />);
+    fireEvent.click(await screen.findByRole('button', { name: /back up now/i }));
+    expect(await screen.findByText(/Could not load backup status/)).toBeTruthy();
+    expect(screen.getByText(/Capsule cap-1 .* written to \/backups\/cap-1.kycap/)).toBeTruthy();
+  });
+
   it('shows a failed last run, which the schedule alone would hide', async () => {
     mockStatus({ ...PAIRED, last_run: { at: '2026-10-06T10:00:00Z', outcome: 'failure', error: 'capsule too large' } });
     render(<Backup />);

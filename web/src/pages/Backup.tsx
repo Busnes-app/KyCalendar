@@ -354,13 +354,19 @@ export const Backup: React.FC = () => {
         title="Backups"
         lede="Sealed, encrypted backups of this KyCalendar. Only the suite's recovery custodians, together, can open one."
         action={
-          <button type="button" className="btn-secondary" onClick={fetchStatus} disabled={loadingStatus}>
+          <button type="button" className="btn-secondary" onClick={() => { if (!loadingStatus) void fetchStatus(); }} aria-disabled={loadingStatus}>
             <RefreshCw size={14} className={loadingStatus ? 'animate-spin' : ''} aria-hidden="true" />
             <span>Refresh</span>
           </button>
         }
       />
 
+      {loadingStatus && !status && <p className="dr-hint" role="status">Loading backup status…</p>}
+      {/* Action results stay outside the status block: a failed re-read must not hide what succeeded. */}
+      {runMessage && <Alert kind="success">{runMessage}</Alert>}
+      {runError && <Alert kind="error">{runError}</Alert>}
+      {pairMessage && <Alert kind="success">{pairMessage}</Alert>}
+      {pairError && <Alert kind="error">{pairError}</Alert>}
       {statusError && <Alert kind="error">{statusError}</Alert>}
       {status?.recovery_key_error && <Alert kind="error">{status.recovery_key_error}</Alert>}
       {status && status.database_driver === 'postgres' && (
@@ -385,7 +391,11 @@ export const Backup: React.FC = () => {
             </div>
             <div className="dr-fact-value dr-mono">{status?.recovery_key_id ?? '—'}</div>
             <div className="dr-fact-note">
-              {keyPinned ? `${status?.threshold} of ${status?.total_shares} custodian cards open a capsule` : 'Nothing can be sealed until a key is pinned'}
+              {keyPinned
+                ? `${status?.threshold} of ${status?.total_shares} custodian cards open a capsule`
+                : status.recovery_key_error
+                  ? 'Nothing can be sealed until this server can use the pinned key'
+                  : 'Nothing can be sealed until a key is pinned'}
             </div>
           </div>
           <div className="dr-fact">
@@ -393,7 +403,7 @@ export const Backup: React.FC = () => {
               <span>KyRecovery</span>
               <Status status={paired ? 'success' : undefined}>{paired ? 'Paired' : status.recovery_key_error ? 'Unknown' : 'Not paired'}</Status>
             </div>
-            <div className="dr-fact-value">{paired ? status?.recovery_url : 'No off-site copy'}</div>
+            <div className="dr-fact-value">{paired || status.recovery_key_error ? (status.recovery_url ?? '—') : 'No off-site copy'}</div>
             <div className="dr-fact-note">
               {status?.last_deposit ? `Last deposit ${when(status.last_deposit.deposited_at)}` : paired ? 'Nothing deposited yet' : ''}
             </div>
@@ -449,8 +459,6 @@ export const Backup: React.FC = () => {
               <li key={m}>{m}</li>
             ))}
           </ul>
-          {runMessage && <Alert kind="success">{runMessage}</Alert>}
-          {runError && <Alert kind="error">{runError}</Alert>}
           {copies.length > 0 && (
             <ul className="dr-copies">
               {copies.map((c) => (
@@ -554,8 +562,6 @@ export const Backup: React.FC = () => {
                 <span>Unpair</span>
               </button>
             )}
-            {pairMessage && <Alert kind="success">{pairMessage}</Alert>}
-            {pairError && <Alert kind="error">{pairError}</Alert>}
           </div>
 
           <div className="panel dr-section">
