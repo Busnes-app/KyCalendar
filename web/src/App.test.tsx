@@ -140,9 +140,43 @@ describe('App when the server cannot answer', () => {
     expect(await screen.findByText(/temporarily unavailable/)).toBeTruthy();
     expect(screen.queryByLabelText(/password/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
+    // A retry that fails again keeps the view and its button.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByText(/temporarily unavailable/)).toBeTruthy();
     down = false;
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('navigation', { name: 'Primary' })).toBeTruthy();
+    expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
+  });
+
+  it('keeps the view while retrying, with the button disabled', async () => {
+    let answer: (r: Response) => void = () => {};
+    let calls = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path !== '/api/auth/me') return new Response('{}', { status: 200 });
+      calls++;
+      if (calls === 1) return new Response('{}', { status: 503 });
+      return new Promise<Response>((resolve) => { answer = resolve; });
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    const busy = await screen.findByRole('button', { name: 'Trying…' });
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/temporarily unavailable/)).toBeTruthy();
+    answer(new Response('{"authenticated":false}', { status: 200 }));
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeTruthy();
+  });
+
+  it('treats a proxy 401 or 404 as signed out, not as an outage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input).split('?')[0];
+      if (path === '/api/auth/me') return new Response('nope', { status: 404 });
+      return new Response('{}', { status: 200 });
+    });
+    render(<App />);
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeTruthy();
     expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
   });
 

@@ -69,26 +69,33 @@ export const App: React.FC = () => {
   // A failed session lookup (503, or no answer) is not a sign-out: the sign-in form is only
   // for a real "authenticated: false".
   const [unavailable, setUnavailable] = useState(false);
-  const checkAuth = async () => {
-    setLoading(true);
-    setUnavailable(false);
+  // A retry keeps the unavailable view (and keyboard focus on its button) until it is answered.
+  const [retrying, setRetrying] = useState(false);
+  const checkAuth = async (retry = false) => {
+    if (retry) setRetrying(true);
+    else setLoading(true);
+    let down = false;
     try {
       const [authResp, setResp] = await Promise.all([fetch('/api/auth/me'), fetch('/api/settings').catch(() => null)]);
       if (setResp?.ok) {
         setSettings(await setResp.json());
       }
-      if (!authResp.ok) {
-        setUnavailable(true);
+      // The server answers 503 when it cannot reach its database; a proxy may answer 502/504
+      // or 429. Anything else (a 401 or 404 from a proxy) is not an outage: sign in.
+      if (authResp.status >= 500 || authResp.status === 429) {
+        down = true;
         return;
       }
-      const a = await authResp.json();
+      const a = authResp.ok ? await authResp.json() : { authenticated: false };
       if (a.authenticated) {
         setUser(a.user);
       }
     } catch (err) {
       console.error('Initialization error:', err);
-      setUnavailable(true);
+      down = true;
     } finally {
+      setUnavailable(down);
+      setRetrying(false);
       setLoading(false);
     }
   };
@@ -155,8 +162,10 @@ export const App: React.FC = () => {
             <h1>{settings?.app_name || 'KyCalendar'}</h1>
           </div>
           <div className="ky-auth-card" role="alert">
-            <p>{settings?.app_name || 'KyCalendar'} is temporarily unavailable. Your session is kept; try again in a moment.</p>
-            <button type="button" className="ky-auth-submit" onClick={() => void checkAuth()}>Try again</button>
+            <p>{settings?.app_name || 'KyCalendar'} is temporarily unavailable. You have not been signed out; try again in a moment.</p>
+            <button type="button" className="ky-auth-submit" onClick={() => void checkAuth(true)} disabled={retrying}>
+              {retrying ? 'Trying…' : 'Try again'}
+            </button>
           </div>
         </div>
       </main>

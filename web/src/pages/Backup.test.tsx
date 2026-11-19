@@ -88,8 +88,36 @@ describe('Backup', () => {
   it('shows an unreadable status as unreadable, not as unpaired', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"KyCalendar is temporarily unavailable; try again","code":"unavailable"}', { status: 503, headers: { 'Content-Type': 'application/json' } })));
     render(<Backup />);
-    expect(await screen.findByText(/Could not load backup status/)).toBeTruthy();
+    expect(await screen.findByText(/Could not load backup status: KyCalendar is temporarily unavailable/)).toBeTruthy();
+    for (const text of ['Not paired', 'None', 'Off', /No backups are being made/]) {
+      expect(screen.queryByText(text)).toBeNull();
+    }
+    expect(screen.queryByRole('button', { name: /pin/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^pair$/i })).toBeNull();
+  });
+
+  it('clears the facts when a refresh cannot read the status', async () => {
+    let ok = true;
+    vi.stubGlobal('fetch', vi.fn(async () => ok
+      ? new Response(JSON.stringify(PAIRED), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      : new Response('<html>Bad gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } })));
+    render(<Backup />);
+    expect(await screen.findByText('https://recovery.example')).toBeTruthy();
+    ok = false;
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+    const alert = await screen.findByText(/Could not load backup status/);
+    expect(alert.textContent?.match(/Could not load backup status/g)?.length).toBe(1);
+    expect(screen.queryByText('https://recovery.example')).toBeNull();
+    expect(screen.queryByText('Paired')).toBeNull();
+  });
+
+  it('does not call an unusable key unpaired or ask for a first pin', async () => {
+    mockStatus({ ...PAIRED, key_pinned: false, paired: false, recovery_key_error: 'recovery.pub on this server names another key than the pin' });
+    render(<Backup />);
+    expect(await screen.findByText(/names another key/)).toBeTruthy();
+    expect(screen.queryByText('Not paired')).toBeNull();
     expect(screen.queryByText(/No backups are being made/)).toBeNull();
+    expect(screen.getAllByText('Unusable').length).toBeGreaterThan(0);
   });
 
   it('shows a failed last run, which the schedule alone would hide', async () => {
