@@ -318,9 +318,9 @@ func TestPostgresCapsuleRestoresAndStarts(t *testing.T) {
 		return n
 	}
 	for q, want := range map[string]int{
-		`SELECT COUNT(*) FROM app_passwords`:                                      0,
-		`SELECT COUNT(*) FROM scheduling_outbox`:                                  0,
-		`SELECT COUNT(*) FROM security_windows`:                                   0,
+		`SELECT COUNT(*) FROM app_passwords`:                                       0,
+		`SELECT COUNT(*) FROM scheduling_outbox`:                                   0,
+		`SELECT COUNT(*) FROM security_windows`:                                    0,
 		`SELECT COUNT(*) FROM spent_challenges WHERE salt = 'live-salt'`:           1,
 		`SELECT COUNT(*) FROM spent_challenges WHERE salt = 'gone-salt'`:           0,
 		`SELECT COUNT(*) FROM kypost_replay WHERE event_id = 'live-evt'`:           1,

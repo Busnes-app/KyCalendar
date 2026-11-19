@@ -32,8 +32,8 @@ var errInjected = errors.New("injected store failure")
 type flaky struct {
 	store.Store
 	failSessions, failApps, failSettings, failWindows, stall atomic.Bool
-	pings                                                     atomic.Int32
-	driver                                                    string
+	pings                                                    atomic.Int32
+	driver                                                   string
 }
 
 func (f *flaky) Driver() string {

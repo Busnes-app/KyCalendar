@@ -101,7 +101,10 @@ func TestFirstStartsRaceThroughTheRecord(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 2 {
 		wg.Add(1)
-		go func() { defer wg.Done(); errs[i] = checkReplicaConfig(context.Background(), cfgs[i], sts[i].Settings()) }()
+		go func() {
+			defer wg.Done()
+			errs[i] = checkReplicaConfig(context.Background(), cfgs[i], sts[i].Settings())
+		}()
 	}
 	wg.Wait()
 	if (errs[0] == nil) == (errs[1] == nil) {
