@@ -84,9 +84,12 @@ EOF
 printf 'KY_MIGRATE_POSTGRES_DSN=%s\n' "$dsn" >"$work/migration.env"
 
 base() { echo "http://127.0.0.1:$(dc port app 8080 | sed 's/.*://')"; }
+# Sets url once the app answers. The port is looked up each try: a restart (the app may
+# start before PostgreSQL accepts connections) publishes a new random host port.
 ready() {
   for _ in $(seq 1 60); do
-    if python3 "$here/cutover-client.py" ready "$1" 2>/dev/null; then return 0; fi
+    url=$(base)
+    if python3 "$here/cutover-client.py" ready "$url" 2>/dev/null; then return 0; fi
     sleep 1
   done
   return 1
@@ -96,8 +99,7 @@ inspect() { dc run --rm --no-deps -T --entrypoint sh app -c "$1" 2>/dev/null; }
 
 echo "1. SQLite install with the bootstrap admin, a person, a calendar and an event"
 dc up -d app >/dev/null 2>&1 || fail "docker compose up failed"
-url=$(base)
-ready "$url" || fail "the SQLite server never became ready"
+ready || fail "the SQLite server never became ready"
 printf 'Cutover-Temp-Pass-1\n' | dc exec -T app /app/kycalendar create-user -username ann >/dev/null 2>&1 ||
   fail "create-user failed"
 python3 "$here/cutover-client.py" seed "$url" || fail "could not write the event on SQLite"
@@ -134,8 +136,7 @@ case $again in *"already holds data"*) ;; *) fail "the repeat was refused for an
 echo "4. .env switched to PostgreSQL; the app starts on it"
 printf 'COMPOSE_PROFILES=postgres\nKY_DB_DRIVER=postgres\nKY_DB_DSN=%s\n' "$dsn" >>"$work/.env"
 dc up -d >/dev/null 2>&1 || fail "docker compose up on PostgreSQL failed"
-url=$(base)
-ready "$url" || fail "the server never became ready on PostgreSQL"
+ready || fail "the server never became ready on PostgreSQL"
 python3 "$here/cutover-client.py" verify "$url" || fail "the migrated data is not served"
 dc logs app 2>&1 | grep -qF "$password" && fail "the server logged the database password"
 
@@ -156,8 +157,7 @@ case $out in *"still in use"*) fail "docker compose down left the network in use
 left=$(docker ps -aq --filter "label=com.docker.compose.project=$name")
 [ -z "$left" ] || fail "docker compose down left containers running"
 dc up -d >/dev/null 2>&1 || fail "the plain docker compose up failed"
-url=$(base)
-ready "$url" || fail "the server never became ready after a plain up"
+ready || fail "the server never became ready after a plain up"
 python3 "$here/cutover-client.py" verify "$url" || fail "the data is not served after a plain down and up"
 
 echo "cutover check passed through docker compose: source digest $before unchanged, event served from PostgreSQL, capsule written and drilled, plain down and up keep PostgreSQL"
