@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -334,5 +335,15 @@ func TestResetAfterRestoreKeepsOnlyLiveRefusals(t *testing.T) {
 	}
 	if n, _ := store.RowCountForTest(st, "kypost_replay", "event_id = 'gone-evt'"); n != 0 {
 		t.Fatal("an expired KyPost event ID was kept by the reset")
+	}
+}
+
+// A first start has no data directory yet; the instance lock must not stop it.
+func TestSQLiteInstanceLockCreatesTheDataDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data", "kycalendar.db")
+	ran := false
+	won, err := store.WithSQLiteInstance(context.Background(), path, func(context.Context) error { ran = true; return nil })
+	if err != nil || !won || !ran {
+		t.Fatalf("WithSQLiteInstance on a missing directory: won=%v ran=%v err=%v", won, ran, err)
 	}
 }

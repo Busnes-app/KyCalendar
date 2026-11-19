@@ -308,6 +308,10 @@ func withFlock(ctx context.Context, dbPath, name string, work func(context.Conte
 // second server or migrate-postgres on the same file is refused. CLI deposit, export,
 // restore-reset and the user commands share the file without it.
 func WithSQLiteInstance(ctx context.Context, path string, work func(context.Context) error) (bool, error) {
+	// A first start may come before openSQLite has made the data directory.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return false, err
+	}
 	canonical, err := canonicalPath(path)
 	if err != nil {
 		return false, err
