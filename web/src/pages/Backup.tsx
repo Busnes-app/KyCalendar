@@ -183,7 +183,9 @@ export const Backup: React.FC = () => {
       if (data.recovery_url) setRemoteUrl(data.recovery_url);
       if (typeof data.interval_sec === 'number') setScheduleSec(data.interval_sec);
     } catch (err) {
-      setStatusError(errorText(err, 'Could not load backup status'));
+      // Never "not paired": a status the server could not read says only that.
+      const why = errorText(err, '');
+      setStatusError(why ? `Could not load backup status: ${why}` : 'Could not load backup status');
     } finally {
       setLoadingStatus(false);
     }
@@ -359,10 +361,10 @@ export const Backup: React.FC = () => {
 
       {statusError && <Alert kind="error">{statusError}</Alert>}
       {status?.recovery_key_error && <Alert kind="error">{status.recovery_key_error}</Alert>}
-      {status && status.database_driver !== 'sqlite' && (
+      {status && status.database_driver === 'postgres' && (
         <Alert kind="warn">
-          Backups do not include the PostgreSQL database: a capsule can only snapshot SQLite. Back this database up
-          with pg_dump on its own schedule.
+          On PostgreSQL a capsule carries a verified SQLite snapshot of the database. To restore, restore the capsule,
+          then migrate it into an empty PostgreSQL database (docs/RESTORE.md).
         </Alert>
       )}
       {status && !keyPinned && <Alert kind="warn">No backups are being made. Pair with KyRecovery or pin the suite recovery key below.</Alert>}

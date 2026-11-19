@@ -72,17 +72,24 @@ describe('Backup', () => {
     expect(screen.getByRole('button', { name: /unpair/i })).toBeTruthy();
   });
 
-  it('says so on Postgres, where no capsule carries the database', async () => {
+  it('says how a PostgreSQL capsule restores', async () => {
     mockStatus({ ...PAIRED, database_driver: 'postgres' });
     render(<Backup />);
-    expect(await screen.findByText(/Backups do not include the PostgreSQL database/)).toBeTruthy();
+    expect(await screen.findByText(/carries a verified SQLite snapshot/)).toBeTruthy();
   });
 
-  it('does not warn about the database on SQLite', async () => {
+  it('does not show the PostgreSQL note on SQLite', async () => {
     mockStatus(PAIRED);
     render(<Backup />);
     await screen.findByText('https://recovery.example');
-    expect(screen.queryByText(/Backups do not include the PostgreSQL database/)).toBeNull();
+    expect(screen.queryByText(/carries a verified SQLite snapshot/)).toBeNull();
+  });
+
+  it('shows an unreadable status as unreadable, not as unpaired', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"KyCalendar is temporarily unavailable; try again","code":"unavailable"}', { status: 503, headers: { 'Content-Type': 'application/json' } })));
+    render(<Backup />);
+    expect(await screen.findByText(/Could not load backup status/)).toBeTruthy();
+    expect(screen.queryByText(/No backups are being made/)).toBeNull();
   });
 
   it('shows a failed last run, which the schedule alone would hide', async () => {
