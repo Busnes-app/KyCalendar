@@ -136,17 +136,19 @@ func WithPinLock(ctx context.Context, st store.Store, work func(context.Context)
 // not stick is removed again. The same key and split again is an idempotent success.
 func PinRecoveryKey(ctx context.Context, cfg *config.Config, st store.Store, k recoveryclient.RecoveryKey) error {
 	return WithPinLock(ctx, st, func(owned context.Context) error {
-		return PinLocked(owned, cfg, st, k)
+		_, err := PinLocked(owned, cfg, st, k)
+		return err
 	})
 }
 
-// PinLocked is PinRecoveryKey's body; the caller holds the pin lock.
-func PinLocked(ctx context.Context, cfg *config.Config, st store.Store, k recoveryclient.RecoveryKey) error {
+// PinLocked is PinRecoveryKey's body; the caller holds the pin lock. pinned reports that k's
+// pin stands, which is true even when the PostgreSQL record write after it fails.
+func PinLocked(ctx context.Context, cfg *config.Config, st store.Store, k recoveryclient.RecoveryKey) (pinned bool, err error) {
 	dir := cfg.Database.DataDir
 	path := recoveryclient.RecoveryKeyPath(dir)
 	_, statErr := os.Lstat(path)
 	settings := Settings(ctx, st.Settings())
-	err := ctx.Err()
+	err = ctx.Err()
 	if err == nil {
 		err = refuseOtherTopology(settings, k)
 	}
@@ -160,7 +162,7 @@ func PinLocked(ctx context.Context, cfg *config.Config, st store.Store, k recove
 		if errors.Is(statErr, fs.ErrNotExist) {
 			_ = os.Remove(path) // a file for a key that did not stick
 		}
-		return err
+		return false, err
 	}
 	if st.Driver() == "postgres" {
 		// The pin stands, so its file stays: a failed record write is healed by the next sync,
@@ -169,9 +171,9 @@ func PinLocked(ctx context.Context, cfg *config.Config, st store.Store, k recove
 		if err == nil {
 			err = st.Settings().SetSetting(ctx, RecoveryKeyRecordSetting, sealed)
 		}
-		return err
+		return true, err
 	}
-	return nil
+	return true, nil
 }
 
 // refuseOtherTopology refuses the pinned key with another split before the lib writes

@@ -320,10 +320,10 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 	// server pins, pairs or unpairs in between.
 	var pinned bool
 	err = backup.WithPinLock(ctx, s.store, func(owned context.Context) error {
-		if err := backup.PinLocked(owned, s.config, s.store, result.Key); err != nil {
+		var err error
+		if pinned, err = backup.PinLocked(owned, s.config, s.store, result.Key); err != nil {
 			return err
 		}
-		pinned = true
 		return recoveryclient.StorePairing(backup.Settings(owned, s.store.Settings()), sealer, req.RecoveryURL, result.APIToken)
 	})
 	switch {

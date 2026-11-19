@@ -484,3 +484,40 @@ func TestOneOperationNeverMixesTwoPairings(t *testing.T) {
 		}
 	}
 }
+
+// failRecord fails only the sealed record write that follows a PostgreSQL pin.
+type failRecord struct{ store.Store }
+type failRecordSettings struct{ store.SettingsStore }
+
+func (f failRecord) Settings() store.SettingsStore { return failRecordSettings{f.Store.Settings()} }
+func (f failRecordSettings) SetSetting(ctx context.Context, key, val string) error {
+	if key == backup.RecoveryKeyRecordSetting {
+		return errors.New("record write failed")
+	}
+	return f.SettingsStore.SetSetting(ctx, key, val)
+}
+
+// A record write that fails after the pin landed still reports the pin, so the pairing
+// handler records "key pinned" rather than "key not pinned" for a key it cannot replace.
+func TestPinLockedReportsAPinWhoseRecordFailed(t *testing.T) {
+	onPostgres(t)
+	cfgs, sts := replicas(t, 1)
+	ctx := context.Background()
+	k := newKey(t, 2, 3)
+	var pinned bool
+	err := backup.WithPinLock(ctx, sts[0], func(owned context.Context) error {
+		var err error
+		pinned, err = backup.PinLocked(owned, cfgs[0], failRecord{sts[0]}, k)
+		return err
+	})
+	if err == nil || !pinned {
+		t.Fatalf("pinned=%v err=%v, want the pin reported with the record error", pinned, err)
+	}
+	// The pin stands: the same key pins again, and the record is written this time.
+	if err := backup.PinRecoveryKey(ctx, cfgs[0], sts[0], k); err != nil {
+		t.Fatal(err)
+	}
+	if err := backup.PinRecoveryKey(ctx, cfgs[0], sts[0], newKey(t, 2, 3)); err == nil {
+		t.Fatal("another key replaced the pin")
+	}
+}
