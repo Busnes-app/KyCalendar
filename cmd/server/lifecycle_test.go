@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -508,4 +509,42 @@ func receiptFor(raw []byte) recoveryclient.Receipt {
 	m, _ := capsule.ReadUnverifiedManifest(raw)
 	sum := sha256.Sum256(raw)
 	return recoveryclient.Receipt{CapsuleID: m.CapsuleID, Digest: hex.EncodeToString(sum[:]), SizeBytes: int64(len(raw)), DepositedAt: time.Now().UTC()}
+}
+
+// unreadableSchedule is a store whose backup schedule rows cannot be read.
+type unreadableSchedule struct{ store.Store }
+
+func (u unreadableSchedule) Settings() store.SettingsStore {
+	return failingSchedule{u.Store.Settings()}
+}
+
+type failingSchedule struct{ store.SettingsStore }
+
+func (f failingSchedule) GetSetting(ctx context.Context, key string) (string, error) {
+	if strings.HasPrefix(key, "backup_") {
+		return "", errors.New("injected read failure")
+	}
+	return f.SettingsStore.GetSetting(ctx, key)
+}
+
+// A schedule the scheduler cannot read is audited as a failed run, not skipped quietly
+// (spec AC20).
+func TestUnreadableScheduleIsAuditedAsAFailedRun(t *testing.T) {
+	cfg := serverConfig(t, testdb.Config(t))
+	st := openStore(t, cfg)
+	job, ok := backupJob(cfg, unreadableSchedule{st}, countingDepositor{new(atomic.Int32)}, time.Minute)
+	if !ok {
+		t.Fatal("no backup job")
+	}
+	job.Run(context.Background())
+	recs, _, err := st.Audit().ListAuditRecords(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range recs {
+		if r.UserID == "system" && r.Action == "admin.backup_run" && strings.Contains(r.Details, "failure") {
+			return
+		}
+	}
+	t.Fatalf("no failed admin.backup_run row: %+v", recs)
 }
