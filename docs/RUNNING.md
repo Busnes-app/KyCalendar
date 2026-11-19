@@ -320,8 +320,14 @@ docker compose up -d app
 ```
 
 On SQLite run the same `DELETE` with the server stopped, using the host's `sqlite3` package (the
-image has none), as the data directory's owner (UID 10001), so no file it writes is left owned by
-root: `sudo -u '#10001' sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN (...)"`.
+image has none), then give anything it wrote back to the data directory's owner (whatever that is,
+rootless Docker included):
+
+```bash
+docker compose stop app
+sudo sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN ('kyrecovery_key_id','kyrecovery_threshold','kyrecovery_total_shares','kyrecovery_public_key')"
+sudo chown -R --reference=./data ./data
+```
 
 ### Moving a SQLite install to PostgreSQL
 
