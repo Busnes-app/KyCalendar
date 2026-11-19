@@ -244,6 +244,7 @@ func TestOIDCLoginsAreEverydayAndNeverAdoptSCIM(t *testing.T) {
 	if err := s.store.Users().CreateUser(ctx, &store.User{ID: "usr_scim", Username: "sam", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "o-2"}); err != nil {
 		t.Fatal(err)
 	}
+	boundTo(t, s, "oidc https://acme.example")
 	u, err := s.upsertSSOUser(ctx, &sso.IdentityClaims{Provider: "oidc", Subject: "o-1", PreferredUsername: "olive", Roles: []string{access.AdminAppRole}}, "oidc https://acme.example")
 	if err != nil || u.Role != "user" || u.SSOProvider != "oidc" {
 		t.Fatalf("oidc login with the admin role: %+v %v, want an everyday oidc user", u, err)

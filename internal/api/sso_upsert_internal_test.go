@@ -21,6 +21,7 @@ func TestUpsertSSOUserFollowsRolesClaim(t *testing.T) {
 	ctx := context.Background()
 	claims := &sso.IdentityClaims{Subject: "sub-1", PreferredUsername: "carol", Provider: "kysignon"}
 
+	boundTo(t, s, kyBinding)
 	u, err := s.upsertSSOUser(ctx, claims, kyBinding)
 	if err != nil || u.Role != "user" {
 		t.Fatalf("first login: %+v %v", u, err)
@@ -152,6 +153,7 @@ func TestUpsertSSOUserRefusesTakenUsername(t *testing.T) {
 		t.Fatal(err)
 	}
 	claims := &sso.IdentityClaims{Subject: "sub-admin", PreferredUsername: "admin", Provider: "kysignon", Roles: []string{access.AdminAppRole}}
+	boundTo(t, s, kyBinding)
 	if _, err := s.upsertSSOUser(ctx, claims, kyBinding); !errors.Is(err, errUsernameTaken) {
 		t.Fatalf("want errUsernameTaken, got %v", err)
 	}
@@ -215,5 +217,14 @@ func TestUpsertSSOUserFailedDemotionSignsOut(t *testing.T) {
 	}
 	if _, err := real.Sessions().GetSession(ctx, "tok_ada"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("an admin session survived a failed demotion: %v", err)
+	}
+}
+
+// boundTo stores binding as the live sign-in binding, as LoadSignIn's bindAccounts does before
+// any callback runs; a new account is written only under the stored binding.
+func boundTo(t *testing.T, s *Server, binding string) {
+	t.Helper()
+	if err := s.store.Settings().SetSetting(context.Background(), sso.KeyBound, binding); err != nil {
+		t.Fatal(err)
 	}
 }
