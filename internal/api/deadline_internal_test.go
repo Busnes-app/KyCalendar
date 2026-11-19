@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -46,5 +47,24 @@ func TestStalledHandlerAnswersAtTheDeadline(t *testing.T) {
 		if w.Header().Get(h) == "" {
 			t.Errorf("the deadline's 503 lacks %s", h)
 		}
+	}
+}
+
+// A shared-window statement takes the request's own deadline where it has one, and
+// windowTimeout only without one (code review round 2, F1).
+func TestWindowStatementsUseTheRequestDeadline(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), requestDeadline)
+	defer cancel()
+	want, _ := parent.Deadline()
+	c, done := windowContext(parent)
+	got, _ := c.Deadline()
+	done()
+	if !got.Equal(want) {
+		t.Fatalf("under a request deadline the window statement ends at %v, want the request's %v", got, want)
+	}
+	c, done = windowContext(context.Background())
+	defer done()
+	if got, ok := c.Deadline(); !ok || time.Until(got) > windowTimeout {
+		t.Fatalf("without a request deadline: %v %v, want at most windowTimeout", got, ok)
 	}
 }

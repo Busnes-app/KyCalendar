@@ -11,10 +11,20 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
-// windowTimeout bounds one shared-window statement. A window the database cannot answer
-// denies: the caller's 429 (or DAV's 503), never a fallback to process memory. It is long
-// enough that a loaded database is not an outage, and well inside the 14 s request deadline.
+// windowTimeout bounds a shared-window statement with no request deadline above it (detached
+// refunds, the long routes). A window the database cannot answer denies: the caller's 429 (or
+// DAV's 503), never a fallback to process memory.
 const windowTimeout = 5 * time.Second
+
+// windowContext bounds a shared-window statement by the request's own deadline where it has
+// one (the 14 s request deadline), so a slow database is not an outage before the request is,
+// else by windowTimeout.
+func windowContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, windowTimeout)
+}
 
 // Rate windows live in process memory on SQLite (one server) and in the database on
 // PostgreSQL (s.shared), where every replica counts against the same limit on database time.
@@ -77,7 +87,7 @@ func noRefund() {}
 
 // takeShared counts key in the database; an error denies.
 func (s *Server) takeShared(ctx context.Context, key string, limit int, window time.Duration) (func(), bool) {
-	c, cancel := context.WithTimeout(ctx, windowTimeout)
+	c, cancel := windowContext(ctx)
 	defer cancel()
 	gen, _, ok, err := s.shared.TakeAttempt(c, key, limit, window)
 	if err != nil {
@@ -142,7 +152,7 @@ func (s *Server) davReserve(ctx context.Context, key string, limit int, now time
 		}
 		return func() { s.davFails.release(key) }, true, 0, nil
 	}
-	c, cancel := context.WithTimeout(ctx, windowTimeout)
+	c, cancel := windowContext(ctx)
 	defer cancel()
 	gen, left, ok, err := s.shared.TakeAttempt(c, "dav:"+key, limit, davFailWindow)
 	if err != nil {
@@ -166,7 +176,7 @@ func (s *Server) davBlocked(ctx context.Context, key string, limit int, now time
 		blocked, wait := s.davFails.blocked(key, limit, now)
 		return blocked, wait, nil
 	}
-	c, cancel := context.WithTimeout(ctx, windowTimeout)
+	c, cancel := windowContext(ctx)
 	defer cancel()
 	hits, left, err := s.shared.AttemptHits(c, "dav:"+key)
 	return hits >= limit, left, err
@@ -200,7 +210,7 @@ type sharedSpender struct {
 }
 
 func (p sharedSpender) Spend(salt string, expiresAt int64) bool {
-	c, cancel := context.WithTimeout(p.ctx, windowTimeout)
+	c, cancel := windowContext(p.ctx)
 	defer cancel()
 	ok, err := p.shared.SpendChallenge(c, salt, expiresAt*1000)
 	if err != nil {
