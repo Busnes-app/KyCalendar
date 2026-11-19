@@ -326,3 +326,42 @@ func TestMigrateRefusesAndChecks(t *testing.T) {
 		t.Fatalf("users after a refused repeat: %d %v", users, err)
 	}
 }
+
+// At the PostgreSQL pool floor of four connections, the worker lock, the backup-run lock and a
+// snapshot transaction still leave one for a request.
+func TestPoolFloorLeavesARequestConnection(t *testing.T) {
+	dsn := pgTarget(t)
+	ctx := context.Background()
+	st, err := openPostgres(ctx, dsn, 4, 4, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	s := st.(*SQLStore)
+	held := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	for _, name := range []string{"scheduled-worker", "backup-run"} {
+		go func() {
+			_, _ = s.Coordination().WithLock(ctx, name, func(context.Context) error {
+				held <- struct{}{}
+				<-release
+				return nil
+			})
+		}()
+		<-held
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `SELECT 1`); err != nil {
+		t.Fatal(err)
+	}
+	quick, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if _, err := st.Users().CountUsers(quick); err != nil {
+		t.Fatalf("no connection left for a request at four: %v", err)
+	}
+}
