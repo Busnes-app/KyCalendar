@@ -215,7 +215,8 @@ func TestConcurrentPinsOfDifferentKeys(t *testing.T) {
 }
 
 // One server re-pairs back and forth while another reads: a read never pairs one URL with the
-// other pairing's token (spec AC19).
+// other pairing's token (spec AC19's 200 iterations). A race rarely lands between two reads;
+// TestOneOperationNeverMixesTwoPairings is the deterministic, sensitive check.
 func TestPairingReadsAreCoherent(t *testing.T) {
 	cfgs, sts := replicas(t, 2)
 	ctx := context.Background()
