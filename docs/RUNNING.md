@@ -315,7 +315,7 @@ and pin again:
 ```bash
 docker compose stop app
 docker compose exec postgres psql -U postgres -d ky_server -c "DELETE FROM server_settings WHERE key IN ('kyrecovery_key_id','kyrecovery_threshold','kyrecovery_total_shares','kyrecovery_public_key')"
-rm ./data/recovery.pub        # on every replica host
+sudo rm ./data/recovery.pub   # on every replica host
 docker compose up -d app
 ```
 
@@ -325,8 +325,10 @@ rootless Docker included):
 
 ```bash
 docker compose stop app
-sudo sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN ('kyrecovery_key_id','kyrecovery_threshold','kyrecovery_total_shares','kyrecovery_public_key')"
-sudo chown -R --reference=./data ./data
+sudo sqlite3 -nofollow ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN ('kyrecovery_key_id','kyrecovery_threshold','kyrecovery_total_shares','kyrecovery_public_key')"
+sudo chown -R "$(stat -c %u:%g ./data)" ./data
+sudo rm ./data/recovery.pub
+docker compose up -d app
 ```
 
 ### Moving a SQLite install to PostgreSQL
