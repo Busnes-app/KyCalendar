@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -176,3 +177,13 @@ func SharedHitsForTest(s *Server, key string) int {
 	}
 	return n
 }
+
+// SetRequestDeadlineForTest shortens the request deadline and returns the restore func.
+func SetRequestDeadlineForTest(d time.Duration) func() {
+	old := requestDeadline
+	requestDeadline = d
+	return func() { requestDeadline = old }
+}
+
+// LongRoutesForTest is the deadline's exemption list.
+func LongRoutesForTest() map[string]string { return maps.Clone(longRoutes) }
