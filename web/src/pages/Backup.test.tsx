@@ -218,29 +218,134 @@ describe('Backup', () => {
     expect(document.activeElement).toBe(alert);
   });
 
-  it('keeps Back up now and Pair focusable while busy and ignores a second press', async () => {
-    let calls = 0;
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+  it('keeps all 7 actions focusable while busy and ignores a second press', async () => {
+    vi.stubGlobal('confirm', () => true);
+    const UNPINNED = { ...PAIRED, key_pinned: false, paired: false, recovery_url: undefined };
+    for (const [body, actions] of [
+      [PAIRED, ['Back up now', 'Run restore drill', 'Save', 'Re-pair', 'Unpair']],
+      [UNPINNED, ['Pin key', 'Pair']],
+    ] as const) {
+      let calls = 0;
+      vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+        if (String(input).endsWith('/api/backup/status')) return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+        calls++;
+        return new Promise<Response>(() => {}); // every action stays busy
+      }));
+      render(<Backup />);
+      await screen.findByRole('button', { name: 'Refresh' });
+      await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' }).getAttribute('aria-disabled')).toBe('false'));
+      fireEvent.change(screen.getByLabelText('Pairing code'), { target: { value: '123456' } });
+      if (body === PAIRED) fireEvent.change(screen.getByLabelText('Back up automatically'), { target: { value: String(7 * 86400) } });
+      else {
+        fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://recovery.example' } });
+        fireEvent.change(screen.getByLabelText('Suite recovery public key'), { target: { value: 'key' } });
+      }
+      for (const name of actions) {
+        const button = screen.getByRole('button', { name: new RegExp(`^${name}$`, 'i') });
+        button.focus();
+        fireEvent.click(button);
+        await vi.waitFor(() => expect(button.getAttribute('aria-disabled'), name).toBe('true'));
+        expect((button as HTMLButtonElement).disabled, name).toBe(false);
+        expect(document.activeElement, name).toBe(button);
+        const before = calls;
+        fireEvent.click(button);
+        expect(calls, `${name} pressed again while busy`).toBe(before);
+      }
+      cleanup();
+    }
+  });
+
+  // Only an outcome an action just produced takes focus: a Refresh that moves an older result
+  // (a failed read lifts it to the top, a good one puts it back) leaves focus on Refresh.
+  it('keeps focus on Refresh while an older result is on screen', async () => {
+    let read = 'ok';
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/api/backup/status')) return Promise.resolve(new Response(JSON.stringify(PAIRED), { status: 200 }));
-      calls++;
-      return new Promise<Response>(() => {}); // the deposit and the pairing never answer
+      if (url.endsWith('/api/backup/deposit')) return new Response(JSON.stringify({ manifest: { capsule_id: 'cap-1' }, size_bytes: 2048, local_path: '/backups/cap-1.kycap' }), { status: 200 });
+      return read === 'ok' ? new Response(JSON.stringify(PAIRED), { status: 200 }) : new Response('{"error":"unavailable"}', { status: 503 });
     }));
     render(<Backup />);
-    const backUp = await screen.findByRole('button', { name: /back up now/i });
-    fireEvent.change(screen.getByLabelText('Pairing code'), { target: { value: '123456' } });
-    const rePair = screen.getByRole('button', { name: /re-pair/i });
-    for (const [button, busy] of [[backUp, /sealing/i], [rePair, /re-pair/i]] as const) {
-      button.focus();
-      fireEvent.click(button);
-      expect(await screen.findByRole('button', { name: busy })).toBe(button);
-      expect((button as HTMLButtonElement).disabled).toBe(false);
-      expect(button.getAttribute('aria-disabled')).toBe('true');
-      expect(document.activeElement).toBe(button);
-      const before = calls;
-      fireEvent.click(button);
-      expect(calls).toBe(before);
+    fireEvent.click(await screen.findByRole('button', { name: /back up now/i }));
+    const result = (await screen.findByText(/Capsule cap-1/)).closest('.dr-alert');
+    await vi.waitFor(() => expect(document.activeElement).toBe(result));
+    const refresh = screen.getByRole('button', { name: 'Refresh' });
+    for (const next of ['ok', 'fail', 'ok']) {
+      read = next;
+      refresh.focus();
+      fireEvent.click(refresh);
+      await vi.waitFor(() => expect(refresh.getAttribute('aria-disabled')).toBe('false'));
+      expect(screen.getByText(/Capsule cap-1/)).toBeTruthy();
+      expect(document.activeElement, `after a ${next} Refresh`).toBe(refresh);
     }
+  });
+
+  it('shows the drill, Save and Pin outcomes beside their action, focused', async () => {
+    vi.stubGlobal('confirm', () => true);
+    let body: Record<string, unknown> = PAIRED;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/backup/status')) return new Response(JSON.stringify(body), { status: 200 });
+      if (url.endsWith('/api/backup/drill')) return new Response(JSON.stringify({ passed: true, duration_ms: 12, checks: [{ name: 'Open', passed: true, message: 'opened' }] }), { status: 200 });
+      if (url.endsWith('/api/backup/schedule')) {
+        body = { ...PAIRED, interval_sec: JSON.parse(String(init?.body)).interval_sec };
+        return new Response(init?.body, { status: 200 });
+      }
+      if (url.endsWith('/api/backup/pin-key')) return new Response(JSON.stringify({ error: 'Not a recovery key' }), { status: 400 });
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+    render(<Backup />);
+    const drill = await screen.findByRole('button', { name: /run restore drill/i });
+    fireEvent.click(drill);
+    const drillOutcome = (await screen.findByText(/^Restore drill/)).closest('.dr-drill') as HTMLElement;
+    expect(drillOutcome.closest('.panel')?.contains(drill)).toBe(true);
+    await vi.waitFor(() => expect(document.activeElement).toBe(drillOutcome));
+
+    fireEvent.change(screen.getByLabelText('Back up automatically'), { target: { value: String(7 * 86400) } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    save.focus();
+    fireEvent.click(save);
+    const saved = (await screen.findByText('Backing up weekly.')).closest('.dr-alert') as HTMLElement;
+    expect(saved.closest('.panel')?.contains(save)).toBe(true);
+    await vi.waitFor(() => expect(document.activeElement).toBe(saved)); // never the page, though Save now disables
+
+    cleanup();
+    body = { ...PAIRED, key_pinned: false, paired: false };
+    render(<Backup />);
+    fireEvent.change(await screen.findByLabelText('Suite recovery public key'), { target: { value: 'key' } });
+    const pin = screen.getByRole('button', { name: 'Pin key' });
+    fireEvent.click(pin);
+    const refused = (await screen.findByText('Not a recovery key')).closest('.dr-alert') as HTMLElement;
+    expect(refused.closest('.panel')?.contains(pin)).toBe(true);
+    await vi.waitFor(() => expect(document.activeElement).toBe(refused));
+  });
+
+  it('confirms a pinned key, focused, and keeps a saved schedule when the re-read fails', async () => {
+    let body: Record<string, unknown> = { ...PAIRED, key_pinned: false, paired: false };
+    let readable = true;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/backup/status')) return readable ? new Response(JSON.stringify(body), { status: 200 }) : new Response('{"error":"unavailable"}', { status: 503 });
+      if (url.endsWith('/api/backup/pin-key')) {
+        body = PAIRED;
+        return new Response('{}', { status: 200 });
+      }
+      if (url.endsWith('/api/backup/schedule')) {
+        readable = false;
+        return new Response(JSON.stringify({ interval_sec: 7 * 86400 }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+    render(<Backup />);
+    fireEvent.change(await screen.findByLabelText('Suite recovery public key'), { target: { value: 'key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pin key' }));
+    const pinned = (await screen.findByText('Key pinned.')).closest('.dr-alert') as HTMLElement;
+    await vi.waitFor(() => expect(document.activeElement).toBe(pinned));
+
+    fireEvent.change(screen.getByLabelText('Back up automatically'), { target: { value: String(7 * 86400) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/Could not load backup status/)).toBeTruthy();
+    const saved = (await screen.findByText('Backing up weekly.')).closest('.dr-alert') as HTMLElement;
+    await vi.waitFor(() => expect(document.activeElement).toBe(saved));
   });
 
   it('never shows a placeholder letter for the custodian count', async () => {

@@ -71,9 +71,11 @@ test('busy focus: Refresh on Backups keeps keyboard focus while it reloads', asy
   await context.close();
 });
 
+// Seven local copies (the default local_keep) put distance between the actions and the page end.
+const COPIES = Array.from({ length: 7 }, (_, i) => ({ name: `kycalendar-2026-11-1${i}.kycap`, size_bytes: 2048, created_at: `2026-11-1${i}T03:00:00Z` }));
 const PAIRED = {
   key_pinned: true, paired: true, interval_sec: 86400, recovery_url: 'https://recovery.example', recovery_key_id: 'k1',
-  threshold: 2, total_shares: 3, database_driver: 'sqlite', members: ['data/kycalendar.db'], local_dir: '/app/backups', local_keep: 7, local_copies: [],
+  threshold: 2, total_shares: 3, database_driver: 'sqlite', members: ['data/kycalendar.db'], local_dir: '/app/backups', local_keep: 7, local_copies: COPIES,
 };
 const UNPINNED = { key_pinned: false, paired: false, interval_sec: 0, database_driver: 'sqlite', members: ['data/kycalendar.db'] };
 
@@ -90,7 +92,25 @@ async function held(page, url) {
   return { seen, release: () => release() };
 }
 
-// Every busy Backups action keeps keyboard focus (aria-disabled, not disabled), and its result
+// The focused element holds text and sits in the section of the button marked data-probe=busy,
+// inside the viewport.
+async function focusedBeside(page, text) {
+  await expect.poll(() => page.evaluate((t) => {
+    const el = document.activeElement;
+    return !!el && el !== document.body && el.textContent.includes(t) && !!el.closest('.panel')?.querySelector('[data-probe=busy]');
+  }, text)).toBe(true);
+  await expect(page.locator(':focus')).toBeInViewport();
+}
+
+async function signInToBackups(page) {
+  await page.goto('/');
+  await page.getByLabel('Username', { exact: true }).fill('admin');
+  await page.locator('input[type=password]').fill('BrowserUpdated456!');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Backups', exact: true }).click();
+}
+
+// Every busy Backups action keeps keyboard focus (aria-disabled, not disabled), and its outcome
 // shows in its own section, focused and on screen. Status and actions are staged in the page:
 // the disposable server has nothing paired or pinned.
 test('busy focus: every Backups action keeps keyboard focus, and its result is on screen', async ({ browser }, testInfo) => {
@@ -98,20 +118,16 @@ test('busy focus: every Backups action keeps keyboard focus, and its result is o
   let status = PAIRED;
   await page.route('/api/backup/status', (r) => r.fulfill({ json: status }));
   page.on('dialog', (d) => d.accept());
-  await page.goto('/');
-  await page.getByLabel('Username', { exact: true }).fill('admin');
-  await page.locator('input[type=password]').fill('BrowserUpdated456!');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Backups', exact: true }).click();
+  await signInToBackups(page);
 
   const actions = [
-    { name: 'Back up now', url: '/api/backup/deposit', result: true },
+    { name: 'Back up now', url: '/api/backup/deposit' },
     { name: 'Run restore drill', url: '/api/backup/drill' },
     { name: 'Save', url: '/api/backup/schedule', before: () => page.getByLabel('Back up automatically').selectOption({ label: 'Weekly' }) },
-    { name: 'Re-pair', url: '/api/backup/pair-remote', result: true, before: () => page.getByLabel('Pairing code').fill('123456') },
-    { name: 'Unpair', url: '/api/backup/pairing', result: true },
+    { name: 'Re-pair', url: '/api/backup/pair-remote', before: () => page.getByLabel('Pairing code').fill('123456') },
+    { name: 'Unpair', url: '/api/backup/pairing' },
     { name: 'Pin key', url: '/api/backup/pin-key', unpinned: true, before: () => page.getByLabel('Suite recovery public key').fill('not-a-key') },
-    { name: 'Pair', url: '/api/backup/pair-remote', unpinned: true, result: true, before: async () => {
+    { name: 'Pair', url: '/api/backup/pair-remote', unpinned: true, before: async () => {
       await page.getByLabel('Server URL').fill('https://recovery.example');
       await page.getByLabel('Pairing code').fill('123456');
     } },
@@ -133,16 +149,53 @@ test('busy focus: every Backups action keeps keyboard focus, and its result is o
     expect(await page.evaluate(() => document.querySelector('[data-probe=busy]')?.getAttribute('aria-disabled')), a.name).toBe('true');
     gate.release();
     await expect.poll(() => page.evaluate(() => document.querySelector('[data-probe=busy]')?.getAttribute('aria-disabled')), `${a.name} done`).toBe('false');
-    if (a.result) {
-      // The error shows beside the action, focused, inside the viewport.
-      await expect.poll(() => page.evaluate(() => {
-        const el = document.activeElement;
-        return el?.getAttribute('role') === 'alert' && el.textContent.includes('Refused by the test') && !!el.closest('.panel')?.querySelector('[data-probe=busy]');
-      }), `${a.name}'s result focused in its own section`).toBe(true);
-      await expect(page.locator(':focus')).toBeInViewport();
-    }
+    // The error shows beside the action, focused, inside the viewport.
+    await focusedBeside(page, 'Refused by the test');
     await page.unroute(a.url);
     await page.evaluate(() => document.querySelector('[data-probe=busy]')?.removeAttribute('data-probe'));
+  }
+  await context.close();
+});
+
+// Successful outcomes: Pair's message stays in view after the reload grows the page, and Save's
+// confirmation takes focus though Save then disables itself. A Refresh while those results are
+// on screen, readable or not, keeps focus on Refresh.
+test('busy focus: successes stay in view, and Refresh keeps focus over older results', async ({ browser }, testInfo) => {
+  const { context, page } = await newPage(browser, testInfo);
+  let status = UNPINNED;
+  let readable = true;
+  await page.route('/api/backup/status', (r) => readable ? r.fulfill({ json: status }) : r.fulfill({ status: 503, json: { error: 'unavailable', code: 'unavailable' } }));
+  await page.route('/api/backup/pair-remote', (r) => { status = PAIRED; return r.fulfill({ json: {} }); });
+  await page.route('/api/backup/schedule', (r) => { status = { ...status, interval_sec: 7 * 86400 }; return r.fulfill({ json: { interval_sec: 7 * 86400 } }); });
+  await signInToBackups(page);
+
+  await page.getByLabel('Server URL').fill('https://recovery.example');
+  await page.getByLabel('Pairing code').fill('123456');
+  const pair = page.getByRole('button', { name: 'Pair', exact: true });
+  await pair.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => page.evaluate(() => document.activeElement?.textContent?.includes('Paired with https://recovery.example.'))).toBe(true);
+  await settled(page);
+  await expect(page.locator(':focus')).toBeInViewport();
+
+  await page.getByLabel('Back up automatically').selectOption({ label: 'Weekly' });
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  await save.evaluate((el) => { el.dataset.probe = 'busy'; });
+  await save.focus();
+  await page.keyboard.press('Enter');
+  await focusedBeside(page, 'Backing up weekly.');
+  await settled(page);
+  expect(await page.evaluate(() => document.activeElement?.textContent), 'focus after Save disables itself').toContain('Backing up weekly.');
+
+  const refresh = page.getByRole('button', { name: 'Refresh' });
+  for (const ok of [true, false, true]) {
+    readable = ok;
+    await refresh.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText(ok ? 'Backing up weekly.' : 'Could not load backup status').first()).toBeVisible();
+    await expect(refresh).toHaveAttribute('aria-disabled', 'false');
+    await settled(page);
+    expect(await page.evaluate(() => document.activeElement?.textContent?.trim()), `focus after a ${ok ? 'good' : 'failed'} Refresh`).toBe('Refresh');
   }
   await context.close();
 });

@@ -139,17 +139,31 @@ const Alert: React.FC<{ kind: 'error' | 'warn' | 'success'; children: React.Reac
   </div>
 );
 
-/** An action's result: focused when it appears, so it scrolls into view and keyboard focus lands on it. */
-const Result: React.FC<{ kind: 'error' | 'success'; children: React.ReactNode }> = ({ kind, children }) => {
+type Acted = React.MutableRefObject<boolean>;
+
+/** An action's outcome. It takes focus when an action has just produced it (acted), which
+ *  scrolls it into view; a remount from a status reload (Refresh) leaves focus where it is. */
+const Outcome: React.FC<{ acted: Acted; className: string; role: 'status' | 'alert'; children: React.ReactNode }> = ({ acted, className, role, children }) => {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => ref.current?.focus(), []);
+  useEffect(() => {
+    if (acted.current) {
+      acted.current = false;
+      ref.current?.focus();
+    }
+  }, [acted]);
   return (
-    <div ref={ref} tabIndex={-1} className={`dr-alert dr-alert-${kind}`} role={kind === 'success' ? 'status' : 'alert'}>
-      {kind === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-      <span>{children}</span>
+    <div ref={ref} tabIndex={-1} className={className} role={role}>
+      {children}
     </div>
   );
 };
+
+const Result: React.FC<{ acted: Acted; kind: 'error' | 'success'; children: React.ReactNode }> = ({ acted, kind, children }) => (
+  <Outcome acted={acted} className={`dr-alert dr-alert-${kind}`} role={kind === 'success' ? 'status' : 'alert'}>
+    {kind === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+    <span>{children}</span>
+  </Outcome>
+);
 
 /** A ky-ui status pill; no status is neutral. */
 const Status: React.FC<{ status?: 'success' | 'danger'; children: React.ReactNode }> = ({ status, children }) => (
@@ -185,6 +199,9 @@ export const Backup: React.FC = () => {
   const [pinN, setPinN] = useState<string>('3');
   const [pinning, setPinning] = useState<boolean>(false);
   const [pinError, setPinError] = useState<string>('');
+  const [pinMessage, setPinMessage] = useState<string>('');
+  // Set by an action just before it shows its outcome: only that outcome takes focus.
+  const acted = useRef(false);
 
   const fetchStatus = async () => {
     setLoadingStatus(true);
@@ -213,20 +230,24 @@ export const Backup: React.FC = () => {
     setRunning(true);
     setRunMessage('');
     setRunError('');
+    let message = '';
+    let error = '';
     try {
       const res = await call<RunResult>('/api/backup/deposit', { method: 'POST' }, 'Backup failed');
       const went: string[] = [];
       if (res.local_path) went.push(`written to ${res.local_path}`);
       if (res.receipt) went.push(`deposited with KyRecovery at ${when(res.receipt.deposited_at)}`);
-      setRunMessage(`Capsule ${res.manifest.capsule_id} (${bytes(res.size_bytes)}) ${went.join(' and ')}.`);
-      if (res.local_error) setRunError(`The local copy failed: ${res.local_error}`);
-      if (res.receipt_unrecorded) setRunError('KyRecovery holds the capsule but the receipt could not be recorded here; check the audit log.');
+      message = `Capsule ${res.manifest.capsule_id} (${bytes(res.size_bytes)}) ${went.join(' and ')}.`;
+      if (res.local_error) error = `The local copy failed: ${res.local_error}`;
+      if (res.receipt_unrecorded) error = 'KyRecovery holds the capsule but the receipt could not be recorded here; check the audit log.';
     } catch (err) {
-      setRunError(errorText(err, 'Backup failed'));
-    } finally {
-      setRunning(false);
-      await fetchStatus();
+      error = errorText(err, 'Backup failed');
     }
+    await fetchStatus(); // the outcome mounts into the reloaded layout, so it stays in view
+    acted.current = true;
+    setRunMessage(message);
+    setRunError(error);
+    setRunning(false);
   };
 
   /** Export is a CSRF-protected POST, so the file is fetched and saved from a blob. */
@@ -244,6 +265,7 @@ export const Backup: React.FC = () => {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
+      acted.current = true;
       setRunError(errorText(err, 'Could not download the capsule'));
     }
   };
@@ -252,9 +274,12 @@ export const Backup: React.FC = () => {
     setRunningDrill(true);
     setDrillResult(null);
     try {
-      setDrillResult(await call<DrillResult>('/api/backup/drill', { method: 'POST' }, 'Restore drill failed to run'));
+      const result = await call<DrillResult>('/api/backup/drill', { method: 'POST' }, 'Restore drill failed to run');
+      acted.current = true;
+      setDrillResult(result);
     } catch (err) {
       const message = errorText(err, 'Restore drill failed to run');
+      acted.current = true;
       setDrillResult({ passed: false, duration_ms: 0, error_message: message, checks: [{ name: 'Execution', passed: false, message }] });
     } finally {
       setRunningDrill(false);
@@ -273,9 +298,11 @@ export const Backup: React.FC = () => {
         { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval_sec: scheduleSec }) },
         'Could not save the schedule',
       );
-      setScheduleMessage(saved.interval_sec === 0 ? 'Automatic backups are off.' : `Backing up ${every(saved.interval_sec).toLowerCase()}.`);
       await fetchStatus();
+      acted.current = true;
+      setScheduleMessage(saved.interval_sec === 0 ? 'Automatic backups are off.' : `Backing up ${every(saved.interval_sec).toLowerCase()}.`);
     } catch (err) {
+      acted.current = true;
       setScheduleError(errorText(err, 'Could not save the schedule'));
     } finally {
       setScheduleSaving(false);
@@ -298,10 +325,12 @@ export const Backup: React.FC = () => {
         },
         'Pairing failed',
       );
-      setPairMessage(`Paired with ${remoteUrl.trim()}.`);
       setPairCode('');
       await fetchStatus();
+      acted.current = true;
+      setPairMessage(`Paired with ${remoteUrl.trim()}.`);
     } catch (err) {
+      acted.current = true;
       setPairError(errorText(err, 'Pairing failed'));
     } finally {
       setPairing(false);
@@ -320,9 +349,11 @@ export const Backup: React.FC = () => {
     setPairError('');
     try {
       await call('/api/backup/pairing', { method: 'DELETE' }, 'Could not unpair');
-      setPairMessage('Unpaired. Off-site backups have stopped; ask the KyRecovery admin to revoke this service there.');
       await fetchStatus();
+      acted.current = true;
+      setPairMessage('Unpaired. Off-site backups have stopped; ask the KyRecovery admin to revoke this service there.');
     } catch (err) {
+      acted.current = true;
       setPairError(errorText(err, 'Could not unpair'));
     } finally {
       setUnpairing(false);
@@ -334,6 +365,7 @@ export const Backup: React.FC = () => {
     if (pinning) return;
     setPinning(true);
     setPinError('');
+    setPinMessage('');
     try {
       await call(
         '/api/backup/pin-key',
@@ -346,7 +378,10 @@ export const Backup: React.FC = () => {
       );
       setPinKey('');
       await fetchStatus();
+      acted.current = true;
+      setPinMessage('Key pinned.');
     } catch (err) {
+      acted.current = true;
       setPinError(errorText(err, 'Could not pin the key'));
     } finally {
       setPinning(false);
@@ -364,14 +399,26 @@ export const Backup: React.FC = () => {
   const newestLocal = copies[0];
   const runAlerts = (
     <>
-      {runMessage && <Result kind="success">{runMessage}</Result>}
-      {runError && <Result kind="error">{runError}</Result>}
+      {runMessage && <Result acted={acted} kind="success">{runMessage}</Result>}
+      {runError && <Result acted={acted} kind="error">{runError}</Result>}
     </>
   );
   const pairAlerts = (
     <>
-      {pairMessage && <Result kind="success">{pairMessage}</Result>}
-      {pairError && <Result kind="error">{pairError}</Result>}
+      {pairMessage && <Result acted={acted} kind="success">{pairMessage}</Result>}
+      {pairError && <Result acted={acted} kind="error">{pairError}</Result>}
+    </>
+  );
+  const scheduleAlerts = (
+    <>
+      {scheduleMessage && <Result acted={acted} kind="success">{scheduleMessage}</Result>}
+      {scheduleError && <Result acted={acted} kind="error">{scheduleError}</Result>}
+    </>
+  );
+  const pinAlerts = (
+    <>
+      {pinMessage && <Result acted={acted} kind="success">{pinMessage}</Result>}
+      {pinError && <Result acted={acted} kind="error">{pinError}</Result>}
     </>
   );
 
@@ -381,7 +428,7 @@ export const Backup: React.FC = () => {
         title="Backups"
         lede="Sealed, encrypted backups of this KyCalendar. Only the suite's recovery custodians, together, can open one."
         action={
-          <button type="button" className="btn-secondary" onClick={() => { if (!loadingStatus) void fetchStatus(); }} aria-disabled={loadingStatus}>
+          <button type="button" className="btn-secondary" onClick={() => { acted.current = false; if (!loadingStatus) void fetchStatus(); }} aria-disabled={loadingStatus}>
             <RefreshCw size={14} className={loadingStatus ? 'animate-spin' : ''} aria-hidden="true" />
             <span>Refresh</span>
           </button>
@@ -393,7 +440,9 @@ export const Backup: React.FC = () => {
       {!status && (
         <>
           {runAlerts}
+          {scheduleAlerts}
           {pairAlerts}
+          {pinAlerts}
         </>
       )}
       {statusError && <Alert kind="error">{statusError}</Alert>}
@@ -489,20 +538,8 @@ export const Backup: React.FC = () => {
             ))}
           </ul>
           {runAlerts}
-          {copies.length > 0 && (
-            <ul className="dr-copies">
-              {copies.map((c) => (
-                <li key={c.name}>
-                  <span>{c.name}</span>
-                  <span>
-                    {bytes(c.size_bytes)} · {when(c.created_at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
           {drillResult && (
-            <div className="dr-drill">
+            <Outcome acted={acted} className="dr-drill" role="status">
               <div>
                 Restore drill <Status status={drillResult.passed ? 'success' : 'danger'}>{drillResult.passed ? 'passed' : 'failed'}</Status>{' '}
                 <span className="dr-hint">{drillResult.duration_ms} ms</span>
@@ -517,7 +554,19 @@ export const Backup: React.FC = () => {
                   </div>
                 ))}
               </div>
-            </div>
+            </Outcome>
+          )}
+          {copies.length > 0 && (
+            <ul className="dr-copies">
+              {copies.map((c) => (
+                <li key={c.name}>
+                  <span>{c.name}</span>
+                  <span>
+                    {bytes(c.size_bytes)} · {when(c.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
@@ -541,12 +590,11 @@ export const Backup: React.FC = () => {
               <span>Save</span>
             </button>
           </form>
+          {scheduleAlerts}
           <p className="dr-hint">
             Each run snapshots the whole database, so the floor is {Math.round((status?.min_interval_sec ?? 900) / 60)} minutes. The schedule does
             nothing until a key is pinned and there is somewhere to send the capsule. KYCALENDAR_BACKUP_DEPOSIT_INTERVAL is only the default.
           </p>
-          {scheduleMessage && <Alert kind="success">{scheduleMessage}</Alert>}
-          {scheduleError && <Alert kind="error">{scheduleError}</Alert>}
         </div>
 
         <div className="dr-two">
@@ -640,9 +688,9 @@ export const Backup: React.FC = () => {
                     </button>
                   </div>
                 </form>
-                {pinError && <Alert kind="error">{pinError}</Alert>}
               </>
             )}
+            {pinAlerts}
             {hasLocal && (
               <p className="dr-hint">
                 <HardDrive size={12} /> Local copies land in {status?.local_dir}; the newest {status?.local_keep} are kept.

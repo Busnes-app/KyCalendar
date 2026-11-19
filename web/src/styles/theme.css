@@ -187,7 +187,7 @@ button:disabled, button[aria-disabled='true'], .btn:disabled { background: var(-
 button.btn-ghost.btn-danger { background: transparent; border-color: transparent; }
 button.btn-ghost.btn-danger:hover:not(:disabled, [aria-disabled='true']) { background: var(--danger-soft); }
 /* One disabled look for filled and outlined buttons alike; ghost buttons stay transparent. */
-button.btn-secondary:is(:disabled, [aria-disabled='true']), button.btn-danger:disabled { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
+button.btn-secondary:is(:disabled, [aria-disabled='true']), button.btn-danger:is(:disabled, [aria-disabled='true']) { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
 /* A busy button is aria-disabled so it keeps keyboard focus; ky-ui's sign-in hover must not light it. */
 button.ky-auth-submit[aria-disabled='true']:hover { background: var(--panel-hover); color: var(--ink); border-color: var(--line); }
 button.btn-ghost:disabled { background: transparent; color: var(--ink); border-color: transparent; }
