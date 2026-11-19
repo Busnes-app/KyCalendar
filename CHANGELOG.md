@@ -25,12 +25,21 @@
   - `KY_CALENDAR_MAX_BYTES_TOTAL` now defaults to 40 MiB on PostgreSQL, as on SQLite (owner
     choice). An install already above 40 MiB must set a higher value before upgrading, or new
     calendar writes answer 507. The cap bounds calendar-object bytes only; it does not guarantee
-    that the whole database fits in one capsule (256 MiB).
+    that the whole database fits in one capsule (256 MiB). Check with
+    `SELECT bytes FROM calendar_usage`.
+  - The per-owner default follows it: a tenth, so 4 MiB per user or group calendar instead of
+    16 MiB on PostgreSQL. Set `KY_CALENDAR_MAX_BYTES_PER_USER` (or a higher total) to keep more.
   - The first PostgreSQL start records the shared settings; a later start with a different
     shared setting refuses until `accept-replica-config` is run with every replica stopped.
   - Stop every old replica before starting the new version; mixed versions are not supported.
   - `apply-setup` (installer activation) is refused on PostgreSQL; installer-managed deployments
     stay single-server SQLite.
+- `docker-compose.yml` passes `KY_DB_DRIVER`, `KY_DB_DSN`, `KY_ENCRYPTION_KEY`,
+  `KY_DB_MAX_OPEN_CONNS`, `KY_CALENDAR_MAX_BYTES_TOTAL` and `KY_CALENDAR_MAX_BYTES_PER_USER` from
+  `.env`; unset, nothing changes.
+- **Upgrade impact (both drivers):** pinning the pinned recovery key again with another k-of-n
+  is now refused (409) instead of replacing the split; fixing a mistyped split is the manual
+  procedure in RUNNING.md.
 
 ## 0.6.1 — pending
 

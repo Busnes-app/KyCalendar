@@ -56,6 +56,13 @@ func TestComposeForwardsOperatorSettings(t *testing.T) {
 		`- KY_KYSIGNON_CLIENT_ID=${KY_KYSIGNON_CLIENT_ID:-}`,
 		`- KY_KYSIGNON_SECRET=${KY_KYSIGNON_SECRET:-}`,
 		`- KY_KYSIGNON_HMAC_SECRET=${KY_KYSIGNON_HMAC_SECRET:-}`,
+		// The PostgreSQL settings, so the documented cutover works from .env.
+		`- KY_DB_DRIVER=${KY_DB_DRIVER:-sqlite}`,
+		`- KY_DB_DSN=${KY_DB_DSN:-}`,
+		`- KY_ENCRYPTION_KEY=${KY_ENCRYPTION_KEY:-}`,
+		`- KY_DB_MAX_OPEN_CONNS=${KY_DB_MAX_OPEN_CONNS:-}`,
+		`- KY_CALENDAR_MAX_BYTES_TOTAL=${KY_CALENDAR_MAX_BYTES_TOTAL:-}`,
+		`- KY_CALENDAR_MAX_BYTES_PER_USER=${KY_CALENDAR_MAX_BYTES_PER_USER:-}`,
 	} {
 		if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(want) + `\s*$`).Match(compose) {
 			t.Errorf("docker-compose.yml lacks %s", want)

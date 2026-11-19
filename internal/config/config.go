@@ -171,7 +171,7 @@ func postgresGuards(postgres bool) error {
 		return errors.New("KY_SESSION_SECRET: required on PostgreSQL in every KY_ENV, so every replica signs sessions and CSRF tokens alike")
 	}
 	if mode := strings.ToLower(getEnv("KYCALENDAR_SCHEDULING", "")); mode != "true" && mode != "false" && mode != "on" && mode != "off" && mode != "1" && mode != "0" && mode != "yes" && mode != "no" {
-		return errors.New("KYCALENDAR_SCHEDULING: set true or false on PostgreSQL; automatic mode decides per process, so replicas could disagree")
+		return errors.New("KYCALENDAR_SCHEDULING: set true or false on PostgreSQL (true if KyPost is linked, which is what automatic mode chose; otherwise false); automatic mode decides per process, so replicas could disagree")
 	}
 	if n := getEnvInt("KY_DB_MAX_OPEN_CONNS", 25); n < MinPostgresConns {
 		return fmt.Errorf("KY_DB_MAX_OPEN_CONNS: at least %d on PostgreSQL (worker lock, backup lock, snapshot and a request), got %d", MinPostgresConns, n)

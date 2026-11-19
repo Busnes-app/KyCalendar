@@ -199,7 +199,7 @@ func (s *Server) writeKeyProblem(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, backup.ErrRecoveryKeyTampered):
 		s.writeError(w, http.StatusConflict, "The stored recovery key record does not open or does not match the pin; refusing to seal")
 	case errors.Is(err, backup.ErrRecoveryKeyUnavailable):
-		s.writeError(w, http.StatusConflict, "The pinned recovery key is not available on this server; pin it by hand on a server that has it")
+		s.writeError(w, http.StatusConflict, "The pinned recovery key is not available on this server; start once the server that pinned it, or copy its recovery.pub here")
 	default:
 		return false
 	}
@@ -329,7 +329,7 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 	switch {
 	case err != nil && !pinned && errors.Is(err, backup.ErrTopologyPinned):
 		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=the pinned recovery key has another custodian split")
-		s.writeError(w, http.StatusConflict, "Already pinned to this recovery key with a different custodian split")
+		s.writeError(w, http.StatusConflict, "Already pinned to this recovery key with a different custodian split; to replace a pin, see docs/RUNNING.md (Backups on replicas)")
 		return
 	case err != nil && !pinned && errors.Is(err, fs.ErrExist):
 		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=already paired to a different recovery key")
@@ -533,7 +533,7 @@ func (s *Server) handlePinKey(w http.ResponseWriter, r *http.Request) {
 	if err := backup.PinRecoveryKey(ctx, s.config, s.store, key); err != nil {
 		if errors.Is(err, backup.ErrTopologyPinned) {
 			s.auditBackup(ctx, actor, r, "admin.backup_key_pin", key.Public.ID(), "error=pinned with another custodian split")
-			s.writeError(w, http.StatusConflict, "Already pinned to this recovery key with a different custodian split")
+			s.writeError(w, http.StatusConflict, "Already pinned to this recovery key with a different custodian split; to replace a pin, see docs/RUNNING.md (Backups on replicas)")
 			return
 		}
 		if errors.Is(err, fs.ErrExist) {

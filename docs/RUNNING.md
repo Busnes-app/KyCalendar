@@ -196,7 +196,10 @@ still open and unapproved.
   cannot outgrow every capsule. It caps calendar-object bytes only; it does not guarantee that
   the whole database fits in a capsule (the audit log, change history and indexes add to it). An
   existing PostgreSQL install already above 40 MiB must set a higher value, or new calendar
-  writes are refused (507). A capsule still carries at most 256 MiB, and the log warns at 80%.
+  writes are refused (507). The per-owner default follows it: a tenth, 4 MiB per user or group
+  calendar (it was 16 MiB on PostgreSQL); set `KY_CALENDAR_MAX_BYTES_PER_USER` to keep more. See
+  what the instance holds with `docker compose exec postgres psql -U postgres -d ky_server -c 'SELECT bytes FROM calendar_usage'`.
+  A capsule still carries at most 256 MiB, and the log warns at 80%.
 - Installer-managed deployments (`apply-setup`) are single-server SQLite; `apply-setup` is
   refused on PostgreSQL (`--check` still inspects).
 - A mixed-version rolling upgrade is not supported: stop every old replica first.
@@ -224,7 +227,7 @@ docker compose run --rm --no-deps app accept-replica-config
 ```
 
 It prints the names of the changed settings and writes an `admin.replica_config_accepted` audit
-row. It is never the way to change the encryption key.
+row. It refuses while a replica still runs, and it is never the way to change the encryption key.
 
 ### What replicas share, and what stays per process
 
@@ -257,9 +260,17 @@ sealing finishes that step before it stops.
   process serves and never touches the database; restart on it, never on `/readyz`.
   `/healthz` stays the KyPulse health check.
 - Retry only idempotent requests whose connection failed, never after a timeout.
-- Upstream timeout about 15 seconds; 16 minutes for `POST /api/backup/deposit`, `/drill` and
-  `/export-capsule`. Ordinary requests end at 14 seconds with 503 `request_timeout`. That 503 does
-  not prove the request had no effect: check before retrying.
+- Upstream timeout about 15 seconds for ordinary requests, which end at 14 seconds with 503
+  `request_timeout`. That 503 does not prove the request had no effect: check before retrying.
+  The routes below keep longer budgets of their own; give each at least this much:
+
+  | Route | Upstream timeout |
+  |---|---|
+  | `POST /api/backup/deposit`, `POST /api/backup/drill`, `POST /api/backup/export-capsule` | 16 minutes |
+  | `POST /api/calendars/{id}/import` (CSV import) | 5 minutes |
+  | `POST /api/subscriptions`, `PATCH /api/subscriptions/{id}`, `POST /api/calendars/{id}/refresh` (published calendars) | 2 minutes |
+  | `POST /api/backup/pair-remote` | 1 minute |
+  | `/api/sso/kysignon/callback`, `PUT /api/admin/signin`, `POST /api/admin/signin/test`, `POST /api/book/{slug}/hold`, `POST /api/presence`, `GET /api/presence/me`, `PUT /api/presence/me`, `POST /api/suite/chat` | 30 seconds |
 - nginx and Nginx Proxy Manager passive health checks only notice failed connections; they cannot
   see `/readyz`, so they keep sending requests to a draining replica until it closes. That
   behaviour is not exercised here.
@@ -273,7 +284,7 @@ A Kubernetes sketch, **not executed** (KyCalendar's Kubernetes placement is opti
 
 ```yaml
 terminationGracePeriodSeconds: 30
-readinessProbe: {httpGet: {path: /readyz, port: 8080}, periodSeconds: 1, failureThreshold: 1}
+readinessProbe: {httpGet: {path: /readyz, port: 8080}, periodSeconds: 1, timeoutSeconds: 2, failureThreshold: 1}
 livenessProbe: {httpGet: {path: /livez, port: 8080}, periodSeconds: 10}
 ```
 
@@ -287,26 +298,61 @@ and prune happens under the `backup-run` lock.
 The recovery key pin lives in the database: a pin or a pairing also stores the key and its k-of-n,
 sealed under a key derived from the encryption key. Each replica writes its own `recovery.pub`
 from it at startup and before each run. A `recovery.pub` naming another key, or a record that does
-not open, refuses every run and shows on **Backup & recovery**. To replace the pinned key on
-purpose: stop every replica, delete the `kyrecovery_key_id`, `kyrecovery_threshold`,
-`kyrecovery_total_shares` and `kyrecovery_public_key` rows and every replica's
-`data/recovery.pub`, start, and pin again. There is no button for it.
+not open, refuses every run and shows on **Backup & recovery**. A replica that reports the pinned
+key unavailable usually just lacks the file: start once the replica that pinned it, or copy its
+`data/recovery.pub` to this one.
+
+To replace the pinned key on purpose, or to fix a mistyped k-of-n (pinning the same key with
+another split is refused with 409 on both drivers), there is no button. Unpair first if paired,
+stop every replica, delete the pin rows, remove `data/recovery.pub` on every replica host, start,
+and pin again:
+
+```bash
+docker compose stop app
+docker compose exec postgres psql -U postgres -d ky_server -c "DELETE FROM server_settings WHERE key IN ('kyrecovery_key_id','kyrecovery_threshold','kyrecovery_total_shares','kyrecovery_public_key')"
+rm ./data/recovery.pub        # on every replica host
+docker compose up -d app
+```
+
+On SQLite run the same `DELETE` with the server stopped: `sqlite3 ./data/kycalendar.db "DELETE FROM server_settings WHERE key IN (...)"`.
 
 ### Moving a SQLite install to PostgreSQL
 
-Stop the SQLite server (`docker compose stop app`, so it checkpoints its `-wal`), put the empty
-target's address in `migration.env` (mode 600, never on the command line), and run:
+With the bundled `postgres` service (database `ky_server`, user `postgres`, its password
+`KY_POSTGRES_PASSWORD` in `.env`):
 
 ```bash
-printf 'KY_MIGRATE_POSTGRES_DSN=postgres://kycalendar:...@db:5432/kycalendar?sslmode=disable\n' > migration.env
-chmod 600 migration.env
+docker compose stop app                                  # it checkpoints its -wal
+docker compose --profile postgres up -d postgres         # --no-deps below needs it running
+(umask 077; cat > migration.env)                         # paste one line, then Ctrl-D:
+# KY_MIGRATE_POSTGRES_DSN=postgres://postgres:<KY_POSTGRES_PASSWORD>@postgres:5432/ky_server?sslmode=disable
 docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --check --source /app/data/kycalendar.db
 docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --source /app/data/kycalendar.db
 ```
 
-`--check` verifies and rolls back. The copy is one transaction under the bootstrap lock: it
-refuses a database that already holds data, a newer schema, a running server and an unflushed
-`-wal`, never writes the source, checks it, compares every table row for row before it commits
-and moves the audit sequence past the copied rows. Then set `KY_DB_DRIVER=postgres` and the
-settings above and start the server; it keeps `data/encryption.key` and `data/recovery.pub`.
-`scripts/check-postgres-cutover.sh` runs exactly this with the built image in CI.
+The address stays in a mode-600 file, never in argv or shell history. `--check` verifies and
+rolls back. The copy is one transaction under the bootstrap lock: it refuses a database that
+already holds data, a newer schema, a running server and an unflushed `-wal`, never writes the
+source, checks it, compares every table row for row before it commits and moves the audit
+sequence past the copied rows.
+
+Then add to `.env` and start the app; it keeps `data/encryption.key` and `data/recovery.pub`:
+
+```bash
+KY_DB_DRIVER=postgres
+KY_DB_DSN=postgres://postgres:<KY_POSTGRES_PASSWORD>@postgres:5432/ky_server?sslmode=disable
+KYCALENDAR_SCHEDULING=false        # or true if KyPost is linked
+KY_SESSION_SECRET=<already set for production>
+```
+
+`docker-compose.yml` passes `KY_DB_DRIVER`, `KY_DB_DSN`, `KY_ENCRYPTION_KEY`,
+`KY_DB_MAX_OPEN_CONNS` and the calendar caps from `.env`. `scripts/check-postgres-cutover.sh` runs
+these steps through `docker-compose.yml` with the built image in CI, including
+`accept-replica-config`.
+
+- **Retry:** a target that already holds data is refused, including one a PostgreSQL start
+  already wrote an `admin` into. Empty it and run again:
+  `docker compose exec postgres psql -U postgres -c 'DROP DATABASE ky_server' -c 'CREATE DATABASE ky_server'`.
+- **Roll back:** stop the app, remove `KY_DB_DRIVER` and `KY_DB_DSN` from `.env`, start. The SQLite
+  file was never written, so it is as you stopped it; anything written on PostgreSQL since stays
+  there.

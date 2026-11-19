@@ -156,16 +156,22 @@ func PinLocked(ctx context.Context, cfg *config.Config, st store.Store, k recove
 	if err == nil {
 		err = checkPinned(Settings(ctx, st.Settings()), k)
 	}
-	if err == nil && st.Driver() == "postgres" {
-		var sealed string
-		if sealed, err = sealRecord(cfg, k); err == nil {
+	if err != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			_ = os.Remove(path) // a file for a key that did not stick
+		}
+		return err
+	}
+	if st.Driver() == "postgres" {
+		// The pin stands, so its file stays: a failed record write is healed by the next sync,
+		// which records the pin from a matching recovery.pub.
+		sealed, err := sealRecord(cfg, k)
+		if err == nil {
 			err = st.Settings().SetSetting(ctx, RecoveryKeyRecordSetting, sealed)
 		}
+		return err
 	}
-	if err != nil && errors.Is(statErr, fs.ErrNotExist) {
-		_ = os.Remove(path)
-	}
-	return err
+	return nil
 }
 
 // refuseOtherTopology refuses the pinned key with another split before the lib writes
@@ -226,7 +232,7 @@ func SyncRecoveryKey(ctx context.Context, cfg *config.Config, st store.Store) er
 		// Pinned before records existed: record it from the file that matches the pin.
 		k, err := recoveryclient.LoadRecoveryKey(dir, settings)
 		if err != nil {
-			return fmt.Errorf("%w: the database pins recovery key %s, but %s does not hold it (%v); pin the same key by hand on a server that has it", ErrRecoveryKeyUnavailable, p.id, path, err)
+			return fmt.Errorf("%w: the database pins recovery key %s, but %s does not hold it (%v); start once the server that pinned it, or copy its recovery.pub here", ErrRecoveryKeyUnavailable, p.id, path, err)
 		}
 		return WithPinLock(ctx, st, func(owned context.Context) error {
 			sealed, err := sealRecord(cfg, k)

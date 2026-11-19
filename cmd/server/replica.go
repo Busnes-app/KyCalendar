@@ -13,6 +13,7 @@ import (
 
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/worker"
 )
 
 // errReplicaConfig is a replica whose shared settings differ from the recorded ones.
@@ -62,6 +63,15 @@ func checkReplicaConfig(ctx context.Context, cfg *config.Config, settings store.
 func acceptReplicaConfig(ctx context.Context, cfg *config.Config, st store.Store, out io.Writer) error {
 	if st.Driver() != "postgres" {
 		return errors.New("refusing: accept-replica-config applies to PostgreSQL replicas; SQLite records no replica configuration")
+	}
+	// A running replica holds the election; rewriting the record under it would leave it
+	// serving the old shared values.
+	won, err := st.Coordination().WithLock(ctx, worker.Lock, func(context.Context) error { return nil })
+	if err != nil {
+		return err
+	}
+	if !won {
+		return errors.New("refusing: a replica is still running; stop every replica first, then run accept-replica-config")
 	}
 	return st.Coordination().Serialized(ctx, "bootstrap", func(ctx context.Context) error {
 		current := config.ReplicaFingerprint(cfg)

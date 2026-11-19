@@ -17,6 +17,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/store"
 	"github.com/Busnes-app/kycalendar/internal/testdb"
+	"github.com/Busnes-app/kycalendar/internal/worker"
 )
 
 func requirePostgres(t *testing.T) string {
@@ -187,6 +188,17 @@ func TestAcceptReplicaConfig(t *testing.T) {
 	}
 	if !audited {
 		t.Fatalf("no admin.replica_config_accepted row naming the field: %+v", recs)
+	}
+	// A replica still running (holding the election) refuses the rewrite.
+	held, release := make(chan struct{}), make(chan struct{})
+	go func() {
+		_, _ = st.Coordination().WithLock(ctx, worker.Lock, func(context.Context) error { close(held); <-release; return nil })
+	}()
+	<-held
+	err := acceptReplicaConfig(ctx, b, st, &out)
+	close(release)
+	if err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Fatalf("accept beside a running replica: %v", err)
 	}
 	c := serverConfig(t, db)
 	c.Server.AppURL = b.Server.AppURL

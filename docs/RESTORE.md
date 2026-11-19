@@ -383,16 +383,18 @@ would work again; Step 3 reset those before the service opened.
 
 A PostgreSQL deployment restores through SQLite: Step 1 opens the capsule and resets the
 database in `<target>/data` as usual. Then copy it into an **empty** PostgreSQL database, with
-every replica stopped. The target's address goes in an env file, never on the command line:
+every replica stopped. The target's address goes in a mode-600 file, never on the command line.
+With the binary, the file holds the address alone:
 
 ```bash
-printf 'KY_MIGRATE_POSTGRES_DSN=postgres://kycalendar:...@db:5432/kycalendar?sslmode=disable\n' > migration.env
-chmod 600 migration.env
-KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --check --source <target>/data/kycalendar.db
-KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --source <target>/data/kycalendar.db
+(umask 077; cat > migration.dsn)     # paste postgres://<user>:<password>@<host>:5432/<db>?sslmode=disable, then Ctrl-D
+KY_MIGRATE_POSTGRES_DSN_FILE=./migration.dsn KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --check --source <target>/data/kycalendar.db
+KY_MIGRATE_POSTGRES_DSN_FILE=./migration.dsn KY_DATA_DIR=<target>/data ./kycalendar migrate-postgres --source <target>/data/kycalendar.db
 ```
 
-With the image, mount the restored `data` directory as `/app/data` and run
+With the image, put the restored `data` directory where Compose mounts `/app/data`, write
+`migration.env` as in [RUNNING.md](RUNNING.md#moving-a-sqlite-install-to-postgresql) (one line,
+`KY_MIGRATE_POSTGRES_DSN=...`) and run
 `docker compose run --rm --no-deps --env-from-file migration.env app migrate-postgres --source /app/data/kycalendar.db`.
 The copy refuses a database that already holds data. The reset already ended sessions, MFA
 challenges, device pairings and app passwords, emptied the scheduling queue, turned scheduled

@@ -57,7 +57,10 @@ func (s *Server) kypostPeerRequest(w http.ResponseWriter, r *http.Request, event
 	}
 	if errors.Is(err, syncauth.ErrReplayGuardFull) {
 		// The guard cannot decide (full, or its database unreachable): refuse, and let KyPost
-		// retry instead of reading this as a bad signature.
+		// retry instead of reading this as a bad signature. A record that may have committed
+		// before the error is released, so the retry is processed, not called a duplicate.
+		s.retryKyPost(r)
+		w.Header().Set("Retry-After", "5")
 		s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Temporarily unavailable", "code": "unavailable"})
 		return nil, false
 	}
@@ -138,7 +141,9 @@ func (s *Server) retryKyPost(r *http.Request) {
 type sharedReplay struct{ shared store.CoordinationStore }
 
 func (g sharedReplay) Check(id string, at time.Time) error {
-	window := syncauth.DefaultWindow
+	// Twice the signature window: freshness is judged on this server's clock, retention on the
+	// database's, so a few minutes of skew between them cannot reopen a replay.
+	window := 2 * syncauth.DefaultWindow
 	if ahead := time.Until(at); ahead > 0 { // kept past its signed time, as in memory
 		window += ahead
 	}
