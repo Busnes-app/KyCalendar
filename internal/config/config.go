@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/netip"
 	"net/url"
 	"os"
@@ -147,6 +148,37 @@ func SQLiteDSN(path string) string {
 	return path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
 }
 
+// DefaultMaxBytesTotal is KY_CALENDAR_MAX_BYTES_TOTAL when unset, on both drivers.
+const DefaultMaxBytesTotal = 40 << 20
+
+// MinPostgresConns is the PostgreSQL pool floor: the scheduled-worker lock, the backup-run
+// lock and the snapshot transaction each hold a connection, and requests need one more.
+const MinPostgresConns = 4
+
+// postgresGuards refuses PostgreSQL settings replicas cannot agree on, before anything is
+// opened or created. Each refusal names the setting and the remedy.
+func postgresGuards(postgres bool) error {
+	if !postgres {
+		return nil
+	}
+	dsn := getEnv("KY_DB_DSN", "")
+	switch {
+	case dsn == "":
+		return errors.New("KY_DB_DSN: required on PostgreSQL; there is no built-in database address or password")
+	case strings.Contains(dsn, "postgres:postgres@"):
+		return errors.New("KY_DB_DSN: refusing the built-in postgres:postgres credentials; create a database user with its own password")
+	case getEnv("KY_SESSION_SECRET", "") == "":
+		return errors.New("KY_SESSION_SECRET: required on PostgreSQL in every KY_ENV, so every replica signs sessions and CSRF tokens alike")
+	}
+	if mode := strings.ToLower(getEnv("KYCALENDAR_SCHEDULING", "")); mode != "true" && mode != "false" && mode != "on" && mode != "off" && mode != "1" && mode != "0" && mode != "yes" && mode != "no" {
+		return errors.New("KYCALENDAR_SCHEDULING: set true or false on PostgreSQL; automatic mode decides per process, so replicas could disagree")
+	}
+	if n := getEnvInt("KY_DB_MAX_OPEN_CONNS", 25); n < MinPostgresConns {
+		return fmt.Errorf("KY_DB_MAX_OPEN_CONNS: at least %d on PostgreSQL (worker lock, backup lock, snapshot and a request), got %d", MinPostgresConns, n)
+	}
+	return nil
+}
+
 // LoadFromEnv initializes a Config struct populated from environment variables with sensible defaults.
 func LoadFromEnv() (*Config, error) {
 	// The backup variables carry the product prefix (root AGENTS.md); a retired name left in
@@ -171,9 +203,13 @@ func LoadFromEnv() (*Config, error) {
 	defaultDSN := SQLiteDSN(dataDir + "/kycalendar.db")
 	if driver == "postgres" || driver == "postgresql" {
 		driver = "postgres"
-		defaultDSN = "postgres://postgres:postgres@localhost:5432/ky_server?sslmode=disable"
+		defaultDSN = "" // postgresGuards requires KY_DB_DSN
 	}
 	dsn := getEnv("KY_DB_DSN", defaultDSN)
+	postgres := driver == "postgres"
+	if err := postgresGuards(postgres); err != nil {
+		return nil, err
+	}
 
 	sessionSecret := getEnv("KY_SESSION_SECRET", "")
 	if env == "production" && sessionSecret == "" {
@@ -194,7 +230,16 @@ func LoadFromEnv() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("KY_ENCRYPTION_KEY: %w", err)
 	}
-	if !ok {
+	if !ok && postgres {
+		// Every replica must hold the same key; one minted here would split the instance.
+		encryptionKey, err = keyfile.Load(filepath.Join(dataDir, "encryption.key"), 32)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, errors.New("KY_ENCRYPTION_KEY: required on PostgreSQL, where every replica must use the same key; set it (or place the existing encryption.key in KY_DATA_DIR)")
+		}
+		if err != nil {
+			return nil, fmt.Errorf("encryption key: %w", err)
+		}
+	} else if !ok {
 		encryptionKey, err = keyfile.LoadOrCreate(filepath.Join(dataDir, "encryption.key"), 32)
 		if err != nil {
 			return nil, fmt.Errorf("encryption key: %w", err)
@@ -246,13 +291,11 @@ func LoadFromEnv() (*Config, error) {
 			return nil, err
 		}
 	}
-	// The SQLite snapshot must fit one capsule (256 MiB, in 64 MiB parts), and the database is
-	// several times the event bytes it stores; leave room for everything else.
-	defaultTotal := 0
-	if driver != "postgres" {
-		defaultTotal = 40 << 20
-	}
-	if calCfg.MaxBytesTotal = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_TOTAL", defaultTotal)); calCfg.MaxBytesTotal < 0 {
+	// The database snapshot travels in one capsule (256 MiB, in 64 MiB parts) on both drivers,
+	// and it is several times the event bytes it stores; leave room for everything else. The
+	// cap bounds calendar objects only: it keeps one tenant from outgrowing every capsule, it
+	// does not prove the whole database fits. 0 turns it off.
+	if calCfg.MaxBytesTotal = int64(getEnvInt("KY_CALENDAR_MAX_BYTES_TOTAL", DefaultMaxBytesTotal)); calCfg.MaxBytesTotal < 0 {
 		return nil, fmt.Errorf("KY_CALENDAR_MAX_BYTES_TOTAL must not be negative")
 	}
 	// Under an instance cap one owner (a user or a group calendar) gets a tenth of it by default,

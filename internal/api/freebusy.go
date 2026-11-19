@@ -32,7 +32,7 @@ func (s *Server) handleFreeBusy(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, apiErr)
 		return
 	}
-	if !s.allowAccountAttempt("freebusy:"+sessionUser(r.Context()).ID, 120, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "freebusy:"+sessionUser(r.Context()).ID, 120, time.Minute) {
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many free/busy requests; wait a minute", "code": "rate_limited"})
 		return
 	}

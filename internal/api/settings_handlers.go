@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/Busnes-app/kycalendar/internal/appversion"
+	"github.com/Busnes-app/kycalendar/internal/backup"
+	"github.com/Busnes-app/kycalendar/internal/config"
 )
 
 type ThemeUpdateRequest struct {
@@ -56,7 +58,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// By prefix, not by literal: the lib owns the token's key name, and a future
 		// spelling must not leak by default. The sign-in client secret never leaves either.
 		for k := range settings {
-			if strings.HasPrefix(k, "installer.") || strings.HasPrefix(k, "kyrecovery_token") || strings.HasPrefix(k, "signin_client_secret") {
+			if strings.HasPrefix(k, "installer.") || strings.HasPrefix(k, "kyrecovery_token") || strings.HasPrefix(k, "signin_client_secret") || hiddenSettings[k] {
 				delete(settings, k)
 			}
 		}
@@ -85,3 +87,7 @@ func (s *Server) handleSetTheme(w http.ResponseWriter, r *http.Request) {
 
 	s.writeJSON(w, http.StatusOK, map[string]string{"theme": req.Theme})
 }
+
+// hiddenSettings never leave the server: the replicas' configuration fingerprint and the
+// sealed recovery key record.
+var hiddenSettings = map[string]bool{config.ReplicaConfigSetting: true, backup.RecoveryKeyRecordSetting: true}

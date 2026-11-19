@@ -73,6 +73,11 @@ type Store interface {
 	AppPasswords() AppPasswordStore
 	Audit() AuditStore
 	Settings() SettingsStore
+	Coordination() CoordinationStore
+
+	// SnapshotToSQLite writes a verified SQLite copy of this PostgreSQL database to path
+	// (snapshot.go). SQLite stores refuse: VACUUM INTO is their snapshot.
+	SnapshotToSQLite(ctx context.Context, path string) error
 
 	// ResetAfterRestore ends every session, MFA challenge and app password and writes a new
 	// sync epoch, in one transaction, so nothing issued after the backup is believed.
@@ -250,6 +255,14 @@ type SettingsStore interface {
 	SetSetting(ctx context.Context, key, val string) error
 	DeleteSetting(ctx context.Context, key string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
+	// GetSettings reads keys in one statement, so related rows come from one snapshot;
+	// a key never written is absent from the map.
+	GetSettings(ctx context.Context, keys ...string) (map[string]string, error)
+	// SetSettingIfAbsent writes key only if it has no row and returns the stored value,
+	// which is val unless another writer was first: a write-once row enforced by the database.
+	SetSettingIfAbsent(ctx context.Context, key, val string) (string, error)
+	// SetSettingAudited writes key and the audit record in one transaction.
+	SetSettingAudited(ctx context.Context, key, val string, rec *AuditRecord) error
 }
 
 // Grantor is who issues an app password: a signed-in session, rechecked inside the insert's

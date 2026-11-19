@@ -19,6 +19,16 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
+// refuseWhileDraining answers 503 to new backup work once the server is stopping.
+func (s *Server) refuseWhileDraining(w http.ResponseWriter) bool {
+	if s.draining.Load() {
+		w.Header().Set("Retry-After", "5")
+		s.writeError(w, http.StatusServiceUnavailable, "This server is stopping; try again on another")
+		return true
+	}
+	return false
+}
+
 // errRecoveryKeyMismatch answers a swapped recovery.pub: the pin in the database and the key
 // on disk disagree, so refuse rather than seal a capsule nobody's custodians can open.
 const errRecoveryKeyMismatch = "Recovery key file does not match the pinned key ID; refusing to seal"
@@ -105,9 +115,12 @@ func (s *Server) handleBackupDrill(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	if s.refuseWhileDraining(w) {
+		return
+	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(depositWriteBudget))
 	ctx := r.Context()
-	payload, err := backup.Collect(ctx, s.config, appversion.String())
+	payload, err := backup.Collect(ctx, s.config, s.store, appversion.String())
 	if errors.Is(err, backup.ErrNoDatabaseSnapshot) {
 		// An honest failed drill, not a 500: the operator needs to read why no backup exists.
 		s.writeJSON(w, http.StatusOK, &recoveryclient.DrillResult{Passed: false, ErrorMessage: err.Error(),
@@ -138,27 +151,83 @@ func (s *Server) handleExportCapsule(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	if s.refuseWhileDraining(w) {
+		return
+	}
 	if !s.requireStepUp(w, r, "export a capsule") {
 		return
 	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(depositWriteBudget))
-	ctx := r.Context()
 	actor := s.actorID(r)
+	won, err := backup.WithRunLock(r.Context(), s.store, func(ctx context.Context) error {
+		s.exportCapsule(w, r, ctx, actor)
+		return nil
+	})
+	if err != nil && !won {
+		s.writeError(w, http.StatusServiceUnavailable, "The backup lock is unavailable; try again")
+	} else if !won {
+		s.writeBusy(w)
+	}
+}
+
+// keyProblem reports a recovery key state the operator must repair, as opposed to a read
+// failure.
+func keyProblem(err error) bool {
+	return errors.Is(err, recoveryclient.ErrKeyMismatch) || errors.Is(err, backup.ErrRecoveryKeyTampered) || errors.Is(err, backup.ErrRecoveryKeyUnavailable)
+}
+
+func keyProblemText(err error) string {
+	switch {
+	case errors.Is(err, recoveryclient.ErrKeyMismatch):
+		return "recovery.pub on this server names another key than the pin; remove it to have it rewritten"
+	case errors.Is(err, backup.ErrRecoveryKeyTampered):
+		return "the stored recovery key record does not open under this instance's key or does not match the pin; backups are refused"
+	}
+	return recoveryclient.AuditSafe(err.Error())
+}
+
+// writeBusy answers a backup refused because another run holds the backup-run lock.
+func (s *Server) writeBusy(w http.ResponseWriter) {
+	s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Another backup is running; try again when it has finished", "code": "busy"})
+}
+
+// writeKeyProblem answers a recovery key this server cannot seal to, and reports whether it did.
+func (s *Server) writeKeyProblem(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, recoveryclient.ErrKeyMismatch):
+		s.writeError(w, http.StatusConflict, errRecoveryKeyMismatch)
+	case errors.Is(err, backup.ErrRecoveryKeyTampered):
+		s.writeError(w, http.StatusConflict, "The stored recovery key record does not open or does not match the pin; refusing to seal")
+	case errors.Is(err, backup.ErrRecoveryKeyUnavailable):
+		s.writeError(w, http.StatusConflict, "The pinned recovery key is not available on this server; pin it by hand on a server that has it")
+	default:
+		return false
+	}
+	return true
+}
+
+// exportCapsule is handleExportCapsule under the backup-run lock; ctx ends with the lock.
+func (s *Server) exportCapsule(w http.ResponseWriter, r *http.Request, ctx context.Context, actor string) {
+	if err := backup.SyncRecoveryKey(ctx, s.config, s.store); err != nil {
+		if !s.writeKeyProblem(w, err) {
+			s.writeError(w, http.StatusInternalServerError, "Failed to load recovery key")
+		}
+		return
+	}
 	settings := backup.Settings(ctx, s.store.Settings())
 	key, err := recoveryclient.LoadRecoveryKey(s.config.Database.DataDir, settings)
 	if errors.Is(err, recoveryclient.ErrNotPaired) {
 		s.writeError(w, http.StatusPreconditionFailed, "No recovery key; pair or pin one")
 		return
 	}
-	if errors.Is(err, recoveryclient.ErrKeyMismatch) {
-		s.writeError(w, http.StatusConflict, errRecoveryKeyMismatch)
+	if s.writeKeyProblem(w, err) {
 		return
 	}
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to load recovery key")
 		return
 	}
-	payload, err := backup.Collect(ctx, s.config, appversion.String())
+	payload, err := backup.Collect(ctx, s.config, s.store, appversion.String())
 	if errors.Is(err, backup.ErrNoDatabaseSnapshot) {
 		s.writeError(w, http.StatusPreconditionFailed, err.Error())
 		return
@@ -242,24 +311,37 @@ func (s *Server) handlePairRemoteRecovery(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	settings := backup.Settings(ctx, s.store.Settings())
-	if err := recoveryclient.StoreRecoveryKey(s.config.Database.DataDir, settings, result.Key); err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=already paired to a different recovery key")
-			s.writeError(w, http.StatusConflict, "Already paired to a different recovery key")
-			return
-		}
-		s.writeError(w, http.StatusInternalServerError, "Failed to save recovery key")
-		return
-	}
 	sealer, err := backup.NewSealer(s.config)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to prepare the pairing seal")
 		return
 	}
-	// The key is now pinned on disk whatever happens next, so it is recorded whatever happens
-	// next: a write-once pin that exists nowhere in the audit trail is the gap this closes.
-	if err := recoveryclient.StorePairing(settings, sealer, req.RecoveryURL, result.APIToken); err != nil {
+	// The pin and the pairing are written as one holder of the recovery-pin lock, so no other
+	// server pins, pairs or unpairs in between.
+	var pinned bool
+	err = backup.WithPinLock(ctx, s.store, func(owned context.Context) error {
+		if err := backup.PinLocked(owned, s.config, s.store, result.Key); err != nil {
+			return err
+		}
+		pinned = true
+		return recoveryclient.StorePairing(backup.Settings(owned, s.store.Settings()), sealer, req.RecoveryURL, result.APIToken)
+	})
+	switch {
+	case err != nil && !pinned && errors.Is(err, backup.ErrTopologyPinned):
+		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=the pinned recovery key has another custodian split")
+		s.writeError(w, http.StatusConflict, "Already pinned to this recovery key with a different custodian split")
+		return
+	case err != nil && !pinned && errors.Is(err, fs.ErrExist):
+		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=already paired to a different recovery key")
+		s.writeError(w, http.StatusConflict, "Already paired to a different recovery key")
+		return
+	case err != nil && !pinned:
+		s.auditBackup(ctx, actor, r, "backup.pair_failed", target, "error=key not pinned: "+err.Error())
+		s.writeError(w, http.StatusInternalServerError, "Failed to save recovery key")
+		return
+	case err != nil:
+		// The key is pinned whatever happens next, so it is recorded: a write-once pin that
+		// exists nowhere in the audit trail is the gap this closes.
 		s.auditBackup(ctx, actor, r, "backup.pair_failed", target,
 			"error=key pinned but the pairing was not stored: "+err.Error())
 		s.writeError(w, http.StatusInternalServerError, "Failed to save recovery pairing")
@@ -289,6 +371,9 @@ func (s *Server) handleRunBackup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	if s.refuseWhileDraining(w) {
+		return
+	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(depositWriteBudget))
 	// The acting admin is resolved while the request is still live; the audit row is written
 	// on the same detached context as the run, so a dropped connection cannot decide whether
@@ -301,7 +386,19 @@ func (s *Server) handleRunBackup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "Failed to prepare backup configuration")
 		return
 	}
-	res, err := backup.Run(s.stopping, s.config, rc, s.store.Settings(), s.recovery)
+	var res recoveryclient.Result
+	won, lockErr := backup.WithRunLock(s.stopping, s.store, func(owned context.Context) error {
+		res, err = backup.Run(owned, s.config, rc, s.store, s.recovery)
+		return nil
+	})
+	if !won {
+		if lockErr != nil {
+			s.writeError(w, http.StatusServiceUnavailable, "The backup lock is unavailable; try again")
+		} else {
+			s.writeBusy(w)
+		}
+		return
+	}
 
 	action, outcome, details := recoveryclient.Outcome(res, err)
 	details["outcome"] = outcome
@@ -323,21 +420,20 @@ func (s *Server) handleRunBackup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, backup.ErrInterrupted):
-			s.writeError(w, http.StatusServiceUnavailable, "The server is shutting down; the backup did not finish")
+			s.writeError(w, http.StatusServiceUnavailable, "The backup was interrupted (this server is stopping, or lost the backup lock); it runs again")
 		case errors.Is(err, recoveryclient.ErrKeyPinMissing):
 			s.writeError(w, http.StatusPreconditionFailed, "Paired, but recovery.pub is missing or does not match the pin")
 		case errors.Is(err, recoveryclient.ErrNotPaired):
 			s.writeError(w, http.StatusPreconditionFailed, "No recovery key")
 		case errors.Is(err, backup.ErrNoDatabaseSnapshot):
-			// Only SQLite can be snapshotted, so on any other driver no capsule can be made at
-			// all. A configuration fact the operator must read, not a server fault.
+			// A DSN a restore would not open, or a snapshot that did not verify: the cause is
+			// the operator's to read, not a server fault.
 			s.writeError(w, http.StatusPreconditionFailed, err.Error())
 		case errors.Is(err, recoveryclient.ErrNoDestination):
 			s.writeError(w, http.StatusPreconditionFailed, "Nowhere to put a capsule: pair with KyRecovery or set KYCALENDAR_BACKUP_DIR")
 		case errors.Is(err, recoveryclient.ErrInProgress):
 			s.writeError(w, http.StatusConflict, "A backup is already in progress")
-		case errors.Is(err, recoveryclient.ErrKeyMismatch):
-			s.writeError(w, http.StatusConflict, errRecoveryKeyMismatch)
+		case s.writeKeyProblem(w, err):
 		case errors.Is(err, recoveryclient.ErrPrivateDestination):
 			// The pairing was stored before the opt-in was turned off, or the host now resolves
 			// private. Nothing left; the operator needs the switch named, not a 500.
@@ -379,10 +475,17 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	actor := s.actorID(r)
-	settings := backup.Settings(ctx, s.store.Settings())
-	target, _ := s.store.Settings().GetSetting(ctx, "kyrecovery_url")
-	target = recoveryclient.AuditSafe(target)
-	if err := recoveryclient.ClearPairing(settings); err != nil {
+	var target string
+	err := backup.WithPinLock(ctx, s.store, func(owned context.Context) error {
+		settings := backup.Settings(owned, s.store.Settings())
+		url, err := settings.Get("kyrecovery_url")
+		if err != nil && !errors.Is(err, recoveryclient.ErrNotFound) {
+			return err
+		}
+		target = recoveryclient.AuditSafe(url)
+		return recoveryclient.ClearPairing(settings)
+	})
+	if err != nil {
 		if errors.Is(err, recoveryclient.ErrNotPaired) {
 			s.writeError(w, http.StatusPreconditionFailed, "Not paired with KyRecovery")
 			return
@@ -427,8 +530,12 @@ func (s *Server) handlePinKey(w http.ResponseWriter, r *http.Request) {
 	// Write-once like pairing, so the pin and its audit row outlive the request too.
 	actor := s.actorID(r)
 	ctx := context.WithoutCancel(r.Context())
-	settings := backup.Settings(ctx, s.store.Settings())
-	if err := recoveryclient.StoreRecoveryKey(s.config.Database.DataDir, settings, key); err != nil {
+	if err := backup.PinRecoveryKey(ctx, s.config, s.store, key); err != nil {
+		if errors.Is(err, backup.ErrTopologyPinned) {
+			s.auditBackup(ctx, actor, r, "admin.backup_key_pin", key.Public.ID(), "error=pinned with another custodian split")
+			s.writeError(w, http.StatusConflict, "Already pinned to this recovery key with a different custodian split")
+			return
+		}
 		if errors.Is(err, fs.ErrExist) {
 			s.auditBackup(ctx, actor, r, "admin.backup_key_pin", key.Public.ID(), "error=already pinned to a different recovery key")
 			s.writeError(w, http.StatusConflict, "Already pinned to a different recovery key")
@@ -511,34 +618,55 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	settings := backup.Settings(ctx, s.store.Settings())
 	out := map[string]any{
-		"paired":                 false,
-		"key_pinned":             false,
 		"app_name":               s.config.Server.AppName,
 		"app_version":            appversion.String(),
 		"allow_private_recovery": s.config.Backup.AllowPrivateRecovery,
-		// Only the SQLite path can snapshot a database into a capsule; the screen says so.
-		"database_driver": s.config.Database.Driver,
-		"members":         backup.Members(s.config),
+		"database_driver":        s.config.Database.Driver,
+		"members":                backup.Members(s.config),
 	}
-	if u, err := s.store.Settings().GetSetting(ctx, "kyrecovery_url"); err == nil {
+	// A read failure answers 503: the screen must never show "not paired" or "no key" for a
+	// pairing or pin it could not read. One adapter reads the pairing and pin rows once.
+	settings := backup.Settings(ctx, s.store.Settings())
+	paired, err := backup.Paired(settings)
+	if err != nil {
+		s.writeUnavailable(w, err)
+		return
+	}
+	out["paired"], out["key_pinned"] = false, false
+	if u, err := settings.Get("kyrecovery_url"); err == nil {
 		out["recovery_url"] = u
 	}
-	key, err := recoveryclient.LoadRecoveryKey(s.config.Database.DataDir, settings)
+	syncErr := backup.SyncRecoveryKey(ctx, s.config, s.store)
+	key, err := recoveryclient.LoadRecoveryKey(s.config.Database.DataDir, backup.Settings(ctx, s.store.Settings()))
 	switch {
+	case keyProblem(syncErr):
+		out["recovery_key_error"] = keyProblemText(syncErr)
+	case syncErr != nil:
+		s.writeUnavailable(w, syncErr)
+		return
 	case err == nil:
 		out["key_pinned"] = true
-		out["paired"] = recoveryclient.HasPairing(settings)
+		out["paired"] = paired
 		out["recovery_key_id"] = key.Public.ID()
 		out["threshold"] = key.Threshold
 		out["total_shares"] = key.TotalShares
 	case errors.Is(err, recoveryclient.ErrKeyMismatch):
 		out["recovery_key_error"] = "recovery.pub does not match the pinned key ID"
-	case recoveryclient.HasPairing(settings):
-		out["recovery_key_error"] = "paired, but recovery.pub is missing; restore it or re-pair"
+	case errors.Is(err, recoveryclient.ErrNotPaired):
+		if paired {
+			out["recovery_key_error"] = "paired, but recovery.pub is missing; restore it or re-pair"
+		}
+	default:
+		s.writeUnavailable(w, err)
+		return
 	}
-	if last, ok, err := recoveryclient.LastDeposit(settings); err == nil && ok {
+	last, ok, err := recoveryclient.LastDeposit(settings)
+	if err != nil {
+		s.writeUnavailable(w, err)
+		return
+	}
+	if ok {
 		out["last_deposit"] = last
 	}
 	if raw, err := s.store.Settings().GetSetting(ctx, lastRunSetting); err == nil && json.Valid([]byte(raw)) {

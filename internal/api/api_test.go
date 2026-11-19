@@ -449,7 +449,7 @@ func TestExportCapsuleRejectsAnOversizedPayload(t *testing.T) {
 // A full limiter must evict, not refuse: refusing would let one caller lock every new client
 // out of sign-in.
 func TestFullLimiterAdmitsANewClient(t *testing.T) {
-	srv, _, _ := setupTestServer(t)
+	srv, _, _ := setupSQLiteServer(t) // the cap bounds process memory; PostgreSQL keeps rows
 	for i := 0; i < api.AttemptsCapForTest+50; i++ {
 		api.AllowAttemptForTest(srv, "filler:"+strconv.Itoa(i), 3, 5*time.Minute)
 	}
@@ -465,7 +465,7 @@ func TestFullLimiterAdmitsANewClient(t *testing.T) {
 }
 
 func TestFullLimiterStillThrottlesLogin(t *testing.T) {
-	srv, _, _ := setupTestServer(t)
+	srv, _, _ := setupSQLiteServer(t) // the cap bounds process memory; PostgreSQL keeps rows
 
 	// Fill the map with longer windows than login's. Login's window is a minute, so "evict the
 	// entry nearest expiry" would always pick it.

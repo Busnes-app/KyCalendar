@@ -16,8 +16,10 @@ import (
 
 // SQLStore implements Store on top of database/sql.
 type SQLStore struct {
-	db           *sql.DB
-	driver       string
+	db     *sql.DB
+	driver string
+	// lockPath is the SQLite database file its flocks sit beside; "" on PostgreSQL.
+	lockPath     string
 	users        *userStore
 	sessions     *sessionStore
 	devices      *deviceStore
@@ -31,7 +33,7 @@ type SQLStore struct {
 }
 
 // newSQLStore creates and initializes a SQLStore, running migrations automatically.
-func newSQLStore(ctx context.Context, db *sql.DB, driver string) (*SQLStore, error) {
+func newSQLStore(ctx context.Context, db *sql.DB, driver, lockPath string) (*SQLStore, error) {
 	driver = strings.ToLower(driver)
 	if driver == "postgresql" {
 		driver = "postgres"
@@ -42,8 +44,9 @@ func newSQLStore(ctx context.Context, db *sql.DB, driver string) (*SQLStore, err
 	}
 
 	s := &SQLStore{
-		db:     db,
-		driver: driver,
+		db:       db,
+		driver:   driver,
+		lockPath: lockPath,
 	}
 
 	s.users = &userStore{store: s}
@@ -90,6 +93,20 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM scheduling_outbox"); err != nil {
 		return err
 	}
+	// The restored database starts a new set of replicas, whose configuration is recorded
+	// afresh, and with no rate windows. Spent CAPTCHA salts and KyPost event IDs only ever
+	// refuse, so the unexpired ones stay; expired ones go.
+	nowMs := time.Now().UnixMilli()
+	for _, q := range []string{
+		"DELETE FROM server_settings WHERE key = 'replica_config_fingerprint'",
+		"DELETE FROM security_windows",
+		"DELETE FROM spent_challenges WHERE expires_at < " + strconv.FormatInt(nowMs, 10),
+		"DELETE FROM kypost_replay WHERE expires_at < " + strconv.FormatInt(nowMs, 10),
+	} {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
 	// A restored server does not deposit on its own: a drill copy still holding the pairing would
 	// otherwise put its old state at KyRecovery as the newest capsule. The admin turns the schedule
 	// back on once this server is the one in service. The key is recoveryclient's schedule setting.
@@ -110,7 +127,7 @@ ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.up
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; scheduled backups off; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; replica record and rate windows cleared; scheduled backups off; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1795,6 +1812,63 @@ func (s *settingsStore) GetAllSettings(ctx context.Context) (map[string]string, 
 		settings[k] = v
 	}
 	return settings, rows.Err()
+}
+
+func (s *settingsStore) GetSettings(ctx context.Context, keys ...string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		args[i] = k
+	}
+	q := "SELECT key, value FROM server_settings WHERE key IN (?" + strings.Repeat(", ?", len(keys)-1) + ")"
+	rows, err := s.store.db.QueryContext(ctx, s.store.rebind(q), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, rows.Err()
+}
+
+func (s *settingsStore) SetSettingIfAbsent(ctx context.Context, key, val string) (string, error) {
+	if strings.HasPrefix(key, "installer.") || strings.HasPrefix(key, "signin_") {
+		return "", errors.New("setting is not write-once")
+	}
+	// The no-op update makes RETURNING answer the stored row on a conflict.
+	q := s.store.rebind(`INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT (key) DO UPDATE SET value = server_settings.value RETURNING value`)
+	var stored string
+	err := s.store.db.QueryRowContext(ctx, q, key, val, time.Now().UTC()).Scan(&stored)
+	return stored, err
+}
+
+func (s *settingsStore) SetSettingAudited(ctx context.Context, key, val string, rec *AuditRecord) error {
+	if strings.HasPrefix(key, "installer.") || strings.HasPrefix(key, "signin_") {
+		return errors.New("setting is written by its own path")
+	}
+	tx, err := s.store.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO server_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`), key, val, now); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+		rec.UserID, rec.Action, rec.Resource, rec.Details, rec.IPAddress, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func errorsIs(err, target error) bool {

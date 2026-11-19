@@ -3,6 +3,7 @@ package migrations
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"strings"
 	"time"
@@ -603,7 +604,29 @@ CREATE TABLE sso_logouts (
 	{Version: 33, Name: "task_insights", SQLite: taskInsights, Postgres: taskInsights},
 	{Version: 34, Name: "task_prefs", SQLite: taskPrefs, Postgres: taskPrefs},
 	{Version: 35, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
+	{Version: 36, Name: "replica_coordination", SQLite: replicaCoordination, Postgres: replicaCoordination},
 }
+
+// replicaCoordination: state PostgreSQL replicas share, on database time in milliseconds.
+// security_windows holds rate windows (expires_at is the window's generation),
+// spent_challenges the used CAPTCHA salts, kypost_replay the verified KyPost event IDs. SQLite
+// keeps all three in memory and leaves these tables empty.
+const replicaCoordination = `CREATE TABLE security_windows (
+ key TEXT PRIMARY KEY,
+ hits INTEGER NOT NULL,
+ expires_at BIGINT NOT NULL
+);
+CREATE INDEX idx_security_windows_expiry ON security_windows(expires_at);
+CREATE TABLE spent_challenges (
+ salt TEXT PRIMARY KEY,
+ expires_at BIGINT NOT NULL
+);
+CREATE INDEX idx_spent_challenges_expiry ON spent_challenges(expires_at);
+CREATE TABLE kypost_replay (
+ event_id TEXT PRIMARY KEY,
+ expires_at BIGINT NOT NULL
+);
+CREATE INDEX idx_kypost_replay_expiry ON kypost_replay(expires_at);`
 
 // suiteGroupCalendars: the group calendar each KyIdentity suite group has here, keyed on the
 // KyIdentity group ID only (never its name or slug), with the local group that holds its
@@ -881,72 +904,117 @@ func Run(ctx context.Context, db *sql.DB, driver string) error {
 	if driver == "postgresql" {
 		driver = "postgres"
 	}
-
-	// Create schema_migrations table
-	initTableQuery := `
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    applied_at DATETIME NOT NULL
-);`
 	if driver == "postgres" {
-		initTableQuery = `
+		// Replicas starting together apply each migration once: the same session lock as the
+		// first-admin bootstrap (store.Serialized "bootstrap").
+		return withBootstrapLock(ctx, db, func() error { return run(ctx, db, driver) })
+	}
+	return run(ctx, db, driver)
+}
+
+// BootstrapLockSQL takes the bootstrap session lock, key space 3 scoped to the schema.
+const BootstrapLockSQL = `SELECT pg_advisory_lock(3, hashtext(current_schema() || ':bootstrap'))`
+
+// withBootstrapLock holds the bootstrap lock on a connection of its own, discarded afterwards
+// so the session lock can never return to the pool.
+func withBootstrapLock(ctx context.Context, db *sql.DB, work func() error) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer conn.Raw(func(any) error { return driver.ErrBadConn })
+	if _, err := conn.ExecContext(ctx, BootstrapLockSQL); err != nil {
+		return fmt.Errorf("bootstrap lock: %w", err)
+	}
+	return work()
+}
+
+// LatestVersion is the schema version this build migrates to.
+func LatestVersion() int { return registry[len(registry)-1].Version }
+
+// execer is a database or one transaction.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// RunTx migrates inside tx, all or nothing, for a target written in the same transaction
+// (migrate-postgres). The caller holds whatever lock it needs.
+func RunTx(ctx context.Context, tx *sql.Tx, driver string) error {
+	if _, err := tx.ExecContext(ctx, initTable(driver)); err != nil {
+		return fmt.Errorf("failed to init schema_migrations: %w", err)
+	}
+	for _, m := range registry {
+		if err := apply(ctx, tx, driver, m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func initTable(driver string) string {
+	if driver == "postgres" {
+		return `
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     applied_at TIMESTAMPTZ NOT NULL
 );`
 	}
+	return `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at DATETIME NOT NULL
+);`
+}
 
-	if _, err := db.ExecContext(ctx, initTableQuery); err != nil {
+// apply runs m in ex unless it is recorded.
+func apply(ctx context.Context, ex execer, driver string, m Migration) error {
+	q := "SELECT COUNT(1) FROM schema_migrations WHERE version = ?"
+	if driver == "postgres" {
+		q = "SELECT COUNT(1) FROM schema_migrations WHERE version = $1"
+	}
+	var exists int
+	if err := ex.QueryRowContext(ctx, q, m.Version).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check migration version %d: %w", m.Version, err)
+	}
+	if exists > 0 {
+		return nil
+	}
+	ddl := m.SQLite
+	record := "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)"
+	if driver == "postgres" {
+		ddl = m.Postgres
+		record = "INSERT INTO schema_migrations (version, name, applied_at) VALUES ($1, $2, $3)"
+	}
+	if _, err := ex.ExecContext(ctx, ddl); err != nil {
+		return fmt.Errorf("failed executing migration v%d (%s): %w", m.Version, m.Name, err)
+	}
+	if _, err := ex.ExecContext(ctx, record, m.Version, m.Name, time.Now().UTC()); err != nil {
+		return fmt.Errorf("failed to record migration v%d: %w", m.Version, err)
+	}
+	return nil
+}
+
+func run(ctx context.Context, db *sql.DB, driver string) error {
+	if _, err := db.ExecContext(ctx, initTable(driver)); err != nil {
 		return fmt.Errorf("failed to init schema_migrations: %w", err)
 	}
-
 	for _, m := range registry {
-		var exists int
-		err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM schema_migrations WHERE version = $1", m.Version).Scan(&exists)
-		if err != nil {
-			// Try SQLite positional ? parameter if $1 failed
-			err = db.QueryRowContext(ctx, "SELECT COUNT(1) FROM schema_migrations WHERE version = ?", m.Version).Scan(&exists)
-			if err != nil {
-				return fmt.Errorf("failed to check migration version %d: %w", m.Version, err)
-			}
-		}
-
-		if exists > 0 {
-			continue
-		}
-
-		ddl := m.SQLite
-		if driver == "postgres" {
-			ddl = m.Postgres
-		}
-
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("failed to begin migration tx for v%d: %w", m.Version, err)
 		}
-
-		if _, err := tx.ExecContext(ctx, ddl); err != nil {
+		if err := apply(ctx, tx, driver, m); err != nil {
 			_ = tx.Rollback()
-			return fmt.Errorf("failed executing migration v%d (%s): %w", m.Version, m.Name, err)
+			return err
 		}
-
-		recordQuery := "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)"
-		if driver == "postgres" {
-			recordQuery = "INSERT INTO schema_migrations (version, name, applied_at) VALUES ($1, $2, $3)"
-		}
-
-		if _, err := tx.ExecContext(ctx, recordQuery, m.Version, m.Name, time.Now().UTC()); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("failed to record migration v%d: %w", m.Version, err)
-		}
-
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("failed to commit migration v%d: %w", m.Version, err)
 		}
 	}
-
 	return nil
 }
 

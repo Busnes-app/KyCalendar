@@ -33,10 +33,22 @@ func (s *Server) buildProvider(st sso.Settings) *sso.Provider {
 
 // signInSettings resolves the saved settings under the environment and opens a saved secret.
 func (s *Server) signInSettings(ctx context.Context) (sso.Settings, error) {
+	st, _, err := s.signInSettingsAt(ctx)
+	return st, err
+}
+
+// signInSettingsAt is signInSettings and the digest of the sign-in rows it was read from.
+func (s *Server) signInSettingsAt(ctx context.Context) (sso.Settings, string, error) {
 	saved, err := s.store.Settings().GetAllSettings(ctx)
 	if err != nil {
-		return sso.Settings{}, err
+		return sso.Settings{}, "", err
 	}
+	st, err := s.signInSettingsFrom(saved)
+	return st, signinDigest(saved), err
+}
+
+func (s *Server) signInSettingsFrom(saved map[string]string) (sso.Settings, error) {
+	var err error
 	if managed := s.config.InstallerSSO; managed != nil {
 		secret, err := applysetup.Secret(managed.ClientSecretFile)
 		if err != nil {
@@ -63,7 +75,7 @@ func (s *Server) LoadSignIn(ctx context.Context) error {
 	if names := sso.IgnoredEnv(s.config.SSO); names != nil {
 		log.Printf("[SSO] %s ignored: KY_KYSIGNON_ISSUER is not set", strings.Join(names, " and "))
 	}
-	st, err := s.signInSettings(ctx)
+	st, digest, err := s.signInSettingsAt(ctx)
 	if err != nil {
 		return err
 	}
@@ -82,6 +94,7 @@ func (s *Server) LoadSignIn(ctx context.Context) error {
 		log.Printf("[SSO] sign-in provider changed from %q to %q: %d accounts of the previous provider disabled", prev, st.Identity(), n)
 	}
 	s.setSignIn(s.buildProvider(st))
+	s.signinDigest.Store(&digest)
 	return nil
 }
 

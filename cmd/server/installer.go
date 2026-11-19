@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/Busnes-app/ky-primitives/applysetup"
+	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -18,6 +20,9 @@ func runInstaller(args []string) error {
 	}
 	if opts.Capabilities {
 		return applysetup.WriteCapabilities(os.Stdout, "kycalendar", "kyidentity-oidc", "directory-webhook", "dedicated-admin", "local-backup-config", "check", "restart")
+	}
+	if d := strings.ToLower(os.Getenv("KY_DB_DRIVER")); !opts.Check && (d == "postgres" || d == "postgresql") {
+		return api.ErrInstallerPostgres
 	}
 	dir := os.Getenv("KY_DATA_DIR")
 	if dir == "" {

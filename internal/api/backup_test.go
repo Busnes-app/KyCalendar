@@ -482,15 +482,15 @@ func TestRunRefusesWithoutADatabaseSnapshot(t *testing.T) {
 	}
 	fake := &fakeDepositor{}
 	api.SetRecoveryClientForTest(srv, fake)
-	// The store stays SQLite so the fixture works; the collector reads the driver from the
-	// config, which is what decides whether a snapshot is possible.
-	cfg.Database.Driver = "postgres"
+	// The collector reads the driver from the config, which decides how to snapshot; one it
+	// cannot snapshot refuses.
+	cfg.Database.Driver = "mysql"
 
 	w := adminPost(t, srv, loginAs(t, srv, st, "alice", "admin"), "/api/backup/deposit")
 	if w.Code != http.StatusPreconditionFailed {
 		t.Fatalf("no database snapshot: got %d, want 412: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "snapshot") || !strings.Contains(w.Body.String(), "postgres") {
+	if !strings.Contains(w.Body.String(), "snapshot") || !strings.Contains(w.Body.String(), "mysql") {
 		t.Errorf("body does not name the snapshot refusal and the driver: %s", w.Body.String())
 	}
 	if fake.got != nil {

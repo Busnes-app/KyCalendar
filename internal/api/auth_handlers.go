@@ -60,7 +60,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Verify PoW CAPTCHA if enabled
 	if s.config.Captcha.Provider == "pow" {
-		if req.CaptchaToken == "" || !auth.VerifyPoWSolution(req.CaptchaToken, s.config.Security.SessionSecret, &s.powSpent) {
+		if req.CaptchaToken == "" || !auth.VerifyPoWSolution(req.CaptchaToken, s.config.Security.SessionSecret, s.powSpender(r.Context())) {
 			s.writeError(w, http.StatusForbidden, "Security check failed. Please complete the CAPTCHA puzzle.")
 			return
 		}
@@ -82,7 +82,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// else locked out; a correct password is refunded. An exhausted window answers like a wrong
 	// password, so the limit does not reveal which accounts exist.
 	accountKey := "login:" + user.ID + "@" + s.limitIP(r)
-	if !s.allowAccountAttempt(accountKey, 10, 15*time.Minute) {
+	refund, allowed := s.takeAccountAttempt(r.Context(), accountKey, 10, 15*time.Minute)
+	if !allowed {
 		password.DummyVerify()
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
@@ -91,7 +92,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
-	s.refundAccountAttempt(accountKey)
+	refund()
 	if user.Status != "active" {
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
@@ -127,6 +128,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	user, sess, err := s.sessions.AuthenticateRequest(r)
+	if err != nil && !auth.SignedOut(err) {
+		s.writeUnavailable(w, err)
+		return
+	}
 	if err != nil {
 		// The sign-in form that follows needs a CSRF token bound to this browser.
 		s.sessions.IssuePreSession(w)

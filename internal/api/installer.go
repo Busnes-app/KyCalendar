@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"errors"
+
 	"github.com/Busnes-app/ky-primitives/applysetup"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"reflect"
@@ -10,6 +12,9 @@ import (
 // ApplyInstaller compares desired configuration with the server's immutable
 // startup snapshot. A committed configuration awaiting restart stays pending.
 func (s *Server) ApplyInstaller(ctx context.Context, raw []byte, check bool) (applysetup.Report, error) {
+	if !check && s.store.Driver() == "postgres" {
+		return applysetup.Report{}, ErrInstallerPostgres
+	}
 	var b applysetup.Common
 	if err := applysetup.DecodeRaw(raw, &b); err != nil {
 		return applysetup.Report{}, err
@@ -29,3 +34,8 @@ func (s *Server) ApplyInstaller(ctx context.Context, raw []byte, check bool) (ap
 	}
 	return r, nil
 }
+
+// ErrInstallerPostgres refuses installer activation on PostgreSQL before anything is written:
+// the setup socket is per data directory, activation restarts only the local process, and
+// managed credentials are host file paths other replicas would not load.
+var ErrInstallerPostgres = errors.New("installer-managed deployments are single-server SQLite; apply-setup is refused on PostgreSQL (--check still inspects)")

@@ -14,6 +14,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/applysetup"
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/store"
 	_ "modernc.org/sqlite"
 )
 
@@ -41,18 +42,36 @@ const DatabaseMember = "data/kycalendar.db"
 // (SQLite database, configuration) plus the members that may only ever travel inside a
 // sealed capsule (the encryption key, the pinned recovery public key). Nothing that returns
 // from here may leave the process except through a Sealer.
-func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recoveryclient.Payload, error) {
-	if strings.ToLower(cfg.Database.Driver) != "sqlite" {
+func Collect(ctx context.Context, cfg *config.Config, st store.Store, appVersion string) (recoveryclient.Payload, error) {
+	var dbBytes []byte
+	var counts calendarCounts
+	var err error
+	switch strings.ToLower(cfg.Database.Driver) {
+	case "sqlite":
+		// The capsule restores the database as <DataDir>/kycalendar.db; a DSN elsewhere would
+		// seal a file a restored server never opens.
+		dsnFile, _, _ := strings.Cut(cfg.Database.DSN, "?")
+		want := filepath.Join(cfg.Database.DataDir, filepath.Base(DatabaseMember))
+		if !samePath(dsnFile, want) {
+			return recoveryclient.Payload{}, fmt.Errorf("%w: KY_DB_DSN opens %s, backups require the default %s; unset KY_DB_DSN or point it there", ErrNoDatabaseSnapshot, dsnFile, want)
+		}
+		dbBytes, counts, err = snapshot(ctx, cfg.Database.DataDir, func(path string) error {
+			db, err := sql.Open("sqlite", cfg.Database.DSN)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return recoveryclient.SQLiteSnapshot(ctx, db, path)
+		})
+	case "postgres":
+		// The same member, parts and drill recipe as SQLite: a restore is the SQLite restore,
+		// then migrate-postgres into an empty database.
+		dbBytes, counts, err = snapshot(ctx, cfg.Database.DataDir, func(path string) error {
+			return st.SnapshotToSQLite(ctx, path)
+		})
+	default:
 		return recoveryclient.Payload{}, fmt.Errorf("%w: %s", ErrNoDatabaseSnapshot, cfg.Database.Driver)
 	}
-	// The capsule restores the database as <DataDir>/kycalendar.db; a DSN elsewhere would seal
-	// a file a restored server never opens.
-	dsnFile, _, _ := strings.Cut(cfg.Database.DSN, "?")
-	want := filepath.Join(cfg.Database.DataDir, filepath.Base(DatabaseMember))
-	if !samePath(dsnFile, want) {
-		return recoveryclient.Payload{}, fmt.Errorf("%w: KY_DB_DSN opens %s, backups require the default %s; unset KY_DB_DSN or point it there", ErrNoDatabaseSnapshot, dsnFile, want)
-	}
-	dbBytes, counts, err := snapshotSQLite(ctx, cfg.Database.DSN, cfg.Database.DataDir)
 	if err != nil {
 		return recoveryclient.Payload{}, err
 	}
@@ -124,28 +143,22 @@ func Collect(ctx context.Context, cfg *config.Config, appVersion string) (recove
 	return payload, nil
 }
 
-// snapshotSQLite returns a consistent single-file copy of the live database. The store runs
-// in WAL mode, so reading the main file misses every commit still in the -wal and can tear
-// under a concurrent checkpoint; the lib's SQLiteSnapshot runs VACUUM INTO through a live
-// connection. The scaffold opens its own handle from the DSN because store.Store exposes no
-// *sql.DB.
-func snapshotSQLite(ctx context.Context, dsn, dataDir string) ([]byte, calendarCounts, error) {
+// snapshot writes a consistent single-file SQLite copy of the live database with write (SQLite:
+// VACUUM INTO through a live connection, since the store runs in WAL mode and a plain read
+// misses the -wal; PostgreSQL: SnapshotToSQLite), in locked 0700 scratch removed before it
+// returns, and counts calendars and objects in that copy.
+func snapshot(ctx context.Context, dataDir string, write func(path string) error) ([]byte, calendarCounts, error) {
 	var counts calendarCounts
-	db, err := sql.Open("sqlite", dsn)
+	dir, release, err := NewScratch(dataDir)
 	if err != nil {
 		return nil, counts, err
 	}
-	defer db.Close()
-	dir, err := os.MkdirTemp(dataDir, "snapshot-*")
-	if err != nil {
-		return nil, counts, err
-	}
-	defer os.RemoveAll(dir)
+	defer release()
 	path := filepath.Join(dir, "kycalendar.db")
-	if err := recoveryclient.SQLiteSnapshot(ctx, db, path); err != nil {
+	if err := write(path); err != nil {
 		return nil, counts, fmt.Errorf("%w: %v", ErrNoDatabaseSnapshot, err)
 	}
-	// Counted from the snapshot, not the live database, so a write after VACUUM INTO
+	// Counted from the snapshot, not the live database, so a write after the snapshot
 	// cannot make the drill fail against its own capsule.
 	snap, err := openReadOnly(path)
 	if err != nil {

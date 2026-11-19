@@ -19,7 +19,7 @@ func TestLargeDatabaseTravelsInPartsAndDrills(t *testing.T) {
 	t.Setenv("KY_DB_DRIVER", "sqlite")
 	defer backup.SetPartBytesForTest(4096)()
 	cfg, _ := payloadConfig(t)
-	payload, err := backup.Collect(context.Background(), cfg, "1.0.0")
+	payload, err := backup.Collect(context.Background(), cfg, nil, "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func (s *Server) handleSuiteChat(w http.ResponseWriter, r *http.Request) {
 		refuse(http.StatusBadRequest, "bad_body", "Name one email address")
 		return
 	}
-	if !s.allowAccountAttempt("chat:"+u.ID, 20, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "chat:"+u.ID, 20, time.Minute) {
 		refuse(http.StatusTooManyRequests, "rate_limited", "Too many chats opened; wait a minute")
 		return
 	}

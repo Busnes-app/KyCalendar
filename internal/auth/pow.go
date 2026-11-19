@@ -52,6 +52,18 @@ type PoWSpent struct {
 	salts map[string]int64 // salt -> challenge ExpiresAt
 }
 
+// Spender records a verified solution's salt until its challenge expires (unix seconds) and
+// reports whether it was unspent. PoWSpent keeps them in memory; a replicated server keeps
+// them in its database, where an unanswerable store spends nothing and refuses.
+type Spender interface {
+	Spend(salt string, expiresAt int64) bool
+}
+
+// Spend is spend at the current time.
+func (p *PoWSpent) Spend(salt string, expiresAt int64) bool {
+	return p.spend(salt, expiresAt, time.Now().Unix())
+}
+
 // spend reports whether salt was unspent and records it. When full it drops expired entries,
 // then live ones at random. Refusing instead would let a flood fail every login; eviction only
 // lets one already-solved puzzle be presented again, still behind every login limiter.
@@ -118,7 +130,7 @@ func GeneratePoWChallenge(difficulty int, signingSecret string) (*PoWChallenge, 
 
 // VerifyPoWSolution decodes and validates the client's base64-encoded JSON solution and spends
 // it in spent, so presenting it again fails.
-func VerifyPoWSolution(solutionBase64, signingSecret string, spent *PoWSpent) bool {
+func VerifyPoWSolution(solutionBase64, signingSecret string, spent Spender) bool {
 	data, err := base64.StdEncoding.DecodeString(solutionBase64)
 	if err != nil {
 		data, err = base64.RawStdEncoding.DecodeString(solutionBase64)
@@ -146,5 +158,5 @@ func VerifyPoWSolution(solutionBase64, signingSecret string, spent *PoWSpent) bo
 	h := sha256.Sum256([]byte(targetStr))
 	actualChallenge := hex.EncodeToString(h[:])
 
-	return actualChallenge == sol.Challenge && spent.spend(sol.Salt, sol.ExpiresAt, now)
+	return actualChallenge == sol.Challenge && spent.Spend(sol.Salt, sol.ExpiresAt)
 }

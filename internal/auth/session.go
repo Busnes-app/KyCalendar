@@ -30,6 +30,12 @@ const (
 
 var ErrPasswordChangeRequired = errors.New("password change required")
 
+// SignedOut reports whether an AuthenticateRequest error means no valid session. Any other
+// error is the store failing to answer, which must never read as signed out.
+func SignedOut(err error) bool {
+	return errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrSessionExpired)
+}
+
 type SessionManager struct {
 	store  store.Store
 	config config.SecurityConfig
@@ -221,8 +227,11 @@ func (sm *SessionManager) AuthenticateRequest(r *http.Request) (*store.User, *st
 	if err != nil {
 		return nil, nil, err
 	}
-	allowed, ownershipErr := sm.store.InstallerUserAllowed(r.Context(), user)
-	if ownershipErr != nil || !allowed || user.Status != "active" {
+	allowed, err := sm.store.InstallerUserAllowed(r.Context(), user)
+	if err != nil {
+		return nil, nil, err // unavailable: the session stays
+	}
+	if !allowed || user.Status != "active" {
 		_ = sm.store.Sessions().DeleteSession(r.Context(), tokenHash)
 		return nil, nil, store.ErrNotFound
 	}

@@ -233,6 +233,16 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
 		return
 	}
+	// Another replica may have saved new settings: never write an account under a binding the
+	// database no longer holds.
+	if current, err := s.signinCurrent(r.Context(), p); err != nil {
+		s.writeUnavailable(w, err)
+		return
+	} else if !current {
+		go s.refreshSignIn(context.WithoutCancel(r.Context()))
+		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
+		return
+	}
 	user, err := s.upsertSSOUser(r.Context(), claims, p.Binding)
 	switch {
 	case errors.Is(err, errNotProvisioned):

@@ -86,7 +86,7 @@ func (s *Server) handleSuitePeople(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusOK, none)
 		return
 	}
-	if !s.allowAccountAttempt("people:"+u.ID, 60, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "people:"+u.ID, 60, time.Minute) {
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many searches; wait a minute", "code": "rate_limited"})
 		return
 	}
@@ -131,7 +131,7 @@ func (s *Server) resolveEmails(w http.ResponseWriter, r *http.Request, u *store.
 		s.writeJSON(w, http.StatusOK, none)
 		return
 	}
-	if !s.allowAccountAttempt("people:"+u.ID, 60, time.Minute) {
+	if !s.allowAccountAttempt(r.Context(), "people:"+u.ID, 60, time.Minute) {
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many searches; wait a minute", "code": "rate_limited"})
 		return
 	}

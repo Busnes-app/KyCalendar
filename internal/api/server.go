@@ -48,6 +48,9 @@ type Server struct {
 	// signinMu: a save holds it through the binding commit and the provider swap; a callback holds
 	// it for reading from its provider recheck to its session, so no save lands in between.
 	signinMu sync.RWMutex
+	// signinDigest is the digest of the sign-in rows the live provider was built from;
+	// "" after a local save, until FollowSignIn reloads (signin_replica.go).
+	signinDigest atomic.Pointer[string]
 	// signinHTTP reaches admin-entered providers: HTTPS only, no redirects, no loopback,
 	// link-local or cloud metadata targets.
 	signinHTTP *http.Client
@@ -81,10 +84,18 @@ type Server struct {
 	attempts     map[string]attemptWindow
 	accounts     map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
 	davFails     davFailures
+	// shared holds the rate windows, CAPTCHA salts and KyPost event IDs on PostgreSQL, so
+	// every replica counts against one limit; nil on SQLite, which keeps them in memory.
+	shared       store.CoordinationStore
 	unknownAudit unknownAuthAudit // dav_auth.go
 	powSpent     auth.PoWSpent
 	// exempt is the office-network allowlist: environment plus admin setting (exempt_networks.go).
 	exempt atomic.Pointer[netallow.List]
+	// exemptMu guards the reload of exempt: exemptStored is the admin value it was built from,
+	// exemptLoaded when it was last read (exempt_networks.go).
+	exemptMu     sync.Mutex
+	exemptStored string
+	exemptLoaded time.Time
 	// detached counts the requests running on a context deliberately separated from their
 	// connection. http.Server.Shutdown does not know about them, so runServer waits on this
 	// before the store closes.
@@ -95,6 +106,11 @@ type Server struct {
 	stopDetached context.CancelFunc
 	// imports admits one CSV import per user and a few server-wide (imports.go).
 	imports importGate
+	// draining makes /readyz 503 and refuses new backup work (lifecycle.go); ready caches the
+	// readiness ping; handler is the mux behind the request deadline.
+	draining atomic.Bool
+	ready    readiness
+	handler  http.Handler
 }
 
 // StopDetached aborts the slow legs of every detached handler in flight: a backup's snapshot
@@ -212,52 +228,14 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	s.newKyPost()
 	s.newKyMessages()
+	if st.Driver() == "postgres" {
+		s.shared = st.Coordination()
+	}
 	s.stopping, s.stopDetached = context.WithCancel(context.Background())
 	s.loadExemptNetworks()
 	s.routes()
+	s.handler = s.withDeadline(http.HandlerFunc(s.serve), requestDeadline)
 	return s
-}
-
-func (s *Server) allowAttempt(key string, limit int, window time.Duration) bool {
-	now := time.Now()
-	s.attemptsMu.Lock()
-	defer s.attemptsMu.Unlock()
-	if _, known := s.attempts[key]; !known && len(s.attempts) >= attemptsCap {
-		s.makeRoom(now)
-	}
-	entry := bumpWindow(s.attempts[key], now, window)
-	s.attempts[key] = entry
-	return entry.count <= limit
-}
-
-// allowAccountAttempt counts a per-account window. Keys are a real user ID plus the client
-// address, so a new key past attemptsCap first drops the expired windows; a live one is never
-// dropped, or flooding the map would reset someone's lockout.
-func (s *Server) allowAccountAttempt(key string, limit int, window time.Duration) bool {
-	now := time.Now()
-	s.attemptsMu.Lock()
-	defer s.attemptsMu.Unlock()
-	if _, known := s.accounts[key]; !known && len(s.accounts) >= attemptsCap {
-		for k, w := range s.accounts {
-			if now.After(w.reset) {
-				delete(s.accounts, k)
-			}
-		}
-	}
-	entry := bumpWindow(s.accounts[key], now, window)
-	s.accounts[key] = entry
-	return entry.count <= limit
-}
-
-// refundAccountAttempt takes back one attempt allowAccountAttempt counted, for a limit that
-// counts failures only: counting before the check keeps concurrent guesses from all passing.
-func (s *Server) refundAccountAttempt(key string) {
-	s.attemptsMu.Lock()
-	defer s.attemptsMu.Unlock()
-	if entry, ok := s.accounts[key]; ok && entry.count > 0 {
-		entry.count--
-		s.accounts[key] = entry
-	}
 }
 
 // makeRoom frees a slot for a new key: it drops every expired window, and if the map is still
@@ -306,39 +284,6 @@ func (s *Server) limitIP(r *http.Request) string {
 	return ip
 }
 
-// officeBudget is what all allowlisted office networks together may spend each minute on one
-// per-IP limit before their requests fall back to that limit. It keeps one host inside an
-// office from making unbounded attempts. Sustained for the longest window it guards (DAV's 15
-// minutes), 300 a minute is 4 500 keys, under attemptsCap and davFailKeysCap, so office
-// traffic alone cannot fill a limiter and evict live counters.
-const officeBudget = 300
-
-// officeExempt reports whether the request comes from an allowlisted office network and may
-// skip the per-IP limit named bucket, spending one unit of that bucket's shared office budget.
-// It counts the request as exempted only then. It matches the address requestIP resolved, so a
-// forged X-Forwarded-For from an untrusted peer cannot claim an allowlisted address. The budget
-// lives with the per-account windows, which never drop a live entry, so a flood of address
-// keys cannot reset it.
-func (s *Server) officeExempt(r *http.Request, bucket string) bool {
-	list := s.exempt.Load()
-	addr, err := netip.ParseAddr(s.requestIP(r))
-	if err != nil || !list.Contains(addr) || !s.allowAccountAttempt(officeKey(bucket), officeBudget, time.Minute) {
-		return false
-	}
-	list.Exempt(addr)
-	return true
-}
-
-func officeKey(bucket string) string { return "office:" + bucket }
-
-// allowPerIP is allowAttempt for a limit keyed only on the client address: an office request
-// draws on the shared office budget instead, and on the ordinary per-IP window once that is
-// spent. Only per-IP limits come here; per-account windows, the CAPTCHA and every later check
-// run regardless.
-func (s *Server) allowPerIP(r *http.Request, bucket string, limit int, window time.Duration) bool {
-	return s.officeExempt(r, bucket) || s.allowAttempt(bucket+":"+s.limitIP(r), limit, window)
-}
-
 // handle registers a route and records its pattern, so the authorization matrix can prove it
 // covers every route.
 func (s *Server) handle(pattern string, h http.Handler) {
@@ -347,8 +292,11 @@ func (s *Server) handle(pattern string, h http.Handler) {
 }
 
 func (s *Server) routes() {
-	// Public ky.health/1 for KyPulse: status and fixed reason codes only.
+	// Public ky.health/1 for KyPulse: status and fixed reason codes only. /livez and /readyz
+	// are for proxies and orchestrators (lifecycle.go); GET patterns answer HEAD too.
 	s.handle("GET /healthz", s.healthHandler())
+	s.handle("GET /livez", http.HandlerFunc(s.handleLivez))
+	s.handle("GET /readyz", http.HandlerFunc(s.handleReadyz))
 	s.handle("GET /api/installer/network", http.HandlerFunc(s.handleInstallerNetwork))
 	s.handle("POST /api/installer/directory", http.HandlerFunc(s.handleInstallerDirectory))
 	// Auth
@@ -524,10 +472,13 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (*store.Us
 	if err == nil {
 		return user, sess
 	}
-	if errors.Is(err, auth.ErrPasswordChangeRequired) {
+	switch {
+	case errors.Is(err, auth.ErrPasswordChangeRequired):
 		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
-	} else {
+	case auth.SignedOut(err):
 		s.writeError(w, http.StatusUnauthorized, "Authentication required")
+	default:
+		s.writeUnavailable(w, err)
 	}
 	return nil, nil
 }
@@ -580,7 +531,10 @@ func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// ServeHTTP serves every request under the request deadline (lifecycle.go).
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
+
+func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -722,6 +676,14 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, data any) {
 
 func (s *Server) writeError(w http.ResponseWriter, status int, message string) {
 	s.writeJSON(w, status, map[string]string{"error": message})
+}
+
+// writeUnavailable answers a request the store could not serve: 503, never 401, so a browser
+// keeps its session and a client its credentials. The cause is logged, never sent.
+func (s *Server) writeUnavailable(w http.ResponseWriter, err error) {
+	log.Printf("[API] store unavailable: %v", err)
+	w.Header().Set("Retry-After", "5")
+	s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "KyCalendar is temporarily unavailable; try again", "code": "unavailable"})
 }
 
 // DeliverScheduled delivers due scheduling messages, a batch at a time, until none is due.

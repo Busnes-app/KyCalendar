@@ -29,7 +29,7 @@ func TestInstallerCredentialsSealAndDrillRequiresThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.InstallerSSO = b.SSO
-	payload, err := backup.Collect(ctx, cfg, "fixture")
+	payload, err := backup.Collect(ctx, cfg, nil, "fixture")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestInstallerCredentialsSealAndDrillRequiresThem(t *testing.T) {
 	if err := os.Remove(directory); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := backup.Collect(ctx, cfg, "fixture"); err == nil {
+	if _, err := backup.Collect(ctx, cfg, nil, "fixture"); err == nil {
 		t.Fatal("backup succeeded without recovery credential")
 	}
 }

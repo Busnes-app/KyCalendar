@@ -88,6 +88,9 @@ func (s *Server) newKyPost() {
 func (s *Server) startScheduling() {
 	s.sched = &davbackend.Scheduler{Store: s.store, Limits: s.objectLimits(), KyPost: s.kypost, GuestLink: s.guestLink}
 	s.kypostReplay = &kypostReplay{seen: map[string]time.Time{}}
+	if s.shared != nil {
+		s.kypostReplay = sharedReplay{s.shared}
+	}
 }
 
 // StartKyPost links KyPost through KyIdentity when the environment names none and scheduling
