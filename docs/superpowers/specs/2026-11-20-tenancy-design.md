@@ -50,7 +50,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | D9 | In multi-tenant mode, local groups, SCIM, rooms and equipment, admin-made group calendars and reattach are off (404). Group calendars come only from KyIdentity suite groups. | Business features. They stay in single-tenant installs (owner decision 5), as T "Per-org features" does for KyIdentity's business features. It also leaves the only group names in use as `suite-group:<KyIdentity id>` (`internal/store/suite_groups.go:33`), which are already unique across orgs. So `groups.display_name UNIQUE` (`migrations.go:76`) and `resources_name` (`migrations.go:663`) need no per-org rewrite. |
 | D10 | Every KyCalendar↔KyPost and KyCalendar↔KyMessages body gains `org_id` in multi-tenant mode. KyCalendar fills it from the account row. On receipt, KyCalendar resolves the account by `(sub, issuer)` as today and requires the body's `org_id` to equal the account's. A mismatch or an absent `org_id` answers exactly like an unknown user. | T "Suite directory", `/api/suite/peer`: the pair secret is per pair, not per org, so the org must travel in the signed body and be checked. A peer's `org_id` is a check, never a source: KyCalendar never assigns an org from a peer. |
 | D11 | Org quotas come from `/api/suite/orgs` `quotas` (T "Entitlements"). Keys: `max_bytes` (the org's total calendar storage), `max_bytes_per_user`, `booking_pages` (bool). An absent key falls back to today's install setting. | Downstream contract 6. Today's caps are per owner and per install (`internal/config/config.go:296-307`). A shared install needs an org total between the two. |
-| D12 | A `deleted` org is purged in one transaction. Its `orgs` mirror row stays as a tombstone, so a late token or peer message naming it is refused. | Downstream contract 5. T keeps the same tombstone rule for its own `orgs` rows. |
+| D12 | A `deleted` org is purged by the elected worker in short, resumable batches behind a fail-closed audit row (Lifecycle, Deleted). It is never one transaction, which would hold `calendar-total` and block every other org's writes. Its `orgs` mirror row stays as a tombstone, so a late token or peer message naming it is refused. | Downstream contract 5. T keeps the same tombstone rule for its own `orgs` rows. |
 
 ## Inventory
 
@@ -78,7 +78,7 @@ From version 20 on, one SQL text serves both, apart from column types and the ta
 | `audit_records` | `mig.go:88` / `:169` | O | `user_id` has no FK. **Nullable** `org_id`: NULL is a platform row (restore, backup, staff platform actions), as T does for `audit_events`. |
 | `server_settings` | `mig.go:99` / `:180` | P | Install-wide keys only. Every key in use is install-wide (`internal/store/sqlstore.go:1807-1949`). Future per-org settings go in a new table, never in prefixed keys. |
 | `calendars` | `mig.go:257` / `:298` | O | `owner_id` has no FK (`mig.go:259-260`). For a user it names the user. For a group calendar it is the calendar's own ID (`AGENTS.md:334`). A trigger ties a personal calendar's `org_id` to its owner's. A group calendar takes the suite group's org at creation (Isolation). |
-| `calendar_objects` | `mig.go:270` / `:311` | D | `calendar_id` FK. `invitation_sender`, `_attendee` and `_recipient` are user IDs with no FK (`mig.go:861-863`). Once delivery is per org (D5) they always name the calendar's own org. |
+| `calendar_objects` | `mig.go:270` / `:311` | O | It has a `calendar_id` FK, but carries its own `org_id`, for the usage triggers alone. A calendar delete removes its objects by cascade (`internal/store/calendars.go:138`, `internal/store/sqlstore.go:449`). A delete trigger that looked up the parent calendar for the org could then find it already gone, and `org_usage` would drift upward. With the column, the trigger reads `OLD.org_id`. An insert trigger requires it to equal the calendar's `org_id`, and the immutability trigger keeps it. `invitation_sender`, `_attendee` and `_recipient` are user IDs with no FK (`mig.go:861-863`). Once delivery is per org (D5), they always name the calendar's own org. |
 | `calendar_changes` | `mig.go:283` / `:324` | D | `calendar_id` FK |
 | `calendar_meta` | `mig.go:292` / `:333` | P | One row, `sync_epoch` (`mig.go:296`) |
 | `app_passwords` | `mig.go:343` / `:353` | D | `user_id` FK. Covers DAV and MCP tokens. |
@@ -108,7 +108,7 @@ Tables this spec adds:
 | Table | Class | Reasoning |
 |---|---|---|
 | `orgs` (`id`, `status`, `revision`, `enabled`, `quotas_json`, `seen_at`, `purged_at`) | P | The local mirror of `/api/suite/orgs` (D6), and the target of every `org_id`. Holds the default org in single-tenant mode. A deleted org stays as a tombstone (D12). |
-| `org_usage` (`org_id`, `bytes`) | O | The org's stored object bytes for `max_bytes` (D11). It is kept by the same triggers as `calendar_usage`, through `calendars.org_id`. Queued outbox bytes and reservations are added at check time (Quotas). |
+| `org_usage` (`org_id`, `bytes`) | O | The org's stored object bytes for `max_bytes` (D11). It is kept by triggers on `calendar_objects`, beside `calendar_usage`'s, keyed by the object's own `org_id` (`NEW.org_id` / `OLD.org_id`) with no parent lookup. Queued outbox bytes and reservations are added at check time (Quotas). |
 
 **Files and process state.** None of these are per user, and none change class in multi-tenant mode.
 
@@ -158,7 +158,9 @@ One migration (37, the next free version) on both backends:
      usage rows are deleted before the copy, and the copied rows land last.
 
    **Who creates an `org_usage` row.** The usage triggers only `UPDATE`, as `calendar_usage`'s do
-   (`mig.go:410-428`). An org's row is inserted, with `bytes = 0`, by the application code in the
+   (`mig.go:410-428`). They key on the object's own `org_id`, so a cascaded calendar delete
+   decrements correctly. A test deletes a calendar holding objects, and a user with calendars, then
+   proves `org_usage` equals the sum of the org's remaining objects. An org's row is inserted, with `bytes = 0`, by the application code in the
    same transaction that inserts its `orgs` row: `ensureOrgs`, and the mirror poll when it first sees
    an org. The migration backfill inserts one for the default org. A copy inserts `orgs` rows raw, so
    no `org_usage` row exists in the target while objects are copied. The triggers then match
