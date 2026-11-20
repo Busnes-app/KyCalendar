@@ -278,7 +278,7 @@ user carries the org. No request header, path or form field ever names an org fo
 (`internal/sso/kysignon.go:39-56`, `internal/crypto/crypto.go:87-97`), so a field T adds to the
 body is authenticated. Today's payload has no org (`kysignon.go:28-36`).
 
-In multi-tenant mode the payload must carry `org_id`, or it is ignored and audited.
+In multi-tenant mode the payload must carry `org_id`. The rule for a missing or mismatched one depends on what the event would do (below).
 
 `user.created` for an unknown `sub` follows the same org rule as sign-in:
 
@@ -292,11 +292,23 @@ A skipped create loses nothing. Auto-provisioning is required in multi-tenant mo
 person's first sign-in creates the account once the org serves (Sign-in, step 2). So the insert never reaches the existence trigger
 with an unmirrored org.
 
-Any event for a known `sub` with another
-`org_id` is ignored and audited `sso.webhook_refused reason=org_mismatch`. The webhook still only
-takes access away from an existing account (`AGENTS.md:331`). A refused event answers `200`, as
-an event for another binding's account does today (`internal/sso/kysignon.go:75-79`), so KyIdentity
-does not retry it.
+For a known `sub` whose event has a missing or mismatched `org_id`, the rule follows back-channel
+logout (below): **removal is always applied, additions never are.**
+
+- `user.deactivated`, and a `user.updated` whose status is not active, end access exactly as today
+  (`RevokeSSOUser`, `internal/store/sqlstore.go:1109-1142`). That covers sessions, app passwords
+  (DAV and MCP), MFA challenges and pairings.
+- `user.deleted` ends access in the same way but **does not delete the account**. Today it deletes
+  the row and its calendars (`internal/sso/kysignon.go:117-130`), and a deletion on an
+  unconfirmed org would be a destructive guess. The account stays deactivated with its data, and
+  the org's purge or a correct `user.deleted` removes it later.
+- Profile changes (name, email) are not applied.
+- Each is audited `sso.webhook_org_mismatch` with both org IDs, or `reason=no_org`.
+
+So a KyIdentity bug that drops the field can never leave a removed person signed in. The webhook
+still only takes access away from an existing account (`AGENTS.md:331`). Every event answers `200`,
+as an event for another binding's account does today (`internal/sso/kysignon.go:75-79`), so
+KyIdentity does not retry it.
 
 ### Back-channel logout
 
@@ -370,7 +382,8 @@ state only to the account's own holder, as T owner answer 4 does.
 - **Booking pages** (`/book/<32 hex>`). The slug is a 128-bit random value, globally unique
   (`mig.go:700`), so one public namespace is safe. In multi-tenant mode a page answers only while:
   - the platform switch `booking_pages_allowed` (`internal/api/booking.go:26`) is on;
-  - the host's org is `active` and its `booking_pages` quota is true (D11);
+  - the host's org is `active` and `enabled`, as on every other path, and its `booking_pages`
+    quota is true (D11);
   - the existing conditions hold: scheduling on, KyPost linked, and an address of the host's own
     (`booking.go:43-74`).
 
@@ -566,7 +579,7 @@ question 1.
 | Member of org A | Read a B member's busy times, or learn whether an address is a customer | Free/busy is per org (L5, L6). A B member answers like a stranger, byte for byte (matrix test). |
 | Calendar manager in org A | Grant an A calendar to an org B group by its ID | `SetGrant` resolves `(org_id, id)` (L10), and the composite FK refuses the write at the database |
 | Customer given `kycalendar.admin` by a staff mistake | Gain administrator access | D7: admin only in the staff org. A customer account is always an everyday member. |
-| Forged or replayed directory webhook | Create an account in another org, or move one | HMAC over the body, which carries `org_id`. The timestamp window is ±5 minutes (`kysignon.go:52`). A known `sub` with another org is ignored. `users.org_id` is immutable. |
+| Forged or replayed directory webhook | Create an account in another org, or move one | HMAC over the body, which carries `org_id`. The timestamp window is ±5 minutes (`kysignon.go:52`). A known `sub` with another or no org gets removals only, and never a deletion, profile change or create. `users.org_id` is immutable. |
 | Buggy or compromised KyPost or KyMessages | Act on an account in another org | D10: the body's `org_id` must equal the account's, else `404 no_user`. Residual: a peer holding the pair secret can still send a correct `org_id` for any account (Residual risks). |
 | User of a suspended org | Keep working through DAV, MCP, a cookie or a booking page | Org status is read with the account on every request (D6). Sessions are deleted at the transition, and DAV and MCP refuse. Back-channel logout and T's token revocation end KyIdentity's side. Window: one poll, at most about 60 s. |
 | Former customer (deleted org) | Get data back, or have it linger | Batched, resumable purge behind a fail-closed audit row. The tombstone refuses later tokens and peer messages. A restore re-purges at the first poll. Residual: backups keep data until they age out. |
