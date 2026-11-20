@@ -156,7 +156,15 @@ in an org.
 
 `orgs.status` takes KyIdentity's values (`active`, `suspended`, `deletion_scheduled`, `deleted`)
 plus one local value, `stale`: KyCalendar has no current answer for this org. Only `active`
-serves. Customer orgs reach any other value only from a poll answer.
+serves. A customer org's row changes in exactly two ways:
+
+- **A successful poll** writes KyIdentity's status, including back to `active` from `stale`.
+- **`ResetAfterRestore`** sets every non-tombstone customer org to `stale` (Lifecycle,
+  Restore). This is the only source of `stale`.
+
+A failed poll changes nothing: every row keeps its last answer. A short KyIdentity outage therefore
+leaves serving orgs serving, and KyIdentity's own token lifetimes and back-channel logouts still
+apply.
 
 ### `OrgStore`
 
@@ -502,7 +510,7 @@ listing stays `stale`. It is unserved, its data is kept, and it is flagged on `G
 for staff. Staff confirm the org's state in KyIdentity, then run `kycalendar purge-org -org <id>`,
 which runs the same purge. Absence can also mean "KyCalendar not enabled" or a KyIdentity bug, so a
 deletion on absence alone would be a destructive guess.
-If the poll keeps failing, customer orgs stay unserved. That is the fail-closed choice: KyIdentity
+If the poll keeps failing after a restore, the restored orgs stay `stale` and unserved. That is the fail-closed choice: KyIdentity
 is down then anyway, so nobody can sign in. The staff org is not touched, so staff can still reach
 the admin screens. A test restores a capsule taken before a deletion and a suspension, then proves
 every credential type is refused until the poll, and that the poll purges the deleted org.
