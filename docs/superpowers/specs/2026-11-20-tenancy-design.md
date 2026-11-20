@@ -183,7 +183,14 @@ One migration (37, the next free version) on both backends:
    `calendars(org_id, id)`. Then add the composite FKs on `group_members`, `calendar_grants` and
    `suite_group_calendars`. On SQLite these are trigger checks, since `ALTER TABLE` cannot add
    constraints there.
-5. Record `tenancy_mode`. A multi-tenant install starts on an empty database (T "Migration").
+5. Record `tenancy_mode = single`, but only when `users` already holds rows: the same condition,
+   and the same reason, as the default-org insert in step 1. A fresh database gets no mode row from
+   the migration. Startup's `ensureOrgs` records the mode from `KYCALENDAR_TENANCY`, together with
+   `KYCALENDAR_STAFF_ORG_ID` in multi-tenant mode. It runs under the `bootstrap` lock when no mode
+   row exists yet, and D1's mismatch check runs right after. A multi-tenant install therefore starts
+   on an empty database (T "Migration"), and its first start records `multi`. The copy paths stay as
+   step 1 describes: a fresh target holds no mode row either, and the row is copied with
+   `server_settings`.
 
 On Postgres the default is dropped after the backfill, as T does. A multi-tenant install has no
 default org row, so an insert that forgets `org_id` fails the existence trigger instead of landing
@@ -638,7 +645,7 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    must check the `org_id` D10 adds before multi-tenant goes live (their own specs; open
    question 7).
 1. **Org model and default-org migration.** Migration 37: `orgs`, `org_usage`, the `org_id` columns,
-   the triggers, the composite keys and `tenancy_mode`.
+   the triggers, the composite keys, `tenancy_mode` for an existing install, and `ensureOrgs`.
    - Tests: an upgrade test from a version-36 database on both backends, with every row in the
      default org and every list and DAV answer unchanged. Also `TestEveryTableIsClassified`,
      `TestOrgOwnedTablesHaveOrgID`, and the full `make ci` and `make test-postgres`.
