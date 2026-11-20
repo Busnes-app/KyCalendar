@@ -77,7 +77,7 @@ From version 20 on, one SQL text serves both, apart from column types and the ta
 | `group_members` | `mig.go:82` / `:163` | O | Joins two org-owned rows. A composite FK keeps both in one org. |
 | `audit_records` | `mig.go:88` / `:169` | O | `user_id` has no FK. **Nullable** `org_id`: NULL is a platform row (restore, backup, staff platform actions), as T does for `audit_events`. |
 | `server_settings` | `mig.go:99` / `:180` | P | Install-wide keys only. Every key in use is install-wide (`internal/store/sqlstore.go:1807-1949`). Future per-org settings go in a new table, never in prefixed keys. |
-| `calendars` | `mig.go:257` / `:298` | O | `owner_id` has no FK and names a user or a group (`mig.go:259-260`). A trigger requires `org_id` to equal the owner's. |
+| `calendars` | `mig.go:257` / `:298` | O | `owner_id` has no FK (`mig.go:259-260`). For a user it names the user. For a group calendar it is the calendar's own ID (`AGENTS.md:334`). A trigger ties a personal calendar's `org_id` to its owner's. A group calendar takes the suite group's org at creation (Isolation). |
 | `calendar_objects` | `mig.go:270` / `:311` | D | `calendar_id` FK. `invitation_sender`, `_attendee` and `_recipient` are user IDs with no FK (`mig.go:861-863`). Once delivery is per org (D5) they always name the calendar's own org. |
 | `calendar_changes` | `mig.go:283` / `:324` | D | `calendar_id` FK |
 | `calendar_meta` | `mig.go:292` / `:333` | P | One row, `sync_epoch` (`mig.go:296`) |
@@ -131,19 +131,36 @@ Tables this spec adds:
 
 One migration (37, the next free version) on both backends:
 
-1. Create `orgs` and `org_usage`. Seed one row:
-   - Single-tenant: the default org (`active`, `enabled`).
-   - Multi-tenant, on an empty database: the staff org from `KYCALENDAR_STAFF_ORG_ID` (`active`,
-     `enabled`), and no default org.
+1. Create `orgs` and `org_usage`. The migration text is fixed and reads no environment. It inserts
+   the default org (`active`, `enabled`) only when `users` already holds rows. That is an existing
+   install, which is always single-tenant, since converting one to multi-tenant is out of scope
+   (as in T). A fresh database gets no `orgs` row from the migration.
 
-   Migrations run under the `bootstrap` lock before the first admin is created
-   (`AGENTS.md:475`). So the staff org exists before bootstrap and `init-admin` insert the `admin`
-   account into it (D8), and no poll is needed first. The staff org row comes from configuration:
-   the mirror poll never changes it and the purge never touches it.
+   Startup then runs `ensureOrgs` under the same `bootstrap` lock, after the migrations and before
+   the first admin is created (`AGENTS.md:475`). It is idempotent: it inserts the default org
+   (single-tenant) or the staff org from `KYCALENDAR_STAFF_ORG_ID` (multi-tenant, `active`,
+   `enabled`) if it is missing. So the staff org exists before bootstrap and `init-admin` insert the
+   `admin` account into it (D8), and no poll is needed first. The staff org row comes from
+   configuration: the mirror poll never changes it and the purge never touches it.
+
+   The copy paths stay correct, because they run only the migrations on an empty target, which
+   then holds no `orgs` row:
+   - `SnapshotToSQLite` (the PostgreSQL backup member);
+   - `migrate-postgres`, whose emptiness check allows only the rows migrations write themselves
+     (`seeded`, `internal/store/migrate_postgres.go:16-17`).
+
+   `orgs` and `org_usage` join `migrationTables` (`internal/store/snapshot.go:23-37`) and are copied
+   like any table. `org_usage` follows `calendar_objects` as `calendar_usage` does (`:20-22`).
 2. Add `org_id`, defaulting to the default org, to every O table. Backfill `org_usage` from
    `calendar_objects`.
 3. Add triggers on both backends, with the same names. One requires the org to exist in `orgs`.
-   One refuses any change to `org_id`. One requires a calendar's `org_id` to equal its owner's.
+   One refuses any change to `org_id`. For a personal calendar (`owner_kind = 'user'`), one requires
+   the calendar's `org_id` to equal the owning user's.
+
+   A group calendar has no owner row to compare. Its `owner_id` is its own ID, so it outlives the
+   group (`AGENTS.md:334`). Its org is set once, at creation, from the suite group's org in the
+   `/api/suite/groups?org_id=` answer that creates it (Suite answers). The composite FKs on
+   `suite_group_calendars` and `calendar_grants` then tie it to groups of that same org.
 4. Add the composite uniques `users(org_id, id)`, `groups(org_id, id)` and
    `calendars(org_id, id)`. Then add the composite FKs on `group_members`, `calendar_grants` and
    `suite_group_calendars`. On SQLite these are trigger checks, since `ALTER TABLE` cannot add
@@ -258,9 +275,13 @@ In multi-tenant mode:
 
 1. `claimsFromIDToken` also reads `org_id`. A token without it is refused: `403`, audited
    `auth.sso_refused reason=no_org`, and no row is created or changed.
-2. The org must be in the `orgs` mirror, `active` and `enabled`. An org not yet mirrored triggers one
-   immediate poll, limited to one a minute across the install. If it is still unknown or not
-   active, the login is refused `403 org_not_active`. KyIdentity would already have refused a
+2. The org must be in the `orgs` mirror, `active` and `enabled`. An org not yet mirrored triggers an
+   immediate poll, and the callback waits up to 5 s for it. Polls are single-flight: a sign-in joins
+   one already running instead of being refused for it. Each unknown org ID can trigger a poll at
+   most once every 10 s. The ID comes from a verified token or signed webhook, so only KyIdentity
+   can name one. Only if the org is still unknown or not active
+   after that poll is the login refused `403 org_not_active`. A new customer's first sign-in right
+   after signup therefore succeeds. KyIdentity would already have refused a
    suspended org (T "Suspension"). This check covers the poll window and a disabled app.
 3. **New account:** created with `org_id` from the token, in the same transaction that inserts the
    user. `users.org_id` is immutable (trigger).
@@ -282,8 +303,8 @@ In multi-tenant mode the payload must carry `org_id`. The rule for a missing or 
 
 `user.created` for an unknown `sub` follows the same org rule as sign-in:
 
-- If the org is not mirrored yet, KyCalendar runs one immediate poll, under the same install-wide
-  limit of one a minute. A new customer's first members usually arrive inside the 60 s gap.
+- If the org is not mirrored yet, KyCalendar runs the same single-flight poll as sign-in, limited
+  per org ID, and waits for it. A new customer's first members usually arrive inside the 60 s gap.
 - If the org is mirrored, `active` and `enabled`, the account is created in that org.
 - If it is still unknown, or not `active` or `enabled`, nothing is created, and the event is
   audited `sso.webhook_refused reason=org_unknown` or `reason=org_not_active`.
