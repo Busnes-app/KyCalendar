@@ -40,7 +40,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | # | Decision | Why |
 |---|---|---|
 | D1 | `KYCALENDAR_TENANCY=single` (default) or `multi`, recorded in `server_settings` at first start. A later start with the other value refuses to start. In multi-tenant mode `KYCALENDAR_STAFF_ORG_ID` (D7) gets the same treatment: recorded at first start, a later start with another value refuses to start, and setting it in single-tenant mode is a startup error. Both join the replica configuration fingerprint (`internal/config/replica.go:17`). | Install-time, as decided. A replica started in the wrong mode must not serve. Mirrors T D1. The staff org decides every admin grant and owns the break-glass accounts. If it changed on a restart, existing staff would silently lose admin, and the new org would have no seeded row. If it differed between replicas, they would make different admin decisions on one database. |
-| D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. | The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
+| D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. `KY_SSO_AUTO_PROVISION=false` is a startup error in multi-tenant mode. | Auto-provisioning is what makes a skipped webhook create harmless (Directory webhook): the first sign-in creates the account. The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
 | D3 | Isolation is enforced in the application, through an org-bound store handle (`OrgStore`), as T D3 does. | Each migration names a SQL text per backend (`internal/store/migrations/migrations.go:13-18`). From version 20 on, the registry entries (`migrations.go:571-607`, versions 20–36) give both backends one text, with only column types swapped. The exception is version 32's task search index (`taskSearchSQLite` and `taskSearchPostgres`, `:603`). The table SQL itself lives in constants later in the file, which the Inventory cites. Single-tenant installs on SQLite run the same handlers. App-level scoping covers both. |
 | D4 | Single-tenant installs get one **default org** (`00000000-0000-0000-0000-000000000001`, T's default-org ID). Every org-owned row carries it after the upgrade. Tokens there carry no `org_id` (T D4), and KyCalendar reads none. | One code path. With one org, every query returns what it returns today, which is the zero-change argument the upgrade test proves. |
 | D5 | **Calendar user lookup is per org.** `CalendarUser(email)` (`internal/store/scheduling.go:164-186`) becomes `CalendarUser(org, email)`. An attendee, organizer or free/busy target in another org is "not on this instance". | That one lookup decides internal delivery, free/busy, the out-of-office comment and meeting membership (Isolation, below). Scoping it is what makes cross-org sharing go out by email, and only by email. |
@@ -280,8 +280,8 @@ In multi-tenant mode the payload must carry `org_id`, or it is ignored and audit
 - If it is still unknown, or not `active` or `enabled`, nothing is created, and the event is
   audited `sso.webhook_refused reason=org_unknown` or `reason=org_not_active`.
 
-A skipped create loses nothing: with auto-provisioning on, the person's first sign-in creates the
-account once the org serves (Sign-in, step 2). So the insert never reaches the existence trigger
+A skipped create loses nothing. Auto-provisioning is required in multi-tenant mode (D2), so the
+person's first sign-in creates the account once the org serves (Sign-in, step 2). So the insert never reaches the existence trigger
 with an unmirrored org.
 
 Any event for a known `sub` with another
@@ -454,10 +454,14 @@ batches, on the elected worker:
 1. Write the platform audit row `platform.org_purge_started` (org ID, no content). If it cannot be
    written, nothing is deleted (fail closed), as in T. The org is already refused everywhere, since
    its status is `deleted`, so nothing new is written into it while the purge runs.
-2. One calendar per transaction, under `calendar-total`: delete the calendar. Its objects, changes,
-   grants, subscriptions and reservations cascade, and the usage triggers adjust `calendar_usage`
-   and `org_usage` in the same transaction. One transaction is bounded by one owner's quota
-   (`max_bytes_per_user`). Other orgs' writes wait for at most one batch.
+2. Delete objects in batches under `calendar-total`: at most 500 objects or 4 MiB per transaction,
+   whichever comes first. Each object's cascades go with it (changes, reservations, MCP and
+   meeting rows), and the usage triggers adjust `calendar_usage` and `org_usage` in the same
+   transaction. The batch bounds rows and bytes, not owners. A group calendar's objects are
+   charged to many writers (`internal/store/invitation_charges.go:20-26`), so one calendar can hold
+   far more than one user's quota. When a calendar is empty, a small transaction deletes it with
+   its grants and subscription. Other orgs' writes wait for at most one batch. The 500 and 4 MiB
+   are starting values, measured in PR 4.
 3. One final transaction:
    - delete `sso_subject_logouts` rows whose `subject` is one of the org's users'
      `sso_subject`, before the users (the table is P with no `org_id`, so the users rows are its only
@@ -487,6 +491,17 @@ the reset. A restored row therefore never serves on its capsule-time `active`.
 Every access check (sessions, DAV, MCP, booking pages, KyPost inbound) refuses a `stale` org as it
 refuses a suspended one. Only the next successful poll writes KyIdentity's current status back, and
 that poll re-reads every org from revision 0. The purge then runs again for any org now `deleted`.
+
+This relies on a KyIdentity contract that T implies but does not state: a full listing from
+revision 0 includes every org ever created for the calling app, with tombstones as `deleted`. T
+keeps every `orgs` row as a tombstone and never reuses an ID ("Data model"), so the data exists.
+Open question 9 asks KyIdentity to state the listing rule.
+
+Until it does, KyCalendar never purges on absence. A customer org missing from a complete full
+listing stays `stale`. It is unserved, its data is kept, and it is flagged on `GET /api/admin/orgs`
+for staff. Staff confirm the org's state in KyIdentity, then run `kycalendar purge-org -org <id>`,
+which runs the same purge. Absence can also mean "KyCalendar not enabled" or a KyIdentity bug, so a
+deletion on absence alone would be a destructive guess.
 If the poll keeps failing, customer orgs stay unserved. That is the fail-closed choice: KyIdentity
 is down then anyway, so nobody can sign in. The staff org is not touched, so staff can still reach
 the admin screens. A test restores a capsule taken before a deletion and a suspension, then proves
@@ -641,3 +656,8 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
 8. **App passwords during suspension.** Recommend keeping them, refused while not active, so a
    resume needs no device setup. The alternative is to revoke them at suspension, which is simpler
    but makes every customer re-pair every device after a late payment.
+9. **Tombstones in `/api/suite/orgs`.** Recommend that KyIdentity's step 3 states that a full
+   listing (`since=0`) returns every org ever created for the app, tombstones included as
+   `deleted`, and that `since=<revision>` returns each deletion once. KyCalendar's restore
+   re-purge (Lifecycle) depends on it. Until then, an org absent from a full listing stays `stale`
+   and is purged only by staff with `purge-org`.
