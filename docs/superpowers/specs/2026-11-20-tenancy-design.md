@@ -149,8 +149,16 @@ One migration (37, the next free version) on both backends:
    - `migrate-postgres`, whose emptiness check allows only the rows migrations write themselves
      (`seeded`, `internal/store/migrate_postgres.go:16-17`).
 
-   `orgs` and `org_usage` join `migrationTables` (`internal/store/snapshot.go:23-37`) and are copied
-   like any table. `org_usage` follows `calendar_objects` as `calendar_usage` does (`:20-22`).
+   `orgs` and `org_usage` join `migrationTables` (`internal/store/snapshot.go:23-37`). The list is
+   the copy order, and two places in it matter:
+   - `orgs` goes **first**, before every O table, because the existence trigger refuses any row
+     whose org is not yet in `orgs`. Today's list starts with `users` (`:24`), so `orgs` must be
+     added ahead of it.
+   - `org_usage` goes after `calendar_objects`, as `calendar_usage` does (`:20-22`): the target's
+     usage rows are deleted before the copy, and the copied rows land last.
+
+   PR 1 extends `TestMigrationTablesCoverTheSchema` (`internal/store/roundtrip_test.go:128`) to
+   fail when an O table precedes `orgs` in the list.
 2. Add `org_id`, defaulting to the default org, to every O table. Backfill `org_usage` from
    `calendar_objects`.
 3. Add triggers on both backends, with the same names. One requires the org to exist in `orgs`.
@@ -474,19 +482,21 @@ reaches every replica at the next request.
 
 **Suspended or `deletion_scheduled`** (stop serving, keep data):
 
-- In one transaction with its audit row: delete the org's sessions, and mark its queued outbox
-  messages held.
+- In one transaction with its audit row: delete the org's sessions.
+- Queued outbox messages are not changed. They stay `pending`, and delivery skips any row whose
+  org is not `active`. So their bytes keep counting toward `max_bytes` (Quotas), and a resume adds
+  nothing that was not already admitted.
 - Sign-in, web, DAV and MCP refuse (Calendar specifics). App passwords are kept, so a resume brings
   back DAV clients without new setup.
 - KyPost inbound for the org's accounts answers `404 no_user`. KyPost keeps the mail.
 - Booking pages of the org's hosts are `404`.
 - Workers skip the org: subscription refresh, meeting and presence outboxes, suite groups and
-  outbox delivery. A held message is still abandoned 24 hours after it was built
+  outbox delivery. A skipped message is still abandoned 24 hours after it was built
   (`internal/davbackend/scheduling.go:131,266`), so a long suspension drops pending invitations.
   This is accepted: a sender in a suspended org cannot follow up anyway.
 - Nothing is deleted.
 
-**Resumed:** the hold is lifted. Sessions do not come back, as in T.
+**Resumed:** delivery picks the org's pending messages up again. Sessions do not come back, as in T.
 
 **Deleted** (purge). Every object write in every org takes the `calendar-total` lock
 (`internal/store/calendars.go:322,483`), so one transaction for a large org would block writes in
@@ -584,7 +594,7 @@ question 1.
 
 | # | T requires | KyCalendar today | KyCalendar in multi-tenant mode |
 |---|---|---|---|
-| 1 | Refuse a token without `org_id` | Reads no org claim (`internal/sso/oauth.go:179-202`) | ID token without `org_id`: `403`, nothing written (Identity binding). Webhook without it: ignored. A logout token without it still ends sessions, because removal is always safe. |
+| 1 | Refuse a token without `org_id` | Reads no org claim (`internal/sso/oauth.go:179-202`) | ID token without `org_id`: `403`, nothing written (Identity binding). Webhook without it, or with another org: removals applied (deactivation, and a delete downgraded to deactivation), additions and profile changes ignored (Directory webhook). A logout token without it still ends sessions. Removal is always safe on both paths. |
 | 2 | Key every row by `org_id` | No org anywhere | `org_id` on every O table, D tables through their parents, composite FKs where a table joins two org rows, and triggers for existence, immutability and owner agreement (Isolation) |
 | 3 | Bind a local account to `(sub, org_id)`, and refuse a known `sub` with a different `org_id` | Bound to `(sso_provider, sso_subject)` plus `sso_issuer` (`sso_handlers.go:69-110`) | `users.org_id` set at creation from the token or webhook and immutable. A mismatch is refused and audited, and never moves the account. |
 | 4 | Take the org only from a verified token, a signed webhook or a suite answer | n/a | Org sources: ID token, the signed webhook body, `/api/suite/orgs` and `/api/suite/groups` answers. Peer `org_id` is a check only (D10). The only request-chosen org is a staff selection on a staff read route, after the admin check (Admin surface). |
