@@ -108,7 +108,7 @@ Tables this spec adds:
 | Table | Class | Reasoning |
 |---|---|---|
 | `orgs` (`id`, `status`, `revision`, `enabled`, `quotas_json`, `seen_at`, `purged_at`) | P | The local mirror of `/api/suite/orgs` (D6), and the target of every `org_id`. Holds the default org in single-tenant mode. A deleted org stays as a tombstone (D12). |
-| `org_usage` (`org_id`, `bytes`) | O | The org's calendar byte total for `max_bytes` (D11), kept by the same triggers as `calendar_usage`, through `calendars.org_id` |
+| `org_usage` (`org_id`, `bytes`) | O | The org's stored object bytes for `max_bytes` (D11). It is kept by the same triggers as `calendar_usage`, through `calendars.org_id`. Queued outbox bytes and reservations are added at check time (Quotas). |
 
 **Files and process state.** None of these are per user, and none change class in multi-tenant mode.
 
@@ -406,15 +406,21 @@ content").
 
 | Route (`internal/api/server.go`) | Multi-tenant |
 |---|---|
-| `GET /api/admin/users` (`:360`) | Read-only, and needs `?org=<id>` (`400 org_required` without it). It lists that org's accounts: status, role, last sign-in and usage. The org is the one request-chosen org, reachable only after `requireAdmin` (`:520-532`) and D7 have passed. It writes a `staff.read` audit row in that org's log. |
+| `GET /api/admin/users` (`:360`) | Read-only, and needs `?org=<id>` (`400 org_required` without it). It lists that org's accounts: status, role, last sign-in and usage. The org is the one request-chosen org, reachable only after `requireAdmin` (`:520-532`) and D7 have passed. It writes a `staff.read` audit row (see below). |
 | `POST`/`PATCH /api/admin/users…`, `role`, `disable`, `enable`, `reset-password`, `reattach` (`:361-367`) | `404` for customer accounts. Lifecycle is KyIdentity's (T member endpoints). |
 | `/api/admin/groups*`, `/api/admin/calendars*` (`:350-359`) | `404` (D9) |
 | `/api/admin/resources*` (`:425-427`) | `404` (D9) |
 | `GET /api/admin/scim` (`:369`) | Shows SCIM off |
 | `GET /api/admin/signin` (`:370`) | Read-only. `PUT` and `POST /test` (`:371-372`) are refused (D2). |
-| `GET /api/admin/audit` (`:368`) | Platform rows by default. `?org=<id>` reads one org's rows and writes `staff.read` there. |
+| `GET /api/admin/audit` (`:368`) | Platform rows by default. `?org=<id>` reads one org's rows and writes a `staff.read` row. |
 | `GET /api/admin/kypost`, `/kymessages` (`:373-374`), `/api/admin/booking` (`:432-433`), backups (`:319-326`), theme and rate-limit networks (`:330-332`) | Platform settings, unchanged, admin and step-up as today |
 | New `GET /api/admin/orgs` | Read-only: the mirror (status, revision, enabled, quotas, usage, last poll). Staff need it to answer a customer about a quota. |
+
+`staff.read` rows are **platform** rows (`org_id` NULL), with the target org's ID and the route in
+`details`. So they survive the org's purge, which deletes only the org's own audit rows. The record
+of which staff read a deleted customer's directory then outlives the customer, and ages out with the
+rest of the audit log (365 days, `AGENTS.md:303`). The org ID is opaque, so the row holds no
+customer data.
 
 Single-tenant keeps every route as it is today.
 
@@ -440,24 +446,37 @@ reaches every replica at the next request.
 
 **Resumed:** the hold is lifted. Sessions do not come back, as in T.
 
-**Deleted** (purge): in one transaction under the `calendar-total` lock
-(`internal/store/calendars.go:322`), so usage stays exact:
+**Deleted** (purge). Every object write in every org takes the `calendar-total` lock
+(`internal/store/calendars.go:322,483`), so one transaction for a large org would block writes in
+all the others, past the 14 s request deadline (`AGENTS.md:356`). The purge therefore runs in short
+batches, on the elected worker:
 
-1. Delete `sso_subject_logouts` rows whose `subject` is one of the org's users' `sso_subject`.
-   This runs first because the table is P and has no `org_id`: once the users are gone, nothing
-   maps the org to those rows.
-2. Delete the org's calendars (the D tables cascade) and groups.
-3. Delete its users. Sessions, app passwords, bookings, tasks, meetings, out-of-office and
-   presence cascade.
-4. Delete its rows in the O tables without FKs: `scheduling_outbox`, `invitation_byte_budget`,
-   `device_pairings` and `audit_records`.
-5. Delete `org_usage`.
-6. Set `orgs.purged_at`, and write one platform audit row `platform.org_deleted` with the row count
-   per table and no content. If that row cannot be written, nothing is deleted (fail closed), as in
-   T.
+1. Write the platform audit row `platform.org_purge_started` (org ID, no content). If it cannot be
+   written, nothing is deleted (fail closed), as in T. The org is already refused everywhere, since
+   its status is `deleted`, so nothing new is written into it while the purge runs.
+2. One calendar per transaction, under `calendar-total`: delete the calendar. Its objects, changes,
+   grants, subscriptions and reservations cascade, and the usage triggers adjust `calendar_usage`
+   and `org_usage` in the same transaction. One transaction is bounded by one owner's quota
+   (`max_bytes_per_user`). Other orgs' writes wait for at most one batch.
+3. One final transaction:
+   - delete `sso_subject_logouts` rows whose `subject` is one of the org's users'
+     `sso_subject`, before the users (the table is P with no `org_id`, so the users rows are its only
+     map to the org);
+   - delete the org's groups and users (sessions, app passwords, bookings, tasks, meetings,
+     out-of-office and presence cascade);
+   - delete its rows in the O tables without FKs: `scheduling_outbox`, `invitation_byte_budget`,
+     `device_pairings` and the org's own `audit_records`;
+   - delete `org_usage`;
+   - set `orgs.purged_at`, and write `platform.org_deleted` with the row count per table and no
+     content.
+
+The purge is idempotent. A crash between batches leaves `purged_at` unset, and the next worker run
+continues from the calendars that are left. The batch size and the purge's total time are measured
+in PR 4 (open question 4).
 
 A test proves the purge leaves no row with the org's ID, or naming one of its users, in any
-O or D table, checked against the table classification.
+O or D table, checked against the table classification. A second test kills the purge between
+batches and proves the next run finishes it.
 
 **Restore:** a capsule is the whole install (`internal/backup/payload.go:45-143`), so a restore
 can bring back an org deleted or suspended since the capsule was made. In multi-tenant mode
@@ -484,9 +503,19 @@ question 1.
 **Quotas** (D11):
 
 - `max_bytes` is checked beside the per-owner and instance checks
-  (`internal/store/calendars.go:396-445`), under the same `calendar-total` lock, against
-  `org_usage`. It counts the same bytes as the owner check: objects, queued outbox bytes and
-  cancellation reservations (`internal/store/invitation_charges.go:20-32`).
+  (`internal/store/calendars.go:396-445`), under the same `calendar-total` lock. It counts the same
+  bytes as the owner check, `ownerUsage` (`internal/store/invitation_charges.go:20-45`):
+  - stored objects: `org_usage`;
+  - queued outbox bytes: `SUM(LENGTH(body))` of `scheduling_outbox` rows with `status = 'pending'`
+    and the org's `org_id`, which is O for this reason;
+  - cancellation reservations: `cancellation_reservations` joined to `calendars` on
+    `calendar_id`, for the org's calendars (`mig.go:851-858`), plus the pending cancellation growth
+    `ownerUsage` already adds.
+
+  The last two are summed in the check, as `ownerUsage` does for one sender, rather than kept by
+  triggers. So `org_usage` holds object bytes only, and the backfill from `calendar_objects` is
+  complete. Every row counted belongs to the org: delivery never crosses orgs (D5), so a sender's
+  outbox rows and reservations are on the sender's own org's calendars.
 - `max_bytes_per_user` replaces `KY_CALENDAR_MAX_BYTES_PER_USER` for the org's owners.
 - A lower quota never deletes data. Writes that grow the org are refused (`507` on CalDAV, the
   existing quota answer on the web) until usage is under the limit.
@@ -517,9 +546,9 @@ question 1.
 | Forged or replayed directory webhook | Create an account in another org, or move one | HMAC over the body, which carries `org_id`. The timestamp window is ±5 minutes (`kysignon.go:52`). A known `sub` with another org is ignored. `users.org_id` is immutable. |
 | Buggy or compromised KyPost or KyMessages | Act on an account in another org | D10: the body's `org_id` must equal the account's, else `404 no_user`. Residual: a peer holding the pair secret can still send a correct `org_id` for any account (Residual risks). |
 | User of a suspended org | Keep working through DAV, MCP, a cookie or a booking page | Org status is read with the account on every request (D6). Sessions are deleted at the transition, and DAV and MCP refuse. Back-channel logout and T's token revocation end KyIdentity's side. Window: one poll, at most about 60 s. |
-| Former customer (deleted org) | Get data back, or have it linger | One-transaction purge with a fail-closed audit row. The tombstone refuses later tokens and peer messages. A restore re-purges at the first poll. Residual: backups keep data until they age out. |
+| Former customer (deleted org) | Get data back, or have it linger | Batched, resumable purge behind a fail-closed audit row. The tombstone refuses later tokens and peer messages. A restore re-purges at the first poll. Residual: backups keep data until they age out. |
 | Anonymous visitor to a booking page | Reach a host in another org, or a suspended host | The slug is a 128-bit random value. A non-active host org is `404`. The booker is looked up only in the host's org. |
-| Staff, or a stolen staff account | Read customers' calendars | Administrators get `None` on every calendar and are refused on DAV, MCP and app passwords. Staff see the directory and usage only, and every org-bound read is audited in that org's log. T's staff controls (passkeys, audit) cover the KyIdentity side. |
+| Staff, or a stolen staff account | Read customers' calendars | Administrators get `None` on every calendar and are refused on DAV, MCP and app passwords. Staff see the directory and usage only, and every org-bound read writes a platform audit row naming the org, which outlives a purge. T's staff controls (passkeys, audit) cover the KyIdentity side. |
 | One org | Exhaust storage or the outbox for everyone | `max_bytes` and `max_bytes_per_user` (D11), the instance cap (`calendar_usage`) and the per-sender invite limits (`scheduling.go:43`, `invitation_budget.go:11`) |
 
 ## Phased build plan
