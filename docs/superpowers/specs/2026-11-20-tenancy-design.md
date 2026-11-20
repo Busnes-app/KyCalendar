@@ -157,6 +157,16 @@ One migration (37, the next free version) on both backends:
    - `org_usage` goes after `calendar_objects`, as `calendar_usage` does (`:20-22`): the target's
      usage rows are deleted before the copy, and the copied rows land last.
 
+   **Who creates an `org_usage` row.** The usage triggers only `UPDATE`, as `calendar_usage`'s do
+   (`mig.go:410-428`). An org's row is inserted, with `bytes = 0`, by the application code in the
+   same transaction that inserts its `orgs` row: `ensureOrgs`, and the mirror poll when it first sees
+   an org. The migration backfill inserts one for the default org. A copy inserts `orgs` rows raw, so
+   no `org_usage` row exists in the target while objects are copied. The triggers then match
+   nothing, and the copied `org_usage` rows land last with exact totals, as for `calendar_usage`.
+   The `max_bytes` check treats a missing `org_usage` row as an error and refuses the write (fail
+   closed), so a bug can never turn into an unmetered org. A test inserts a new org through the poll,
+   writes an object, and proves its `org_usage` grew by the object's size.
+
    PR 1 extends `TestMigrationTablesCoverTheSchema` (`internal/store/roundtrip_test.go:128`) to
    fail when an O table precedes `orgs` in the list.
 2. Add `org_id`, defaulting to the default org, to every O table. Backfill `org_usage` from
