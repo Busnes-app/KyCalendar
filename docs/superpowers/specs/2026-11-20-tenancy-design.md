@@ -131,7 +131,15 @@ Tables this spec adds:
 
 One migration (37, the next free version) on both backends:
 
-1. Create `orgs` and `org_usage`. Insert the default org (`active`, `enabled`).
+1. Create `orgs` and `org_usage`. Seed one row:
+   - Single-tenant: the default org (`active`, `enabled`).
+   - Multi-tenant, on an empty database: the staff org from `KYCALENDAR_STAFF_ORG_ID` (`active`,
+     `enabled`), and no default org.
+
+   Migrations run under the `bootstrap` lock before the first admin is created
+   (`AGENTS.md:475`). So the staff org exists before bootstrap and `init-admin` insert the `admin`
+   account into it (D8), and no poll is needed first. The staff org row comes from configuration:
+   the mirror poll never changes it and the purge never touches it.
 2. Add `org_id`, defaulting to the default org, to every O table. Backfill `org_usage` from
    `calendar_objects`.
 3. Add triggers on both backends, with the same names. One requires the org to exist in `orgs`.
@@ -140,12 +148,15 @@ One migration (37, the next free version) on both backends:
    `calendars(org_id, id)`. Then add the composite FKs on `group_members`, `calendar_grants` and
    `suite_group_calendars`. On SQLite these are trigger checks, since `ALTER TABLE` cannot add
    constraints there.
-5. Record `tenancy_mode`. A multi-tenant install starts on an empty database, so step 1 inserts
-   no default org and every insert must name a real org (T "Migration").
+5. Record `tenancy_mode`. A multi-tenant install starts on an empty database (T "Migration").
 
 On Postgres the default is dropped after the backfill, as T does. A multi-tenant install has no
 default org row, so an insert that forgets `org_id` fails the existence trigger instead of landing
 in an org.
+
+`orgs.status` takes KyIdentity's values (`active`, `suspended`, `deletion_scheduled`, `deleted`)
+plus one local value, `stale`: KyCalendar has no current answer for this org. Only `active`
+serves. Customer orgs reach any other value only from a poll answer.
 
 ### `OrgStore`
 
@@ -433,10 +444,18 @@ A test proves the purge leaves no row with the org's ID, or naming one of its us
 O or D table, checked against the table classification.
 
 **Restore:** a capsule is the whole install (`internal/backup/payload.go:45-143`), so a restore
-can bring back an org deleted since the capsule was made. `ResetAfterRestore`
-(`internal/store/sqlstore.go:81-131`) also resets the mirror's revision to 0. Until the next poll
-succeeds, multi-tenant mode serves no customer org. That poll re-reads every org, and the purge
-runs again for any org now `deleted`.
+can bring back an org deleted or suspended since the capsule was made. In multi-tenant mode
+`ResetAfterRestore` (`internal/store/sqlstore.go:81-131`) also sets every customer org's mirror row
+to `stale`, apart from tombstones, and its revision to 0, in the same transaction as the rest of
+the reset. A restored row therefore never serves on its capsule-time `active`.
+
+Every access check (sessions, DAV, MCP, booking pages, KyPost inbound) refuses a `stale` org as it
+refuses a suspended one. Only the next successful poll writes KyIdentity's current status back, and
+that poll re-reads every org from revision 0. The purge then runs again for any org now `deleted`.
+If the poll keeps failing, customer orgs stay unserved. That is the fail-closed choice: KyIdentity
+is down then anyway, so nobody can sign in. The staff org is not touched, so staff can still reach
+the admin screens. A test restores a capsule taken before a deletion and a suspension, then proves
+every credential type is refused until the poll, and that the poll purges the deleted org.
 
 **Export:** KyIdentity's org export holds directory data only (T "Replicas, Postgres and backups").
 Calendar content is KyCalendar's. While an org is active, every member can already copy their own
