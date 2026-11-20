@@ -39,7 +39,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | `KYCALENDAR_TENANCY=single` (default) or `multi`, recorded in `server_settings` at first start. A later start with the other value refuses to start. It joins the replica configuration fingerprint (`internal/config/replica.go:17`). | Install-time, as decided. A replica started in the wrong mode must not serve. Mirrors T D1. |
+| D1 | `KYCALENDAR_TENANCY=single` (default) or `multi`, recorded in `server_settings` at first start. A later start with the other value refuses to start. In multi-tenant mode `KYCALENDAR_STAFF_ORG_ID` (D7) gets the same treatment: recorded at first start, a later start with another value refuses to start, and setting it in single-tenant mode is a startup error. Both join the replica configuration fingerprint (`internal/config/replica.go:17`). | Install-time, as decided. A replica started in the wrong mode must not serve. Mirrors T D1. The staff org decides every admin grant and owns the break-glass accounts. If it changed on a restart, existing staff would silently lose admin, and the new org would have no seeded row. If it differed between replicas, they would make different admin decisions on one database. |
 | D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. | The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
 | D3 | Isolation is enforced in the application, through an org-bound store handle (`OrgStore`), as T D3 does. | Each migration names a SQL text per backend (`internal/store/migrations/migrations.go:13-18`). From version 20 on, the two share one text, with only column types swapped, apart from the task search index in 32 (`migrations.go:571-607`). Single-tenant installs on SQLite run the same handlers. App-level scoping covers both. |
 | D4 | Single-tenant installs get one **default org** (`00000000-0000-0000-0000-000000000001`, T's default-org ID). Every org-owned row carries it after the upgrade. Tokens there carry no `org_id` (T D4), and KyCalendar reads none. | One code path. With one org, every query returns what it returns today, which is the zero-change argument the upgrade test proves. |
@@ -270,8 +270,21 @@ user carries the org. No request header, path or form field ever names an org fo
 (`internal/sso/kysignon.go:39-56`, `internal/crypto/crypto.go:87-97`), so a field T adds to the
 body is authenticated. Today's payload has no org (`kysignon.go:28-36`).
 
-In multi-tenant mode the payload must carry `org_id`, or it is ignored and audited. `user.created`
-for an unknown `sub` creates the account in that org. Any event for a known `sub` with another
+In multi-tenant mode the payload must carry `org_id`, or it is ignored and audited.
+
+`user.created` for an unknown `sub` follows the same org rule as sign-in:
+
+- If the org is not mirrored yet, KyCalendar runs one immediate poll, under the same install-wide
+  limit of one a minute. A new customer's first members usually arrive inside the 60 s gap.
+- If the org is mirrored, `active` and `enabled`, the account is created in that org.
+- If it is still unknown, or not `active` or `enabled`, nothing is created, and the event is
+  audited `sso.webhook_refused reason=org_unknown` or `reason=org_not_active`.
+
+A skipped create loses nothing: with auto-provisioning on, the person's first sign-in creates the
+account once the org serves (Sign-in, step 2). So the insert never reaches the existence trigger
+with an unmirrored org.
+
+Any event for a known `sub` with another
 `org_id` is ignored and audited `sso.webhook_refused reason=org_mismatch`. The webhook still only
 takes access away from an existing account (`AGENTS.md:331`). A refused event answers `200`, as
 an event for another binding's account does today (`internal/sso/kysignon.go:75-79`), so KyIdentity
@@ -430,13 +443,16 @@ reaches every replica at the next request.
 **Deleted** (purge): in one transaction under the `calendar-total` lock
 (`internal/store/calendars.go:322`), so usage stays exact:
 
-1. Delete the org's calendars (the D tables cascade) and groups.
-2. Delete its users. Sessions, app passwords, bookings, tasks, meetings, out-of-office and
+1. Delete `sso_subject_logouts` rows whose `subject` is one of the org's users' `sso_subject`.
+   This runs first because the table is P and has no `org_id`: once the users are gone, nothing
+   maps the org to those rows.
+2. Delete the org's calendars (the D tables cascade) and groups.
+3. Delete its users. Sessions, app passwords, bookings, tasks, meetings, out-of-office and
    presence cascade.
-3. Delete its rows in the O tables without FKs: `scheduling_outbox`, `invitation_byte_budget`,
-   `device_pairings`, `audit_records`, and `sso_subject_logouts` for its subjects.
-4. Delete `org_usage`.
-5. Set `orgs.purged_at`, and write one platform audit row `platform.org_deleted` with the row count
+4. Delete its rows in the O tables without FKs: `scheduling_outbox`, `invitation_byte_budget`,
+   `device_pairings` and `audit_records`.
+5. Delete `org_usage`.
+6. Set `orgs.purged_at`, and write one platform audit row `platform.org_deleted` with the row count
    per table and no content. If that row cannot be written, nothing is deleted (fail closed), as in
    T.
 
