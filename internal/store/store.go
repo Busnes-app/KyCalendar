@@ -80,6 +80,10 @@ type Store interface {
 	Coordination() CoordinationStore
 	// Org reaches one org's rows (orgs.go). Bind it only to an authenticated principal's org.
 	Org(id OrgID) OrgStore
+	// Tenancy is the install's recorded mode and, in multi-tenant mode, its staff org.
+	Tenancy(ctx context.Context) (Tenancy, error)
+	// OrgServes reports whether org id is mirrored, active and enabled.
+	OrgServes(ctx context.Context, id OrgID) (bool, error)
 
 	// SnapshotToSQLite writes a verified SQLite copy of this PostgreSQL database to path
 	// (snapshot.go). SQLite stores refuse: VACUUM INTO is their snapshot.

@@ -16,6 +16,7 @@ type LogoutClaims struct {
 	Subject   string
 	SessionID string
 	IssuedAt  time.Time
+	OrgID     string // KyIdentity sends org_id in multi-tenant mode only
 }
 
 // verifyLogout checks a logout token per OpenID Connect Back-Channel Logout 1.0 §2.6: the ID
@@ -38,6 +39,7 @@ func (f *oauthFlow) verifyLogout(ctx context.Context, raw string) (*LogoutClaims
 		IAT    int64                      `json:"iat"`
 		Nonce  json.RawMessage            `json:"nonce"` // not a pointer: a null nonce is present too
 		Events map[string]json.RawMessage `json:"events"`
+		OrgID  string                     `json:"org_id"`
 	}
 	if err := token.Claims(&claims); err != nil || claims.Nonce != nil || claims.IAT == 0 || (claims.Sub == "" && claims.SID == "") {
 		return nil, ErrInvalidLogoutToken
@@ -46,7 +48,7 @@ func (f *oauthFlow) verifyLogout(ctx context.Context, raw string) (*LogoutClaims
 	if err := json.Unmarshal(claims.Events[backchannelLogoutEvent], &event); err != nil || event == nil {
 		return nil, ErrInvalidLogoutToken
 	}
-	return &LogoutClaims{Subject: claims.Sub, SessionID: claims.SID, IssuedAt: time.Unix(claims.IAT, 0).UTC()}, nil
+	return &LogoutClaims{Subject: claims.Sub, SessionID: claims.SID, IssuedAt: time.Unix(claims.IAT, 0).UTC(), OrgID: claims.OrgID}, nil
 }
 
 // jwtType reads the protected header's typ; call it only after the signature verified.

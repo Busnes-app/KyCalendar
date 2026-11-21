@@ -97,6 +97,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
+	// D8: in multi-tenant mode a password admits only a staff break-glass administrator. A
+	// customer's account takes its org from a verified KyIdentity token, never from a password.
+	if ten, err := s.store.Tenancy(r.Context()); err != nil {
+		s.writeError(w, http.StatusInternalServerError, "Authentication error")
+		return
+	} else if ten.Multi && (user.Role != "admin" || ten.Staff == "" || store.OrgOf(user) != ten.Staff) {
+		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
 
 	// Issue active session
 	_, _, err = s.sessions.IssueSession(r.Context(), w, r, user)
