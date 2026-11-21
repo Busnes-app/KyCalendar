@@ -621,11 +621,16 @@ func (s *Server) sendHold(ctx context.Context, h *bookingHost, b *store.Booking,
 	if s.sched.KyPost == nil {
 		return errors.New("kypost unavailable")
 	}
+	org, err := store.PeerOrg(ctx, s.store, h.owner)
+	if err != nil {
+		return err
+	}
+	who.OrgID = org
 	var ics strings.Builder
 	if err := ical.NewEncoder(&ics).Encode(msg); err != nil {
 		return err
 	}
-	err := s.sched.KyPost.Send(ctx, "booking-hold-"+b.ID, kypost.SendRequest{User: who, From: h.org.Email(), Recipients: []string{b.Email},
+	err = s.sched.KyPost.Send(ctx, "booking-hold-"+b.ID, kypost.SendRequest{User: who, From: h.org.Email(), Recipients: []string{b.Email},
 		Method: itip.MethodRequest, ICS: ics.String()})
 	var refused kypost.Refused
 	if errors.As(err, &refused) {

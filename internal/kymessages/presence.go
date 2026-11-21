@@ -77,6 +77,9 @@ func (l *Link) Busy(ctx context.Context, eventID string, p BusyPush) (string, er
 // nil with setManual: clear).
 func (l *Link) Me(ctx context.Context, eventID string, u User, share *bool, manual *Manual, setManual bool) (Settings, error) {
 	body := map[string]any{"sub": u.Sub, "issuer": u.Issuer}
+	if u.OrgID != "" {
+		body["org_id"] = u.OrgID
+	}
 	if share != nil {
 		body["share"] = *share
 	}

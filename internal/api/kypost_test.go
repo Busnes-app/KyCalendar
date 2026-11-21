@@ -116,7 +116,7 @@ func TestKyPostRoutes(t *testing.T) {
 	}
 	deliver()
 	sent := fake.take()
-	if len(sent) != 1 || sent[0].Method != "REQUEST" || sent[0].From != "alice@example.com" || sent[0].Sub != "sub-alice" ||
+	if len(sent) != 1 || sent[0].Method != "REQUEST" || sent[0].From != "alice@example.com" || sent[0].Sub != "sub-alice" || sent[0].OrgID != "" ||
 		len(sent[0].Recipients) != 1 || sent[0].Recipients[0] != "carol@example.net" || !strings.Contains(sent[0].ICS, "METHOD:REQUEST") {
 		t.Fatalf("sent %+v", sent)
 	}

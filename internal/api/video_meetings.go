@@ -93,7 +93,9 @@ func (s *Server) syncMeeting(ctx context.Context, m *store.VideoMeeting) error {
 	}
 	var who kymessages.User
 	if owner != nil {
-		who = kymessages.User{Sub: owner.SSOSubject, Issuer: issuerURL(owner)}
+		if who, err = s.kymUser(ctx, owner); err != nil {
+			return err
+		}
 	}
 	if m.State == "closing" {
 		return s.closeMeeting(ctx, m, who)

@@ -34,10 +34,12 @@ const (
 	maxInbound     = 2 << 20 // a calendar object plus its JSON envelope
 )
 
-// User names who a request speaks for: their KyIdentity subject and issuer URL.
+// User names who a request speaks for: their KyIdentity subject and issuer URL, and in
+// multi-tenant mode their org (tenancy spec D10).
 type User struct {
 	Sub    string `json:"sub"`
 	Issuer string `json:"issuer"`
+	OrgID  string `json:"org_id,omitempty"`
 }
 
 // SendRequest asks KyPost to mail one iTIP message from the user's mailbox. KyPost builds the

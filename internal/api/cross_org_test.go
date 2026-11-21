@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -291,7 +292,8 @@ func TestMultiTenantSchedulesByEmail(t *testing.T) {
 	if bobCopy(t, st, "plan") != nil {
 		t.Error("the invitation was written into bob's calendar")
 	}
-	if sent := kp.take(); len(sent) != 1 || fmt.Sprint(sent[0].Recipients) != "[bob@example.com]" || sent[0].Method != "REQUEST" {
+	if sent := kp.take(); len(sent) != 1 || fmt.Sprint(sent[0].Recipients) != "[bob@example.com]" || sent[0].Method != "REQUEST" ||
+		sent[0].OrgID != string(store.DefaultOrg) { // D10: the sender's org
 		t.Errorf("KyPost sends %+v", sent)
 	}
 }
@@ -321,18 +323,57 @@ func TestMultiTenantOutOfOfficeIsRemote(t *testing.T) {
 	now := time.Now().UTC()
 	on := kypost.OutOfOfficeRequest{Revision: 1, Away: true, Start: now.Add(-time.Hour).Format(time.RFC3339), End: now.Add(48 * time.Hour).Format(time.RFC3339),
 		Tentative: true, CommentLocal: "Away; ask Sam.", CommentRemote: "I am away."}
+	bob := kypost.User{Sub: "sub-bob", Issuer: "https://id.example", OrgID: string(store.DefaultOrg)}
+	on.User = bob
 	if r := w.set(t, on); r.Code != 200 {
 		t.Fatalf("set: %d %s", r.Code, r.Body.String())
 	}
 	invite := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:alice-1\r\nDTSTAMP:20261101T000000Z\r\n" +
 		"DTSTART:20261212T090000Z\r\nDTEND:20261212T100000Z\r\nSUMMARY:Plan\r\nORGANIZER:mailto:alice@example.com\r\n" +
 		"ATTENDEE;RSVP=TRUE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	bob := kypost.User{Sub: "sub-bob", Issuer: "https://id.example"}
 	if r := signedPost(t, w.srv, "/api/itip/inbound", kypost.EventInbound, "in-1", kypost.InboundRequest{User: bob, From: "alice@example.com", DKIMAligned: true, ICS: invite}); !strings.Contains(r.Body.String(), "applied") {
 		t.Fatalf("inbound: %d %s", r.Code, r.Body.String())
 	}
 	w.srv.DeliverScheduled(context.Background())
 	if sent := w.fake.take(); len(sent) != 1 || !strings.Contains(sent[0].ICS, "COMMENT:I am away.") {
 		t.Fatalf("reply %+v", sent)
+	}
+}
+
+// D10: in multi-tenant mode every KyPost message must name the account's own org. Another org's
+// ID, or none, answers exactly as an unknown subject does; single-tenant mode does not check.
+func TestMultiTenantKyPostMessagesMustNameTheAccountsOrg(t *testing.T) {
+	srv, _, st, _ := kypostWorld(t)
+	routes := []struct{ path, event string }{
+		{"/api/itip/inbound", kypost.EventInbound},
+		{"/api/itip/respond", kypost.EventRespond},
+		{"/api/kypost/out-of-office", kypost.EventOOO},
+		{"/api/tasks/flag", kypost.EventTaskFlag},
+	}
+	n := 0
+	send := func(rt struct{ path, event string }, sub, org string) *httptest.ResponseRecorder {
+		n++
+		return signedPost(t, srv, rt.path, rt.event, fmt.Sprintf("org-%d", n), map[string]any{"sub": sub, "issuer": "https://id.example", "org_id": org})
+	}
+	answer := func(w *httptest.ResponseRecorder) string { return fmt.Sprint(w.Code, " ", w.Body.String()) }
+	for _, rt := range routes {
+		if got := answer(send(rt, "sub-bob", "")); strings.Contains(got, "no_user") {
+			t.Errorf("single-tenant %s refused bob: %s", rt.path, got)
+		}
+	}
+	multiTenant(t, st)
+	for _, rt := range routes {
+		unknown := answer(send(rt, "sub-nobody", string(store.DefaultOrg)))
+		if !strings.HasPrefix(unknown, "404 ") || !strings.Contains(unknown, "no_user") {
+			t.Fatalf("%s for an unknown subject: %s", rt.path, unknown)
+		}
+		for _, org := range []string{"", "org-other"} {
+			if got := answer(send(rt, "sub-bob", org)); got != unknown {
+				t.Errorf("%s for bob with org_id %q: %s, want %s", rt.path, org, got, unknown)
+			}
+		}
+		if got := answer(send(rt, "sub-bob", string(store.DefaultOrg))); strings.Contains(got, "no_user") {
+			t.Errorf("%s for bob with his own org: %s", rt.path, got)
+		}
 	}
 }

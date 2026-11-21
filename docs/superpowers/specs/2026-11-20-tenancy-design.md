@@ -691,7 +691,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    mirror, and its wait, come with PR 4. The staff org is read from the `tenancy_staff_org`
    setting, which PR 6 records from `KYCALENDAR_STAFF_ORG_ID`. With none recorded, nobody is an
    administrator. `init-admin` and bootstrap in the staff org wait for PR 6. Refusing admin
-   People writes waits for PR 5. (b) `org_id` in KyPost and KyMessages bodies (D10).
+   People writes waits for PR 5. (b) `org_id` in KyPost and KyMessages bodies (D10), filled by
+   `store.PeerOrg` and checked in `kypostPeerRequest`, the one gate of all four KyPost routes.
+   A mode read that fails answers 503 so KyPost retries.
    (c) the multi-tenant directory receiver (open question 10).
    - Tests: refusal without `org_id`, refusal of a known `sub` in another org, staff-org admin
      only, and peer bodies with a wrong or missing org answering `no_user`. Single-tenant golden
