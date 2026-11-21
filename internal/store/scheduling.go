@@ -114,8 +114,8 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 
 	for _, m := range fresh {
 		if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
- (id,dedupe_key,sender_id,method,recipient,body,status,attempts,next_attempt_at,last_error,created_at)
- VALUES (?,?,?,?,?,?,'pending',0,?,'',?) ON CONFLICT (dedupe_key) DO NOTHING`), m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now); err != nil {
+ (id,dedupe_key,sender_id,method,recipient,body,status,attempts,next_attempt_at,last_error,created_at,org_id)
+ VALUES (?,?,?,?,?,?,'pending',0,?,'',?,`+userOrg+`) ON CONFLICT (dedupe_key) DO NOTHING`), m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now, m.SenderID); err != nil {
 			return err
 		}
 	}
@@ -162,8 +162,17 @@ func (c *calendarStore) PruneOutbox(ctx context.Context, before time.Time) error
 }
 
 func (u *userStore) CalendarUser(ctx context.Context, email string) (*User, error) {
+	return u.emailOwner(ctx, email, `AND EXISTS (SELECT 1 FROM server_settings WHERE key = '`+TenancySetting+`' AND value = 'single')`)
+}
+
+func (u *userStore) EmailOwner(ctx context.Context, email string) (*User, error) {
+	return u.emailOwner(ctx, email, "")
+}
+
+// emailOwner is EmailOwner with the extra condition and, a constant.
+func (u *userStore) emailOwner(ctx context.Context, email, and string) (*User, error) {
 	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(`SELECT id FROM users
-WHERE LOWER(email) = LOWER(?) AND email <> '' AND role = 'user' AND status = 'active' LIMIT 2`), email)
+WHERE LOWER(email) = LOWER(?) AND email <> '' AND role = 'user' AND status = 'active' `+and+` LIMIT 2`), email)
 	if err != nil {
 		return nil, err
 	}

@@ -283,3 +283,77 @@ func TestOrgStoreAnswersOtherOrgsLikeMissing(t *testing.T) {
 }
 
 func second[T any](_ T, err error) error { return err }
+
+// TestNewRowsJoinTheirParentsOrg: a calendar, its objects, a feed's mirror, a queued message and
+// the invite budget of another org's user carry that org, not the default.
+func TestNewRowsJoinTheirParentsOrg(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const b = "org-b"
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0)`), b); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Users().CreateUser(ctx, &User{ID: "ub", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}); err != nil {
+			t.Fatal(err)
+		}
+		cs := s.Calendars()
+		if err := cs.CreateCalendar(ctx, &Calendar{ID: "cb", OwnerKind: "user", OwnerID: "ub", Slug: "default", Name: "B"}, 0); err != nil {
+			t.Fatal(err)
+		}
+		ics := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+		plan := func([]byte) ([]byte, []*OutboxMessage, error) {
+			return nil, []*OutboxMessage{{ID: "m1", DedupeKey: "d1", SenderID: "ub", Method: "REQUEST", Recipient: "mailto:x@example.com", Body: ics, CountInviteBytes: true}}, nil
+		}
+		if _, err := cs.PutObjectPlanned(ctx, &CalendarObject{CalendarID: "cb", Name: "e1.ics", Component: "VEVENT", UID: "e1", ETag: "1", Data: ics, WriterID: "ub"}, "", true, OwnerLimits{}, plan); err != nil {
+			t.Fatal(err)
+		}
+		if err := cs.CreateSubscribedCalendar(ctx, &Calendar{ID: "fb", OwnerKind: "user", OwnerID: "ub", Slug: "feed", Name: "F"}, &Subscription{URLSealed: "x", URLHost: "example.com"}, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := cs.ReplaceSubscriptionObjects(ctx, "fb", []*CalendarObject{{CalendarID: "fb", Name: "f1.ics", Component: "VEVENT", UID: "f1", ETag: "1", Data: ics}}, OwnerLimits{}); err != nil {
+			t.Fatal(err)
+		}
+		for _, q := range []string{
+			`SELECT org_id FROM calendars WHERE id = 'cb'`,
+			`SELECT org_id FROM calendars WHERE id = 'fb'`,
+			`SELECT org_id FROM calendar_objects WHERE calendar_id = 'cb'`,
+			`SELECT org_id FROM calendar_objects WHERE calendar_id = 'fb'`,
+			`SELECT org_id FROM scheduling_outbox WHERE id = 'm1'`,
+			`SELECT org_id FROM invitation_byte_budget WHERE sender_id = 'ub'`,
+		} {
+			var org string
+			if err := s.db.QueryRowContext(ctx, q).Scan(&org); err != nil || org != b {
+				t.Errorf("%s: %q %v", q, org, err)
+			}
+		}
+	})
+}
+
+// TestCalendarUserFailsClosed: without a tenancy_mode of single, nobody is a scheduling peer, so a
+// lost row can never leak across orgs; the next store open (ensureOrgs) writes it back.
+func TestCalendarUserFailsClosed(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		if err := s.Users().CreateUser(ctx, &User{ID: "ua", Username: "a", Email: "a@example.com", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Settings().DeleteSetting(ctx, TenancySetting); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Users().CalendarUser(ctx, "a@example.com"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("no tenancy_mode: %v", err)
+		}
+		if u, err := s.Users().EmailOwner(ctx, "a@example.com"); err != nil || u.ID != "ua" {
+			t.Fatalf("own address without tenancy_mode: %+v %v", u, err)
+		}
+		if err := s.ensureOrgs(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if u, err := s.Users().CalendarUser(ctx, "a@example.com"); err != nil || u.ID != "ua" {
+			t.Fatalf("after the next open: %+v %v", u, err)
+		}
+	})
+}

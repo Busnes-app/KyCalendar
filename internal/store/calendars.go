@@ -26,6 +26,26 @@ func (c *calendarStore) lockOwner(ctx context.Context, tx *sql.Tx, ownerKind, ow
 	return c.store.lockKey(ctx, tx, "calendar-owner:"+ownerKind+":"+ownerID)
 }
 
+// ownerOrg is the org a new calendar joins: its user's, else the default org, which a
+// multi-tenant install lacks (a group calendar there comes from a suite group).
+func (c *calendarStore) ownerOrg(ctx context.Context, tx *sql.Tx, cal *Calendar) (OrgID, error) {
+	org := DefaultOrg
+	if cal.OwnerKind != "user" {
+		return org, nil
+	}
+	err := tx.QueryRowContext(ctx, c.q(`SELECT org_id FROM users WHERE id = ?`), cal.OwnerID).Scan(&org)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DefaultOrg, nil
+	}
+	return org, err
+}
+
+// userOrg and calendarOrg are a new row's org_id, from its sender's or its calendar's row.
+const (
+	userOrg     = `(SELECT org_id FROM users WHERE id = ?)`
+	calendarOrg = `(SELECT org_id FROM calendars WHERE id = ?)`
+)
+
 func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar, maxPerOwner int) error {
 	cal.CreatedAt = time.Now().UTC()
 	tx, err := c.store.beginTx(ctx)
@@ -48,8 +68,12 @@ func (c *calendarStore) CreateCalendar(ctx context.Context, cal *Calendar, maxPe
 	if len(cal.Components) == 0 {
 		cal.Components = []string{"VEVENT"} // the column default
 	}
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, components, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, strings.Join(cal.Components, ","), cal.CreatedAt)
+	org, err := c.ownerOrg(ctx, tx, cal)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, components, created_at, org_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, strings.Join(cal.Components, ","), cal.CreatedAt, org)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists
@@ -413,10 +437,10 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		}
 	}
 
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at, invitation_sender = excluded.invitation_sender, invitation_attendee = excluded.invitation_attendee, invitation_recipient = excluded.invitation_recipient`),
-		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient)
+		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient, o.CalendarID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return false, ErrUIDConflict

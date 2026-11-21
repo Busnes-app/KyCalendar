@@ -157,7 +157,7 @@ func Address(ctx context.Context, st store.Store, u *store.User) (itip.Address, 
 	if !ok {
 		return "", false, nil
 	}
-	owner, err := st.Users().CalendarUser(ctx, a.Email())
+	owner, err := st.Users().EmailOwner(ctx, a.Email())
 	if errors.Is(err, store.ErrNotFound) {
 		return "", false, nil
 	}
@@ -438,9 +438,10 @@ func (s *Scheduler) find(ctx context.Context, u *store.User, uid string, org iti
 	return nil, nil, nil, store.ErrNotFound
 }
 
-// organizerEdits reports whether org is a user on this instance who can edit events in c.
+// organizerEdits reports whether org is a user on this instance who can edit events in c. It
+// spots the organizer's own object, so it knows them even where delivery treats them as external.
 func (s *Scheduler) organizerEdits(ctx context.Context, org itip.Address, c *store.Calendar) (bool, error) {
-	ou, err := s.Store.Users().CalendarUser(ctx, org.Email())
+	ou, err := s.Store.Users().EmailOwner(ctx, org.Email())
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
 	}
