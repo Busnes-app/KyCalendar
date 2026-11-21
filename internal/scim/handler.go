@@ -366,7 +366,7 @@ func ConflictKey(name string) string {
 // scimGroup loads a group SCIM owns. A local group is not SCIM's to read or change, so it reads
 // as missing: an IdP reconciling its directory must never rename, empty or delete one.
 func (h *groupResourceHandler) scimGroup(r *http.Request, id string) (*store.Group, error) {
-	group, err := h.store.Groups().GetGroupByID(r.Context(), id)
+	group, err := h.store.Org(store.DefaultOrg).GetGroup(r.Context(), id) // SCIM is single-tenant only
 	if err == nil && group.Source != store.GroupSourceSCIM {
 		err = store.ErrNotFound
 	}

@@ -48,7 +48,7 @@ func groupWith(t *testing.T, members ...string) (http.Handler, store.Store, stri
 
 func storedMembers(t *testing.T, st store.Store, id string) []string {
 	t.Helper()
-	g, err := st.Groups().GetGroupByID(context.Background(), id)
+	g, err := st.Org(store.DefaultOrg).GetGroup(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestSCIMGroupPatchNameAndExternalID(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch: %d %s", w.Code, w.Body.String())
 	}
-	g, err := st.Groups().GetGroupByID(context.Background(), id)
+	g, err := st.Org(store.DefaultOrg).GetGroup(context.Background(), id)
 	if err != nil || g.DisplayName != "Renamed" || g.ExternalID != "kgrp-9" || !slices.Equal(g.Members, []string{"usr_a"}) {
 		t.Fatalf("after patch: %+v %v", g, err)
 	}
@@ -117,7 +117,7 @@ func TestSCIMGroupPatchNameAndExternalID(t *testing.T) {
 // and a local membership the group already holds survives every member operation.
 func TestSCIMGroupPatchRefusesLocalMembersAndKeepsThem(t *testing.T) {
 	h, st, token, id := groupWith(t, "usr_a")
-	if err := st.Groups().AddGroupMember(context.Background(), id, "usr_local"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(context.Background(), id, "usr_local"); err != nil {
 		t.Fatal(err)
 	}
 	for _, ops := range [][]map[string]any{
@@ -130,7 +130,7 @@ func TestSCIMGroupPatchRefusesLocalMembersAndKeepsThem(t *testing.T) {
 			t.Errorf("%v: %d %s, want 400", ops, w.Code, w.Body.String())
 		}
 	}
-	g, _ := st.Groups().GetGroupByID(context.Background(), id)
+	g, _ := st.Org(store.DefaultOrg).GetGroup(context.Background(), id)
 	if g.DisplayName != "Crew" || !slices.Equal(storedMembers(t, st, id), []string{"usr_a", "usr_local"}) {
 		t.Fatalf("a refused patch wrote: %+v", g)
 	}

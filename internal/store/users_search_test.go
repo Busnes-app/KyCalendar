@@ -137,13 +137,13 @@ func TestSCIMGroupWritesAreOneTransaction(t *testing.T) {
 	if err := st.Groups().CreateSCIMGroup(ctx, unbound, &store.Group{ID: "grp_bad", DisplayName: "Bad", Members: []string{"sci", "loc"}}); !errors.Is(err, store.ErrInvalidMember) {
 		t.Fatalf("create with a local member: %v", err)
 	}
-	if _, err := st.Groups().GetGroupByID(ctx, "grp_bad"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_bad"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("a refused create left its group: %v", err)
 	}
 	if err := st.Groups().CreateSCIMGroup(ctx, unbound, &store.Group{ID: "grp_1", DisplayName: "Crew", Members: []string{"sci", "sci"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Groups().AddGroupMember(ctx, "grp_1", "loc"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_1", "loc"); err != nil {
 		t.Fatal(err)
 	}
 	g, err := st.Groups().UpdateSCIMGroup(ctx, unbound, "grp_1", func(g *store.Group) error {
@@ -156,7 +156,7 @@ func TestSCIMGroupWritesAreOneTransaction(t *testing.T) {
 	if !errors.Is(err, store.ErrInvalidMember) || g != nil {
 		t.Fatalf("update adding a local member: %+v %v", g, err)
 	}
-	if g, _ := st.Groups().GetGroupByID(ctx, "grp_1"); g.DisplayName != "Crew" || !slices.Equal(slices.Sorted(slices.Values(g.Members)), []string{"loc", "sci"}) {
+	if g, _ := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_1"); g.DisplayName != "Crew" || !slices.Equal(slices.Sorted(slices.Values(g.Members)), []string{"loc", "sci"}) {
 		t.Fatalf("a refused update wrote: %+v", g)
 	}
 	if _, err := st.Groups().UpdateSCIMGroup(ctx, unbound, "grp_1", func(g *store.Group) error {
@@ -165,7 +165,7 @@ func TestSCIMGroupWritesAreOneTransaction(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if g, _ := st.Groups().GetGroupByID(ctx, "grp_1"); !slices.Equal(slices.Sorted(slices.Values(g.Members)), []string{"kys", "loc"}) {
+	if g, _ := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_1"); !slices.Equal(slices.Sorted(slices.Values(g.Members)), []string{"kys", "loc"}) {
 		t.Fatalf("members %v, want kys and the kept local one", g.Members)
 	}
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_local", DisplayName: "Local"}); err != nil {

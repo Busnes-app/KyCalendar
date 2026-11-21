@@ -85,10 +85,10 @@ func TestUpsertSSOUserAdoptsSCIMUser(t *testing.T) {
 	if err := s.store.Groups().CreateGroup(ctx, &store.Group{ID: "grp_team", DisplayName: "Team"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.Groups().AddGroupMember(ctx, "grp_team", alice.ID); err != nil {
+	if err := s.store.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_team", alice.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_team", Role: "reader"}); err != nil {
+	if err := s.store.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_team", Role: "reader"}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -67,7 +67,7 @@ func suiteState(t *testing.T, s *Server) string {
 		}
 		var grants []string // sorted here: backends collate names differently
 		for _, gr := range gs {
-			g, err := s.store.Groups().GetGroupByID(ctx, gr.GroupID)
+			g, err := s.store.Org(store.DefaultOrg).GetGroup(ctx, gr.GroupID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -138,10 +138,10 @@ func TestSyncSuiteGroups(t *testing.T) {
 	if err := s.store.Groups().CreateGroup(ctx, watchers); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.Groups().AddGroupMember(ctx, watchers.ID, ann.ID); err != nil {
+	if err := s.store.Org(store.DefaultOrg).AddGroupMember(ctx, watchers.ID, ann.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: watchers.ID, Role: "editor"}); err != nil {
+	if err := s.store.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: watchers.ID, Role: "editor"}); err != nil {
 		t.Fatal(err)
 	}
 	idp.answer(http.StatusOK, `{"groups":[{"id":"kg1","name":"Sales","slug":"sales","state":"archived","members":[]}]}`)

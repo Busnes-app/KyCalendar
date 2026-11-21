@@ -41,14 +41,14 @@ func TestMigration10BackfillsGroupSource(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	old, err := st.Groups().GetGroupByID(ctx, "grp_old")
+	old, err := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_old")
 	if err != nil || old.Source != store.GroupSourceSCIM {
 		t.Fatalf("existing group after migration: %+v %v, want source scim", old, err)
 	}
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_new", DisplayName: "New"}); err != nil {
 		t.Fatal(err)
 	}
-	if g, err := st.Groups().GetGroupByID(ctx, "grp_new"); err != nil || g.Source != store.GroupSourceLocal {
+	if g, err := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_new"); err != nil || g.Source != store.GroupSourceLocal {
 		t.Fatalf("new group: %+v %v, want source local", g, err)
 	}
 }

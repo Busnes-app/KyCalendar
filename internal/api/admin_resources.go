@@ -54,7 +54,7 @@ func (s *Server) adminResourceView(r *http.Request, res *resource.Resource) (adm
 		ID: res.ID, Address: resource.Address(res.ID).Email(), GroupRefs: []groupRef{}, PeopleRefs: []personRef{},
 	}
 	for _, id := range res.Groups {
-		g, err := s.store.Groups().GetGroupByID(r.Context(), id)
+		g, err := s.orgOf(r).GetGroup(r.Context(), id)
 		if errors.Is(err, store.ErrNotFound) {
 			continue
 		} else if err != nil {

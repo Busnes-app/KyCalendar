@@ -92,11 +92,11 @@ func TestAdminGroupsCreateListRename(t *testing.T) {
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_scim", DisplayName: "Synced", Source: store.GroupSourceSCIM}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Groups().AddGroupMember(ctx, "grp_scim", "usr_bob"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_scim", "usr_bob"); err != nil {
 		t.Fatal(err)
 	}
 	cal := groupCalendar(t, st, "Rota")
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: crew.ID, Role: "reader"}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: crew.ID, Role: "reader"}); err != nil {
 		t.Fatal(err)
 	}
 	groups := listAdminGroups(t, srv, admin)

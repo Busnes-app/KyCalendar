@@ -265,7 +265,7 @@ func TestRoomOnlyForAllowedGroups(t *testing.T) {
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_board", DisplayName: "Board"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Groups().AddGroupMember(ctx, "grp_board", "usr_alice"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_board", "usr_alice"); err != nil {
 		t.Fatal(err)
 	}
 	room := makeResource(t, st, resource.Resource{Name: "Boardroom", Audience: resource.Groups, Groups: []string{"grp_board"}})

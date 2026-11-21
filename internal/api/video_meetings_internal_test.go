@@ -670,14 +670,14 @@ func TestRevokedAccessClosesTheRoom(t *testing.T) {
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_team", DisplayName: "Team"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Groups().AddGroupMember(ctx, "grp_team", r.org.ID); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_team", r.org.ID); err != nil {
 		t.Fatal(err)
 	}
 	shared := &store.Calendar{ID: "cal_team", OwnerKind: "group", OwnerID: "cal_team", Slug: "team", Name: "Team", Components: []string{"VEVENT"}}
 	if err := st.Calendars().CreateCalendar(ctx, shared, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: shared.ID, GroupID: "grp_team", Role: "editor"}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: shared.ID, GroupID: "grp_team", Role: "editor"}); err != nil {
 		t.Fatal(err)
 	}
 	r.cal = shared

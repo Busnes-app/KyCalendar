@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -200,3 +201,85 @@ func TestOrgGuardsRefuseCrossOrgRows(t *testing.T) {
 		}
 	})
 }
+
+// TestOrgStoreAnswersOtherOrgsLikeMissing: through an org's handle, another org's user, group
+// or calendar is ErrNotFound, the same answer as an ID that exists nowhere, and nothing is
+// written. Suite-group members come only from the handle's org.
+func TestOrgStoreAnswersOtherOrgsLikeMissing(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const b OrgID = "org-b"
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+			t.Fatal(err)
+		}
+		const binding = "kyidentity https://id.example"
+		for _, u := range []*User{
+			{ID: "ua", Username: "a", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sa", SSOIssuer: binding},
+			{ID: "ub", Username: "b", Role: "user", Status: "active", SSOProvider: "kysignon", SSOSubject: "sb", SSOIssuer: binding, OrgID: b},
+		} {
+			if err := s.Users().CreateUser(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, g := range []*Group{{ID: "ga", DisplayName: "A"}, {ID: "gb", DisplayName: "B", OrgID: b}} {
+			if err := s.Groups().CreateGroup(ctx, g); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.Calendars().CreateCalendar(ctx, &Calendar{ID: "cg", OwnerKind: "group", OwnerID: "cg", Slug: "g", Name: "G"}, 0); err != nil {
+			t.Fatal(err)
+		}
+		a, ob := s.Org(DefaultOrg), s.Org(b)
+		if u, err := ob.GetUser(ctx, "ub"); err != nil || u.OrgID != b {
+			t.Fatalf("own user: %+v %v", u, err)
+		}
+		for name, err := range map[string]error{
+			"another org's user":         second(a.GetUser(ctx, "ub")),
+			"a missing user":             second(a.GetUser(ctx, "nobody")),
+			"another org's group":        second(a.GetGroup(ctx, "gb")),
+			"a missing group":            second(a.GetGroup(ctx, "nothing")),
+			"a member from another org":  a.AddGroupMember(ctx, "ga", "ub"),
+			"a missing member":           a.AddGroupMember(ctx, "ga", "nobody"),
+			"a grant to another org":     a.SetGrant(ctx, CalendarGrant{CalendarID: "cg", GroupID: "gb", Role: "reader"}),
+			"a grant to a missing group": a.SetGrant(ctx, CalendarGrant{CalendarID: "cg", GroupID: "nothing", Role: "reader"}),
+			"another org's calendar":     ob.SetGrant(ctx, CalendarGrant{CalendarID: "cg", GroupID: "gb", Role: "reader"}),
+		} {
+			if !errors.Is(err, ErrNotFound) {
+				t.Errorf("%s: %v, want ErrNotFound", name, err)
+			}
+		}
+		var rows int
+		if err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM group_members) + (SELECT COUNT(*) FROM calendar_grants)`).Scan(&rows); err != nil || rows != 0 {
+			t.Fatalf("refused writes left %d rows (%v)", rows, err)
+		}
+
+		scope := SCIMScope{Issuer: binding, Providers: []string{"kysignon"}}
+		if _, err := ob.ReconcileSuiteGroup(ctx, scope, SuiteGroup{ID: "sg1", Name: "Family", Active: true, Subjects: []string{"sa", "sb"}}); err != nil {
+			t.Fatal(err)
+		}
+		var members []string
+		if err := func() error {
+			r, err := s.db.QueryContext(ctx, s.rebind(`SELECT gm.user_id FROM group_members gm JOIN suite_group_calendars sgc ON sgc.group_id = gm.group_id WHERE sgc.suite_group_id = 'sg1' AND sgc.org_id = ?`), b)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			for r.Next() {
+				var id string
+				if err := r.Scan(&id); err != nil {
+					return err
+				}
+				members = append(members, id)
+			}
+			return r.Err()
+		}(); err != nil || !slices.Equal(members, []string{"ub"}) {
+			t.Fatalf("suite group members %v (%v), want only ub", members, err)
+		}
+		// The same KyIdentity group reconciled into another org writes nothing.
+		if _, err := a.ReconcileSuiteGroup(ctx, scope, SuiteGroup{ID: "sg1", Name: "Family", Active: true, Subjects: []string{"sa"}}); err == nil {
+			t.Error("a suite group moved to another org")
+		}
+	})
+}
+
+func second[T any](_ T, err error) error { return err }

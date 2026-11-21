@@ -42,7 +42,7 @@ func suiteWorld(t *testing.T) store.Store {
 
 func reconcile(t *testing.T, st store.Store, g store.SuiteGroup) store.SuiteGroupChange {
 	t.Helper()
-	ch, err := st.Groups().ReconcileSuiteGroup(context.Background(), suiteScope, g)
+	ch, err := st.Org(store.DefaultOrg).ReconcileSuiteGroup(context.Background(), suiteScope, g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestSuiteGroupHealsDrift(t *testing.T) {
 	reconcile(t, st, want)
 	g, c := suiteCalendar(t, st, "kg1")
 	// A stray member and a removed grant.
-	if err := st.Groups().AddGroupMember(ctx, g.ID, "usr_bob"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, g.ID, "usr_bob"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Calendars().DeleteGrant(ctx, c.ID, g.ID); err != nil {
@@ -203,7 +203,7 @@ func TestSuiteGroupHealsDrift(t *testing.T) {
 		t.Fatalf("heal %+v", ch)
 	}
 	// An administrator raises the grant to manager: the next reconcile puts it back.
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: c.ID, GroupID: g.ID, Role: "manager"}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: c.ID, GroupID: g.ID, Role: "manager"}); err != nil {
 		t.Fatal(err)
 	}
 	if ch := reconcile(t, st, want); !ch.GrantRestored || ch.Added != 0 || ch.Removed != 0 {
@@ -218,7 +218,7 @@ func TestSuiteGroupHealsDrift(t *testing.T) {
 	}
 	// Archived but a member left behind: archiving again removes it.
 	reconcile(t, st, store.SuiteGroup{ID: "kg1", Name: "Ops"})
-	if err := st.Groups().AddGroupMember(ctx, g.ID, "usr_ann"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, g.ID, "usr_ann"); err != nil {
 		t.Fatal(err)
 	}
 	if ch := reconcile(t, st, store.SuiteGroup{ID: "kg1", Name: "Ops"}); ch.Removed != 1 || ch.Archived {
@@ -268,7 +268,7 @@ func TestSuiteGroupArchivedAfterCalendarDeletedEmptiesMembers(t *testing.T) {
 	if err := st.Calendars().CreateCalendar(ctx, other, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: other.ID, GroupID: g.ID, Role: "reader"}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: other.ID, GroupID: g.ID, Role: "reader"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Calendars().DeleteCalendar(ctx, c.ID); err != nil {

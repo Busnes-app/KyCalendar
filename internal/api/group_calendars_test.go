@@ -50,7 +50,7 @@ func TestAdminCreatesGroupCalendarAndGrants(t *testing.T) {
 	if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_team", DisplayName: "Team"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Groups().AddGroupMember(ctx, "grp_team", "usr_bob"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_team", "usr_bob"); err != nil {
 		t.Fatal(err)
 	}
 

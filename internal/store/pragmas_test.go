@@ -27,7 +27,7 @@ func TestSQLiteDSNPragmasKeepForeignKeysOn(t *testing.T) {
 			if err := st.Groups().CreateGroup(ctx, &store.Group{ID: "grp_1", DisplayName: "Crew"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.Groups().AddGroupMember(ctx, "grp_1", "usr_nobody"); err == nil {
+			if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_1", "usr_nobody"); err == nil {
 				t.Fatal("a member with no user row was stored: foreign keys are off")
 			}
 			raw, err := sql.Open("sqlite", path)
@@ -68,7 +68,7 @@ func TestListGroupsReportsAMemberReadFailure(t *testing.T) {
 	if groups, _, err := st.Groups().ListGroups(ctx, 0, 10, ""); err == nil {
 		t.Fatalf("ListGroups hid the failure: %+v", groups[0])
 	}
-	if _, err := st.Groups().GetGroupByID(ctx, "grp_1"); err == nil || errors.Is(err, store.ErrNotFound) {
+	if _, err := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_1"); err == nil || errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetGroupByID: %v, want the read error", err)
 	}
 }

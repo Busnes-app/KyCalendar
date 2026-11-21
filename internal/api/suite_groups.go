@@ -51,7 +51,8 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 		if calendar.CheckProps(&name, nil, nil) != nil {
 			name = g.Slug // validated by suitedir
 		}
-		ch, err := s.store.Groups().ReconcileSuiteGroup(ctx, scope, store.SuiteGroup{ID: g.ID, Name: name, Active: g.State == suitedir.GroupActive, Subjects: g.Members})
+		// Single-tenant: one org. Tenancy PR 3 polls each org and reconciles into it.
+		ch, err := s.store.Org(store.DefaultOrg).ReconcileSuiteGroup(ctx, scope, store.SuiteGroup{ID: g.ID, Name: name, Active: g.State == suitedir.GroupActive, Subjects: g.Members})
 		if err != nil {
 			log.Printf("suite: group %s: reconcile failed: %v", g.ID, err)
 			continue

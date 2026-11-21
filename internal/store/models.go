@@ -8,6 +8,7 @@ import (
 // User represents an identity within the system.
 type User struct {
 	ID           string `json:"id"`
+	OrgID        OrgID  `json:"-"` // set at creation, never changed; empty on insert means DefaultOrg
 	Username     string `json:"username"`
 	Email        string `json:"email"`
 	DisplayName  string `json:"display_name"`
@@ -80,6 +81,7 @@ type DevicePairing struct {
 // Group represents a SCIM/RBAC user group.
 type Group struct {
 	ID          string `json:"id"`
+	OrgID       OrgID  `json:"-"` // empty on insert means DefaultOrg
 	DisplayName string `json:"display_name"`
 	ExternalID  string `json:"external_id,omitempty"`
 	// Source owns the group: GroupSourceLocal (the admin screens) or GroupSourceSCIM. Only the

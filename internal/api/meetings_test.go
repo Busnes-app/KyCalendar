@@ -414,7 +414,7 @@ func TestDeletingAGroupCalendarCancelsOnlyItsOrganizersMeetings(t *testing.T) {
 	webUser(t, srv, st, "mallory")
 	group := groupCalendar(t, st, "Team")
 	grantRole(t, st, group, "editor", "usr_alice")
-	if err := st.Groups().AddGroupMember(ctx, "grp_editor_"+group.ID, "usr_mallory"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_editor_"+group.ID, "usr_mallory"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -556,7 +556,7 @@ func TestDeletingAGroupCalendarSparesAMeetingOfAnotherGroupCalendar(t *testing.T
 	home, doomed := groupCalendar(t, st, "Home"), groupCalendar(t, st, "Doomed")
 	grantRole(t, st, home, "editor", "usr_alice")
 	grantRole(t, st, doomed, "editor", "usr_alice")
-	if err := st.Groups().AddGroupMember(ctx, "grp_editor_"+doomed.ID, "usr_mallory"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_editor_"+doomed.ID, "usr_mallory"); err != nil {
 		t.Fatal(err)
 	}
 	body := `{"title":"Sync","start":"2030-11-10T09:00:00Z","end":"2030-11-10T10:00:00Z","zone":"UTC","attendees":["bob@example.com"]}`

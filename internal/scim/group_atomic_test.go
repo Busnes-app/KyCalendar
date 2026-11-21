@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+
+	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
 // Concurrent PATCHes of one group never lose each other's writes: each applies to the group as
@@ -23,7 +25,7 @@ func TestSCIMConcurrentGroupPatchesKeepEveryWrite(t *testing.T) {
 			wg.Go(func() { codes[j] = scimDo(t, h, token, "PATCH", "/scim/v2/Groups/"+id, patchOps(op)).Code })
 		}
 		wg.Wait()
-		g, err := st.Groups().GetGroupByID(context.Background(), id)
+		g, err := st.Org(store.DefaultOrg).GetGroup(context.Background(), id)
 		if err != nil || codes[0] != http.StatusOK || codes[1] != http.StatusOK {
 			t.Fatalf("round %d: %v %v", i, codes, err)
 		}

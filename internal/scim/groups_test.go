@@ -45,7 +45,7 @@ func TestSCIMGroupsNeverTouchLocalGroups(t *testing.T) {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &created)
-	if g, err := st.Groups().GetGroupByID(ctx, created.ID); err != nil || g.Source != store.GroupSourceSCIM {
+	if g, err := st.Org(store.DefaultOrg).GetGroup(ctx, created.ID); err != nil || g.Source != store.GroupSourceSCIM {
 		t.Fatalf("SCIM-created group: %+v %v, want source scim", g, err)
 	}
 
@@ -66,7 +66,7 @@ func TestSCIMGroupsNeverTouchLocalGroups(t *testing.T) {
 			t.Errorf("%s on a local group: %d %s, want 404", tc.method, w.Code, w.Body.String())
 		}
 	}
-	if g, err := st.Groups().GetGroupByID(ctx, "grp_local"); err != nil || g.DisplayName != "Local crew" {
+	if g, err := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_local"); err != nil || g.DisplayName != "Local crew" {
 		t.Fatalf("local group changed through SCIM: %+v %v", g, err)
 	}
 }
@@ -86,7 +86,7 @@ func TestSCIMGroupNameClashFlagsTheLocalGroup(t *testing.T) {
 	if v, err := st.Settings().GetSetting(ctx, scim.ConflictKey("Crew")); err != nil || v == "" {
 		t.Fatalf("clash not flagged: %q %v", v, err)
 	}
-	if g, _ := st.Groups().GetGroupByID(ctx, "grp_local"); g.Source != store.GroupSourceLocal || g.DisplayName != "Crew" {
+	if g, _ := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_local"); g.Source != store.GroupSourceLocal || g.DisplayName != "Crew" {
 		t.Fatalf("local group changed: %+v", g)
 	}
 }
