@@ -188,6 +188,11 @@ func LoadFromEnv() (*Config, error) {
 			return nil, fmt.Errorf("%s was renamed to KYCALENDAR_%s", old, strings.TrimPrefix(old, "KY_"))
 		}
 	}
+	// Multi-tenant mode is designed but not built (docs/superpowers/specs/2026-11-20-tenancy-design.md):
+	// asking for it must fail, not run an install that looks isolated and is not.
+	if mode := getEnv("KYCALENDAR_TENANCY", ""); mode != "" && mode != "single" {
+		return nil, fmt.Errorf("KYCALENDAR_TENANCY: only single is available in this build, got %q", mode)
+	}
 	port := getEnvInt("KY_PORT", getEnvInt("PORT", 8080))
 	// Loopback unless told otherwise; the image sets 0.0.0.0, where a container must listen.
 	host := getEnv("KY_HOST", "127.0.0.1")

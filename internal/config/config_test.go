@@ -476,6 +476,22 @@ func TestSchedulingMode(t *testing.T) {
 	}
 }
 
+func TestTenancyOnlySingle(t *testing.T) {
+	t.Setenv("KY_DATA_DIR", t.TempDir())
+	for _, v := range []string{"", "single"} {
+		t.Setenv("KYCALENDAR_TENANCY", v)
+		if _, err := config.LoadFromEnv(); err != nil {
+			t.Errorf("KYCALENDAR_TENANCY=%q: %v", v, err)
+		}
+	}
+	for _, v := range []string{"multi", "Single", "x"} {
+		t.Setenv("KYCALENDAR_TENANCY", v)
+		if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KYCALENDAR_TENANCY") {
+			t.Errorf("KYCALENDAR_TENANCY=%q: %v, want a refusal naming the setting", v, err)
+		}
+	}
+}
+
 func TestRateLimitExemptNetworksAreValidatedAtStartup(t *testing.T) {
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	t.Setenv("KY_RATE_LIMIT_EXEMPT_NETWORKS", " 203.0.113.9/24, 2001:db8:1::/48 ")

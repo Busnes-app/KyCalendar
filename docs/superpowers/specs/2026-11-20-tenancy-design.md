@@ -132,12 +132,14 @@ Tables this spec adds:
 One migration (37, the next free version) on both backends:
 
 1. Create `orgs` and `org_usage`. The migration text is fixed and reads no environment. It inserts
-   the default org (`active`, `enabled`) only when `users` already holds rows. That is an existing
+   the default org (`active`, `enabled`) only when any org-owned table already holds rows, so
+   PostgreSQL's foreign key finds the org for every existing row. That is an existing
    install, which is always single-tenant, since converting one to multi-tenant is out of scope
    (as in T). A fresh database gets no `orgs` row from the migration.
 
-   Startup then runs `ensureOrgs` under the same `bootstrap` lock, after the migrations and before
-   the first admin is created (`AGENTS.md:475`). It is idempotent: it inserts the default org
+   `store.Open` then runs `ensureOrgs` (`internal/store/orgs.go`), right after the migrations and
+   so before `cmd/server` creates the first admin (`AGENTS.md:475`). Its inserts are
+   `ON CONFLICT DO NOTHING`, so it is idempotent and replicas starting together need no lock: it inserts the default org
    (single-tenant) or the staff org from `KYCALENDAR_STAFF_ORG_ID` (multi-tenant, `active`,
    `enabled`) if it is missing. So the staff org exists before bootstrap and `init-admin` insert the
    `admin` account into it (D8), and no poll is needed first. The staff org row comes from
@@ -185,18 +187,20 @@ One migration (37, the next free version) on both backends:
    `calendars(org_id, id)`. Then add the composite FKs on `group_members`, `calendar_grants` and
    `suite_group_calendars`. On SQLite these are trigger checks, since `ALTER TABLE` cannot add
    constraints there.
-5. Record `tenancy_mode = single`, but only when `users` already holds rows: the same condition,
-   and the same reason, as the default-org insert in step 1. A fresh database gets no mode row from
-   the migration. Startup's `ensureOrgs` records the mode from `KYCALENDAR_TENANCY`, together with
-   `KYCALENDAR_STAFF_ORG_ID` in multi-tenant mode. It runs under the `bootstrap` lock when no mode
-   row exists yet, and D1's mismatch check runs right after. A multi-tenant install therefore starts
+5. `tenancy_mode` is recorded by `ensureOrgs`, not the migration. No migration writes a setting,
+   and `server_settings.updated_at` has a different type on each backend. When no mode row exists,
+   `ensureOrgs` records `single` if the default org exists: an upgraded install, whose migration
+   made it. Otherwise it records the configured mode, with `KYCALENDAR_STAFF_ORG_ID` in
+   multi-tenant mode. D1's mismatch check runs right after. Until PR 6 only `single` exists, and
+   `KYCALENDAR_TENANCY` refuses any other value at startup. A multi-tenant install therefore starts
    on an empty database (T "Migration"), and its first start records `multi`. The copy paths stay as
-   step 1 describes: a fresh target holds no mode row either, and the row is copied with
-   `server_settings`.
+   step 1 describes: a snapshot target's own rows are cleared before the copy, and the row is copied
+   with `server_settings`.
 
-On Postgres the default is dropped after the backfill, as T does. A multi-tenant install has no
-default org row, so an insert that forgets `org_id` fails the existence trigger instead of landing
-in an org.
+The `org_id` default stays on both backends until the store binds orgs itself (PR 2), because
+PR 1's store code names no org. PR 2 then drops it on Postgres, as T does. A multi-tenant install
+has no default org row, so an insert that forgets `org_id` then fails the existence check instead of
+landing in an org.
 
 `orgs.status` takes KyIdentity's values (`active`, `suspended`, `deletion_scheduled`, `deleted`)
 plus one local value, `stale`: KyCalendar has no current answer for this org. Only `active`
