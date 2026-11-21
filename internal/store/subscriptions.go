@@ -29,8 +29,12 @@ LEFT JOIN calendar_subscriptions s ON s.calendar_id = c.id WHERE c.owner_kind = 
 	if (maxCalendars > 0 && cals >= maxCalendars) || (maxSubscriptions > 0 && subs >= maxSubscriptions) {
 		return ErrQuotaExceeded
 	}
-	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, cal.CreatedAt); err != nil {
+	org, err := c.ownerOrg(ctx, tx, cal)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, color, description, created_at, org_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal.Slug, cal.Name, cal.Color, cal.Description, cal.CreatedAt, org); err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
@@ -217,10 +221,10 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 		if err := c.bump(ctx, tx, calendarID, o.Name, false); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
-			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, "", "", "")
+			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, "", "", "", o.CalendarID)
 		if err != nil {
 			return err
 		}

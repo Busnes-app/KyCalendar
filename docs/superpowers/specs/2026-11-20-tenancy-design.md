@@ -43,7 +43,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. `KY_SSO_AUTO_PROVISION=false` is a startup error in multi-tenant mode. | Auto-provisioning is what makes a skipped webhook create harmless (Directory webhook): the first sign-in creates the account. The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
 | D3 | Isolation is enforced in the application, through an org-bound store handle (`OrgStore`), as T D3 does. | Each migration names a SQL text per backend (`internal/store/migrations/migrations.go:13-18`). From version 20 on, the registry entries (`migrations.go:571-607`, versions 20–36) give both backends one text, with only column types swapped. The exception is version 32's task search index (`taskSearchSQLite` and `taskSearchPostgres`, `:603`). The table SQL itself lives in constants later in the file, which the Inventory cites. Single-tenant installs on SQLite run the same handlers. App-level scoping covers both. |
 | D4 | Single-tenant installs get one **default org** (`00000000-0000-0000-0000-000000000001`, T's default-org ID). Every org-owned row carries it after the upgrade. Tokens there carry no `org_id` (T D4), and KyCalendar reads none. | One code path. With one org, every query returns what it returns today, which is the zero-change argument the upgrade test proves. |
-| D5 | **Calendar user lookup is per org.** `CalendarUser(email)` (`internal/store/scheduling.go:164-186`) becomes `CalendarUser(org, email)`. An attendee, organizer or free/busy target in another org is "not on this instance". | That one lookup decides internal delivery, free/busy, the out-of-office comment and meeting membership (Isolation, below). Scoping it is what makes cross-org sharing go out by email, and only by email. |
+| D5 | **In multi-tenant mode every address is external, inside one org too.** `CalendarUser(email)` (`internal/store/scheduling.go`) answers `ErrNotFound` for everyone there. The caller's own address (`EmailOwner`, L2) is unchanged. | That one lookup decides internal delivery, free/busy, the out-of-office comment and meeting membership (Isolation, below). With no peer found, nothing is written into another account's calendar and no busy time is shown, so nothing can cross orgs. Owner decision, 2026-11-21: an org that wants internal scheduling between colleagues gets its own single-tenant install (owner decision 5). This replaces a per-org lookup, which would have threaded the org through every scheduling path. |
 | D6 | KyCalendar keeps a local mirror of `/api/suite/orgs` (`orgs` table), polled about every 60 s by the elected worker. Every access check reads the user's org status from that mirror in the same query as the user. | T D6 and Downstream contract 5 and 6. Reading status with the user, as T's `active_principals` does, means a suspension takes effect at the next request on every replica. |
 | D7 | In multi-tenant mode an account is an administrator only when the ID token carries `kycalendar.admin` (`internal/access/admin.go:9-12`) **and** its `org_id` equals the configured staff org (`KYCALENDAR_STAFF_ORG_ID`, required in multi). Every other account is an everyday member, whatever its roles. | Owner decision 4. T D8 already keeps admin roles and delegations in the staff org. This check is defence in depth: a staff mistake that assigns the app role in a customer org grants nothing here. |
 | D8 | Local accounts in multi-tenant mode are staff break-glass administrators only: the bootstrap `admin` and `init-admin` accounts, in the staff org. `create-user`, admin People writes and local everyday sign-in are refused. | A customer account's org must come from a verified token, a signed webhook or a suite answer (Downstream contract 4). A local account has none of those, so it cannot be a customer. |
@@ -78,7 +78,7 @@ From version 20 on, one SQL text serves both, apart from column types and the ta
 | `audit_records` | `mig.go:88` / `:169` | O | `user_id` has no FK. **Nullable** `org_id`: NULL is a platform row (restore, backup, staff platform actions), as T does for `audit_events`. |
 | `server_settings` | `mig.go:99` / `:180` | P | Install-wide keys only. Every key in use is install-wide (`internal/store/sqlstore.go:1807-1949`). Future per-org settings go in a new table, never in prefixed keys. |
 | `calendars` | `mig.go:257` / `:298` | O | `owner_id` has no FK (`mig.go:259-260`). For a user it names the user. For a group calendar it is the calendar's own ID (`AGENTS.md:334`). A trigger ties a personal calendar's `org_id` to its owner's. A group calendar takes the suite group's org at creation (Isolation). |
-| `calendar_objects` | `mig.go:270` / `:311` | O | It has a `calendar_id` FK, but carries its own `org_id`, for the usage triggers alone. A calendar delete removes its objects by cascade (`internal/store/calendars.go:138`, `internal/store/sqlstore.go:449`). A delete trigger that looked up the parent calendar for the org could then find it already gone, and `org_usage` would drift upward. With the column, the trigger reads `OLD.org_id`. An insert trigger requires it to equal the calendar's `org_id`, and the immutability trigger keeps it. `invitation_sender`, `_attendee` and `_recipient` are user IDs with no FK (`mig.go:861-863`). Once delivery is per org (D5), they always name the calendar's own org. |
+| `calendar_objects` | `mig.go:270` / `:311` | O | It has a `calendar_id` FK, but carries its own `org_id`, for the usage triggers alone. A calendar delete removes its objects by cascade (`internal/store/calendars.go:138`, `internal/store/sqlstore.go:449`). A delete trigger that looked up the parent calendar for the org could then find it already gone, and `org_usage` would drift upward. With the column, the trigger reads `OLD.org_id`. An insert trigger requires it to equal the calendar's `org_id`, and the immutability trigger keeps it. `invitation_sender`, `_attendee` and `_recipient` are user IDs with no FK (`mig.go:861-863`). In multi-tenant mode nothing is delivered internally (D5), so they never name another org's user. |
 | `calendar_changes` | `mig.go:283` / `:324` | D | `calendar_id` FK |
 | `calendar_meta` | `mig.go:292` / `:333` | P | One row, `sync_epoch` (`mig.go:296`) |
 | `app_passwords` | `mig.go:343` / `:353` | D | `user_id` FK. Covers DAV and MCP tokens. |
@@ -240,15 +240,15 @@ caller's org.
 
 | # | Where | Today | Multi-tenant |
 |---|---|---|---|
-| L1 | `CalendarUser`, `internal/store/scheduling.go:164-186` | One active everyday account with that email anywhere | `CalendarUser(org, email)` (D5) |
-| L2 | `Address`, `internal/davbackend/scheduling.go:155-169` | The shared-email rule across the install | Within the org. KyIdentity's global emails (T D5) make a cross-org twin impossible anyway. |
-| L3 | Internal delivery, `scheduling.go:339-341` | A local recipient gets the message written into their calendar (`deliverToAttendee`, `:477`) | Only a recipient in the sender's org. Anyone else goes out through KyPost (`sendExternal`, `internal/davbackend/external.go:36-79`). |
-| L4 | `Plan`, `scheduling.go:204` | Marks attendees internal for the invite budget | Same lookup, per org |
-| L5 | CalDAV outbox free/busy, `internal/davbackend/surface.go:96-114` | Busy times of any account on the install (`2.0`), else `3.7` | Own org only. Another org's address gets the `3.7` a stranger gets. |
-| L6 | `GET /api/freebusy`, `internal/api/freebusy.go:56-75` | Busy times of any account, else `unknown: true` | Own org only. Another org's address is `unknown`, like a stranger's. |
-| L7 | Out-of-office comment, `internal/davbackend/out_of_office.go:104-107` | The local comment for any organizer on the install | The local comment only for the same org |
-| L8 | Meeting membership, `internal/api/events.go:264-270` | The video link stays clickable for any organizer on the install | Same org only |
-| L9 | Group-calendar cancellation, `internal/api/calendars.go:320-345` | Cancels as any organizer on the install | Same org only |
+| L1 | `CalendarUser`, `internal/store/scheduling.go` | One active everyday account with that email anywhere | Nobody (D5) |
+| L2 | `Address`, `internal/davbackend/scheduling.go:155-169` | The shared-email rule across the install | Unchanged, through `EmailOwner`. KyIdentity's global emails (T D5) make a cross-org twin impossible. `organizerEdits` uses it too: it only recognises an organizer's own object in a calendar both can edit, and another org's account holds no grant there (L10). |
+| L3 | Internal delivery, `scheduling.go:339-341` | A local recipient gets the message written into their calendar (`deliverToAttendee`, `:477`) | Never. Every recipient goes out through KyPost (`sendExternal`, `internal/davbackend/external.go:36-79`). |
+| L4 | `Plan`, `scheduling.go:204` | Marks attendees internal for the invite budget | None internal |
+| L5 | CalDAV outbox free/busy, `internal/davbackend/surface.go:96-114` | Busy times of any account on the install (`2.0`), else `3.7` | `3.7` for every address, as for a stranger |
+| L6 | `GET /api/freebusy`, `internal/api/freebusy.go:56-75` | Busy times of any account, else `unknown: true` | `unknown` for every address, as for a stranger |
+| L7 | Out-of-office comment, `internal/davbackend/out_of_office.go:104-107` | The local comment for any organizer on the install | The remote comment for everyone |
+| L8 | Meeting membership, `internal/api/events.go:264-270` | The video link stays clickable for any organizer on the install | Plain text for every other organizer |
+| L9 | Group-calendar cancellation, `internal/api/calendars.go:320-345` | Cancels as any organizer on the install | Sends nothing |
 | L10 | `SetGrant`, `internal/store/calendars.go:178-198` | Checks only that the group exists | `(org_id, id)`, plus the composite FK. A group ID from another org is `404`. |
 | L11 | Suite group members, `internal/store/suite_groups.go:161-167` | Subjects in the issuer scope | Subjects in the scope **and** the suite group's org |
 | L12 | Admin lists: `ListUsers`, `ListAuditRecords` (`sqlstore.go:1766`) | Whole install | Staff routes only, bound to the selected org (Admin surface) |
@@ -411,10 +411,10 @@ state only to the account's own holder, as T owner answer 4 does.
 
 ### Sharing, invitations and free/busy
 
-- **Inside an org**: group calendars through suite groups (D9) and grants (L10), and internal
-  delivery and free/busy between the org's members, as today.
-- **Across orgs**: only by email, deliberately. An attendee in another org is not a calendar user
-  of the sender's org (D5), so `deliver` hands the message to KyPost (`scheduling.go:339-341`).
+- **Inside an org**: group calendars through suite groups (D9) and grants (L10). Invitations and
+  free/busy between colleagues work as across orgs (D5), by email.
+- **Across orgs**: only by email, deliberately. No attendee is a calendar user in multi-tenant
+  mode (D5), so `deliver` hands the message to KyPost (`scheduling.go:339-341`).
   KyPost mails it. If the address is a hosted KyPost mailbox, KyPost forwards it to
   `/api/itip/inbound` for the recipient's own account. A new invitation there is never written: it
   waits as `pending` until the recipient answers through `/api/itip/respond`
@@ -422,9 +422,8 @@ state only to the account's own holder, as T owner answer 4 does.
   way. Nothing crosses the boundary without the recipient's own action.
   - Inbound needs `dkim_aligned` (`itip_handlers.go:203-207`). Whether KyPost marks mail between two
     hosted mailboxes as aligned is unverified (open question 6).
-- **Free/busy** never crosses orgs. Another org's member answers like a stranger (L5, L6). The
-  `unknown` flag then shows only whether an address is a member of the caller's own org, which the
-  caller can learn from the people picker anyway.
+- **Free/busy** answers every address like a stranger's (L5, L6), so it reveals nothing about
+  any account.
 - **Scheduling switch**: until the device gate passes, launch deployments pin
   `KYCALENDAR_SCHEDULING=false` (`AGENTS.md:323`). With scheduling off, nothing is delivered
   internally or by mail, so nothing crosses orgs at all.
@@ -440,8 +439,8 @@ state only to the account's own holder, as T owner answer 4 does.
     (`booking.go:43-74`).
 
   Otherwise the page is `404`, like an unknown slug. A confirmed booking is written as the host
-  (`booking.go:718-739`). The booker is an attendee looked up in the host's org only (D5), so a
-  booker in another org gets mail, never an internal write.
+  (`booking.go:718-739`). No booker is a calendar user (D5), so a booker gets mail, never an
+  internal write.
 - **ICS subscriptions** are fetches out to the internet, not published links
   (`internal/feed/feed.go`, SSRF guard `feed.RefusePrivate`, `internal/api/server.go:228`). The
   calendar is the subscriber's own. Nothing changes.
@@ -629,7 +628,7 @@ question 1.
 | Attacker | Goal | Defence |
 |---|---|---|
 | Member of org A | Read or change org B's calendars, events, tasks or bookings by putting B's IDs in API, CalDAV or MCP calls | The DAV home rule (`dav.go:37-42`) and `access.Resolve` (`role.go:43-62`) key on the caller. Every O and D query goes through an `OrgStore` bound to the caller's org. A cross-org ID answers exactly like a missing one, as `TestCrossOrgMatrix` proves. |
-| Member of org A | Write into org B's calendar by inviting a B member | Per-org calendar user lookup (D5, L3). The invitation goes out as mail and waits `pending` until the B member answers it themselves. |
+| Member of org A | Write into org B's calendar by inviting a B member | No calendar user in multi-tenant mode (D5, L3). The invitation goes out as mail and waits `pending` until the B member answers it themselves. |
 | Member of org A | Read a B member's busy times, or learn whether an address is a customer | Free/busy is per org (L5, L6). A B member answers like a stranger, byte for byte (matrix test). |
 | Calendar manager in org A | Grant an A calendar to an org B group by its ID | `SetGrant` resolves `(org_id, id)` (L10), and the composite FK refuses the write at the database |
 | Customer given `kycalendar.admin` by a staff mistake | Gain administrator access | D7: admin only in the staff org. A customer account is always an everyday member. |
@@ -656,8 +655,12 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
      default org and every list and DAV answer unchanged. Also `TestEveryTableIsClassified`,
      `TestOrgOwnedTablesHaveOrgID`, and the full `make ci` and `make test-postgres`.
 2. **Store scoping.** `OrgStore`, `PlatformStore`, the pre-org allowlist, and L1–L12, split so each
-   PR stays reviewable: (a) users, groups, grants and suite groups; (b) calendars, objects, the
-   scheduler and free/busy; (c) bookings, tasks, meetings and presence; (d) audit and workers.
+   PR stays reviewable: (a) users, groups, grants and suite groups; (c) L1–L9 (every address
+   external, D5), `org_id` written from the parent row on calendar, object, outbox and
+   invite-budget inserts, and cross-org rows for calendars, booking types, task views and goals;
+   (d) audit and workers. There is no (b): D5 replaced the per-org scheduler lookup. Bookings,
+   tasks, meetings and presence are D tables read by the caller's user ID, so they need no store
+   change, only the matrix rows.
    - Tests: `TestOrgSQLNamesOrgID`, and `TestCrossOrgMatrix`, which grows with each sub-PR and runs
      with a test-only multi-org constructor on Postgres. Existing tests pass unchanged on the
      default org.

@@ -33,6 +33,6 @@ func (c *calendarStore) admitInviteBytes(ctx context.Context, tx *sql.Tx, sender
 	if used+adding > InviteBytesLimit {
 		return InviteByteLimitError{Until: time.Unix(start, 0).Add(time.Hour)}
 	}
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO invitation_byte_budget (sender_id,window_start,bytes) VALUES (?,?,?) ON CONFLICT (sender_id) DO UPDATE SET window_start=excluded.window_start, bytes=excluded.bytes`), sender, start, used+adding)
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO invitation_byte_budget (sender_id,window_start,bytes,org_id) VALUES (?,?,?,`+userOrg+`) ON CONFLICT (sender_id) DO UPDATE SET window_start=excluded.window_start, bytes=excluded.bytes`), sender, start, used+adding, sender)
 	return err
 }
