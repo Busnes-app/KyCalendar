@@ -158,7 +158,7 @@ func (s *SQLStore) ApplyInstaller(ctx context.Context, b applysetup.Common, chec
 		return r, nil
 	}
 	if len(r.Created) > 0 {
-		if _, err = tx.ExecContext(ctx, s.rebind("INSERT INTO audit_records(user_id,action,resource,details,ip_address,created_at) VALUES(?,?,?,?,?,?)"), "", "installer.setup_created", b.Service, b.SetupID, "installer-local", now); err != nil {
+		if err = s.insertAudit(ctx, tx, AuditRecord{Action: "installer.setup_created", Resource: b.Service, Details: b.SetupID, IPAddress: "installer-local", CreatedAt: now}); err != nil {
 			return r, err
 		}
 	}

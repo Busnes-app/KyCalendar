@@ -102,7 +102,7 @@ func (s *SQLStore) ApplyInstallerDirectory(ctx context.Context, issuer, subject,
 	if _, err = tx.ExecContext(ctx, s.rebind("INSERT INTO server_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at"), stateKey, string(next), now); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, s.rebind("INSERT INTO audit_records(user_id,action,resource,details,ip_address,created_at) VALUES(?,?,?,?,?,?)"), owned.UserID, "installer.directory_applied", subject, version, "kyidentity", now); err != nil {
+	if err = s.insertAudit(ctx, tx, AuditRecord{UserID: owned.UserID, Action: "installer.directory_applied", Resource: subject, Details: version, IPAddress: "kyidentity", CreatedAt: now}); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -216,9 +216,12 @@ apply.
 
 ### `OrgStore`
 
-`store.Org(id OrgID)` returns a handle that binds `org_id` in every query on an O or D table. The
-unscoped `Store` methods for those tables are removed, not kept beside it. Requests get their
-handle from middleware:
+`store.Org(id OrgID)` returns a handle that binds `org_id` in its queries. It holds the methods that
+take a request-chosen ID of an O table (users, groups, memberships, grants, suite groups). Their
+unscoped versions are removed, not kept beside them. Methods on D tables keyed by the caller's own
+user ID stay on the store: another org's row cannot match the caller's user ID, so it answers as a
+missing one, which `TestCrossOrgMatrix` proves route by route (as built in PRs 2a–2d). Requests get
+their handle from middleware:
 
 - `OrgID` is built only from an authenticated principal: a session's user, an app password's owner
   (DAV and MCP, `internal/api/dav_auth.go:302-325`), a KyPost-signed request's resolved account
@@ -230,8 +233,11 @@ handle from middleware:
   subject (`sqlstore.go:377-386`), user by username at local sign-in, booking type by slug, booking
   by confirm-token hash.
 - **Platform workers** (outbox delivery, subscription refresh, meetings and presence outboxes, suite
-  groups, pruning, backup) read across orgs through a `PlatformStore`. Every row it returns carries
-  `org_id`, and each unit of work runs under that row's `OrgStore`.
+  groups, pruning, backup) read across orgs through a `PlatformStore`, built in PR 4, where
+  suspension first needs a worker to know a row's org. Every row it returns carries `org_id`, and
+  each unit of work runs under that row's `OrgStore`. Until then a worker acts only on its row's own
+  account: delivery is external in multi-tenant mode (D5), and a feed refresh writes into its
+  subscriber's calendar, whose objects take that calendar's org.
 
 ### The install-wide lookups this changes
 
@@ -272,9 +278,12 @@ Paths that are already safe across orgs, because they key on the caller and neve
   `orgOwned`, `derived` (with its parent FK), `platform` or `off`.
 - `TestOrgOwnedTablesHaveOrgID`: a non-null `org_id`, the existence and immutability triggers and,
   on Postgres, the FK to `orgs`. The only nullable exception is `audit_records`.
-- `TestOrgSQLNamesOrgID`: a go/ast scan of `internal/store` string literals. SQL that names an O or
-  D table must name `org_id` or join through a parent that does, or be on the pre-org or platform
-  allowlist with a reason.
+- `TestEveryRouteIsInTheCrossOrgMatrix`: every registered route has a `TestCrossOrgMatrix` row or
+  a stated reason no other org's ID reaches it (own rows only, addresses under D5, KyIdentity as the
+  caller, a signed peer, public by slug or token, pre-auth, DAV, platform, staff admin, or off under
+  D9). A new route fails until it has one of the two. It replaces a planned go/ast scan of store
+  SQL for `org_id`: 239 store queries name no `org_id`, almost all keyed by the caller's own user
+  ID, so that scan would have been a 239-entry allowlist (owner decision, 2026-11-21).
 - **`TestCrossOrgMatrix`**, built on `internal/api/authz_matrix_test.go`. That file already fails
   when a registered route has no row (`TestEveryRouteIsInTheMatrix`, `:382-408`), and its world has
   one persona per role (`:28-39`, `newWorld` at `:90-207`). The cross-org version:
@@ -654,22 +663,23 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    - Tests: an upgrade test from a version-36 database on both backends, with every row in the
      default org and every list and DAV answer unchanged. Also `TestEveryTableIsClassified`,
      `TestOrgOwnedTablesHaveOrgID`, and the full `make ci` and `make test-postgres`.
-2. **Store scoping.** `OrgStore`, `PlatformStore`, the pre-org allowlist, and L1–L12, split so each
+2. **Store scoping.** `OrgStore`, the pre-org allowlist, and L1–L11, split so each
    PR stays reviewable: (a) users, groups, grants and suite groups; (c) L1–L9 (every address
    external, D5), `org_id` written from the parent row on calendar, object, outbox and
    invite-budget inserts, and cross-org rows for calendars, booking types, task views and goals;
-   (d) audit and workers. There is no (b): D5 replaced the per-org scheduler lookup. Bookings,
+   (d) `org_id` on audit and device-pairing inserts (an audit row joins its user's org, or is a
+   platform row when it names none), and the route-coverage guard. There is no (b): D5 replaced the per-org scheduler lookup. Bookings,
    tasks, meetings and presence are D tables read by the caller's user ID, so they need no store
    change, only the matrix rows.
-   - Tests: `TestOrgSQLNamesOrgID`, and `TestCrossOrgMatrix`, which grows with each sub-PR and runs
-     with a test-only multi-org constructor on Postgres. Existing tests pass unchanged on the
+   - Tests: `TestCrossOrgMatrix` and `TestEveryRouteIsInTheCrossOrgMatrix`, run on SQLite and
+     Postgres. Existing tests pass unchanged on the
      default org.
 3. **Identity binding and peer payloads.** `org_id` from the ID token, webhook and logout token,
    D7, D8, and `org_id` in every KyPost and KyMessages body, all gated on the mode.
    - Tests: refusal without `org_id`, refusal of a known `sub` in another org, staff-org admin
      only, and peer bodies with a wrong or missing org answering `no_user`. Single-tenant golden
      peer bodies are byte-identical.
-4. **Org lifecycle and quotas.** The `/api/suite/orgs` poller and mirror, the status checks on
+4. **Org lifecycle and quotas.** `PlatformStore`, the `/api/suite/orgs` poller and mirror, the status checks on
    every auth path, suspension and its holds, the purge, restore reconciliation, `export-org`, and
    D11.
    - Tests: a suspended org is refused on every credential type (session, DAV, MCP, booking page,
