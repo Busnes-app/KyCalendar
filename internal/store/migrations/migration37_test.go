@@ -106,6 +106,30 @@ func TestMigration37MovesAnExistingInstallIntoTheDefaultOrg(t *testing.T) {
 	}
 }
 
+// An install with org-owned rows but no users (a start that died before its first admin) still
+// upgrades: the default org exists for PostgreSQL's foreign key to find.
+func TestMigration37WithRowsButNoUsers(t *testing.T) {
+	ctx := context.Background()
+	cfg := testdb.Config(t)
+	db := rawOpen(t, cfg.Driver, cfg.DSN)
+	if err := migrations.RunUntil(ctx, db, cfg.Driver, 36); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if _, err := db.ExecContext(ctx, bind(cfg.Driver, `INSERT INTO groups (id, display_name, created_at, updated_at) VALUES ('g1', 'Team', ?, ?)`), now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, bind(cfg.Driver, `INSERT INTO audit_records (user_id, action, created_at) VALUES ('', 'x', ?)`), now); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	st, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	_ = st.Close()
+}
+
 // A fresh database gets the default org, its usage row and the mode from the store, not the
 // migration.
 func TestFreshDatabaseGetsTheDefaultOrg(t *testing.T) {

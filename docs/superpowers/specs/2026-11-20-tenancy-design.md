@@ -132,7 +132,8 @@ Tables this spec adds:
 One migration (37, the next free version) on both backends:
 
 1. Create `orgs` and `org_usage`. The migration text is fixed and reads no environment. It inserts
-   the default org (`active`, `enabled`) only when `users` already holds rows. That is an existing
+   the default org (`active`, `enabled`) only when any org-owned table already holds rows, so
+   PostgreSQL's foreign key finds the org for every existing row. That is an existing
    install, which is always single-tenant, since converting one to multi-tenant is out of scope
    (as in T). A fresh database gets no `orgs` row from the migration.
 

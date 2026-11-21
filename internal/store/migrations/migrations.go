@@ -626,12 +626,18 @@ var orgParents = []struct{ table, column, parent string }{
 }
 
 // orgModel: the org registry, org_id on every org-owned table, and the triggers that keep rows in
-// one existing org, unchanged for life. Existing rows join the default org, created only when users
-// exist: an existing install is single-tenant. A fresh database gets its org from store.ensureOrgs.
+// one existing org, unchanged for life. Existing rows join the default org, created only when any
+// org-owned table holds rows: an existing install is single-tenant, and PostgreSQL's foreign key
+// must find the org for every row. A fresh database gets its org from store.ensureOrgs.
 // The default stays on org_id until the store binds orgs itself (tenancy PR 2). org_usage holds
 // each org's object bytes, kept like calendar_usage, keyed by the object's own org_id so a
 // cascaded calendar delete still finds it.
 func orgModel(postgres bool) string {
+	existing := make([]string, len(OrgOwnedTables))
+	for i, t := range OrgOwnedTables {
+		existing[i] = "EXISTS (SELECT 1 FROM " + t + ")"
+	}
+	populated := strings.Join(existing, " OR ")
 	var b strings.Builder
 	b.WriteString(`CREATE TABLE orgs (
  id TEXT PRIMARY KEY,
@@ -646,8 +652,8 @@ CREATE TABLE org_usage (
  org_id TEXT PRIMARY KEY REFERENCES orgs(id),
  bytes BIGINT NOT NULL
 );
-INSERT INTO orgs (id, status) SELECT '` + DefaultOrgID + `', 'active' WHERE EXISTS (SELECT 1 FROM users);
-INSERT INTO org_usage (org_id, bytes) SELECT '` + DefaultOrgID + `', COALESCE((SELECT SUM(LENGTH(data)) FROM calendar_objects), 0) WHERE EXISTS (SELECT 1 FROM users);
+INSERT INTO orgs (id, status) SELECT '` + DefaultOrgID + `', 'active' WHERE ` + populated + `;
+INSERT INTO org_usage (org_id, bytes) SELECT '` + DefaultOrgID + `', COALESCE((SELECT SUM(LENGTH(data)) FROM calendar_objects), 0) WHERE ` + populated + `;
 `)
 	if postgres {
 		b.WriteString(`CREATE FUNCTION org_id_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
