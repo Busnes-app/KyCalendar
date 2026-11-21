@@ -33,3 +33,22 @@ func TestCreateUser(t *testing.T) {
 		}
 	}
 }
+
+// D8: a multi-tenant install makes no local everyday accounts.
+func TestCreateUserRefusedInMultiTenantMode(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, testdb.Config(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := createUser(ctx, st, "walter", "WalterInitial123!"); !errors.Is(err, errMultiTenantCreateUser) {
+		t.Fatalf("multi-tenant create-user: %v", err)
+	}
+	if _, err := st.Users().GetUserByUsername(ctx, "walter"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("an account was made: %v", err)
+	}
+}

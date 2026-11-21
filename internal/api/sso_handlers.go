@@ -24,6 +24,11 @@ var (
 	// errUsernameTaken: a different account already holds the IdP username. Never linked by name.
 	errUsernameTaken = errors.New("username already used by another account")
 	errOtherIssuer   = errors.New("account belongs to another sign-in provider")
+	// Multi-tenant only (tenancy spec, Identity binding): a token naming no org, an org that does
+	// not serve, or a known account's token naming another org.
+	errNoOrg        = errors.New("sign-in token names no org")
+	errOrgNotActive = errors.New("org is not active")
+	errOrgMismatch  = errors.New("sign-in token names another org")
 )
 
 // nonceCookieKey MACs the nonce cookie, so a browser cannot back-date a step-up's start. It lives
@@ -39,6 +44,33 @@ func nonceCookieMAC(state, value string) string {
 // follows the token's `roles` claim on every login; any other provider's users are everyday. A
 // change revokes every grant in the role write's own transaction (SetSSORole).
 func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, binding string) (*store.User, error) {
+	ten, err := s.store.Tenancy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org := store.OrgID(claims.OrgID)
+	if ten.Multi {
+		if org == "" {
+			s.auditSSORefusal(ctx, "", "reason=no_org subject="+claims.Subject)
+			return nil, errNoOrg
+		}
+		if ok, err := s.store.OrgServes(ctx, org); err != nil {
+			return nil, err
+		} else if !ok {
+			return nil, errOrgNotActive
+		}
+	}
+	// The org comes only from the verified token, and never moves an account (users.org_id is
+	// immutable): a known account's token naming another org is a KyIdentity bug or a forgery.
+	sameOrg := func(u *store.User) error {
+		if ten.Multi && store.OrgOf(u) != org {
+			s.auditSSORefusal(ctx, u.ID, "reason=org_mismatch org="+string(store.OrgOf(u))+" token_org="+string(org))
+			return errOrgMismatch
+		}
+		return nil
+	}
+	// D7: in multi-tenant mode only the staff org's accounts may be administrators.
+	admin := access.IsAdmin(claims.Roles) && (!ten.Multi || org == ten.Staff)
 	managed, allowed, ownershipErr := s.store.InstallerIdentity(ctx, claims.Issuer, claims.Subject)
 	if ownershipErr != nil {
 		return nil, ownershipErr
@@ -54,7 +86,10 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 		if user.SSOIssuer != binding {
 			return nil, errOtherIssuer
 		}
-		if (user.Role == "admin") != access.IsAdmin(claims.Roles) {
+		if err := sameOrg(user); err != nil {
+			return nil, err
+		}
+		if (user.Role == "admin") != admin {
 			if err = s.store.Users().RevokeSSOUser(ctx, user.ID, true); err != nil {
 				return nil, err
 			}
@@ -63,7 +98,7 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 		return user, nil
 	}
 	role := "user"
-	if claims.Provider == "kysignon" && access.IsAdmin(claims.Roles) {
+	if claims.Provider == "kysignon" && admin {
 		role = "admin"
 	}
 	user, err := s.store.Users().GetUserBySSO(ctx, claims.Provider, claims.Subject)
@@ -86,6 +121,9 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 			SSOSubject:  claims.Subject,
 			SSOIssuer:   binding,
 		}
+		if ten.Multi {
+			user.OrgID = org
+		}
 		create := s.store.Users().CreateUser
 		if s.shared != nil { // PostgreSQL: another server may have saved a new binding since the check
 			create = s.store.Users().CreateSSOUser
@@ -107,6 +145,9 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 	// it, so a later issuer's colliding sub never takes it over; an unstamped row is no issuer's.
 	if user.SSOIssuer == "" || user.SSOIssuer != binding {
 		return nil, errOtherIssuer
+	}
+	if err := sameOrg(user); err != nil {
+		return nil, err
 	}
 	recheck := "" // SQLite: signinMu already holds every save out
 	if s.shared != nil {
@@ -267,6 +308,15 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		log.Printf("sso: sign-in for subject %s refused: the account belongs to another sign-in provider", claims.Subject)
 		s.writeError(w, http.StatusForbidden, "This account belongs to a previous sign-in provider")
 		return
+	case errors.Is(err, errNoOrg):
+		s.writeError(w, http.StatusForbidden, "Your sign-in did not name your organisation; ask your administrator")
+		return
+	case errors.Is(err, errOrgMismatch):
+		s.writeError(w, http.StatusForbidden, "This account belongs to another organisation; ask your administrator")
+		return
+	case errors.Is(err, errOrgNotActive):
+		s.writeAPIError(w, &apiError{status: http.StatusForbidden, code: "org_not_active", msg: "Your organisation is not active on this service"})
+		return
 	case errors.Is(err, errUsernameTaken):
 		log.Printf("sso: sign-in for subject %s refused: username %q belongs to another account", claims.Subject, claims.PreferredUsername)
 		s.writeError(w, http.StatusConflict, "Another KyCalendar account already uses this username; an administrator must rename it on the People screen")
@@ -397,10 +447,42 @@ func (s *Server) handleBackchannelLogout(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "auth.sso_backchannel_logout", Resource: "session", IPAddress: s.requestIP(r)})
+	s.auditLogoutOrg(r.Context(), claims)
 	w.WriteHeader(http.StatusOK)
+}
+
+// auditLogoutOrg records a multi-tenant logout token whose org_id is missing or is not its
+// account's. The logout has already ended the sessions: it only takes access away, so refusing
+// it would leave alive a session KyIdentity meant to end.
+func (s *Server) auditLogoutOrg(ctx context.Context, claims *sso.LogoutClaims) {
+	ten, err := s.store.Tenancy(ctx)
+	if err != nil || !ten.Multi {
+		return
+	}
+	userID, details := "", "reason=no_org"
+	if claims.Subject != "" {
+		if u, err := s.store.Users().GetUserBySSO(ctx, "kysignon", claims.Subject); err == nil {
+			if store.OrgOf(u) == store.OrgID(claims.OrgID) {
+				return
+			}
+			userID = u.ID
+			details = "org=" + string(store.OrgOf(u)) + " token_org=" + claims.OrgID
+		}
+	}
+	if claims.OrgID == "" || userID != "" {
+		_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: userID, Action: "auth.sso_org_mismatch", Resource: "session", Details: details})
+	}
 }
 
 func (s *Server) handleSAMLMetadata(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml")
 	_, _ = w.Write([]byte(s.saml.GenerateMetadata()))
+}
+
+// auditSSORefusal records a refused multi-tenant sign-in. userID is the account it named, or ""
+// when there is none (a platform row).
+func (s *Server) auditSSORefusal(ctx context.Context, userID, details string) {
+	if err := s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: userID, Action: "auth.sso_refused", Resource: "user", Details: details}); err != nil {
+		log.Printf("sso: auditing a refused sign-in: %v", err)
+	}
 }

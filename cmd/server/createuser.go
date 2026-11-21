@@ -55,7 +55,15 @@ func readPasswordLine(r io.Reader) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
+// errMultiTenantCreateUser: a customer's account takes its org from KyIdentity, never from here (D8).
+var errMultiTenantCreateUser = errors.New("a multi-tenant install has no local everyday accounts; people sign in through KyIdentity")
+
 func createUser(ctx context.Context, st store.Store, username, pw string) error {
+	if ten, err := st.Tenancy(ctx); err != nil {
+		return err
+	} else if ten.Multi {
+		return errMultiTenantCreateUser
+	}
 	if err := auth.ValidateUsername(username); err != nil {
 		return err
 	}

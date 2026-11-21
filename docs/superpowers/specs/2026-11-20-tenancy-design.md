@@ -335,6 +335,16 @@ user carries the org. No request header, path or form field ever names an org fo
 
 ### Directory webhook
 
+> **Gap found while building PR 3 (2026-11-21).** KyIdentity no longer sends the payload below.
+> Its lifecycle transport is the signed suite connector: `syncauth`-signed SCIM User bodies, which
+> carry `org_id` in multi-tenant mode (KyIdentity `internal/sync/sync.go`, `SCIMUserResource`).
+> KyCalendar receives them at `POST /api/installer/directory`, and a managed
+> `/api/sso/kysignon/sync` delegates there. That receiver only updates accounts the installer
+> assigned (`internal/store/installer_directory.go`). A self-signed-up customer's account is not
+> assigned, so it would be refused and KyIdentity would retry it. Multi-tenant mode needs a
+> receiver for any account of a mirrored org, with the rules below applied to the SCIM body.
+> That is open question 10 and its own PR (3c). The rules below stay the target.
+
 `/api/sso/kysignon/sync` (`internal/api/server.go:312`) verifies an HMAC-SHA256 of the raw body
 (`internal/sso/kysignon.go:39-56`, `internal/crypto/crypto.go:87-97`), so a field T adds to the
 body is authenticated. Today's payload has no org (`kysignon.go:28-36`).
@@ -675,7 +685,14 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
      Postgres. Existing tests pass unchanged on the
      default org.
 3. **Identity binding and peer payloads.** `org_id` from the ID token, webhook and logout token,
-   D7, D8, and `org_id` in every KyPost and KyMessages body, all gated on the mode.
+   D7, D8, and `org_id` in every KyPost and KyMessages body, all gated on the mode. Split:
+   (a) sign-in, back-channel logout, D7, and D8 for password sign-in and `create-user`. A sign-in
+   is accepted only when its org is already mirrored and `active`. The poll that fills the
+   mirror, and its wait, come with PR 4. The staff org is read from the `tenancy_staff_org`
+   setting, which PR 6 records from `KYCALENDAR_STAFF_ORG_ID`. With none recorded, nobody is an
+   administrator. `init-admin` and bootstrap in the staff org wait for PR 6. Refusing admin
+   People writes waits for PR 5. (b) `org_id` in KyPost and KyMessages bodies (D10).
+   (c) the multi-tenant directory receiver (open question 10).
    - Tests: refusal without `org_id`, refusal of a known `sub` in another org, staff-org admin
      only, and peer bodies with a wrong or missing org answering `no_user`. Single-tenant golden
      peer bodies are byte-identical.
@@ -749,3 +766,11 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    `deleted`, and that `since=<revision>` returns each deletion once. KyCalendar's restore
    re-purge (Lifecycle) depends on it. Until then, an org absent from a full listing stays `stale`
    and is purged only by staff with `purge-org`.
+10. **The multi-tenant directory receiver.** KyIdentity delivers account lifecycle as signed SCIM
+    User bodies (Directory webhook). Recommend a receiver beside `/api/installer/directory` for
+    multi-tenant mode. It would verify the suite connector signature, resolve the account by
+    `(issuer, id)`, and apply the Directory webhook rules to the body's `active` and `org_id`.
+    Removals are always applied, additions only within the mirrored org, and an unknown account
+    is created only when its org serves. It answers `204` once applied, so KyIdentity stops
+    retrying. Until it ships, a multi-tenant install learns of a deactivation only through
+    back-channel logout and the next sign-in.

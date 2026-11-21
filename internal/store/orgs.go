@@ -37,6 +37,34 @@ func (s *SQLStore) ensureOrgs(ctx context.Context) error {
 	return tx.Commit()
 }
 
+// StaffOrgSetting records a multi-tenant install's staff org (tenancy spec D7): only its accounts
+// may be administrators.
+const StaffOrgSetting = "tenancy_staff_org"
+
+// Tenancy is an install's mode. Anything but a recorded "single" is multi-tenant, so a lost
+// row fails closed; ensureOrgs writes it back at the next open.
+type Tenancy struct {
+	Multi bool
+	Staff OrgID // multi-tenant only; empty means no account is an administrator
+}
+
+func (s *SQLStore) Tenancy(ctx context.Context) (Tenancy, error) {
+	v, err := s.Settings().GetSettings(ctx, TenancySetting, StaffOrgSetting)
+	if err != nil {
+		return Tenancy{}, err
+	}
+	if v[TenancySetting] == "single" {
+		return Tenancy{}, nil
+	}
+	return Tenancy{Multi: true, Staff: OrgID(v[StaffOrgSetting])}, nil
+}
+
+func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM orgs WHERE id = ? AND status = 'active' AND enabled`), id).Scan(&n)
+	return n == 1, err
+}
+
 // OrgID names an org. Build one only from an authenticated principal (OrgOf) or, on a
 // single-tenant path, DefaultOrg: never from a request.
 type OrgID string

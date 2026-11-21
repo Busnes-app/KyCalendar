@@ -30,6 +30,8 @@ type IdentityClaims struct {
 	// AuthTime is the ID token's auth_time: when the user last gave the provider their
 	// credentials. Zero when the token has none.
 	AuthTime time.Time `json:"-"`
+	// OrgID is the ID token's org_id: KyIdentity sends it in multi-tenant mode only.
+	OrgID string `json:"-"`
 }
 
 // SSOState represents ephemeral state held during OAuth/OIDC authorization flow.
