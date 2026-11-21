@@ -331,3 +331,29 @@ func TestNewRowsJoinTheirParentsOrg(t *testing.T) {
 		}
 	})
 }
+
+// TestCalendarUserFailsClosed: without a tenancy_mode of single, nobody is a scheduling peer, so a
+// lost row can never leak across orgs; the next store open (ensureOrgs) writes it back.
+func TestCalendarUserFailsClosed(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		if err := s.Users().CreateUser(ctx, &User{ID: "ua", Username: "a", Email: "a@example.com", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Settings().DeleteSetting(ctx, TenancySetting); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Users().CalendarUser(ctx, "a@example.com"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("no tenancy_mode: %v", err)
+		}
+		if u, err := s.Users().EmailOwner(ctx, "a@example.com"); err != nil || u.ID != "ua" {
+			t.Fatalf("own address without tenancy_mode: %+v %v", u, err)
+		}
+		if err := s.ensureOrgs(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if u, err := s.Users().CalendarUser(ctx, "a@example.com"); err != nil || u.ID != "ua" {
+			t.Fatalf("after the next open: %+v %v", u, err)
+		}
+	})
+}
