@@ -502,6 +502,11 @@ func actorOf(ctx context.Context) store.Actor {
 }
 
 // sessionUser is the user requireSession, requireAdmin or requireEveryday authenticated.
+// orgOf is the store bound to the signed-in user's org: the only org a member's request reaches.
+func (s *Server) orgOf(r *http.Request) store.OrgStore {
+	return s.store.Org(store.OrgOf(sessionUser(r.Context())))
+}
+
 func sessionUser(ctx context.Context) *store.User {
 	u, _ := ctx.Value(sessionUserKey{}).(*store.User)
 	return u

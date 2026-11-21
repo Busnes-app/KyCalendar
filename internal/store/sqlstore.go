@@ -244,14 +244,17 @@ func (u *userStore) createUser(ctx context.Context, actor Actor, user *User) err
 	if user.RecoveryCodesHash == "" {
 		user.RecoveryCodesHash = "[]"
 	}
+	if user.OrgID == "" {
+		user.OrgID = DefaultOrg
+	}
 
 	q := u.store.rebind(`
 INSERT INTO users (
     id, username, email, display_name, password_hash, role, status,
     sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
     recovery_codes_hash, push_device_id, must_change_password,
-    created_at, updated_at, last_login_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    created_at, updated_at, last_login_at, org_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 
 	var lastLogin sql.NullTime
@@ -294,7 +297,7 @@ INSERT INTO users (
 		user.Role, user.Status, user.SSOProvider, user.SSOSubject, user.SSOIssuer,
 		user.TOTPSecretEnc, user.TOTPEnabled, user.RecoveryCodesHash,
 		user.PushDeviceID, user.MustChangePassword,
-		user.CreatedAt, user.UpdatedAt, lastLogin,
+		user.CreatedAt, user.UpdatedAt, lastLogin, user.OrgID,
 	); err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists
@@ -326,7 +329,7 @@ func (u *userStore) scanUser(row interface{ Scan(...any) error }) (*User, error)
 		&user.Role, &user.Status, &user.SSOProvider, &user.SSOSubject, &user.SSOIssuer,
 		&user.TOTPSecretEnc, &user.TOTPEnabled, &user.RecoveryCodesHash,
 		&user.PushDeviceID, &user.MustChangePassword, &user.TOTPLastCounter,
-		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
+		&user.CreatedAt, &user.UpdatedAt, &lastLogin, &user.OrgID,
 	)
 	if err != nil {
 		if errorsIs(err, sql.ErrNoRows) {
@@ -345,7 +348,7 @@ func (u *userStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at
+       totp_last_counter, created_at, updated_at, last_login_at, org_id
 FROM users WHERE id = ?
 `)
 	return u.scanUser(u.store.db.QueryRowContext(ctx, q, id))
@@ -356,7 +359,7 @@ func (u *userStore) GetUserByUsername(ctx context.Context, username string) (*Us
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at
+       totp_last_counter, created_at, updated_at, last_login_at, org_id
 FROM users WHERE LOWER(username) = LOWER(?)
 ORDER BY CASE WHEN sso_provider = 'local' THEN 0 ELSE 1 END, CASE WHEN username = ? THEN 0 ELSE 1 END
 LIMIT 1
@@ -371,7 +374,7 @@ func (u *userStore) GetUserByEmail(ctx context.Context, email string) (*User, er
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at
+       totp_last_counter, created_at, updated_at, last_login_at, org_id
 FROM users WHERE LOWER(email) = LOWER(?)
 `)
 	return u.scanUser(u.store.db.QueryRowContext(ctx, q, email))
@@ -382,7 +385,7 @@ func (u *userStore) GetUserBySSO(ctx context.Context, provider, subject string) 
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at
+       totp_last_counter, created_at, updated_at, last_login_at, org_id
 FROM users WHERE sso_provider = ? AND sso_subject = ?
 `)
 	return u.scanUser(u.store.db.QueryRowContext(ctx, q, provider, subject))
@@ -498,7 +501,7 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at
+       totp_last_counter, created_at, updated_at, last_login_at, org_id
 FROM users
 ` + where + `
 ORDER BY created_at DESC LIMIT ? OFFSET ?`
@@ -1396,11 +1399,11 @@ type groupStore struct {
 	store *SQLStore
 }
 
-const groupColumns = "id, display_name, external_id, source, created_at, updated_at"
+const groupColumns = "id, display_name, external_id, source, created_at, updated_at, org_id"
 
 func scanGroup(row interface{ Scan(...any) error }) (*Group, error) {
 	var grp Group
-	if err := row.Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.Source, &grp.CreatedAt, &grp.UpdatedAt); err != nil {
+	if err := row.Scan(&grp.ID, &grp.DisplayName, &grp.ExternalID, &grp.Source, &grp.CreatedAt, &grp.UpdatedAt, &grp.OrgID); err != nil {
 		if errorsIs(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -1534,8 +1537,11 @@ func (g *groupStore) create(ctx context.Context, group *Group, then func(*sql.Tx
 	if err := g.refuseTwin(ctx, tx, group.ID, group.DisplayName); err != nil {
 		return err
 	}
-	q := g.store.rebind("INSERT INTO groups (" + groupColumns + ") VALUES (?, ?, ?, ?, ?, ?)")
-	if _, err := tx.ExecContext(ctx, q, group.ID, group.DisplayName, group.ExternalID, group.Source, group.CreatedAt, group.UpdatedAt); err != nil {
+	if group.OrgID == "" {
+		group.OrgID = DefaultOrg
+	}
+	q := g.store.rebind("INSERT INTO groups (" + groupColumns + ") VALUES (?, ?, ?, ?, ?, ?, ?)")
+	if _, err := tx.ExecContext(ctx, q, group.ID, group.DisplayName, group.ExternalID, group.Source, group.CreatedAt, group.UpdatedAt, group.OrgID); err != nil {
 		if isUniqueViolation(err) {
 			return ErrAlreadyExists
 		}
@@ -1545,17 +1551,6 @@ func (g *groupStore) create(ctx context.Context, group *Group, then func(*sql.Tx
 		return err
 	}
 	return tx.Commit()
-}
-
-func (g *groupStore) GetGroupByID(ctx context.Context, id string) (*Group, error) {
-	grp, err := scanGroup(g.store.db.QueryRowContext(ctx, g.store.rebind("SELECT "+groupColumns+" FROM groups WHERE id = ?"), id))
-	if err != nil {
-		return nil, err
-	}
-	if grp.Members, err = g.getMembers(ctx, g.store.db, grp.ID); err != nil {
-		return nil, err
-	}
-	return grp, nil
 }
 
 func (g *groupStore) GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error) {
@@ -1701,12 +1696,6 @@ func (g *groupStore) ListGroups(ctx context.Context, offset, limit int, source s
 	return groups, count, nil
 }
 
-func (g *groupStore) AddGroupMember(ctx context.Context, groupID, userID string) error {
-	q := g.store.rebind("INSERT INTO group_members (group_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
-	_, err := g.store.db.ExecContext(ctx, q, groupID, userID)
-	return err
-}
-
 func (g *groupStore) RemoveGroupMember(ctx context.Context, groupID, userID string) error {
 	q := g.store.rebind("DELETE FROM group_members WHERE group_id = ? AND user_id = ?")
 	_, err := g.store.db.ExecContext(ctx, q, groupID, userID)
@@ -1715,7 +1704,7 @@ func (g *groupStore) RemoveGroupMember(ctx context.Context, groupID, userID stri
 
 func (g *groupStore) GetUserGroups(ctx context.Context, userID string) ([]*Group, error) {
 	q := g.store.rebind(`
-SELECT g.id, g.display_name, g.external_id, g.source, g.created_at, g.updated_at
+SELECT g.id, g.display_name, g.external_id, g.source, g.created_at, g.updated_at, g.org_id
 FROM groups g
 JOIN group_members gm ON g.id = gm.group_id
 WHERE gm.user_id = ?

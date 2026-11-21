@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store/migrations"
@@ -34,4 +35,114 @@ func (s *SQLStore) ensureOrgs(ctx context.Context) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// OrgID names an org. Build one only from an authenticated principal (OrgOf) or, on a
+// single-tenant path, DefaultOrg: never from a request.
+type OrgID string
+
+// DefaultOrg is the one org of a single-tenant install.
+const DefaultOrg OrgID = migrations.DefaultOrgID
+
+// OrgOf is u's org.
+func OrgOf(u *User) OrgID { return u.OrgID }
+
+// OrgStore reaches one org's rows. A row of another org answers exactly as a missing one
+// (ErrNotFound), so a cross-org ID reveals nothing. Tenancy PR 2 moves the org-owned methods
+// here area by area; these are users, groups, memberships, grants and suite groups.
+type OrgStore interface {
+	GetUser(ctx context.Context, id string) (*User, error)
+	// GetGroup returns the group with its member IDs.
+	GetGroup(ctx context.Context, id string) (*Group, error)
+	// AddGroupMember is ErrNotFound unless the group and the user are both in this org.
+	AddGroupMember(ctx context.Context, groupID, userID string) error
+	// SetGrant creates or replaces one group's role; ErrNotFound unless the calendar is a
+	// group calendar and the group exists, both in this org.
+	SetGrant(ctx context.Context, g CalendarGrant) error
+	// ReconcileSuiteGroup makes g's group calendar and members here match KyIdentity's suite
+	// group list in one transaction; members are this org's accounts in scope. See
+	// suite_groups.go.
+	ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, g SuiteGroup) (SuiteGroupChange, error)
+}
+
+type orgStore struct {
+	s  *SQLStore
+	id OrgID
+}
+
+func (s *SQLStore) Org(id OrgID) OrgStore { return orgStore{s: s, id: id} }
+
+func (o orgStore) GetUser(ctx context.Context, id string) (*User, error) {
+	return o.s.users.scanUser(o.s.db.QueryRowContext(ctx, o.s.rebind(`
+SELECT id, username, email, display_name, password_hash, role, status,
+       sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
+       recovery_codes_hash, push_device_id, must_change_password,
+       totp_last_counter, created_at, updated_at, last_login_at, org_id
+FROM users WHERE id = ? AND org_id = ?`), id, o.id))
+}
+
+func (o orgStore) GetGroup(ctx context.Context, id string) (*Group, error) {
+	grp, err := scanGroup(o.s.db.QueryRowContext(ctx, o.s.rebind("SELECT "+groupColumns+" FROM groups WHERE id = ? AND org_id = ?"), id, o.id))
+	if err != nil {
+		return nil, err
+	}
+	if grp.Members, err = o.s.groups.getMembers(ctx, o.s.db, grp.ID); err != nil {
+		return nil, err
+	}
+	return grp, nil
+}
+
+func (o orgStore) AddGroupMember(ctx context.Context, groupID, userID string) error {
+	tx, err := o.s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := o.bothInOrg(ctx, tx, "groups", groupID, "users", userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, o.s.rebind("INSERT INTO group_members (group_id, user_id, org_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING"), groupID, userID, o.id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (o orgStore) SetGrant(ctx context.Context, g CalendarGrant) error {
+	tx, err := o.s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := o.bothInOrg(ctx, tx, "calendars", g.CalendarID, "groups", g.GroupID); err != nil {
+		return err
+	}
+	var groupCal int
+	if err := tx.QueryRowContext(ctx, o.s.rebind(`SELECT COUNT(*) FROM calendars WHERE id = ? AND owner_kind = 'group'`), g.CalendarID).Scan(&groupCal); err != nil {
+		return err
+	}
+	if groupCal != 1 {
+		return ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, o.s.rebind(`INSERT INTO calendar_grants (calendar_id, group_id, role, org_id) VALUES (?, ?, ?, ?)
+ON CONFLICT (calendar_id, group_id) DO UPDATE SET role = excluded.role`), g.CalendarID, g.GroupID, g.Role, o.id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// bothInOrg is ErrNotFound unless row a of table ta and row b of table tb are both this org's.
+// The tables are this file's constants, never input.
+func (o orgStore) bothInOrg(ctx context.Context, tx *sql.Tx, ta, a, tb, b string) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, o.s.rebind("SELECT (SELECT COUNT(*) FROM "+ta+" WHERE id = ? AND org_id = ?) + (SELECT COUNT(*) FROM "+tb+" WHERE id = ? AND org_id = ?)"), a, o.id, b, o.id).Scan(&n); err != nil {
+		return err
+	}
+	if n != 2 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (o orgStore) ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, g SuiteGroup) (SuiteGroupChange, error) {
+	return o.s.groups.reconcileSuiteGroup(ctx, o.id, scope, g)
 }

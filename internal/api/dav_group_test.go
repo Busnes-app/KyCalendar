@@ -37,10 +37,10 @@ func grantRole(t *testing.T, st store.Store, cal *store.Calendar, role, userID s
 	if err := st.Groups().CreateGroup(ctx, g); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Groups().AddGroupMember(ctx, g.ID, userID); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, g.ID, userID); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: g.ID, Role: role}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: g.ID, Role: role}); err != nil {
 		t.Fatal(err)
 	}
 }

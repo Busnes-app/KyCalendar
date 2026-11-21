@@ -24,7 +24,7 @@ func TestSharedInvitationRequiresItsRespondingAttendee(t *testing.T) {
 				ctx := context.Background()
 				team := groupCalendar(t, w.st, "Shared invite")
 				grantRole(t, w.st, team, "editor", "usr_bob")
-				if err := w.st.Groups().AddGroupMember(ctx, "grp_editor_"+team.ID, "usr_mallory"); err != nil {
+				if err := w.st.Org(store.DefaultOrg).AddGroupMember(ctx, "grp_editor_"+team.ID, "usr_mallory"); err != nil {
 					t.Fatal(err)
 				}
 				body := meeting("shared-invite", "alice", "RRULE:FREQ=DAILY;COUNT=3", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:mallory@example.com")

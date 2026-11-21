@@ -28,7 +28,7 @@ func TestGroupNamesAreUniqueIgnoringCase(t *testing.T) {
 	if err := st.Groups().UpdateGroup(ctx, &store.Group{ID: "grp_a", DisplayName: "TEAM"}); err != nil {
 		t.Fatalf("renaming a group to its own name in another case: %v", err)
 	}
-	if g, _ := st.Groups().GetGroupByID(ctx, "grp_a"); g.Source != store.GroupSourceLocal {
+	if g, _ := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_a"); g.Source != store.GroupSourceLocal {
 		t.Fatalf("UpdateGroup changed the source to %q", g.Source)
 	}
 	if err := st.Groups().UpdateGroup(ctx, &store.Group{ID: "grp_missing", DisplayName: "Nobody"}); !errors.Is(err, store.ErrNotFound) {

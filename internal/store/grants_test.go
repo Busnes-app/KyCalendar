@@ -30,7 +30,7 @@ func grantWorld(t *testing.T) store.Store {
 		}
 	}
 	for _, m := range [][2]string{{"grp_r", "usr_a"}, {"grp_e", "usr_a"}, {"grp_e", "usr_b"}} {
-		if err := st.Groups().AddGroupMember(ctx, m[0], m[1]); err != nil {
+		if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, m[0], m[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -47,9 +47,10 @@ func grantWorld(t *testing.T) store.Store {
 
 func TestSetGrantUpsertsAndLists(t *testing.T) {
 	ctx := context.Background()
-	cs := grantWorld(t).Calendars()
+	st := grantWorld(t)
+	cs := st.Calendars()
 	for _, role := range []string{"reader", "editor"} {
-		if err := cs.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: role}); err != nil {
+		if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: role}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -61,13 +62,13 @@ func TestSetGrantUpsertsAndLists(t *testing.T) {
 
 func TestSetGrantRefusesPersonalOrMissing(t *testing.T) {
 	ctx := context.Background()
-	cs := grantWorld(t).Calendars()
+	st := grantWorld(t)
 	for name, g := range map[string]store.CalendarGrant{
 		"personal calendar": {CalendarID: "cal_p", GroupID: "grp_r", Role: "reader"},
 		"missing group":     {CalendarID: "cal_g", GroupID: "grp_x", Role: "reader"},
 		"missing calendar":  {CalendarID: "cal_x", GroupID: "grp_r", Role: "reader"},
 	} {
-		if err := cs.SetGrant(ctx, g); !errors.Is(err, store.ErrNotFound) {
+		if err := st.Org(store.DefaultOrg).SetGrant(ctx, g); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("%s: want ErrNotFound, got %v", name, err)
 		}
 	}
@@ -77,8 +78,8 @@ func TestUserGrantsFollowMembership(t *testing.T) {
 	ctx := context.Background()
 	st := grantWorld(t)
 	cs := st.Calendars()
-	_ = cs.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: "reader"})
-	_ = cs.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_e", Role: "editor"})
+	_ = st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: "reader"})
+	_ = st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_e", Role: "editor"})
 	if got, err := cs.UserGrants(ctx, "usr_a"); err != nil || len(got) != 2 {
 		t.Fatalf("usr_a grants %+v %v", got, err)
 	}
@@ -94,7 +95,7 @@ func TestDeleteGroupRemovesGrantsKeepsCalendar(t *testing.T) {
 	ctx := context.Background()
 	st := grantWorld(t)
 	cs := st.Calendars()
-	_ = cs.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: "reader"})
+	_ = st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: "reader"})
 	if err := st.Groups().DeleteGroup(ctx, "grp_r"); err != nil {
 		t.Fatal(err)
 	}
@@ -108,8 +109,9 @@ func TestDeleteGroupRemovesGrantsKeepsCalendar(t *testing.T) {
 
 func TestDeleteCalendarCascades(t *testing.T) {
 	ctx := context.Background()
-	cs := grantWorld(t).Calendars()
-	_ = cs.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: "reader"})
+	st := grantWorld(t)
+	cs := st.Calendars()
+	_ = st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_r", Role: "reader"})
 	if _, err := cs.PutObject(ctx, obj("cal_g", "a.ics", "a", "x", 0, nil), "", false, store.OwnerLimits{}); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,8 @@ func TestDeleteCalendarCascades(t *testing.T) {
 
 func TestDeleteGrantIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	cs := grantWorld(t).Calendars()
+	st := grantWorld(t)
+	cs := st.Calendars()
 	for i := 0; i < 2; i++ {
 		if err := cs.DeleteGrant(ctx, "cal_g", "grp_r"); err != nil {
 			t.Fatalf("delete %d: %v", i, err)
@@ -138,7 +141,8 @@ func TestDeleteGrantIsIdempotent(t *testing.T) {
 }
 
 func TestListCalendarsByKind(t *testing.T) {
-	cs := grantWorld(t).Calendars()
+	st := grantWorld(t)
+	cs := st.Calendars()
 	got, err := cs.ListCalendarsByKind(context.Background(), "group")
 	if err != nil || len(got) != 1 || got[0].ID != "cal_g" {
 		t.Fatalf("group calendars %+v %v", got, err)

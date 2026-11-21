@@ -26,7 +26,7 @@ func TestGroupSourceIsStoredAndFiltered(t *testing.T) {
 	if err != nil || total != 1 || len(scim) != 1 || scim[0].ID != "grp_s" {
 		t.Fatalf("scim groups: %+v %d %v", scim, total, err)
 	}
-	if g, _ := st.Groups().GetGroupByID(ctx, "grp_l"); g.Source != store.GroupSourceLocal {
+	if g, _ := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_l"); g.Source != store.GroupSourceLocal {
 		t.Fatalf("empty source stored as %q, want local", g.Source)
 	}
 	if g, _ := st.Groups().GetGroupByName(ctx, "synced TEAM"); g == nil || g.Source != store.GroupSourceSCIM {

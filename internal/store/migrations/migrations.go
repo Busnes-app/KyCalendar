@@ -629,7 +629,8 @@ var orgParents = []struct{ table, column, parent string }{
 // one existing org, unchanged for life. Existing rows join the default org, created only when any
 // org-owned table holds rows: an existing install is single-tenant, and PostgreSQL's foreign key
 // must find the org for every row. A fresh database gets its org from store.ensureOrgs.
-// The default stays on org_id until the store binds orgs itself (tenancy PR 2). org_usage holds
+// The default stays on org_id: a multi-tenant install has no default org, so an insert that
+// forgets org_id fails the existence check there. org_usage holds
 // each org's object bytes, kept like calendar_usage, keyed by the object's own org_id so a
 // cascaded calendar delete still finds it.
 func orgModel(postgres bool) string {

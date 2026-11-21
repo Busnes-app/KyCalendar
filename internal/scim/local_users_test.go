@@ -127,7 +127,7 @@ func TestSCIMGroupMembersNeverIncludeLocalUsers(t *testing.T) {
 	var crew struct{ ID string }
 	_ = json.Unmarshal(w.Body.Bytes(), &crew)
 	// A membership from before this rule: SCIM must not report it, nor remove it.
-	if err := st.Groups().AddGroupMember(ctx, crew.ID, "usr_local"); err != nil {
+	if err := st.Org(store.DefaultOrg).AddGroupMember(ctx, crew.ID, "usr_local"); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/scim/v2/Groups/" + crew.ID, "/scim/v2/Groups"} {
@@ -151,7 +151,7 @@ func TestSCIMGroupMembersNeverIncludeLocalUsers(t *testing.T) {
 	if w := scimDo(t, h, token, "PUT", "/scim/v2/Groups/"+crew.ID, map[string]any{"schemas": []string{schema.GroupSchema}, "displayName": "Crew", "members": members()}); w.Code != http.StatusOK {
 		t.Fatalf("empty replace: %d %s", w.Code, w.Body.String())
 	}
-	g, err := st.Groups().GetGroupByID(ctx, crew.ID)
+	g, err := st.Org(store.DefaultOrg).GetGroup(ctx, crew.ID)
 	if err != nil || len(g.Members) != 1 || g.Members[0] != "usr_local" {
 		t.Fatalf("members after the empty replace: %+v %v, want the local one kept", g, err)
 	}

@@ -72,7 +72,7 @@ func (s *Server) grantCounts(ctx context.Context) (map[string]int, error) {
 // adminGroup loads the {id} group: 404 when missing; with local set, 409 managed_externally for
 // a SCIM group.
 func (s *Server) adminGroup(w http.ResponseWriter, r *http.Request, local bool) *store.Group {
-	g, err := s.store.Groups().GetGroupByID(r.Context(), r.PathValue("id"))
+	g, err := s.orgOf(r).GetGroup(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "No such group")
 		return nil
@@ -217,7 +217,7 @@ func (s *Server) handleAddGroupMember(w http.ResponseWriter, r *http.Request) {
 	if g == nil {
 		return
 	}
-	u, err := s.store.Users().GetUserByID(r.Context(), r.PathValue("userId"))
+	u, err := s.orgOf(r).GetUser(r.Context(), r.PathValue("userId"))
 	if errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "No such person")
 		return
@@ -238,7 +238,7 @@ func (s *Server) handleAddGroupMember(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if err := s.store.Groups().AddGroupMember(r.Context(), g.ID, u.ID); err != nil {
+	if err := s.orgOf(r).AddGroupMember(r.Context(), g.ID, u.ID); err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to add the member")
 		return
 	}

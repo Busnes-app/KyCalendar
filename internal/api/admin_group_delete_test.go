@@ -22,7 +22,7 @@ func TestAdminDeleteGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	cal := groupCalendar(t, st, "Rota")
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_crew", Role: "editor"}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_crew", Role: "editor"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Settings().SetSetting(ctx, scim.ConflictKey("Crew"), "2026-10-07T00:00:00Z"); err != nil {
@@ -38,7 +38,7 @@ func TestAdminDeleteGroup(t *testing.T) {
 	if w.Code != http.StatusForbidden || codeOf(t, w.Body.Bytes()) != "reauth_required" {
 		t.Fatalf("stale session: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := st.Groups().GetGroupByID(ctx, "grp_crew"); err != nil {
+	if _, err := st.Org(store.DefaultOrg).GetGroup(ctx, "grp_crew"); err != nil {
 		t.Fatalf("a refused delete removed the group: %v", err)
 	}
 	if w := call(t, srv, "DELETE", "/api/admin/groups/grp_scim", "", admin); w.Code != http.StatusConflict || codeOf(t, w.Body.Bytes()) != "managed_externally" {

@@ -242,7 +242,7 @@ func (s *Server) handleSetGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "Role must be reader, editor or manager")
 		return
 	}
-	err := s.store.Calendars().SetGrant(r.Context(), store.CalendarGrant{CalendarID: c.ID, GroupID: group, Role: body.Role})
+	err := s.orgOf(r).SetGrant(r.Context(), store.CalendarGrant{CalendarID: c.ID, GroupID: group, Role: body.Role})
 	if errors.Is(err, store.ErrNotFound) {
 		s.writeError(w, http.StatusNotFound, "No such group")
 		return

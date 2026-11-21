@@ -205,10 +205,10 @@ func TestGroupStoreAndMembers(t *testing.T) {
 		t.Fatalf("CreateGroup error: %v", err)
 	}
 
-	_ = st.Groups().AddGroupMember(ctx, grp.ID, u1.ID)
-	_ = st.Groups().AddGroupMember(ctx, grp.ID, u2.ID)
+	_ = st.Org(store.DefaultOrg).AddGroupMember(ctx, grp.ID, u1.ID)
+	_ = st.Org(store.DefaultOrg).AddGroupMember(ctx, grp.ID, u2.ID)
 
-	got, err := st.Groups().GetGroupByID(ctx, grp.ID)
+	got, err := st.Org(store.DefaultOrg).GetGroup(ctx, grp.ID)
 	if err != nil {
 		t.Fatalf("GetGroupByID error: %v", err)
 	}

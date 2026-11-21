@@ -175,28 +175,6 @@ func (c *calendarStore) UserGrants(ctx context.Context, userID string) ([]Calend
 	return c.queryGrants(ctx, `JOIN group_members m ON m.group_id = g.group_id WHERE m.user_id = ? ORDER BY g.calendar_id, g.group_id`, userID)
 }
 
-func (c *calendarStore) SetGrant(ctx context.Context, g CalendarGrant) error {
-	tx, err := c.store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	var found int
-	err = tx.QueryRowContext(ctx, c.q(`SELECT (SELECT COUNT(*) FROM calendars WHERE id = ? AND owner_kind = 'group') + (SELECT COUNT(*) FROM groups WHERE id = ?)`),
-		g.CalendarID, g.GroupID).Scan(&found)
-	if err != nil {
-		return err
-	}
-	if found != 2 {
-		return ErrNotFound
-	}
-	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_grants (calendar_id, group_id, role) VALUES (?, ?, ?)
-ON CONFLICT (calendar_id, group_id) DO UPDATE SET role = excluded.role`), g.CalendarID, g.GroupID, g.Role); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func (c *calendarStore) DeleteGrant(ctx context.Context, calendarID, groupID string) error {
 	_, err := c.store.db.ExecContext(ctx, c.q(`DELETE FROM calendar_grants WHERE calendar_id = ? AND group_id = ?`), calendarID, groupID)
 	return err

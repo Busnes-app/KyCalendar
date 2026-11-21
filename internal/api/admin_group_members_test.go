@@ -25,7 +25,7 @@ func TestAdminGroupMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 	cal := groupCalendar(t, st, "Rota")
-	if err := st.Calendars().SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_crew", Role: "reader"}); err != nil {
+	if err := st.Org(store.DefaultOrg).SetGrant(ctx, store.CalendarGrant{CalendarID: cal.ID, GroupID: "grp_crew", Role: "reader"}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -197,10 +197,10 @@ One migration (37, the next free version) on both backends:
    step 1 describes: a snapshot target's own rows are cleared before the copy, and the row is copied
    with `server_settings`.
 
-The `org_id` default stays on both backends until the store binds orgs itself (PR 2), because
-PR 1's store code names no org. PR 2 then drops it on Postgres, as T does. A multi-tenant install
-has no default org row, so an insert that forgets `org_id` then fails the existence check instead of
-landing in an org.
+The `org_id` default (the default org) stays on both backends. A multi-tenant install has no
+default org row, so an insert that forgets `org_id` names a missing org and fails the existence
+check instead of landing in an org. That is the protection T gets by dropping its default, and
+keeping the default leaves single-tenant inserts that name no org unchanged.
 
 `orgs.status` takes KyIdentity's values (`active`, `suspended`, `deletion_scheduled`, `deleted`)
 plus one local value, `stale`: KyCalendar has no current answer for this org. Only `active`

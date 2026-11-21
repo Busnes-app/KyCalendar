@@ -78,6 +78,8 @@ type Store interface {
 	Audit() AuditStore
 	Settings() SettingsStore
 	Coordination() CoordinationStore
+	// Org reaches one org's rows (orgs.go). Bind it only to an authenticated principal's org.
+	Org(id OrgID) OrgStore
 
 	// SnapshotToSQLite writes a verified SQLite copy of this PostgreSQL database to path
 	// (snapshot.go). SQLite stores refuse: VACUUM INTO is their snapshot.
@@ -216,7 +218,6 @@ type DeviceStore interface {
 type GroupStore interface {
 	// CreateGroup and UpdateGroup refuse (ErrAlreadyExists) a name another group holds in any case.
 	CreateGroup(ctx context.Context, g *Group) error
-	GetGroupByID(ctx context.Context, id string) (*Group, error)
 	GetGroupByName(ctx context.Context, name string) (*Group, error)
 	// GroupsByExternalID lists the groups of source whose external ID is exactly externalID.
 	GroupsByExternalID(ctx context.Context, externalID, source string) ([]*Group, error)
@@ -235,12 +236,8 @@ type GroupStore interface {
 	DeleteGroup(ctx context.Context, id string) error
 	// ListGroups pages groups by name; source "" lists every owner.
 	ListGroups(ctx context.Context, offset, limit int, source string) ([]*Group, int, error)
-	AddGroupMember(ctx context.Context, groupID, userID string) error
 	RemoveGroupMember(ctx context.Context, groupID, userID string) error
 	GetUserGroups(ctx context.Context, userID string) ([]*Group, error)
-	// ReconcileSuiteGroup makes g's group calendar and members here match KyIdentity's suite
-	// group list in one transaction; members come from the accounts in scope. See suite_groups.go.
-	ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, g SuiteGroup) (SuiteGroupChange, error)
 }
 
 // AuditStore logs security events.
@@ -327,9 +324,6 @@ type CalendarStore interface {
 	// DeleteCalendar removes a calendar with its objects, changes and grants.
 	DeleteCalendar(ctx context.Context, id string) error
 	ListGrants(ctx context.Context, calendarID string) ([]CalendarGrant, error)
-	// SetGrant creates or replaces one group's role; ErrNotFound unless the calendar is a
-	// group calendar and the group exists.
-	SetGrant(ctx context.Context, g CalendarGrant) error
 	DeleteGrant(ctx context.Context, calendarID, groupID string) error // absent is not an error
 	// UserGrants lists every grant that reaches userID through group membership.
 	UserGrants(ctx context.Context, userID string) ([]CalendarGrant, error)
