@@ -54,10 +54,12 @@ type Refused struct{ Code string }
 
 func (r Refused) Error() string { return "kymessages refused: " + r.Code }
 
-// User names the organizer: their KyIdentity subject and issuer URL.
+// User names the organizer: their KyIdentity subject and issuer URL, and in multi-tenant mode
+// their org (tenancy spec D10).
 type User struct {
 	Sub    string `json:"sub"`
 	Issuer string `json:"issuer"`
+	OrgID  string `json:"org_id,omitempty"`
 }
 
 // PutRequest names the room and who may join it. Put sets ID, the path's meeting ID: the path

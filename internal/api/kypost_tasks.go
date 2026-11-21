@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -207,7 +208,12 @@ func (s *Server) tellKyPost(ctx context.Context, u *store.User, t *tasks.Task, d
 	}
 	// Capture values before returning to the handler; the worker owns its request.
 	userID := u.ID
-	req := kypost.TaskStateRequest{User: kypost.User{Sub: u.SSOSubject, Issuer: issuer}, Ref: t.Ref, Done: done}
+	org, err := store.PeerOrg(ctx, s.store, u)
+	if err != nil {
+		log.Printf("[KYPOST] task state for %s not sent: %v", u.ID, err)
+		return
+	}
+	req := kypost.TaskStateRequest{User: kypost.User{Sub: u.SSOSubject, Issuer: issuer, OrgID: org}, Ref: t.Ref, Done: done}
 	auditCtx := context.WithoutCancel(ctx)
 	s.detached.add()
 	go func() {

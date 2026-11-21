@@ -25,6 +25,11 @@ and show the feature as unavailable.
 - Bodies name the user by `"sub"` and `"issuer"`. The receiver resolves an active everyday
   account linked to that subject and issuer, else 404 `no_user`. Dedicated administrator
   identities cannot use these workflows.
+- Multi-tenant installs only: every body also carries `"org_id"`, the account's org. The
+  receiver requires it to equal the resolved account's org; a wrong or absent one answers 404
+  `no_user`, exactly as an unknown subject. A KyMessages answering for subjects (member subs,
+  a chat target, a status lookup) keeps to that org. Single-tenant bodies carry no `org_id`
+  (tenancy spec D10).
 - Refusals are `{"error","code"}`, code `[a-z0-9_]{1,64}`.
 - Outbound: HTTPS only, no redirects, no loopback/link-local/multicast, host resolved once.
 - Audit success and refusal with IDs only. Never log secrets, tokens, titles, names.

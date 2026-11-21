@@ -223,3 +223,22 @@ func TestPutSendsGuestsOnlyWhenThereAreAny(t *testing.T) {
 		t.Fatalf("body %s", bodies[1])
 	}
 }
+
+// A single-tenant body is byte for byte what it was before the org (tenancy spec D10); a
+// multi-tenant one adds org_id.
+func TestUserNamesTheOrgOnlyWhenSet(t *testing.T) {
+	for _, c := range []struct {
+		v    any
+		want string
+	}{
+		{PutRequest{ID: "m", User: User{Sub: "s", Issuer: "i"}, Title: "T", MemberSubs: []string{"a"}},
+			`{"id":"m","sub":"s","issuer":"i","title":"T","member_subs":["a"]}`},
+		{ChatRequest{User: User{Sub: "s", Issuer: "i"}, TargetSub: "t"}, `{"sub":"s","issuer":"i","target_sub":"t"}`},
+		{BusyPush{User: User{Sub: "s", Issuer: "i"}, Revision: 1, Busy: []Block{}}, `{"sub":"s","issuer":"i","revision":1,"busy":[]}`},
+		{ChatRequest{User: User{Sub: "s", Issuer: "i", OrgID: "o"}, TargetSub: "t"}, `{"sub":"s","issuer":"i","org_id":"o","target_sub":"t"}`},
+	} {
+		if got, _ := json.Marshal(c.v); string(got) != c.want {
+			t.Errorf("got %s, want %s", got, c.want)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -20,6 +21,12 @@ import (
 // issuerURL is u's KyIdentity issuer URL: sso_issuer is the binding "kyidentity <issuer URL>".
 func issuerURL(u *store.User) string {
 	return strings.TrimPrefix(u.SSOIssuer, sso.KindKyIdentity+" ")
+}
+
+// kymUser is u as KyMessages knows them, with their org in multi-tenant mode (tenancy spec D10).
+func (s *Server) kymUser(ctx context.Context, u *store.User) (kymessages.User, error) {
+	org, err := store.PeerOrg(ctx, s.store, u)
+	return kymessages.User{Sub: u.SSOSubject, Issuer: issuerURL(u), OrgID: org}, err
 }
 
 // elementOrigin is the https origin of Element (suite app kymessage-chat) in the user's app
@@ -73,9 +80,11 @@ func (s *Server) handleSuiteChat(w http.ResponseWriter, r *http.Request) {
 		refuse(http.StatusNotFound, "no_target", "This person isn't on KyMessages yet.")
 		return
 	}
-	link, err := s.kymessages.Chat(r.Context(), "evt_"+crypto.RandomHex(16), kymessages.ChatRequest{
-		User: kymessages.User{Sub: u.SSOSubject, Issuer: issuerURL(u)}, TargetSub: target,
-	})
+	who, err := s.kymUser(r.Context(), u)
+	link := ""
+	if err == nil {
+		link, err = s.kymessages.Chat(r.Context(), "evt_"+crypto.RandomHex(16), kymessages.ChatRequest{User: who, TargetSub: target})
+	}
 	if err == nil && !strings.HasPrefix(link, element+"/") && !strings.HasPrefix(link, element+"#") {
 		err = kymessages.Refused{Code: "bad_reply"} // not on Element's own host
 	}

@@ -18,6 +18,8 @@ contracts are `docs/SUITE-INTEGRATIONS.md` sections B and H; KyMessages implemen
 - **IDs** are `ValidID` (`[A-Za-z0-9_-]{16,64}`); anything else is refused before a request.
   Both signed bodies carry the ID as `"id"` too (`{"id","sub","issuer",...}`), because the
   signature does not cover the path.
+- **Org:** in multi-tenant mode every body's `User` carries `org_id` (`Server.kymUser`,
+  `store.PeerOrg`); single-tenant bodies omit it (tenancy spec D10).
 - **Outcomes:** 2xx success; 429, 5xx, the network and `kycalendar_off` are `ErrRetry`; a 401 on
   a `kyidentity` peer calls `Rotated` and is `ErrRetry`; anything else is `Refused{Code}` (a
   valid `[a-z0-9_]{1,64}` code, else `status_<n>`). At most 64 KiB of a reply is read.

@@ -76,6 +76,20 @@ func (s *Server) kypostPeerRequest(w http.ResponseWriter, r *http.Request, event
 		return nil, false
 	}
 	u := s.kypostUser(r, who())
+	if u != nil {
+		// D10: in multi-tenant mode the body's org_id must be the account's; a wrong or absent
+		// one answers as an unknown user.
+		org, err := store.PeerOrg(r.Context(), s.store, u)
+		if err != nil {
+			s.retryKyPost(r)
+			w.Header().Set("Retry-After", "5")
+			s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Temporarily unavailable", "code": "unavailable"})
+			return nil, false
+		}
+		if org != "" && who().OrgID != org { // single-tenant: unchecked, as before
+			u = nil
+		}
+	}
 	if u == nil {
 		s.writeJSON(w, http.StatusNotFound, map[string]string{"error": "No such user", "code": "no_user"})
 		return nil, false

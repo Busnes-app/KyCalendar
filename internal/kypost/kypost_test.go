@@ -100,3 +100,21 @@ func TestVerify(t *testing.T) {
 		t.Errorf("oversize: %v", err)
 	}
 }
+
+// A single-tenant body is byte for byte what it was before the org (tenancy spec D10); a
+// multi-tenant one adds org_id.
+func TestUserNamesTheOrgOnlyWhenSet(t *testing.T) {
+	for _, c := range []struct {
+		v    any
+		want string
+	}{
+		{SendRequest{User: User{Sub: "s", Issuer: "i"}, From: "a@x", Recipients: []string{"b@y"}, Method: "REQUEST", ICS: "C"},
+			`{"sub":"s","issuer":"i","from":"a@x","recipients":["b@y"],"method":"REQUEST","ics":"C"}`},
+		{TaskStateRequest{User: User{Sub: "s", Issuer: "i"}, Ref: "r", Done: true}, `{"sub":"s","issuer":"i","ref":"r","done":true}`},
+		{TaskStateRequest{User: User{Sub: "s", Issuer: "i", OrgID: "o"}, Ref: "r"}, `{"sub":"s","issuer":"i","org_id":"o","ref":"r","done":false}`},
+	} {
+		if got, _ := json.Marshal(c.v); string(got) != c.want {
+			t.Errorf("got %s, want %s", got, c.want)
+		}
+	}
+}

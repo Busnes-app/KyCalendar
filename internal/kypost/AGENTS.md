@@ -18,7 +18,9 @@ kypost-server's `docs/` once written.
   idempotent. An event verified but not acted on (429, or a 500 from applying it) is forgotten by
   the guard (`internal/api` `kypostReplay`), so KyPost's retry under the same ID is applied and
   recorded afresh for a full window.
-- **Every body** names the user as `{sub, issuer}`: their KyIdentity subject and issuer URL.
+- **Every body** names the user as `{sub, issuer}`: their KyIdentity subject and issuer URL. In
+  multi-tenant mode it adds `org_id` (`store.PeerOrg`), and inbound requires the account's own
+  (tenancy spec D10).
   Local accounts have none, so their external invitations fail `no_kypost_account`.
 - **`Send` outcomes:**
   - 2xx: delivered.

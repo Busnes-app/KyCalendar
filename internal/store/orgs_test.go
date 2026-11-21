@@ -400,3 +400,25 @@ func TestAuditRowsJoinTheirUsersOrg(t *testing.T) {
 		}
 	})
 }
+
+// PeerOrg names the account's org only in multi-tenant mode, and a lost mode row reads as
+// multi-tenant (D10, fail closed).
+func TestPeerOrgOnlyInMultiTenantMode(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		u := &User{OrgID: "org-a"}
+		for _, c := range []struct{ mode, want string }{{"single", ""}, {"multi", "org-a"}, {"", "org-a"}} {
+			q := `UPDATE server_settings SET value = ? WHERE key = ?`
+			args := []any{c.mode, TenancySetting}
+			if c.mode == "" {
+				q, args = `DELETE FROM server_settings WHERE key = ?`, []any{TenancySetting}
+			}
+			if _, err := s.db.ExecContext(ctx, s.rebind(q), args...); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := PeerOrg(ctx, s, u); err != nil || got != c.want {
+				t.Errorf("mode %q: %q %v, want %q", c.mode, got, err, c.want)
+			}
+		}
+	})
+}

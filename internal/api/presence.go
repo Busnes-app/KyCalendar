@@ -64,7 +64,12 @@ func (s *Server) pushPresence(ctx context.Context, p store.PresencePush) error {
 		log.Printf("[KYMESSAGES] status push for %s: %v", u.ID, err)
 		return cals.RetryPresence(ctx, p.UserID, now.Add(meetingWait(p.Attempts)))
 	}
-	push := kymessages.BusyPush{User: kymessages.User{Sub: u.SSOSubject, Issuer: issuerURL(u)}, Revision: now.UnixMilli(), Busy: []kymessages.Block{}}
+	who, err := s.kymUser(ctx, u)
+	if err != nil {
+		log.Printf("[KYMESSAGES] status push for %s: %v", u.ID, err)
+		return cals.RetryPresence(ctx, p.UserID, now.Add(meetingWait(p.Attempts)))
+	}
+	push := kymessages.BusyPush{User: who, Revision: now.UnixMilli(), Busy: []kymessages.Block{}}
 	for _, b := range busy {
 		push.Busy = append(push.Busy, kymessages.Block{Start: b.Start.Format(time.RFC3339), End: b.End.Format(time.RFC3339)})
 	}
@@ -176,7 +181,11 @@ func (s *Server) handlePresenceMe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	got, err := s.kymessages.Me(r.Context(), "evt_"+crypto.RandomHex(16), kymessages.User{Sub: u.SSOSubject, Issuer: issuerURL(u)}, share, manual, setManual)
+	who, err := s.kymUser(r.Context(), u)
+	if s.presenceFailed(w, err) {
+		return
+	}
+	got, err := s.kymessages.Me(r.Context(), "evt_"+crypto.RandomHex(16), who, share, manual, setManual)
 	if s.presenceFailed(w, err) {
 		return
 	}
@@ -233,7 +242,11 @@ func (s *Server) handlePresenceLookup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(ask) > 0 {
-		got, err := s.kymessages.Lookup(r.Context(), "evt_"+crypto.RandomHex(16), kymessages.User{Sub: u.SSOSubject, Issuer: issuerURL(u)}, ask)
+		who, err := s.kymUser(r.Context(), u)
+		if s.presenceFailed(w, err) {
+			return
+		}
+		got, err := s.kymessages.Lookup(r.Context(), "evt_"+crypto.RandomHex(16), who, ask)
 		if s.presenceFailed(w, err) {
 			return
 		}

@@ -69,6 +69,16 @@ func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
 // single-tenant path, DefaultOrg: never from a request.
 type OrgID string
 
+// PeerOrg is the org_id a KyPost or KyMessages body carries for u (tenancy spec D10): u's org in
+// multi-tenant mode, none in single-tenant mode, so those bodies stay as they were.
+func PeerOrg(ctx context.Context, st Store, u *User) (string, error) {
+	ten, err := st.Tenancy(ctx)
+	if err != nil || !ten.Multi {
+		return "", err
+	}
+	return string(OrgOf(u)), nil
+}
+
 // DefaultOrg is the one org of a single-tenant install.
 const DefaultOrg OrgID = migrations.DefaultOrgID
 

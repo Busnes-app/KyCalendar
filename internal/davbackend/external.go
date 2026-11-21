@@ -41,6 +41,10 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 	if !ok {
 		return errPermanent{"no_kypost_account"}
 	}
+	var err error
+	if who.OrgID, err = store.PeerOrg(ctx, s.Store, sender); err != nil {
+		return err
+	}
 	ics, changed := string(m.Body), false
 	// A booking's booker is never a member: the member-only room link is not theirs to see.
 	if booking.IsBooked(msg) && calendar.Conference(firstEvent(msg)) != "" {
@@ -66,7 +70,7 @@ func (s *Scheduler) sendExternal(ctx context.Context, m *store.OutboxMessage, se
 		}
 		ics = b.String()
 	}
-	err := s.KyPost.Send(ctx, m.DedupeKey, kypost.SendRequest{User: who, From: from.Email(), Recipients: []string{to.Email()},
+	err = s.KyPost.Send(ctx, m.DedupeKey, kypost.SendRequest{User: who, From: from.Email(), Recipients: []string{to.Email()},
 		Method: m.Method, ICS: ics})
 	var refused kypost.Refused
 	if errors.Is(err, kypost.ErrNotConnected) {
