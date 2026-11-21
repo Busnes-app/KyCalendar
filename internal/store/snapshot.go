@@ -17,13 +17,14 @@ import (
 )
 
 // migrationTables is every table, in foreign-key order, that a PostgreSQL snapshot and
-// migrate-postgres copy. calendar_usage follows calendar_objects: the target's usage row is
+// migrate-postgres copy. calendar_usage and org_usage follow calendar_objects: the target's usage rows are
 // deleted before the copy, so the object triggers find nothing to add to, and the copied
-// row lands last. TestMigrationTablesCoverTheSchema fails when a table is missing.
+// rows land last. TestMigrationTablesCoverTheSchema fails when a table is missing.
 var migrationTables = []string{
+	"orgs", // first: every org-owned row names one
 	"users", "sessions", "mfa_challenges", "device_pairings",
 	"groups", "group_members", "audit_records", "server_settings",
-	"calendars", "calendar_meta", "calendar_objects", "calendar_usage", "calendar_changes",
+	"calendars", "calendar_meta", "calendar_objects", "calendar_usage", "org_usage", "calendar_changes",
 	"calendar_grants", "calendar_subscriptions",
 	"app_passwords", "mcp_events",
 	"scheduling_outbox", "invitation_byte_budget", "cancellation_reservations",
@@ -405,6 +406,14 @@ func checkUsage(ctx context.Context, q dbConn) error {
 	}
 	if usage != sum {
 		return fmt.Errorf("%w: calendar_usage is %d bytes but the objects hold %d", ErrCopyMismatch, usage, sum)
+	}
+	var drift int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM org_usage u
+ WHERE u.bytes <> COALESCE((SELECT SUM(LENGTH(o.data)) FROM calendar_objects o WHERE o.org_id = u.org_id), 0)`).Scan(&drift); err != nil {
+		return err
+	}
+	if drift != 0 {
+		return fmt.Errorf("%w: org_usage disagrees with the objects for %d orgs", ErrCopyMismatch, drift)
 	}
 	return nil
 }

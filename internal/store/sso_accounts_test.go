@@ -98,6 +98,10 @@ func TestBindSignInIsOneWrite(t *testing.T) {
 		t.Fatalf("bind: %d %v", n, err)
 	}
 	all, err := st.Settings().GetAllSettings(ctx)
+	// tenancy_mode is the store's own row, written when it opened.
+	if all[store.TenancySetting] == "single" {
+		delete(all, store.TenancySetting)
+	}
 	if err != nil || len(all) != 1 || all["b"] != "2" {
 		t.Fatalf("settings %v %v, want only b=2", all, err)
 	}

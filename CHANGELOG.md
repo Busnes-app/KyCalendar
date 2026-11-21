@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Groundwork for a future multi-tenant (hosted) mode, with no change to how a self-hosted install
+  behaves ([design](docs/superpowers/specs/2026-11-20-tenancy-design.md)).
+  - Migration 37 places every existing account, group, calendar, event and audit row in one
+    default organisation.
+  - It adds database guards so a row can never name a missing organisation or change
+    organisation.
+  - `KYCALENDAR_TENANCY` accepts only `single` (or unset): any other value refuses to start,
+    because multi-tenant mode is not built yet.
+  - **Upgrade impact:** the migration adds a column and its checks to the calendar object
+    table, which on PostgreSQL validates every row once. Allow for it on a large install.
+
 - PostgreSQL deployments can run as several identical replicas behind a load balancer that
   probes the new `GET /readyz` (`GET /livez` answers whenever the process serves; `/healthz`
   is unchanged). Background work is elected to one replica at a time; rate limits, CAPTCHA

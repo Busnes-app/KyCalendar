@@ -605,6 +605,124 @@ CREATE TABLE sso_logouts (
 	{Version: 34, Name: "task_prefs", SQLite: taskPrefs, Postgres: taskPrefs},
 	{Version: 35, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
 	{Version: 36, Name: "replica_coordination", SQLite: replicaCoordination, Postgres: replicaCoordination},
+	{Version: 37, Name: "org_model", SQLite: orgModel(false), Postgres: orgModel(true)},
+}
+
+// DefaultOrgID is the one org of a single-tenant install (KyIdentity's default-org ID).
+const DefaultOrgID = "00000000-0000-0000-0000-000000000001"
+
+// OrgOwnedTables carry org_id (docs/superpowers/specs/2026-11-20-tenancy-design.md, Inventory).
+// audit_records' is nullable: NULL is a platform row.
+var OrgOwnedTables = []string{"users", "device_pairings", "groups", "group_members", "audit_records",
+	"calendars", "calendar_objects", "calendar_grants", "scheduling_outbox", "invitation_byte_budget",
+	"suite_group_calendars"}
+
+// orgParents are the org-owned rows each table joins; its org_id must equal theirs.
+var orgParents = []struct{ table, column, parent string }{
+	{"group_members", "user_id", "users"}, {"group_members", "group_id", "groups"},
+	{"calendar_grants", "calendar_id", "calendars"}, {"calendar_grants", "group_id", "groups"},
+	{"suite_group_calendars", "calendar_id", "calendars"}, {"suite_group_calendars", "group_id", "groups"},
+	{"calendar_objects", "calendar_id", "calendars"},
+}
+
+// orgModel: the org registry, org_id on every org-owned table, and the triggers that keep rows in
+// one existing org, unchanged for life. Existing rows join the default org, created only when users
+// exist: an existing install is single-tenant. A fresh database gets its org from store.ensureOrgs.
+// The default stays on org_id until the store binds orgs itself (tenancy PR 2). org_usage holds
+// each org's object bytes, kept like calendar_usage, keyed by the object's own org_id so a
+// cascaded calendar delete still finds it.
+func orgModel(postgres bool) string {
+	var b strings.Builder
+	b.WriteString(`CREATE TABLE orgs (
+ id TEXT PRIMARY KEY,
+ status TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'deletion_scheduled', 'deleted', 'stale')),
+ revision BIGINT NOT NULL DEFAULT 0,
+ enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ quotas_json TEXT NOT NULL DEFAULT '{}',
+ seen_at BIGINT NOT NULL DEFAULT 0,
+ purged_at BIGINT
+);
+CREATE TABLE org_usage (
+ org_id TEXT PRIMARY KEY REFERENCES orgs(id),
+ bytes BIGINT NOT NULL
+);
+INSERT INTO orgs (id, status) SELECT '` + DefaultOrgID + `', 'active' WHERE EXISTS (SELECT 1 FROM users);
+INSERT INTO org_usage (org_id, bytes) SELECT '` + DefaultOrgID + `', COALESCE((SELECT SUM(LENGTH(data)) FROM calendar_objects), 0) WHERE EXISTS (SELECT 1 FROM users);
+`)
+	if postgres {
+		b.WriteString(`CREATE FUNCTION org_id_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.org_id IS DISTINCT FROM OLD.org_id THEN RAISE EXCEPTION 'org_id cannot change'; END IF;
+    RETURN NEW;
+END $$;
+`)
+	}
+	for _, t := range OrgOwnedTables {
+		notNull := " NOT NULL"
+		if t == "audit_records" {
+			notNull = ""
+		}
+		if postgres {
+			fmt.Fprintf(&b, "ALTER TABLE %s ADD COLUMN org_id TEXT%s DEFAULT '%s' REFERENCES orgs(id);\n", t, notNull, DefaultOrgID)
+			fmt.Fprintf(&b, "CREATE TRIGGER %s_org_fixed BEFORE UPDATE OF org_id ON %s FOR EACH ROW EXECUTE FUNCTION org_id_fixed();\n", t, t)
+			continue
+		}
+		// SQLite cannot add a REFERENCES column with a non-NULL default while foreign keys are on:
+		// a trigger stands in for the foreign key.
+		fmt.Fprintf(&b, "ALTER TABLE %s ADD COLUMN org_id TEXT%s DEFAULT '%s';\n", t, notNull, DefaultOrgID)
+		fmt.Fprintf(&b, `CREATE TRIGGER %[1]s_org_exists BEFORE INSERT ON %[1]s
+WHEN NEW.org_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orgs WHERE id = NEW.org_id)
+BEGIN SELECT RAISE(ABORT, 'org_id names no org'); END;
+CREATE TRIGGER %[1]s_org_fixed BEFORE UPDATE OF org_id ON %[1]s
+WHEN NEW.org_id IS NOT OLD.org_id
+BEGIN SELECT RAISE(ABORT, 'org_id cannot change'); END;
+`, t)
+	}
+	if postgres {
+		b.WriteString(`ALTER TABLE users ADD CONSTRAINT users_org_id_id UNIQUE (org_id, id);
+ALTER TABLE groups ADD CONSTRAINT groups_org_id_id UNIQUE (org_id, id);
+ALTER TABLE calendars ADD CONSTRAINT calendars_org_id_id UNIQUE (org_id, id);
+`)
+		for _, p := range orgParents {
+			fmt.Fprintf(&b, "ALTER TABLE %s ADD FOREIGN KEY (org_id, %s) REFERENCES %s(org_id, id) ON DELETE CASCADE;\n", p.table, p.column, p.parent)
+		}
+		b.WriteString(`CREATE FUNCTION calendar_owner_org() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.owner_kind = 'user' AND EXISTS (SELECT 1 FROM users WHERE id = NEW.owner_id AND org_id <> NEW.org_id) THEN
+        RAISE EXCEPTION 'org_id differs from its owner''s';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER calendars_owner_org BEFORE INSERT OR UPDATE OF owner_kind, owner_id ON calendars FOR EACH ROW EXECUTE FUNCTION calendar_owner_org();
+CREATE FUNCTION org_usage_track() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN UPDATE org_usage SET bytes = bytes + LENGTH(NEW.data) WHERE org_id = NEW.org_id;
+    ELSIF TG_OP = 'UPDATE' THEN UPDATE org_usage SET bytes = bytes + LENGTH(NEW.data) - LENGTH(OLD.data) WHERE org_id = NEW.org_id;
+    ELSE UPDATE org_usage SET bytes = bytes - LENGTH(OLD.data) WHERE org_id = OLD.org_id;
+    END IF;
+    RETURN NULL;
+END $$;
+CREATE TRIGGER org_usage_track AFTER INSERT OR UPDATE OF data OR DELETE ON calendar_objects FOR EACH ROW EXECUTE FUNCTION org_usage_track();`)
+		return b.String()
+	}
+	// SQLite: the composite foreign keys as triggers. Nothing moves a row to another parent, so
+	// inserts are the only writes that can join two orgs.
+	for _, p := range orgParents {
+		fmt.Fprintf(&b, `CREATE TRIGGER %[1]s_%[2]s_org BEFORE INSERT ON %[1]s
+WHEN EXISTS (SELECT 1 FROM %[3]s WHERE id = NEW.%[2]s AND org_id IS NOT NEW.org_id)
+BEGIN SELECT RAISE(ABORT, 'org_id differs from its parent''s'); END;
+`, p.table, p.column, p.parent)
+	}
+	b.WriteString(`CREATE TRIGGER calendars_owner_org BEFORE INSERT ON calendars
+WHEN NEW.owner_kind = 'user' AND EXISTS (SELECT 1 FROM users WHERE id = NEW.owner_id AND org_id IS NOT NEW.org_id)
+BEGIN SELECT RAISE(ABORT, 'org_id differs from its owner''s'); END;
+CREATE TRIGGER org_usage_insert AFTER INSERT ON calendar_objects
+BEGIN UPDATE org_usage SET bytes = bytes + LENGTH(NEW.data) WHERE org_id = NEW.org_id; END;
+CREATE TRIGGER org_usage_update AFTER UPDATE OF data ON calendar_objects
+BEGIN UPDATE org_usage SET bytes = bytes - LENGTH(OLD.data) + LENGTH(NEW.data) WHERE org_id = NEW.org_id; END;
+CREATE TRIGGER org_usage_delete AFTER DELETE ON calendar_objects
+BEGIN UPDATE org_usage SET bytes = bytes - LENGTH(OLD.data) WHERE org_id = OLD.org_id; END;`)
+	return b.String()
 }
 
 // replicaCoordination: state PostgreSQL replicas share, on database time in milliseconds.

@@ -48,6 +48,9 @@ func newSQLStore(ctx context.Context, db *sql.DB, driver, lockPath string) (*SQL
 		driver:   driver,
 		lockPath: lockPath,
 	}
+	if err := s.ensureOrgs(ctx); err != nil {
+		return nil, fmt.Errorf("org setup: %w", err)
+	}
 
 	s.users = &userStore{store: s}
 	s.sessions = &sessionStore{store: s}
