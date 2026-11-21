@@ -1,7 +1,9 @@
 package store
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -354,6 +356,47 @@ func TestCalendarUserFailsClosed(t *testing.T) {
 		}
 		if u, err := s.Users().CalendarUser(ctx, "a@example.com"); err != nil || u.ID != "ua" {
 			t.Fatalf("after the next open: %+v %v", u, err)
+		}
+	})
+}
+
+// TestAuditRowsJoinTheirUsersOrg: an audit row joins the org of the user it names; one naming
+// no user ("system", the installer) is a platform row, org_id NULL. A pairing takes its user's org.
+func TestAuditRowsJoinTheirUsersOrg(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const b = "org-b"
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Users().CreateUser(ctx, &User{ID: "ub", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range []*AuditRecord{{UserID: "ub", Action: "t.user"}, {UserID: "system", Action: "t.system"}, {Action: "t.none"}} {
+			if err := s.Audit().LogAudit(ctx, r); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.Settings().SetSettingAudited(ctx, "t_key", "v", &AuditRecord{UserID: "ub", Action: "t.setting"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Devices().CreatePairing(ctx, &DevicePairing{Secret: "pb", UserID: "ub", Status: "pending", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+		for q, want := range map[string]string{
+			`SELECT org_id FROM audit_records WHERE action = 't.user'`:    b,
+			`SELECT org_id FROM audit_records WHERE action = 't.setting'`: b,
+			`SELECT org_id FROM audit_records WHERE action = 't.system'`:  "NULL",
+			`SELECT org_id FROM audit_records WHERE action = 't.none'`:    "NULL",
+			`SELECT org_id FROM device_pairings WHERE secret = 'pb'`:      b,
+		} {
+			var org sql.NullString
+			if err := s.db.QueryRowContext(ctx, q).Scan(&org); err != nil {
+				t.Fatal(q, err)
+			}
+			if got := cmp.Or(org.String, "NULL"); got != want {
+				t.Errorf("%s: %s, want %s", q, got, want)
+			}
 		}
 	})
 }

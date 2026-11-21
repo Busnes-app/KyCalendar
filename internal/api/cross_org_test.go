@@ -1,14 +1,18 @@
 package api_test
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/store"
@@ -32,90 +36,218 @@ func addOrg(t *testing.T, cfg *config.Config, id string) {
 	}
 }
 
-// TestCrossOrgMatrix is the tenancy spec's cross-org test, area by area (tenancy PR 2): every
-// route given another org's ID answers byte for byte as for an ID that exists nowhere, and
-// writes nothing. This part covers users, groups, memberships and grants.
-func TestCrossOrgMatrix(t *testing.T) {
+// crossOrgExempt is every route without a cross-org row, and why no other org's ID can reach
+// it. TestEveryRouteIsInTheCrossOrgMatrix fails on a new route that is in neither list.
+var crossOrgExempt = map[string]string{}
+
+func init() {
+	for reason, routes := range map[string][]string{
+		// No object ID from the request: the route reads or writes only the caller's own rows.
+		"own": {"GET /api/app-passwords", "POST /api/app-passwords", "GET /api/calendars", "POST /api/calendars",
+			"GET /api/tasks", "POST /api/tasks/inbox", "GET /api/tasks/areas", "PUT /api/tasks/areas", "GET /api/tasks/stats",
+			"GET /api/tasks/insights", "GET /api/tasks/goals", "POST /api/tasks/goals", "GET /api/tasks/prefs", "PUT /api/tasks/prefs",
+			"GET /api/tasks/views", "POST /api/tasks/views", "GET /api/booking-types", "POST /api/booking-types",
+			"POST /api/subscriptions", "GET /api/presence/me", "PUT /api/presence/me", "GET /api/suite/apps",
+			"/api/auth/change-password", "/api/auth/logout", "/api/auth/me", "/api/settings", "/api/settings/theme", "/mcp"},
+		// Addresses, not IDs: D5 makes every address external in multi-tenant mode (TestMultiTenant*).
+		"address": {"GET /api/freebusy"},
+		// Resolved by KyIdentity as the caller, which answers only from the caller's org (T D5).
+		"kyidentity": {"POST /api/presence", "GET /api/suite/people", "POST /api/suite/chat"},
+		// Signed by a suite peer; the body's org_id is checked in tenancy PR 3 (D10).
+		"peer": {"POST /api/itip/inbound", "POST /api/itip/respond", "POST /api/kypost/out-of-office", "POST /api/tasks/flag",
+			"POST /api/sso/kysignon/backchannel-logout", "/api/sso/kysignon/sync", "POST /api/installer/directory"},
+		// Public: a 128-bit slug or a confirm token decides the host, never a session (pre-org lookups).
+		"public": {"GET /api/book/{slug}", "POST /api/book/{slug}/hold", "POST /api/book/confirm/view", "POST /api/book/confirm",
+			"POST /api/book/manage", "POST /api/book/manage/cancel", "POST /api/book/manage/reschedule"},
+		// Before a principal exists, or carries no org data.
+		"pre-auth": {"/", "GET /healthz", "GET /livez", "GET /readyz", "/api/auth/login", "/api/auth/pow-challenge",
+			"/api/sso/kysignon/callback", "/api/sso/kysignon/login", "/saml/metadata", "/.well-known/caldav",
+			"GET /agent/skills/kycalendar/SKILL.md", "GET /api/installer/network"},
+		// A CalDAV home other than the caller's is 403 before any lookup (dav.go).
+		"dav": {"/dav/"},
+		// Install-wide settings, staff only in multi-tenant mode (Admin surface, tenancy PR 5).
+		"platform": {"POST /api/backup/drill", "POST /api/backup/export-capsule", "POST /api/backup/pair-remote", "POST /api/backup/deposit",
+			"DELETE /api/backup/pairing", "POST /api/backup/pin-key", "PUT /api/backup/schedule", "GET /api/backup/status",
+			"GET /api/settings/rate-limit-networks", "PUT /api/settings/rate-limit-networks", "GET /api/admin/signin",
+			"POST /api/admin/signin/test", "PUT /api/admin/signin", "GET /api/admin/kypost", "GET /api/admin/kymessages",
+			"GET /api/admin/booking", "PUT /api/admin/booking"},
+		// Admin people and lists: staff only, bound to a selected org, in tenancy PR 5 (L12).
+		"admin": {"GET /api/admin/users", "POST /api/admin/users", "POST /api/admin/users/{id}/reset-password",
+			"PATCH /api/admin/users/{id}", "POST /api/admin/users/{id}/role", "POST /api/admin/users/{id}/disable",
+			"POST /api/admin/users/{id}/enable", "GET /api/admin/audit", "GET /api/admin/groups", "GET /api/admin/calendars"},
+		// Business features, off (404) in multi-tenant mode (D9).
+		"off": {"POST /api/admin/users/{id}/reattach", "POST /api/admin/groups", "PATCH /api/admin/groups/{id}", "DELETE /api/admin/groups/{id}",
+			"DELETE /api/admin/groups/{id}/members/{userId}", "POST /api/admin/calendars", "DELETE /api/admin/calendars/{id}",
+			"GET /api/admin/scim", "/scim/v2", "/scim/v2/", "GET /api/admin/resources", "POST /api/admin/resources",
+			"PUT /api/admin/resources/{id}", "GET /api/resources", "GET /api/resources/{id}/busy", "GET /api/resources/requests",
+			"POST /api/resources/requests/{id}"},
+	} {
+		for _, r := range routes {
+			crossOrgExempt[r] = reason
+		}
+	}
+}
+
+// crossOrgCase calls route with another org's ID (other) and with one that exists nowhere
+// (missing); the answers must match byte for byte, with status want (404 when 0).
+type crossOrgCase struct {
+	route, other, missing, body string
+	as                          *http.Cookie
+	want                        int
+}
+
+// crossOrgWorld is org A's personas and org B's objects. b is org B's ID.
+func crossOrgWorld(t *testing.T) (*api.Server, store.Store, []crossOrgCase) {
+	t.Helper()
 	ctx := context.Background()
 	srv, st, cfg := setupTestServer(t)
 	const b = "org-b"
 	addOrg(t, cfg, b)
-
 	manager := loginAs(t, srv, st, "manager", "user")
 	admin := loginAs(t, srv, st, "admin", "admin")
-	for _, g := range []*store.Group{{ID: "grp_a", DisplayName: "A"}, {ID: "grp_b", DisplayName: "B", OrgID: b}} {
-		if err := st.Groups().CreateGroup(ctx, g); err != nil {
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_b", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}); err != nil {
-		t.Fatal(err)
+	for _, g := range []*store.Group{{ID: "grp_a", DisplayName: "A"}, {ID: "grp_b", DisplayName: "B", OrgID: b}} {
+		must(st.Groups().CreateGroup(ctx, g))
 	}
-	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_g", OwnerKind: "group", OwnerID: "cal_g", Slug: "g", Name: "G"}, 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal_b", OwnerKind: "user", OwnerID: "usr_b", Slug: "default", Name: "B"}, 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Bookings().CreateType(ctx, &store.BookingType{ID: "bt_b", UserID: "usr_b", Slug: strings.Repeat("b", 32), Title: "B", Zone: "UTC", CalendarID: "cal_b", Windows: "[]", DurationMin: 30}, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Tasks().CreateView(ctx, &store.TaskView{ID: "view_b", UserID: "usr_b", Name: "B", Query: "b"}, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.TaskGoals().CreateGoal(ctx, &store.TaskGoal{ID: "goal_b", UserID: "usr_b", Title: "B", Period: "week", Starts: "2026-11-16", Ends: "2026-11-22"}, 1); err != nil {
-		t.Fatal(err)
-	}
-	a := st.Org(store.DefaultOrg)
-	if err := a.AddGroupMember(ctx, "grp_a", "usr_manager"); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_a", Role: "manager"}); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, c := range []struct {
-		name, method, other, missing, body string
-		as                                 *http.Cookie
-	}{
-		{"grant to another org's group", "PUT", "/api/calendars/cal_g/grants/grp_b", "/api/calendars/cal_g/grants/grp_none", `{"role":"reader"}`, manager},
-		{"read another org's group", "GET", "/api/admin/groups/grp_b", "/api/admin/groups/grp_none", "", admin},
-		{"add another org's person", "PUT", "/api/admin/groups/grp_a/members/usr_b", "/api/admin/groups/grp_a/members/usr_none", "", admin},
-		{"another org's calendar's grants", "GET", "/api/calendars/cal_b/grants", "/api/calendars/cal_none/grants", "", manager},
-		{"rename another org's calendar", "PATCH", "/api/calendars/cal_b", "/api/calendars/cal_none", `{"name":"X"}`, manager},
-		{"delete another org's calendar", "DELETE", "/api/calendars/cal_b", "/api/calendars/cal_none", "", manager},
-		{"edit another org's booking type", "PUT", "/api/booking-types/bt_b", "/api/booking-types/bt_none", `{"title":"X","zone":"UTC","duration_min":30,"windows":[],"calendar_id":"cal_b"}`, manager},
-		{"rotate another org's booking link", "POST", "/api/booking-types/bt_b/rotate", "/api/booking-types/bt_none/rotate", "", manager},
-		{"delete another org's booking type", "DELETE", "/api/booking-types/bt_b", "/api/booking-types/bt_none", "", manager},
-		{"edit another org's task view", "PUT", "/api/tasks/views/view_b", "/api/tasks/views/view_none", `{"name":"X","query":{"q":"x"}}`, manager},
-		{"delete another org's task view", "DELETE", "/api/tasks/views/view_b", "/api/tasks/views/view_none", "", manager},
-		{"edit another org's goal", "PUT", "/api/tasks/goals/goal_b", "/api/tasks/goals/goal_none", `{"title":"X","period":"quarter","starts":"2026-10-01","ends":"2026-12-31"}`, manager},
-		{"another org's goal progress", "GET", "/api/tasks/goals/goal_b/progress", "/api/tasks/goals/goal_none/progress", "", manager},
-		{"delete another org's goal", "DELETE", "/api/tasks/goals/goal_b", "/api/tasks/goals/goal_none", "", manager},
+	must(st.Users().CreateUser(ctx, &store.User{ID: "usr_b", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}))
+	cs := st.Calendars()
+	must(cs.CreateCalendar(ctx, &store.Calendar{ID: "cal_g", OwnerKind: "group", OwnerID: "cal_g", Slug: "g", Name: "G"}, 0))
+	must(cs.CreateCalendar(ctx, &store.Calendar{ID: "cal_b", OwnerKind: "user", OwnerID: "usr_b", Slug: "default", Name: "B"}, 0))
+	must(cs.CreateCalendar(ctx, &store.Calendar{ID: "cal_bt", OwnerKind: "user", OwnerID: "usr_b", Slug: "tasks", Name: "B tasks", Components: []string{"VTODO"}}, 0))
+	must(cs.CreateSubscribedCalendar(ctx, &store.Calendar{ID: "sub_b", OwnerKind: "user", OwnerID: "usr_b", Slug: "feed", Name: "B feed"},
+		&store.Subscription{URLSealed: "unopenable", URLHost: "b.invalid", NextCheckAt: time.Now().Add(time.Hour)}, 0, 0))
+	for _, o := range []struct{ cal, uid, comp, body string }{
+		{"cal_b", "ev_b", "VEVENT", "BEGIN:VEVENT\r\nUID:ev_b\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261007T090000Z\r\nDTEND:20261007T100000Z\r\nSUMMARY:B\r\nEND:VEVENT"},
+		{"cal_bt", "task_b", "VTODO", "BEGIN:VTODO\r\nUID:task_b\r\nDTSTAMP:20261001T000000Z\r\nSUMMARY:B\r\nEND:VTODO"},
 	} {
-		other := call(t, srv, c.method, c.other, c.body, c.as)
-		missing := call(t, srv, c.method, c.missing, c.body, c.as)
-		if other.Code != missing.Code || other.Body.String() != missing.Body.String() || other.Code != http.StatusNotFound {
-			t.Errorf("%s: %d %q, missing: %d %q", c.name, other.Code, other.Body.String(), missing.Code, missing.Body.String())
+		data := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\n" + o.body + "\r\nEND:VCALENDAR\r\n")
+		_, err := cs.PutObject(ctx, &store.CalendarObject{CalendarID: o.cal, Name: o.uid + ".ics", Component: o.comp, UID: o.uid, ETag: "1", Data: data, WriterID: "usr_b"}, "", true, store.OwnerLimits{})
+		must(err)
+	}
+	must(st.Bookings().CreateType(ctx, &store.BookingType{ID: "bt_b", UserID: "usr_b", Slug: strings.Repeat("b", 32), Title: "B", Zone: "UTC", CalendarID: "cal_b", Windows: "[]", DurationMin: 30}, 1))
+	must(st.Tasks().CreateView(ctx, &store.TaskView{ID: "view_b", UserID: "usr_b", Name: "B", Query: "b"}, 1))
+	must(st.TaskGoals().CreateGoal(ctx, &store.TaskGoal{ID: "goal_b", UserID: "usr_b", Title: "B", Period: "week", Starts: "2026-11-16", Ends: "2026-11-22"}, 1))
+	passB, _ := seedToken(t, st, "usr_b", store.ScopeMCPRead)
+	a := st.Org(store.DefaultOrg)
+	must(a.AddGroupMember(ctx, "grp_a", "usr_manager"))
+	must(a.SetGrant(ctx, store.CalendarGrant{CalendarID: "cal_g", GroupID: "grp_a", Role: "manager"}))
+
+	const ev = `{"title":"X","start":"2026-10-07T09:00:00Z","end":"2026-10-07T10:00:00Z","zone":"UTC"}`
+	return srv, st, []crossOrgCase{
+		{route: "PUT /api/calendars/{id}/grants/{group}", other: "/api/calendars/cal_g/grants/grp_b", missing: "/api/calendars/cal_g/grants/grp_none", body: `{"role":"reader"}`, as: manager},
+		{route: "DELETE /api/calendars/{id}/grants/{group}", other: "/api/calendars/cal_b/grants/grp_b", missing: "/api/calendars/cal_none/grants/grp_none", as: manager},
+		{route: "GET /api/calendars/{id}/grants", other: "/api/calendars/cal_b/grants", missing: "/api/calendars/cal_none/grants", as: manager},
+		{route: "PATCH /api/calendars/{id}", other: "/api/calendars/cal_b", missing: "/api/calendars/cal_none", body: `{"name":"X"}`, as: manager},
+		{route: "DELETE /api/calendars/{id}", other: "/api/calendars/cal_b", missing: "/api/calendars/cal_none", as: manager},
+		{route: "GET /api/events", other: "/api/events?calendar=cal_b&start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&tz=UTC", missing: "/api/events?calendar=cal_none&start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z&tz=UTC", as: manager},
+		{route: "POST /api/calendars/{id}/events", other: "/api/calendars/cal_b/events", missing: "/api/calendars/cal_none/events", body: ev, as: manager},
+		{route: "PUT /api/events/{cal}/{uid}", other: "/api/events/cal_b/ev_b", missing: "/api/events/cal_none/ev_none", body: ev, as: manager},
+		{route: "DELETE /api/events/{cal}/{uid}", other: "/api/events/cal_b/ev_b?scope=all", missing: "/api/events/cal_none/ev_none?scope=all", as: manager},
+		{route: "POST /api/events/{cal}/{uid}/rsvp", other: "/api/events/cal_b/ev_b/rsvp", missing: "/api/events/cal_none/ev_none/rsvp", body: `{"partstat":"ACCEPTED"}`, as: manager},
+		{route: "POST /api/calendars/{id}/tasks", other: "/api/calendars/cal_bt/tasks", missing: "/api/calendars/cal_none/tasks", body: `{"title":"X"}`, as: manager},
+		{route: "PATCH /api/tasks/{cal}/{uid}", other: "/api/tasks/cal_bt/task_b", missing: "/api/tasks/cal_none/task_none", body: `{"status":"COMPLETED"}`, as: manager},
+		{route: "DELETE /api/tasks/{cal}/{uid}", other: "/api/tasks/cal_bt/task_b", missing: "/api/tasks/cal_none/task_none", as: manager},
+		{route: "GET /api/tasks/{cal}/{uid}/images/{n}", other: "/api/tasks/cal_bt/task_b/images/0", missing: "/api/tasks/cal_none/task_none/images/0", as: manager},
+		{route: "GET /api/tasks/{cal}/{uid}/habit", other: "/api/tasks/cal_bt/task_b/habit", missing: "/api/tasks/cal_none/task_none/habit", as: manager},
+		{route: "POST /api/calendars/{id}/import", other: "/api/calendars/cal_b/import?tz=UTC", missing: "/api/calendars/cal_none/import?tz=UTC", body: "Subject,Start Date\nX,10/07/2026\n", as: manager},
+		{route: "PATCH /api/subscriptions/{id}", other: "/api/subscriptions/sub_b", missing: "/api/subscriptions/sub_none", body: `{"url":"http://b.invalid/x.ics"}`, as: manager},
+		{route: "POST /api/calendars/{id}/refresh", other: "/api/calendars/sub_b/refresh", missing: "/api/calendars/sub_none/refresh", as: manager},
+		{route: "PATCH /api/app-passwords/{id}", other: "/api/app-passwords/" + passB, missing: "/api/app-passwords/none", body: `{"scope":"mcp:write-own"}`, as: manager},
+		{route: "DELETE /api/app-passwords/{id}", other: "/api/app-passwords/" + passB, missing: "/api/app-passwords/none", as: manager},
+		{route: "GET /api/admin/groups/{id}", other: "/api/admin/groups/grp_b", missing: "/api/admin/groups/grp_none", as: admin},
+		{route: "PUT /api/admin/groups/{id}/members/{userId}", other: "/api/admin/groups/grp_a/members/usr_b", missing: "/api/admin/groups/grp_a/members/usr_none", as: admin},
+		{route: "PUT /api/booking-types/{id}", other: "/api/booking-types/bt_b", missing: "/api/booking-types/bt_none", body: `{"title":"X","zone":"UTC","duration_min":30,"windows":[],"calendar_id":"cal_b"}`, as: manager},
+		{route: "POST /api/booking-types/{id}/rotate", other: "/api/booking-types/bt_b/rotate", missing: "/api/booking-types/bt_none/rotate", as: manager},
+		{route: "DELETE /api/booking-types/{id}", other: "/api/booking-types/bt_b", missing: "/api/booking-types/bt_none", as: manager},
+		{route: "PUT /api/tasks/views/{id}", other: "/api/tasks/views/view_b", missing: "/api/tasks/views/view_none", body: `{"name":"X","query":{"q":"x"}}`, as: manager},
+		{route: "DELETE /api/tasks/views/{id}", other: "/api/tasks/views/view_b", missing: "/api/tasks/views/view_none", as: manager},
+		{route: "PUT /api/tasks/goals/{id}", other: "/api/tasks/goals/goal_b", missing: "/api/tasks/goals/goal_none", body: `{"title":"X","period":"quarter","starts":"2026-10-01","ends":"2026-12-31"}`, as: manager},
+		{route: "GET /api/tasks/goals/{id}/progress", other: "/api/tasks/goals/goal_b/progress", missing: "/api/tasks/goals/goal_none/progress", as: manager},
+		{route: "DELETE /api/tasks/goals/{id}", other: "/api/tasks/goals/goal_b", missing: "/api/tasks/goals/goal_none", as: manager},
+	}
+}
+
+// TestCrossOrgMatrix is the tenancy spec's cross-org test: every route given another org's ID
+// answers byte for byte as for an ID that exists nowhere, and org B's rows are unchanged.
+func TestCrossOrgMatrix(t *testing.T) {
+	ctx := context.Background()
+	srv, st, cases := crossOrgWorld(t)
+	before := orgBSnapshot(t, st)
+	for _, c := range cases {
+		method := strings.Fields(c.route)[0]
+		other := call(t, srv, method, c.other, c.body, c.as)
+		missing := call(t, srv, method, c.missing, c.body, c.as)
+		want := cmp.Or(c.want, http.StatusNotFound)
+		if other.Code != missing.Code || other.Body.String() != missing.Body.String() || other.Code != want {
+			t.Errorf("%s: %d %q, missing: %d %q", c.route, other.Code, other.Body.String(), missing.Code, missing.Body.String())
 		}
+	}
+	if after := orgBSnapshot(t, st); after != before {
+		t.Errorf("org b's rows changed:\nbefore %s\nafter  %s", before, after)
 	}
 	if grants, err := st.Calendars().ListGrants(ctx, "cal_g"); err != nil || len(grants) != 1 {
 		t.Errorf("grants after cross-org calls: %+v %v", grants, err)
 	}
-	if g, err := st.Org(b).GetGroup(ctx, "grp_b"); err != nil || len(g.Members) != 0 {
-		t.Errorf("org b's group after cross-org calls: %+v %v", g, err)
+}
+
+// orgBSnapshot is org B's rows the matrix could reach, as one comparable string. A failed
+// lookup is part of the snapshot, so a row deleted by a cross-org call reads as a change.
+func orgBSnapshot(t *testing.T, st store.Store) string {
+	t.Helper()
+	ctx := context.Background()
+	var out strings.Builder
+	add := func(v any, err error) {
+		if err != nil {
+			v = "error: " + err.Error()
+		}
+		j, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out.Write(append(j, ';'))
 	}
-	if c, err := st.Calendars().GetCalendarByID(ctx, "cal_b"); err != nil || c.Name != "B" {
-		t.Errorf("org b's calendar after cross-org calls: %+v %v", c, err)
+	add(st.Org("org-b").GetGroup(ctx, "grp_b"))
+	for _, id := range []string{"cal_b", "cal_bt", "sub_b"} {
+		add(st.Calendars().GetCalendarByID(ctx, id))
+		add(st.Calendars().ListObjects(ctx, id))
 	}
-	if bt, err := st.Bookings().GetType(ctx, "usr_b", "bt_b"); err != nil || bt.Title != "B" || bt.Slug != strings.Repeat("b", 32) {
-		t.Errorf("org b's booking type after cross-org calls: %+v %v", bt, err)
+	add(st.Calendars().GetSubscription(ctx, "sub_b"))
+	add(st.Calendars().ListGrants(ctx, "cal_b"))
+	add(st.Bookings().GetType(ctx, "usr_b", "bt_b"))
+	add(st.Tasks().Views(ctx, "usr_b"))
+	add(st.TaskGoals().Goals(ctx, "usr_b"))
+	add(st.AppPasswords().ListByUser(ctx, "usr_b"))
+	return out.String()
+}
+
+// TestEveryRouteIsInTheCrossOrgMatrix: each registered route has a cross-org row or a stated
+// reason no other org's ID reaches it, so a new route cannot skip the question.
+func TestEveryRouteIsInTheCrossOrgMatrix(t *testing.T) {
+	srv, _, cases := crossOrgWorld(t)
+	rows := map[string]bool{}
+	for _, c := range cases {
+		rows[c.route] = true
 	}
-	if vs, err := st.Tasks().Views(ctx, "usr_b"); err != nil || len(vs) != 1 || vs[0].Name != "B" {
-		t.Errorf("org b's views after cross-org calls: %+v %v", vs, err)
+	routes := api.RoutesForTest(srv)
+	for _, r := range routes {
+		if _, exempt := crossOrgExempt[r]; rows[r] == exempt {
+			t.Errorf("route %q needs exactly one of a cross-org row or an exemption (row %v, exempt %v)", r, rows[r], exempt)
+		}
 	}
-	if gs, err := st.TaskGoals().Goals(ctx, "usr_b"); err != nil || len(gs) != 1 || gs[0].Title != "B" {
-		t.Errorf("org b's goals after cross-org calls: %+v %v", gs, err)
+	for r := range rows {
+		if !slices.Contains(routes, r) {
+			t.Errorf("cross-org row %q matches no registered route", r)
+		}
+	}
+	for r := range crossOrgExempt {
+		if !slices.Contains(routes, r) {
+			t.Errorf("exemption %q matches no registered route", r)
+		}
 	}
 }
 
