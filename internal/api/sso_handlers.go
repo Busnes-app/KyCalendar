@@ -374,6 +374,13 @@ func (s *Server) handleKySignOnSyncWebhook(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if ten, err := s.store.Tenancy(r.Context()); err != nil {
+		s.writeError(w, http.StatusServiceUnavailable, "Directory unavailable")
+		return
+	} else if ten.Multi {
+		s.handleTenantDirectory(w, r)
+		return
+	}
 	sig := r.Header.Get("X-KySignOn-Signature")
 	if sig == "" {
 		sig = r.Header.Get("X-Signature-SHA256")
