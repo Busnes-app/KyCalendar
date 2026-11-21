@@ -129,8 +129,7 @@ ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.up
 	if n != 1 {
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
-	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		"system", "system.restore_reset", "store", "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; replica record and rate windows cleared; scheduled backups off; sync_epoch="+epoch, "", time.Now().UTC()); err != nil {
+	if err := s.insertAudit(ctx, tx, AuditRecord{UserID: "system", Action: "system.restore_reset", Resource: "store", Details: "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; replica record and rate windows cleared; scheduled backups off; sync_epoch=" + epoch}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -744,8 +743,7 @@ func (u *userStore) RenameUser(ctx context.Context, actor, userID, newName strin
 		}
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		actor, "user.renamed", userID, "from="+from+" to="+newName, "", now); err != nil {
+	if err := u.store.insertAudit(ctx, tx, AuditRecord{UserID: actor, Action: "user.renamed", Resource: userID, Details: "from=" + from + " to=" + newName, CreatedAt: now}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -801,8 +799,7 @@ func (u *userStore) revokePasswordGrants(ctx context.Context, tx *sql.Tx, userID
 	if err := u.revokeGrants(ctx, tx, userID); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`), userID, "auth.password_changed", "user", details, ip, now)
-	return err
+	return u.store.insertAudit(ctx, tx, AuditRecord{UserID: userID, Action: "auth.password_changed", Resource: "user", Details: details, IPAddress: ip, CreatedAt: now})
 }
 
 // where is SCIMScope.Contains as SQL on the users table, with its arguments.
@@ -1140,7 +1137,7 @@ func (u *userStore) RevokeSSOUser(ctx context.Context, userID string, deactivate
 		return err
 	}
 	if managed != 0 {
-		if _, err = tx.ExecContext(ctx, u.store.rebind("INSERT INTO audit_records(user_id,action,resource,details,ip_address,created_at) VALUES(?,?,?,?,?,?)"), userID, "installer.authority_revoked", userID, "native verified authority removal", "", time.Now().UTC()); err != nil {
+		if err = u.store.insertAudit(ctx, tx, AuditRecord{UserID: userID, Action: "installer.authority_revoked", Resource: userID, Details: "native verified authority removal"}); err != nil {
 			return err
 		}
 	}
@@ -1189,7 +1186,7 @@ func (u *userStore) EnableKyIdentityUser(ctx context.Context, actor Actor, userI
 	if err := u.revokeGrants(ctx, tx, userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, u.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, 'admin.user_enable', ?, ?, '', ?)`), actor.userID, userID, "binding="+binding, time.Now().UTC()); err != nil {
+	if err := u.store.insertAudit(ctx, tx, AuditRecord{UserID: actor.userID, Action: "admin.user_enable", Resource: userID, Details: "binding=" + binding}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1333,12 +1330,12 @@ func (d *deviceStore) CreatePairing(ctx context.Context, p *DevicePairing) error
 	}
 
 	q := d.store.rebind(`
-INSERT INTO device_pairings (secret, user_id, device_name, platform, push_token, status, created_at, expires_at, authenticated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`)
+INSERT INTO device_pairings (secret, user_id, device_name, platform, push_token, status, created_at, expires_at, authenticated_at, org_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(` + userOrg + `, ?))
+`) // user_id has no FK: a pairing for a missing user takes the default org, as before
 	_, err := d.store.db.ExecContext(ctx, q,
 		p.Secret, p.UserID, p.DeviceName, p.Platform, p.PushToken,
-		p.Status, p.CreatedAt, p.ExpiresAt, p.AuthenticatedAt,
+		p.Status, p.CreatedAt, p.ExpiresAt, p.AuthenticatedAt, p.UserID, DefaultOrg,
 	)
 	return err
 }
@@ -1739,11 +1736,17 @@ func (a *auditStore) LogAudit(ctx context.Context, r *AuditRecord) error {
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now().UTC()
 	}
-	q := a.store.rebind(`
-INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
-`)
-	_, err := a.store.db.ExecContext(ctx, q, r.UserID, r.Action, r.Resource, r.Details, r.IPAddress, r.CreatedAt)
+	return a.store.insertAudit(ctx, a.store.db, *r)
+}
+
+// insertAudit writes r. It joins the org of the user it names, or is a platform row (org_id
+// NULL) when it names none, such as "system" or the installer (tenancy spec, Inventory).
+func (s *SQLStore) insertAudit(ctx context.Context, x txQuerier, r AuditRecord) error {
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now().UTC()
+	}
+	_, err := x.ExecContext(ctx, s.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at, org_id)
+VALUES (?, ?, ?, ?, ?, ?, `+userOrg+`)`), r.UserID, r.Action, r.Resource, r.Details, r.IPAddress, r.CreatedAt, r.UserID)
 	return err
 }
 
@@ -1932,8 +1935,9 @@ func (s *settingsStore) SetSettingAudited(ctx context.Context, key, val string, 
 	if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO server_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`), key, val, now); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, s.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
-		rec.UserID, rec.Action, rec.Resource, rec.Details, rec.IPAddress, now); err != nil {
+	r := *rec
+	r.CreatedAt = now
+	if err := s.store.insertAudit(ctx, tx, r); err != nil {
 		return err
 	}
 	return tx.Commit()
