@@ -195,14 +195,15 @@ func TestCrossOrgMatrix(t *testing.T) {
 	}
 }
 
-// orgBSnapshot is org B's rows the matrix could reach, as one comparable string.
+// orgBSnapshot is org B's rows the matrix could reach, as one comparable string. A failed
+// lookup is part of the snapshot, so a row deleted by a cross-org call reads as a change.
 func orgBSnapshot(t *testing.T, st store.Store) string {
 	t.Helper()
 	ctx := context.Background()
 	var out strings.Builder
 	add := func(v any, err error) {
 		if err != nil {
-			t.Fatal(err)
+			v = "error: " + err.Error()
 		}
 		j, err := json.Marshal(v)
 		if err != nil {
@@ -210,11 +211,9 @@ func orgBSnapshot(t *testing.T, st store.Store) string {
 		}
 		out.Write(append(j, ';'))
 	}
-	g, err := st.Org("org-b").GetGroup(ctx, "grp_b")
-	add(g.Members, err)
+	add(st.Org("org-b").GetGroup(ctx, "grp_b"))
 	for _, id := range []string{"cal_b", "cal_bt", "sub_b"} {
-		c, err := st.Calendars().GetCalendarByID(ctx, id)
-		add(c.Name, err)
+		add(st.Calendars().GetCalendarByID(ctx, id))
 		add(st.Calendars().ListObjects(ctx, id))
 	}
 	add(st.Calendars().GetSubscription(ctx, "sub_b"))
