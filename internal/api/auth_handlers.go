@@ -93,7 +93,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refund()
-	if user.Status != "active" {
+	if user.Status != "active" || !user.OrgActive {
 		s.writeError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}

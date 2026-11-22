@@ -132,6 +132,10 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 			return
 		}
 		release()
+		if !user.OrgActive { // after the right secret, so only the token's holder learns it
+			s.writeAPIError(w, errOrgNotServing)
+			return
+		}
 		if user.Role == "admin" {
 			s.writeError(w, http.StatusForbidden, "Administrator accounts cannot use calendars")
 			return

@@ -200,7 +200,7 @@ func (s *Server) kypostUser(r *http.Request, who kypost.User) *store.User {
 		if err != nil {
 			continue
 		}
-		if _, issuer, _ := strings.Cut(u.SSOIssuer, " "); issuer == who.Issuer && u.Role == "user" && u.Status == "active" {
+		if _, issuer, _ := strings.Cut(u.SSOIssuer, " "); issuer == who.Issuer && u.Role == "user" && u.Status == "active" && u.OrgActive {
 			return u
 		}
 	}

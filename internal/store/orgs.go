@@ -80,7 +80,8 @@ type MirroredOrg struct {
 
 // ApplyOrgs writes one mirror poll (tenancy spec D6) and its next cursor in one transaction. A
 // row moves only forward in revision, a tombstone never serves again, and the staff and default
-// orgs come from configuration, so a poll never touches them. A new org gets its usage row here.
+// orgs come from configuration, so a poll never touches them. A new org gets its usage row here,
+// and an org that stops serving loses its sessions.
 func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
@@ -92,6 +93,11 @@ func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOr
 		if o.ID == staff || o.ID == DefaultOrg {
 			continue
 		}
+		serving := `SELECT ` + orgServes("?")
+		var before, after bool
+		if err := tx.QueryRowContext(ctx, s.rebind(serving), o.ID).Scan(&before); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, revision, enabled, quotas_json, seen_at) VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (id) DO UPDATE SET status = excluded.status, revision = excluded.revision, enabled = excluded.enabled, quotas_json = excluded.quotas_json, seen_at = excluded.seen_at
 WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o.Status, o.Revision, o.Enabled, o.Quotas, now.Unix()); err != nil {
@@ -100,12 +106,32 @@ WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o
 		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0) ON CONFLICT (org_id) DO NOTHING`), o.ID); err != nil {
 			return err
 		}
+		if err := tx.QueryRowContext(ctx, s.rebind(serving), o.ID).Scan(&after); err != nil {
+			return err
+		}
+		// An org that stops serving loses its sessions with the audit row (tenancy spec,
+		// Lifecycle); app passwords stay, so a resume brings DAV and MCP clients back.
+		if before && !after {
+			if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE org_id = ?)`), o.ID); err != nil {
+				return err
+			}
+			if err := s.insertAudit(ctx, tx, AuditRecord{Action: "platform.org_stopped", Resource: "org:" + string(o.ID), Details: "status=" + o.Status + " enabled=" + strconv.FormatBool(o.Enabled)}); err != nil {
+				return err
+			}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`), OrgsCursorSetting, strconv.FormatInt(next, 10), now); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// orgServes is a SQL condition: the org whose ID is col is active and enabled in the mirror
+// (tenancy spec D6). col is code, never input. Workers pick only such rows, so a suspended org's
+// work stays queued and never fills a batch.
+func orgServes(col string) string {
+	return "EXISTS (SELECT 1 FROM orgs WHERE orgs.id = " + col + " AND orgs.status = 'active' AND orgs.enabled)"
 }
 
 // OrgID names an org. Build one only from an authenticated principal (OrgOf) or, on a
@@ -158,7 +184,7 @@ func (o orgStore) GetUser(ctx context.Context, id string) (*User, error) {
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, `+orgServes("users.org_id")+`
 FROM users WHERE id = ? AND org_id = ?`), id, o.id))
 }
 

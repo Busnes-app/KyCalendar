@@ -38,7 +38,7 @@ WHERE refresh_at IS NOT NULL AND refresh_at <= ?`), now, now)
 
 func (c *calendarStore) DuePresence(ctx context.Context, now time.Time, limit int) ([]PresencePush, error) {
 	rows, err := c.store.db.QueryContext(ctx, c.q(`SELECT user_id, rev, attempts FROM presence_pushes
-WHERE rev > done_rev AND next_attempt_at <= ? ORDER BY next_attempt_at, user_id LIMIT ?`), now.UTC(), limit)
+WHERE rev > done_rev AND next_attempt_at <= ? AND `+orgServes("(SELECT org_id FROM users WHERE users.id = presence_pushes.user_id)")+` ORDER BY next_attempt_at, user_id LIMIT ?`), now.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}

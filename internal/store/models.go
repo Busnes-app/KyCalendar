@@ -9,6 +9,7 @@ import (
 type User struct {
 	ID           string `json:"id"`
 	OrgID        OrgID  `json:"-"` // set at creation, never changed; empty on insert means DefaultOrg
+	OrgActive    bool   `json:"-"` // read with the row: its org is active and enabled (orgServes)
 	Username     string `json:"username"`
 	Email        string `json:"email"`
 	DisplayName  string `json:"display_name"`
