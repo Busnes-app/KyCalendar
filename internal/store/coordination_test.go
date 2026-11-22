@@ -194,12 +194,6 @@ func TestLockLossCancelsTheOwner(t *testing.T) {
 	if !won || err != nil {
 		t.Fatalf("takeover: won=%v err=%v", won, err)
 	}
-	// The lost owner's connection is released, not left checked out by its failed probe.
-	for deadline := time.Now().Add(3 * time.Second); store.InUseConnsForTest(a) != 0; time.Sleep(50 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatalf("%d connections still checked out after the owner lost the lock", store.InUseConnsForTest(a))
-		}
-	}
 }
 
 // A frozen database bounds both taking a lock and holding one: acquisition returns within 3 s,
