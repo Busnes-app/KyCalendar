@@ -343,7 +343,18 @@ user carries the org. No request header, path or form field ever names an org fo
 > assigned (`internal/store/installer_directory.go`). A self-signed-up customer's account is not
 > assigned, so it would be refused and KyIdentity would retry it. Multi-tenant mode needs a
 > receiver for any account of a mirrored org, with the rules below applied to the SCIM body.
-> That is open question 10 and its own PR (3c). The rules below stay the target.
+> That is open question 10 and its own PR (3c).
+>
+> **Built in PR 3c.** In multi-tenant mode `/api/sso/kysignon/sync` goes to
+> `handleTenantDirectory` (`internal/api/tenant_directory.go`): `syncauth` under the connector
+> secret (`KY_KYSIGNON_HMAC_SECRET`) with a replay guard shared across replicas, the account
+> resolved by `sub` on the bound issuer. What it does, where it differs from the rules below:
+> - It never creates an account. Sign-in auto-provisions (D2), so a skipped create loses nothing,
+>   and the mirror poll the create rule waits on comes with PR 4.
+> - `user.deleted` keeps the data whatever the org: KyIdentity now sends `user.erased` for
+>   Delete everything. Only `user.erased` naming the account's own org deletes the account.
+> - `user.mfa_reset` ends sessions and keeps the account active.
+> - Unknown accounts and accounts of another binding answer `204`, as removals already gone.
 
 `/api/sso/kysignon/sync` (`internal/api/server.go:312`) verifies an HMAC-SHA256 of the raw body
 (`internal/sso/kysignon.go:39-56`, `internal/crypto/crypto.go:87-97`), so a field T adds to the
@@ -694,7 +705,7 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    People writes waits for PR 5. (b) `org_id` in KyPost and KyMessages bodies (D10), filled by
    `store.PeerOrg` and checked in `kypostPeerRequest`, the one gate of all four KyPost routes.
    A mode read that fails answers 503 so KyPost retries.
-   (c) the multi-tenant directory receiver (open question 10).
+   (c) the multi-tenant directory receiver (open question 10), built as Directory webhook says.
    - Tests: refusal without `org_id`, refusal of a known `sub` in another org, staff-org admin
      only, and peer bodies with a wrong or missing org answering `no_user`. Single-tenant golden
      peer bodies are byte-identical.
@@ -774,5 +785,5 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
     `(issuer, id)`, and apply the Directory webhook rules to the body's `active` and `org_id`.
     Removals are always applied, additions only within the mirrored org, and an unknown account
     is created only when its org serves. It answers `204` once applied, so KyIdentity stops
-    retrying. Until it ships, a multi-tenant install learns of a deactivation only through
-    back-channel logout and the next sign-in.
+    retrying. **Resolved in PR 3c** (Directory webhook): the receiver is the managed
+    `/api/sso/kysignon/sync` in multi-tenant mode, and it creates no account.

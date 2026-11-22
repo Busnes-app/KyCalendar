@@ -76,14 +76,16 @@ type Server struct {
 	kymessagesKick  chan struct{}
 	// kypostReplay remembers KyPost event IDs inside the signature window.
 	kypostReplay syncauth.Replay
-	scim         *scim.Server
-	recovery     recoveryClient
-	mux          *http.ServeMux
-	patterns     []string // every registered route, for the authorization matrix
-	attemptsMu   sync.Mutex
-	attempts     map[string]attemptWindow
-	accounts     map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
-	davFails     davFailures
+	// directoryReplay guards KyIdentity's multi-tenant directory events (handleTenantDirectory).
+	directoryReplay syncauth.Forgetter
+	scim            *scim.Server
+	recovery        recoveryClient
+	mux             *http.ServeMux
+	patterns        []string // every registered route, for the authorization matrix
+	attemptsMu      sync.Mutex
+	attempts        map[string]attemptWindow
+	accounts        map[string]attemptWindow // per-account windows, apart from the evictable per-IP map
+	davFails        davFailures
 	// shared holds the rate windows, CAPTCHA salts and KyPost event IDs on PostgreSQL, so
 	// every replica counts against one limit; nil on SQLite, which keeps them in memory.
 	shared       store.CoordinationStore
@@ -228,6 +230,10 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	s.feed = &feed.Refresher{Store: st, Key: cfg.Security.EncryptionKey, Client: feed.NewClient(feed.RefusePrivate, nil), Limits: s.objectLimits()}
 	if st.Driver() == "postgres" {
 		s.shared = st.Coordination() // before newKyPost: its replay guard is shared on PostgreSQL
+	}
+	s.directoryReplay = &kypostReplay{seen: map[string]time.Time{}}
+	if s.shared != nil {
+		s.directoryReplay = sharedReplay{s.shared}
 	}
 	s.newKyPost()
 	s.newKyMessages()

@@ -196,6 +196,21 @@ func TestLockLossCancelsTheOwner(t *testing.T) {
 	}
 }
 
+// Work that panics still stops the probe and releases the lock: another replica takes it.
+func TestPanickingWorkReleasesTheLock(t *testing.T) {
+	onPostgres(t)
+	_, a, b := openTwice(t)
+	ctx := context.Background()
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = a.Coordination().WithLock(ctx, "panics", func(context.Context) error { panic("work") })
+	}()
+	won, err := b.Coordination().WithLock(ctx, "panics", func(context.Context) error { return nil })
+	if !won || err != nil {
+		t.Fatalf("takeover after a panic: won=%v err=%v", won, err)
+	}
+}
+
 // A frozen database bounds both taking a lock and holding one: acquisition returns within 3 s,
 // and an owner whose probes go unanswered loses its work within the probe bound.
 func TestFrozenDatabaseBoundsTheLock(t *testing.T) {

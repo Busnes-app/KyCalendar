@@ -180,18 +180,25 @@ func (c *coordinationStore) WithLock(ctx context.Context, name string, work func
 		}
 		return false, err
 	}
-	defer discard(conn)
-
 	owned, cancel := context.WithCancelCause(ctx)
 	probeDone := make(chan struct{})
+	var late <-chan error // a probe ping still running when the probe stopped
 	go func() {
 		defer close(probeDone)
-		probe(owned, conn, cancel)
+		late = probe(owned, conn, cancel)
 	}()
-	err = work(owned)
-	cancel(nil)
-	<-probeDone
-	return true, err
+	defer func() { // also when work panics
+		cancel(nil)
+		<-probeDone
+		if late == nil {
+			discard(conn)
+			return
+		}
+		// A ping that ends in ErrBadConn closes conn under database/sql; discarding while it runs
+		// races that close (and Conn.Raw then dereferences a nil driver connection).
+		go func() { <-late; discard(conn) }()
+	}()
+	return true, work(owned)
 }
 
 // tryLock checks out a connection and tries the lock, both under ctx. The driver may finish
@@ -235,29 +242,35 @@ func (c *coordinationStore) tryLock(ctx context.Context, name string) (*sql.Conn
 // ErrOwnershipLost is the cause of an owned context the probe ended.
 var ErrOwnershipLost = errors.New("store: lock ownership lost")
 
-func probe(owned context.Context, conn *sql.Conn, cancel context.CancelCauseFunc) {
+// probe returns the result channel of a ping still running when it stops, or nil: conn must not
+// be released before that ping returns.
+func probe(owned context.Context, conn *sql.Conn, cancel context.CancelCauseFunc) <-chan error {
 	ticker := time.NewTicker(lockProbeInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-owned.Done():
-			return
+			return nil
 		case <-ticker.C:
 		}
 		ping, stop := context.WithTimeout(owned, lockProbeTimeout)
 		res := make(chan error, 1)
 		go func() { res <- conn.PingContext(ping) }()
 		var err error
+		var late <-chan error
 		select {
 		case err = <-res:
 		case <-ping.Done():
-			err = ping.Err()
+			err, late = ping.Err(), res // the ping may still hold conn; res gets its one answer
 		}
 		stop()
-		if err != nil && owned.Err() == nil {
-			cancel(fmt.Errorf("%w: %v", ErrOwnershipLost, err))
-			return
+		if err == nil {
+			continue
 		}
+		if owned.Err() == nil {
+			cancel(fmt.Errorf("%w: %v", ErrOwnershipLost, err))
+		}
+		return late
 	}
 }
 
