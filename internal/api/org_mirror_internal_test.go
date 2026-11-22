@@ -104,12 +104,20 @@ func TestOrgPollFollowsKyIdentity(t *testing.T) {
 	if serves(t, s, "org-a") {
 		t.Fatal("a failed or empty poll changed the org")
 	}
+	// An entry without a quotas object fails the whole poll in suitedir, so nothing invalid lands.
+	for _, bad := range []string{`{"id":"org-a","status":"active","revision":8,"enabled":true}`, `{"id":"org-a","status":"active","revision":8,"enabled":true,"quotas":null}`} {
+		list.set(0, bad)
+		s.SyncOrgs(ctx)
+	}
+	if serves(t, s, "org-a") {
+		t.Fatal("an entry without a quotas object was applied")
+	}
 	list.set(0, org("active", 9))
 	s.SyncOrgs(ctx)
 	if !serves(t, s, "org-a") {
 		t.Fatal("a resumed org does not serve")
 	}
-	if got := list.requests(); fmt.Sprint(got) != "[0 4 7 7 7]" {
+	if got := list.requests(); fmt.Sprint(got) != "[0 4 7 7 7 7 7]" {
 		t.Fatalf("polls (since) %v", got)
 	}
 }
