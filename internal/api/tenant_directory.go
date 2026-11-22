@@ -42,7 +42,9 @@ type directoryUser struct {
 // takes access away. Removals apply whatever the body's org; a profile change applies, and
 // erasure deletes the account's data, only when org_id is the account's own. It never creates an
 // account (the first sign-in does) and never activates one. Every event it acts on or ignores
-// answers 204, so KyIdentity stops retrying.
+// answers 204, so KyIdentity stops retrying. A replayed removal is applied again (it only takes
+// access away), so a retry racing a first delivery that then fails is never lost; only a
+// replayed profile change is acknowledged without acting.
 func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 	raw, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil || len(raw) > 64<<10 {
@@ -55,11 +57,12 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	guard := directoryReplay{s.directoryReplay}
-	event, err := syncauth.Verify(secret, syncauth.FromRequest(r), raw, syncauth.Options{Replay: guard})
+	h := syncauth.FromRequest(r)
+	event, err := syncauth.Verify(secret, h, raw, syncauth.Options{Replay: guard})
+	replayed := errors.Is(err, syncauth.ErrReplay) // signed and fresh: Verify checks those first
 	switch {
-	case errors.Is(err, syncauth.ErrReplay):
-		w.WriteHeader(http.StatusNoContent) // applied when first seen
-		return
+	case replayed:
+		event = syncauth.Event{Type: h.EventType, ID: h.EventID}
 	case errors.Is(err, syncauth.ErrReplayGuardFull):
 		w.Header().Set("Retry-After", "5")
 		s.writeError(w, http.StatusServiceUnavailable, "Temporarily unavailable")
@@ -69,7 +72,9 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fail := func(status int, msg string) {
-		guard.Forget(event.ID) // KyIdentity's retry is applied, not taken for a replay
+		if !replayed { // the ID is the first delivery's to keep or release
+			guard.Forget(event.ID) // KyIdentity's retry is applied, not taken for a replay
+		}
 		s.writeError(w, status, msg)
 	}
 	var in directoryUser
@@ -88,8 +93,13 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 		}
 		removal = !*in.Active
 	case "user.mfa_reset":
+		removal = true // ends sessions, keeps the account
 	default:
 		fail(http.StatusBadRequest, "Unsupported directory event")
+		return
+	}
+	if replayed && !removal {
+		w.WriteHeader(http.StatusNoContent) // a profile change, applied when first seen
 		return
 	}
 
@@ -120,10 +130,10 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case event.Type == "user.erased" && own: // Delete everything
 		err = users.DeleteUser(ctx, u.ID)
-	case removal:
-		err = users.RevokeSSOUser(ctx, u.ID, true)
 	case event.Type == "user.mfa_reset":
 		err = users.RevokeSSOUser(ctx, u.ID, false)
+	case removal:
+		err = users.RevokeSSOUser(ctx, u.ID, true)
 	default:
 		// The body cannot see app roles: an administrator re-proves the role at the next sign-in.
 		if u.Role == "admin" {

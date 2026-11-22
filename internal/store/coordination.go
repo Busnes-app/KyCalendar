@@ -180,8 +180,16 @@ func (c *coordinationStore) WithLock(ctx context.Context, name string, work func
 		}
 		return false, err
 	}
+	owned, cancel := context.WithCancelCause(ctx)
+	probeDone := make(chan struct{})
 	var late <-chan error // a probe ping still running when the probe stopped
-	defer func() {
+	go func() {
+		defer close(probeDone)
+		late = probe(owned, conn, cancel)
+	}()
+	defer func() { // also when work panics
+		cancel(nil)
+		<-probeDone
 		if late == nil {
 			discard(conn)
 			return
@@ -190,17 +198,7 @@ func (c *coordinationStore) WithLock(ctx context.Context, name string, work func
 		// races that close (and Conn.Raw then dereferences a nil driver connection).
 		go func() { <-late; discard(conn) }()
 	}()
-
-	owned, cancel := context.WithCancelCause(ctx)
-	probeDone := make(chan struct{})
-	go func() {
-		defer close(probeDone)
-		late = probe(owned, conn, cancel)
-	}()
-	err = work(owned)
-	cancel(nil)
-	<-probeDone
-	return true, err
+	return true, work(owned)
 }
 
 // tryLock checks out a connection and tries the lock, both under ctx. The driver may finish

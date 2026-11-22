@@ -142,6 +142,26 @@ func TestTenantDirectoryRetryAfterARefusalIsApplied(t *testing.T) {
 	}
 }
 
+// A replayed removal is applied again: a retry that raced a first delivery which then failed must
+// not be acknowledged as done.
+func TestTenantDirectoryReplayedRemovalApplies(t *testing.T) {
+	s, alice, _ := directoryWorld(t)
+	ctx := context.Background()
+	if code := directoryEvent(t, s, "user.deactivated", "e1", scimBody("alice", "org-a", false, "alice")); code != http.StatusNoContent {
+		t.Fatal(code)
+	}
+	alice.Status = "active" // as if the first delivery had not landed
+	if err := s.store.Users().UpdateUser(ctx, alice); err != nil {
+		t.Fatal(err)
+	}
+	if code := directoryEvent(t, s, "user.deactivated", "e1", scimBody("alice", "org-a", false, "alice")); code != http.StatusNoContent {
+		t.Fatalf("replay: %d", code)
+	}
+	if u, _ := s.store.Users().GetUserByID(ctx, alice.ID); u.Status != "inactive" {
+		t.Errorf("a replayed removal was not applied: %+v", u)
+	}
+}
+
 // An MFA reset ends sessions and keeps the account active; the directory never creates or
 // activates an account; a bad signature is refused.
 func TestTenantDirectoryNeverGrants(t *testing.T) {
