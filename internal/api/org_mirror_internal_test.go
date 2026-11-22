@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -237,5 +238,41 @@ func TestASignInJoiningAnOlderPollPollsAgain(t *testing.T) {
 	<-signedIn
 	if !serves(t, s, "org-new") {
 		t.Fatal("a sign-in that joined an older poll was refused")
+	}
+}
+
+// Two people of a brand-new org signing in together both get in: the second, held off from
+// starting a poll of its own, waits for the first one's, and the worker's job shares it too.
+func TestTwoSignInsOfANewOrgBothWait(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	reached, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	var polls atomic.Int32
+	idp.suite = func(w http.ResponseWriter, r *http.Request) {
+		polls.Add(1)
+		once.Do(func() { close(reached) })
+		<-release
+		fmt.Fprint(w, `{"orgs":[{"id":"org-new","status":"active","revision":1,"enabled":true,"quotas":{}}]}`)
+	}
+	first := make(chan struct{})
+	go func() { s.awaitOrg(context.Background(), "org-new"); close(first) }()
+	<-reached
+	second := make(chan bool)
+	go func() {
+		s.awaitOrg(context.Background(), "org-new")
+		ok, _ := s.store.OrgServes(context.Background(), "org-new")
+		second <- ok
+	}()
+	worker := make(chan struct{})
+	go func() { s.SyncOrgs(context.Background()); close(worker) }()
+	time.Sleep(100 * time.Millisecond) // a second sign-in that does not wait answers within this
+	close(release)
+	<-first
+	<-worker
+	if !<-second {
+		t.Fatal("the second sign-in did not wait for the poll in flight")
+	}
+	if n := polls.Load(); n != 1 {
+		t.Fatalf("%d polls, want the worker and both sign-ins to share one", n)
 	}
 }
