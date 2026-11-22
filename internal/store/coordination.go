@@ -259,18 +259,15 @@ func probe(owned context.Context, conn *sql.Conn, cancel context.CancelCauseFunc
 		res := make(chan error, 1)
 		go func() { res <- conn.PingContext(ping) }()
 		var err error
+		var late <-chan error
 		select {
 		case err = <-res:
 		case <-ping.Done():
-			err = ping.Err()
+			err, late = ping.Err(), res // the ping may still hold conn; res gets its one answer
 		}
 		stop()
 		if err == nil {
 			continue
-		}
-		var late <-chan error
-		if len(res) == 0 {
-			late = res // timed out or cancelled: the ping may still hold conn
 		}
 		if owned.Err() == nil {
 			cancel(fmt.Errorf("%w: %v", ErrOwnershipLost, err))

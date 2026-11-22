@@ -28,6 +28,9 @@ AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`
 	return pid, err
 }
 
+// InUseConnsForTest is how many of st's pooled connections are checked out.
+func InUseConnsForTest(st Store) int { return st.(*SQLStore).db.Stats().InUse }
+
 // TerminateBackendForTest ends backend pid, as a database restart or an operator would.
 func TerminateBackendForTest(st Store, pid int) error {
 	_, err := st.(*SQLStore).db.Exec(`SELECT pg_terminate_backend($1)`, pid)
