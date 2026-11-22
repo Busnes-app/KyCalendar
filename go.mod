@@ -5,7 +5,7 @@ go 1.26.9
 toolchain go1.27.4
 
 require (
-	github.com/Busnes-app/ky-primitives v0.10.2-0.20261116015712-875f57b13976
+	github.com/Busnes-app/ky-primitives v0.10.2-0.20261120212828-9deb28884264
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/elimity-com/scim v0.0.0-20261113092633-5fffe914c211
 	github.com/emersion/go-ical v0.0.0-20261112170022-46c5b53a1723
@@ -37,7 +37,7 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
-	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sync v0.25.0
 	golang.org/x/time v0.16.0 // indirect
 	// Keep libc paired with the version required by modernc.org/sqlite.
 	modernc.org/libc v1.80.1 // indirect

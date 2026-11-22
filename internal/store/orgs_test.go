@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -419,6 +420,95 @@ func TestPeerOrgOnlyInMultiTenantMode(t *testing.T) {
 			if got, err := PeerOrg(ctx, s, u); err != nil || got != c.want {
 				t.Errorf("mode %q: %q %v, want %q", c.mode, got, err, c.want)
 			}
+		}
+	})
+}
+
+// TestApplyOrgsMirrorsThePoll: a poll adds orgs with a usage row and records its cursor; a row
+// never moves back in revision, a tombstone never serves again, the staff and default orgs are
+// never touched, and an object written into a polled org grows its usage.
+func TestApplyOrgsMirrorsThePoll(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const staff OrgID = "org-staff"
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), staff); err != nil {
+			t.Fatal(err)
+		}
+		state := func(id OrgID) string {
+			var status, quotas string
+			var rev int64
+			var enabled bool
+			if err := s.db.QueryRowContext(ctx, s.rebind(`SELECT status, revision, enabled, quotas_json FROM orgs WHERE id = ?`), id).Scan(&status, &rev, &enabled, &quotas); err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("%s %d %t %s", status, rev, enabled, quotas)
+		}
+		cursor := func() string {
+			v, err := s.Settings().GetSettings(ctx, OrgsCursorSetting)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return v[OrgsCursorSetting]
+		}
+		if err := s.ApplyOrgs(ctx, staff, []MirroredOrg{
+			{ID: "org-a", Status: "active", Revision: 3, Enabled: true, Quotas: `{"max_bytes":100}`},
+			{ID: "org-gone", Status: "deleted", Revision: 4, Quotas: `{}`},
+			{ID: staff, Status: "suspended", Revision: 5, Quotas: `{}`},
+			{ID: DefaultOrg, Status: "suspended", Revision: 5, Quotas: `{}`},
+		}, 5); err != nil {
+			t.Fatal(err)
+		}
+		if got := state("org-a"); got != `active 3 true {"max_bytes":100}` {
+			t.Errorf("org-a: %s", got)
+		}
+		for _, id := range []OrgID{staff, DefaultOrg} {
+			if got := state(id); got != "active 0 true {}" {
+				t.Errorf("the poll changed %s: %s", id, got)
+			}
+		}
+		if got := cursor(); got != "5" {
+			t.Errorf("cursor %q", got)
+		}
+		if ok, err := s.OrgServes(ctx, "org-a"); err != nil || !ok {
+			t.Fatalf("org-a serves: %t %v", ok, err)
+		}
+
+		// An older answer (another replica's slower poll) and a revived tombstone change nothing.
+		if err := s.ApplyOrgs(ctx, staff, []MirroredOrg{
+			{ID: "org-a", Status: "suspended", Revision: 2, Quotas: `{}`},
+			{ID: "org-gone", Status: "active", Revision: 9, Enabled: true, Quotas: `{}`},
+		}, 9); err != nil {
+			t.Fatal(err)
+		}
+		if got := state("org-a"); got != `active 3 true {"max_bytes":100}` {
+			t.Errorf("an older revision moved org-a: %s", got)
+		}
+		if got := state("org-gone"); got != "deleted 4 false {}" {
+			t.Errorf("a tombstone changed: %s", got)
+		}
+		if err := s.ApplyOrgs(ctx, staff, []MirroredOrg{{ID: "org-a", Status: "suspended", Revision: 10, Enabled: true, Quotas: `{}`}}, 10); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := s.OrgServes(ctx, "org-a"); err != nil || ok || cursor() != "10" {
+			t.Fatalf("suspended org-a serves: %t %v, cursor %s", ok, err, cursor())
+		}
+
+		if err := s.ApplyOrgs(ctx, staff, []MirroredOrg{{ID: "org-new", Status: "active", Revision: 11, Enabled: true, Quotas: `{}`}}, 11); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Users().CreateUser(ctx, &User{ID: "un", Username: "n", Role: "user", Status: "active", SSOProvider: "local", OrgID: "org-new"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Calendars().CreateCalendar(ctx, &Calendar{ID: "cn", OwnerKind: "user", OwnerID: "un", Slug: "default", Name: "N"}, 0); err != nil {
+			t.Fatal(err)
+		}
+		ics := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+		if _, err := s.Calendars().PutObjectPlanned(ctx, &CalendarObject{CalendarID: "cn", Name: "e1.ics", Component: "VEVENT", UID: "e1", ETag: "1", Data: ics, WriterID: "un"}, "", true, OwnerLimits{}, nil); err != nil {
+			t.Fatal(err)
+		}
+		var bytes int64
+		if err := s.db.QueryRowContext(ctx, s.rebind(`SELECT bytes FROM org_usage WHERE org_id = ?`), "org-new").Scan(&bytes); err != nil || bytes != int64(len(ics)) {
+			t.Fatalf("org-new usage %d (%v), want %d", bytes, err, len(ics))
 		}
 	})
 }

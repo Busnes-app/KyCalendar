@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store/migrations"
@@ -63,6 +64,48 @@ func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM orgs WHERE id = ? AND status = 'active' AND enabled`), id).Scan(&n)
 	return n == 1, err
+}
+
+// OrgsCursorSetting is the /api/suite/orgs revision the next mirror poll starts after.
+const OrgsCursorSetting = "tenancy_orgs_since"
+
+// MirroredOrg is one org as KyIdentity's /api/suite/orgs lists it to this app.
+type MirroredOrg struct {
+	ID       OrgID
+	Status   string // active, suspended, deletion_scheduled or deleted
+	Revision int64
+	Enabled  bool
+	Quotas   string // a JSON object
+}
+
+// ApplyOrgs writes one mirror poll (tenancy spec D6) and its next cursor in one transaction. A
+// row moves only forward in revision, a tombstone never serves again, and the staff and default
+// orgs come from configuration, so a poll never touches them. A new org gets its usage row here.
+func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	for _, o := range orgs {
+		if o.ID == staff || o.ID == DefaultOrg {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, revision, enabled, quotas_json, seen_at) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET status = excluded.status, revision = excluded.revision, enabled = excluded.enabled, quotas_json = excluded.quotas_json, seen_at = excluded.seen_at
+WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o.Status, o.Revision, o.Enabled, o.Quotas, now.Unix()); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0) ON CONFLICT (org_id) DO NOTHING`), o.ID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)
+ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`), OrgsCursorSetting, strconv.FormatInt(next, 10), now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // OrgID names an org. Build one only from an authenticated principal (OrgOf) or, on a

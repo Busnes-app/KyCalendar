@@ -34,6 +34,7 @@ type signingIdP struct {
 	onToken         func()
 	roles           []string
 	discoveries     atomic.Int32
+	suite           http.HandlerFunc // KyIdentity's /api/suite/ answers; nil: 404
 }
 
 func newSigningIdP(t *testing.T) *signingIdP { return signingIdPFixture(t, true) }
@@ -53,6 +54,12 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 	idp.Server = newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/api/suite/orgs", "/api/suite/groups":
+			if idp.suite == nil {
+				http.NotFound(w, r)
+				return
+			}
+			idp.suite(w, r)
 		case "/keys":
 			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
 				"kty": "RSA", "kid": "k1", "alg": "RS256", "use": "sig",

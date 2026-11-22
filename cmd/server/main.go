@@ -332,6 +332,7 @@ func scheduledJobs(cfg *config.Config, st store.Store, srv *api.Server, client r
 			srv.SyncMeetings(ctx)
 			srv.SyncPresence(ctx)
 		}},
+		{Name: "orgs", Every: api.OrgsInterval, AtStart: true, Run: srv.SyncOrgs},
 		{Name: "suite-groups", Every: api.SuiteGroupsInterval, AtStart: true, Run: srv.SyncSuiteGroups},
 		// Every new client address adds a rate-window row on PostgreSQL; expired ones go often,
 		// so a spread of addresses cannot grow the table for a day.
