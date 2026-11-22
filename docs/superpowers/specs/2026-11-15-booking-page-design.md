@@ -171,7 +171,7 @@ it.
 | POST | `/api/book/manage/reschedule` | public + CSRF, 30/15 min per IP | 200; 409 `slot_unavailable` |
 
 The rate limits are the server's in-memory windows (`allowPerIP`, `allowAccountAttempt`), per
-process, like the existing login and invite limits. Logs carry booking and type IDs only, never a
+process, like the existing login limits. Logs carry booking and type IDs only, never a
 name, address, note or token.
 
 ## Meeting room (deliverable 2)
