@@ -328,7 +328,7 @@ func (u *userStore) scanUser(row interface{ Scan(...any) error }) (*User, error)
 		&user.Role, &user.Status, &user.SSOProvider, &user.SSOSubject, &user.SSOIssuer,
 		&user.TOTPSecretEnc, &user.TOTPEnabled, &user.RecoveryCodesHash,
 		&user.PushDeviceID, &user.MustChangePassword, &user.TOTPLastCounter,
-		&user.CreatedAt, &user.UpdatedAt, &lastLogin, &user.OrgID,
+		&user.CreatedAt, &user.UpdatedAt, &lastLogin, &user.OrgID, &user.OrgActive,
 	)
 	if err != nil {
 		if errorsIs(err, sql.ErrNoRows) {
@@ -347,7 +347,7 @@ func (u *userStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, ` + orgServes("users.org_id") + `
 FROM users WHERE id = ?
 `)
 	return u.scanUser(u.store.db.QueryRowContext(ctx, q, id))
@@ -358,7 +358,7 @@ func (u *userStore) GetUserByUsername(ctx context.Context, username string) (*Us
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, ` + orgServes("users.org_id") + `
 FROM users WHERE LOWER(username) = LOWER(?)
 ORDER BY CASE WHEN sso_provider = 'local' THEN 0 ELSE 1 END, CASE WHEN username = ? THEN 0 ELSE 1 END
 LIMIT 1
@@ -373,7 +373,7 @@ func (u *userStore) GetUserByEmail(ctx context.Context, email string) (*User, er
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, ` + orgServes("users.org_id") + `
 FROM users WHERE LOWER(email) = LOWER(?)
 `)
 	return u.scanUser(u.store.db.QueryRowContext(ctx, q, email))
@@ -384,7 +384,7 @@ func (u *userStore) GetUserBySSO(ctx context.Context, provider, subject string) 
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, ` + orgServes("users.org_id") + `
 FROM users WHERE sso_provider = ? AND sso_subject = ?
 `)
 	return u.scanUser(u.store.db.QueryRowContext(ctx, q, provider, subject))
@@ -500,7 +500,7 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, ` + orgServes("users.org_id") + `
 FROM users
 ` + where + `
 ORDER BY created_at DESC LIMIT ? OFFSET ?`

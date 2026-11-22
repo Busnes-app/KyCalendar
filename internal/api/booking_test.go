@@ -17,6 +17,7 @@ import (
 
 	"github.com/Busnes-app/kycalendar/internal/api"
 	"github.com/Busnes-app/kycalendar/internal/auth"
+	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
@@ -34,6 +35,7 @@ type bookingWorld struct {
 	typ   string
 	slug  string
 	admin *http.Cookie
+	cfg   *config.Config
 }
 
 func newBookingWorld(t *testing.T) *bookingWorld {
@@ -45,7 +47,7 @@ func newBookingWorld(t *testing.T) *bookingWorld {
 		t.Fatal(err)
 	}
 	t.Setenv("KYCALENDAR_KYPOST_SECRET_FILE", secretFile)
-	srv, st, _ := setupTestServer(t)
+	srv, st, cfg := setupTestServer(t)
 	fake := &fakeKyPost{}
 	kp := httptest.NewTLSServer(fake)
 	t.Cleanup(kp.Close)
@@ -56,7 +58,7 @@ func newBookingWorld(t *testing.T) *bookingWorld {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := &bookingWorld{srv: srv, st: st, fake: fake, bob: sessionFor(t, st, bob), admin: loginAs(t, srv, st, "root", "admin")}
+	w := &bookingWorld{srv: srv, st: st, fake: fake, bob: sessionFor(t, st, bob), admin: loginAs(t, srv, st, "root", "admin"), cfg: cfg}
 	if err := davbackend.EnsureDefault(ctx, st, "usr_bob", 0); err != nil {
 		t.Fatal(err)
 	}

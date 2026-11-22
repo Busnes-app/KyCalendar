@@ -512,3 +512,103 @@ func TestApplyOrgsMirrorsThePoll(t *testing.T) {
 		}
 	})
 }
+
+// TestAnOrgThatStopsServingIsHeld: when a poll stops an org serving, its sessions end with a
+// platform audit row and its app passwords stay; no worker picks its due outbox, feed, meeting
+// or presence rows, and a resume picks them up again.
+func TestAnOrgThatStopsServingIsHeld(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const b OrgID = "org-b"
+		poll := func(status string, rev int64) {
+			t.Helper()
+			if err := s.ApplyOrgs(ctx, "org-staff", []MirroredOrg{{ID: b, Status: status, Revision: rev, Enabled: true, Quotas: `{}`}}, rev); err != nil {
+				t.Fatal(err)
+			}
+		}
+		poll("active", 1)
+		u := &User{ID: "ub", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}
+		if err := s.Users().CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+		cs := s.Calendars()
+		if err := cs.CreateCalendar(ctx, &Calendar{ID: "cb", OwnerKind: "user", OwnerID: "ub", Slug: "default", Name: "B"}, 0); err != nil {
+			t.Fatal(err)
+		}
+		ics := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+		plan := func([]byte) ([]byte, []*OutboxMessage, error) {
+			return nil, []*OutboxMessage{{ID: "m1", DedupeKey: "d1", SenderID: "ub", Method: "REQUEST", Recipient: "mailto:x@example.com", Body: ics}}, nil
+		}
+		if _, err := cs.PutObjectPlanned(ctx, &CalendarObject{CalendarID: "cb", Name: "e1.ics", Component: "VEVENT", UID: "e1", ETag: "1", Data: ics, WriterID: "ub"}, "", true, OwnerLimits{}, plan); err != nil {
+			t.Fatal(err)
+		}
+		past := time.Now().Add(-time.Hour).UTC()
+		if err := cs.CreateSubscribedCalendar(ctx, &Calendar{ID: "fb", OwnerKind: "user", OwnerID: "ub", Slug: "feed", Name: "F"}, &Subscription{URLSealed: "x", URLHost: "example.com", NextCheckAt: past}, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		for _, q := range []string{
+			`INSERT INTO video_meetings (id, user_id, calendar_id, name, state, rev, done_rev, next_attempt_at, created_at) VALUES ('v1', 'ub', 'cb', 'e1.ics', 'open', 3, 2, ?, ?)`,
+			`INSERT INTO presence_pushes (user_id, rev, done_rev, next_attempt_at) VALUES ('ub', 4, 1, ?)`,
+		} {
+			args := []any{past, past}[:strings.Count(q, "?")]
+			if _, err := s.db.ExecContext(ctx, s.rebind(q), args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		now := time.Now().UTC()
+		if err := s.Sessions().CreateSession(ctx, &Session{TokenHash: "tok_b", UserID: "ub", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.Credentials()); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.AppPasswords().Create(ctx, Seed, &AppPassword{ID: "ap_b", UserID: "ub", Label: "t", Hash: "h", Scope: ScopeDAV}, 0); err != nil {
+			t.Fatal(err)
+		}
+		due := func() string {
+			t.Helper()
+			out, err1 := cs.DueOutbox(ctx, now, 10)
+			subs, err2 := cs.DueSubscriptions(ctx, now, 10)
+			meets, err3 := cs.DueMeetings(ctx, now, 10)
+			pres, err4 := cs.DuePresence(ctx, now, 10)
+			if err := errors.Join(err1, err2, err3, err4); err != nil {
+				t.Fatal(err)
+			}
+			return fmt.Sprint(len(out), len(subs), len(meets), len(pres))
+		}
+		audits := func() string {
+			var n int
+			var org sql.NullString
+			if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(org_id) FROM audit_records WHERE action = 'platform.org_stopped'`).Scan(&n, &org); err != nil {
+				t.Fatal(err)
+			}
+			return fmt.Sprint(n, " ", org.Valid)
+		}
+		if got := due(); got != "1 1 1 1" {
+			t.Fatalf("control: due %s", got)
+		}
+
+		poll("suspended", 2)
+		if got := due(); got != "0 0 0 0" {
+			t.Errorf("a suspended org's work is due: %s", got)
+		}
+		if _, err := s.Sessions().GetSession(ctx, "tok_b"); !errors.Is(err, ErrNotFound) {
+			t.Errorf("the session outlived the suspension: %v", err)
+		}
+		if _, err := s.AppPasswords().Get(ctx, "ap_b"); err != nil {
+			t.Errorf("the app password was removed: %v", err)
+		}
+		if got := audits(); got != "1 false" {
+			t.Errorf("platform.org_stopped rows (count, has org): %s", got)
+		}
+		poll("suspended", 3) // still stopped: nothing more to end
+		if got := audits(); got != "1 false" {
+			t.Errorf("a repeated suspension audited again: %s", got)
+		}
+
+		poll("active", 4)
+		if got := due(); got != "1 1 1 1" {
+			t.Errorf("a resumed org's work is not due: %s", got)
+		}
+		if got := audits(); got != "1 false" {
+			t.Errorf("the resume audited a stop: %s", got)
+		}
+	})
+}

@@ -373,7 +373,7 @@ func (s *Server) hostOf(ctx context.Context, t *store.BookingType) (*bookingHost
 		return nil, errNoBookingPage
 	}
 	u, err := s.store.Users().GetUserByID(ctx, t.UserID)
-	if err != nil || u.Role != "user" || u.Status != "active" {
+	if err != nil || u.Role != "user" || u.Status != "active" || !u.OrgActive {
 		return nil, errNoBookingPage
 	}
 	if reason, err := s.bookingReason(ctx, u); err != nil || reason != "" {

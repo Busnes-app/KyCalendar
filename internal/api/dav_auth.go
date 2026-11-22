@@ -240,6 +240,10 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			return
 		}
 		release()
+		if !user.OrgActive { // after the right secret, so only the token's holder learns it
+			s.writeAPIError(w, errOrgNotServing)
+			return
+		}
 		if user.Role == "admin" {
 			http.Error(w, "Administrator accounts cannot use calendars", http.StatusForbidden)
 			return

@@ -235,7 +235,8 @@ func (sm *SessionManager) AuthenticateRequest(r *http.Request) (*store.User, *st
 	if err != nil {
 		return nil, nil, err // unavailable: the session stays
 	}
-	if !allowed || user.Status != "active" {
+	// A session of an org that is not active (tenancy spec D6) ends as an inactive account's does.
+	if !allowed || user.Status != "active" || !user.OrgActive {
 		_ = sm.store.Sessions().DeleteSession(r.Context(), tokenHash)
 		return nil, nil, store.ErrNotFound
 	}

@@ -31,6 +31,10 @@ var (
 	errOrgMismatch  = errors.New("sign-in token names another org")
 )
 
+// errOrgNotServing answers a sign-in, or a DAV or MCP client with the right token, whose org is
+// not active.
+var errOrgNotServing = &apiError{status: http.StatusForbidden, code: "org_not_active", msg: "Your organisation is not active on this service"}
+
 // nonceCookieKey MACs the nonce cookie, so a browser cannot back-date a step-up's start. It lives
 // as long as the process; so does a provider's ID, which the cookie already has to match.
 var nonceCookieKey = crypto.RandomHex(32)
@@ -320,7 +324,7 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusForbidden, "This account belongs to another organisation; ask your administrator")
 		return
 	case errors.Is(err, errOrgNotActive):
-		s.writeAPIError(w, &apiError{status: http.StatusForbidden, code: "org_not_active", msg: "Your organisation is not active on this service"})
+		s.writeAPIError(w, errOrgNotServing)
 		return
 	case errors.Is(err, errUsernameTaken):
 		log.Printf("sso: sign-in for subject %s refused: username %q belongs to another account", claims.Subject, claims.PreferredUsername)

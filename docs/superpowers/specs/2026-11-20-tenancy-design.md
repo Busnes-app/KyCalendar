@@ -239,6 +239,13 @@ their handle from middleware:
   account: delivery is external in multi-tenant mode (D5), and a feed refresh writes into its
   subscriber's calendar, whose objects take that calendar's org.
 
+  > **Built in PR 4b (2026-11-22), without a `PlatformStore`.** Each worker's due-row query
+  > (`DueOutbox`, `DueSubscriptions`, `DueMeetings`, `DuePresence`) carries `orgServes`, the same
+  > `EXISTS` on `orgs` the account reads, so a stopped org's rows are never picked, never fill a
+  > batch, and stay pending until a resume. Every row a worker picks already belongs to one
+  > account of a serving org, and its work acts only on that account, so no separate handle was
+  > needed. Suite groups stay single-tenant until they poll per org.
+
 ### The install-wide lookups this changes
 
 Each is a lookup today that is scoped by the install. In multi-tenant mode each is scoped by the
@@ -714,7 +721,7 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    D11.
    Split: (a) the mirror poll and its sign-in wait (`internal/api/org_mirror.go`,
    `store.ApplyOrgs`), the cursor kept in `tenancy_orgs_since`; (b) the status checks on every
-   auth path, suspension and its holds, and `PlatformStore` for the workers that skip an org;
+   auth path, suspension and its holds, and the workers' skip of an org that does not serve;
    (c) the purge and restore reconciliation; (d) D11 quotas; (e) `export-org`.
    - Tests: a suspended org is refused on every credential type (session, DAV, MCP, booking page,
      KyPost inbound). A resume restores DAV with the same app password. The purge leaves no org
@@ -726,7 +733,10 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    - Tests: the authorization matrix with staff personas in multi-tenant mode, every off route
      `404`, and the existing browser admin flows in single-tenant (`AGENTS.md:281`).
 6. **Enable multi-tenant mode.** Startup accepts `multi` with its requirements (D1, D2,
-   `KYCALENDAR_STAFF_ORG_ID`). An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
+   `KYCALENDAR_STAFF_ORG_ID`). `ensureOrgs` must insert the staff org `active` and `enabled` (Org
+   model, step 1): since PR 4b every staff credential, the break-glass password included, reads
+   that row, and no poll ever writes it. A test starts a fresh multi-tenant install and signs the
+   bootstrap administrator in. An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
    KyMessages: two orgs, an invitation across them by mail, and suspension and deletion of one.
 
 ## Residual risks

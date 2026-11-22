@@ -125,7 +125,7 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 
 func (c *calendarStore) DueOutbox(ctx context.Context, now time.Time, limit int) ([]*OutboxMessage, error) {
 	rows, err := c.store.db.QueryContext(ctx, c.q(`SELECT id, dedupe_key, sender_id, method, recipient, body, status, attempts, next_attempt_at, last_error, created_at
-FROM scheduling_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY created_at, id LIMIT ?`), now.UTC(), limit)
+FROM scheduling_outbox WHERE status = 'pending' AND next_attempt_at <= ? AND `+orgServes("scheduling_outbox.org_id")+` ORDER BY created_at, id LIMIT ?`), now.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}
