@@ -12,6 +12,7 @@ import (
 
 	"github.com/Busnes-app/ky-primitives/syncauth"
 
+	"github.com/Busnes-app/kycalendar/internal/access"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -159,6 +160,36 @@ func TestTenantDirectoryReplayedRemovalApplies(t *testing.T) {
 	}
 	if u, _ := s.store.Users().GetUserByID(ctx, alice.ID); u.Status != "inactive" {
 		t.Errorf("a replayed removal was not applied: %+v", u)
+	}
+}
+
+// A replayed active update still ends a stored administrator's sessions (the body cannot carry
+// app roles), and never rewrites the profile.
+func TestTenantDirectoryReplayedUpdateStillRevokesAnAdmin(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	s.config.SSO.Enabled, s.config.SSO.KySignOnHMACSecret = true, directorySecret
+	idp.extra, idp.roles = map[string]any{"org_id": "org-staff"}, []string{access.AdminAppRole}
+	ctx := context.Background()
+	first := ssoSession(ssoLogin(t, s, idp, "staffer", "sid-1"))
+	staffer, err := s.store.Users().GetUserBySSO(ctx, "kysignon", "staffer")
+	if err != nil || staffer.Role != "admin" || first == nil {
+		t.Fatalf("staffer: %+v %v", staffer, err)
+	}
+	if code := directoryEvent(t, s, "user.updated", "e1", scimBody("staffer", "org-staff", true, "first")); code != http.StatusNoContent || signedIn(s, first) {
+		t.Fatalf("update: %d, signed in %v", code, signedIn(s, first))
+	}
+	second := ssoSession(ssoLogin(t, s, idp, "staffer", "sid-2")) // as if the first delivery had not landed
+	if second == nil || !signedIn(s, second) {
+		t.Fatal("second sign-in")
+	}
+	if err := s.store.Users().UpdateKySignOnProfile(ctx, staffer.ID, "newer", "newer@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if code := directoryEvent(t, s, "user.updated", "e1", scimBody("staffer", "org-staff", true, "first")); code != http.StatusNoContent || signedIn(s, second) {
+		t.Errorf("replay: %d, administrator still signed in %v", code, signedIn(s, second))
+	}
+	if u, _ := s.store.Users().GetUserByID(ctx, staffer.ID); u.DisplayName != "newer" {
+		t.Errorf("a replay rewrote the profile: %+v", u)
 	}
 }
 
