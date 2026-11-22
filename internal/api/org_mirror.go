@@ -143,3 +143,27 @@ func (s *Server) awaitOrg(ctx context.Context, org store.OrgID) {
 		}
 	}
 }
+
+// PurgeDeletedOrgs deletes the data of every org KyIdentity reported deleted (tenancy spec D12),
+// in multi-tenant mode. A purge cut short resumes on the next run.
+func (s *Server) PurgeDeletedOrgs(ctx context.Context) {
+	ten, err := s.store.Tenancy(ctx)
+	if err != nil || !ten.Multi {
+		return
+	}
+	due, err := s.store.OrgsToPurge(ctx)
+	if err != nil {
+		log.Printf("orgs: listing deleted orgs: %v", err)
+		return
+	}
+	for _, org := range due {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := s.store.PurgeOrg(ctx, ten.Staff, org); err != nil {
+			log.Printf("orgs: purge of %s stopped, resumes next run: %v", org, err)
+			continue
+		}
+		log.Printf("orgs: purged %s", org)
+	}
+}

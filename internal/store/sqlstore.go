@@ -117,6 +117,17 @@ func (s *SQLStore) ResetAfterRestore(ctx context.Context) error {
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`), time.Now().UTC()); err != nil {
 		return err
 	}
+	// A capsule's org states are as old as the capsule (tenancy spec, Lifecycle, Restore): every
+	// customer org but a tombstone is stale, refused everywhere, until a poll from revision 0
+	// answers for it. Absent the mode row the install is multi-tenant (Tenancy).
+	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET status = 'stale', revision = 0
+WHERE status <> 'deleted' AND id <> ? AND id <> COALESCE((SELECT value FROM server_settings WHERE key = ?), '')
+AND COALESCE((SELECT value FROM server_settings WHERE key = ?), '') <> 'single'`), DefaultOrg, StaffOrgSetting, TenancySetting); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM server_settings WHERE key = ?`), OrgsCursorSetting); err != nil {
+		return err
+	}
 	epoch := crypto.RandomHex(8)
 	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_meta SET value = ? WHERE key = 'sync_epoch'`), epoch)
 	if err != nil {
@@ -129,7 +140,7 @@ ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.up
 	if n != 1 {
 		return fmt.Errorf("sync epoch: %d rows updated, want 1", n)
 	}
-	if err := s.insertAudit(ctx, tx, AuditRecord{UserID: "system", Action: "system.restore_reset", Resource: "store", Details: "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; replica record and rate windows cleared; scheduled backups off; sync_epoch=" + epoch}); err != nil {
+	if err := s.insertAudit(ctx, tx, AuditRecord{UserID: "system", Action: "system.restore_reset", Resource: "store", Details: "sessions, MFA challenges, device pairings, app passwords revoked; scheduling outbox cleared; replica record and rate windows cleared; scheduled backups off; customer orgs stale; sync_epoch=" + epoch}); err != nil {
 		return err
 	}
 	return tx.Commit()

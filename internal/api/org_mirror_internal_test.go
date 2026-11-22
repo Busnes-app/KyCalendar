@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -274,5 +275,29 @@ func TestTwoSignInsOfANewOrgBothWait(t *testing.T) {
 	}
 	if n := polls.Load(); n != 1 {
 		t.Fatalf("%d polls, want the worker and both sign-ins to share one", n)
+	}
+}
+
+// When the poll reports an org deleted, the purge job removes its accounts and keeps the
+// tombstone, so a later sign-in naming it is still refused.
+func TestADeletedOrgIsPurgedAfterThePoll(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	list := &orgList{orgs: `{"id":"org-a","status":"active","revision":1,"enabled":true,"quotas":{}}`}
+	idp.suite = list.serve
+	ctx := context.Background()
+	if code := loginWithOrg(t, s, idp, "alice", "org-a"); code != http.StatusFound && code != http.StatusSeeOther {
+		t.Fatalf("sign-in: %d", code)
+	}
+	list.set(0, `{"id":"org-a","status":"deleted","revision":2,"enabled":false,"quotas":{}}`)
+	s.SyncOrgs(ctx)
+	s.PurgeDeletedOrgs(ctx)
+	if _, err := s.store.Users().GetUserBySSO(ctx, "kysignon", "alice"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("alice after the purge: %v", err)
+	}
+	if code := loginWithOrg(t, s, idp, "alice", "org-a"); code != http.StatusForbidden {
+		t.Fatalf("sign-in naming a purged org: %d", code)
+	}
+	if _, err := s.store.Users().GetUserBySSO(ctx, "kysignon", "alice"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a sign-in recreated a purged org's account: %v", err)
 	}
 }
