@@ -30,17 +30,24 @@ type orgPoll struct {
 // SyncOrgs mirrors /api/suite/orgs into the orgs table. Multi-tenant installs with a live
 // KyIdentity provider only; a failed poll changes nothing. Logs carry no org data.
 func (s *Server) SyncOrgs(ctx context.Context) {
-	if err := (<-s.pollOrgs(ctx)).Err; err != nil {
-		// suitedir errors carry neither the credentials nor the response body.
-		log.Printf("suite: orgs: %v", err)
+	select {
+	case res := <-s.pollOrgs():
+		if res.Err != nil {
+			// suitedir errors carry neither the credentials nor the response body.
+			log.Printf("suite: orgs: %v", res.Err)
+		}
+	case <-ctx.Done():
 	}
 }
 
-func (s *Server) pollOrgs(ctx context.Context) <-chan singleflight.Result {
-	// Detached: a sign-in that stops waiting must not cancel the poll others joined.
-	ctx = context.WithoutCancel(ctx)
+// pollOrgs starts the shared poll, or joins the one running. It belongs to no caller, so a
+// sign-in that stops waiting cancels nothing others joined; StopDetached ends it, and the
+// store closes only after it returns.
+func (s *Server) pollOrgs() <-chan singleflight.Result {
 	return s.orgs.flight.DoChan("orgs", func() (any, error) {
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		s.detached.add()
+		defer s.detached.done()
+		ctx, cancel := context.WithTimeout(s.stopping, 30*time.Second)
 		defer cancel()
 		ten, err := s.store.Tenancy(ctx)
 		if err != nil || !ten.Multi {
@@ -94,7 +101,7 @@ func (s *Server) awaitOrg(ctx context.Context, org store.OrgID) {
 	t := time.NewTimer(orgAskWait)
 	defer t.Stop()
 	select {
-	case <-s.pollOrgs(ctx):
+	case <-s.pollOrgs():
 	case <-t.C:
 	case <-ctx.Done():
 	}

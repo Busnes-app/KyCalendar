@@ -168,3 +168,40 @@ func TestSingleTenantNeverPollsOrgs(t *testing.T) {
 		t.Fatalf("single-tenant polled: %v", got)
 	}
 }
+
+// A stop ends a poll stuck on KyIdentity: the worker job returns with its context, and
+// StopDetached cancels the shared poll so WaitDetached (before the store closes) returns.
+func TestAStopEndsAHungPoll(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	reached := make(chan struct{})
+	var once sync.Once
+	idp.suite = func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(reached) })
+		<-r.Context().Done() // hangs until the poll is cancelled
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	job := make(chan struct{})
+	go func() { s.SyncOrgs(ctx); close(job) }()
+	<-reached
+	c := s.detached.signal()
+	c.L.Lock()
+	inFlight := s.detached.n
+	c.L.Unlock()
+	if inFlight != 1 {
+		t.Fatalf("%d detached tasks during a poll, want 1: the store could close under it", inFlight)
+	}
+	cancel()
+	select {
+	case <-job:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the worker job ignored its cancelled context")
+	}
+	s.StopDetached()
+	waited := make(chan struct{})
+	go func() { s.WaitDetached(); close(waited) }()
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stop waited on a hung poll")
+	}
+}
