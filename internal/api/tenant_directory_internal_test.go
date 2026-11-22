@@ -13,6 +13,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/syncauth"
 
 	"github.com/Busnes-app/kycalendar/internal/access"
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -190,6 +191,27 @@ func TestTenantDirectoryReplayedUpdateStillRevokesAnAdmin(t *testing.T) {
 	}
 	if u, _ := s.store.Users().GetUserByID(ctx, staffer.ID); u.DisplayName != "newer" {
 		t.Errorf("a replay rewrote the profile: %+v", u)
+	}
+}
+
+// A removal reaches an account of the bound issuer whatever provider row it is, such as a SCIM
+// row a KyIdentity login adopted.
+func TestTenantDirectoryRemovalReachesEveryProvider(t *testing.T) {
+	s, _, _ := directoryWorld(t)
+	ctx := context.Background()
+	bound, err := sso.Bound(ctx, s.store.Settings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	scim := &store.User{ID: "usr_scimrow", Username: "scimrow", Role: "user", Status: "active", SSOProvider: "scim", SSOSubject: "scim-sub", SSOIssuer: bound, OrgID: "org-a"}
+	if err := s.store.Users().CreateUser(ctx, scim); err != nil {
+		t.Fatal(err)
+	}
+	if code := directoryEvent(t, s, "user.deactivated", "e1", scimBody("scim-sub", "org-a", false, "x")); code != http.StatusNoContent {
+		t.Fatal(code)
+	}
+	if u, _ := s.store.Users().GetUserByID(ctx, scim.ID); u.Status != "inactive" {
+		t.Errorf("a SCIM row of the bound issuer kept access: %+v", u)
 	}
 }
 

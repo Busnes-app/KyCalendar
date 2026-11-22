@@ -104,13 +104,20 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusServiceUnavailable, "Directory unavailable")
 		return
 	}
-	u, err := s.store.Users().GetUserBySSO(ctx, "kysignon", in.ID)
-	if errors.Is(err, store.ErrNotFound) || err == nil && u.SSOIssuer != bound {
-		w.WriteHeader(http.StatusNoContent) // not this directory's account: nothing to take away
-		return
+	var u *store.User
+	for _, provider := range []string{"kysignon", "scim", "oidc"} { // a row a KyIdentity login adopted keeps its provider
+		got, err := s.store.Users().GetUserBySSO(ctx, provider, in.ID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			fail(http.StatusServiceUnavailable, "Directory unavailable")
+			return
+		}
+		if err == nil && got.SSOIssuer == bound {
+			u = got
+			break
+		}
 	}
-	if err != nil {
-		fail(http.StatusServiceUnavailable, "Directory unavailable")
+	if u == nil {
+		w.WriteHeader(http.StatusNoContent) // not this directory's account: nothing to take away
 		return
 	}
 	own := in.OrgID != "" && in.OrgID == string(store.OrgOf(u))
