@@ -180,13 +180,22 @@ func (c *coordinationStore) WithLock(ctx context.Context, name string, work func
 		}
 		return false, err
 	}
-	defer discard(conn)
+	var late <-chan error // a probe ping still running when the probe stopped
+	defer func() {
+		if late == nil {
+			discard(conn)
+			return
+		}
+		// A ping that ends in ErrBadConn closes conn under database/sql; discarding while it runs
+		// races that close (and Conn.Raw then dereferences a nil driver connection).
+		go func() { <-late; discard(conn) }()
+	}()
 
 	owned, cancel := context.WithCancelCause(ctx)
 	probeDone := make(chan struct{})
 	go func() {
 		defer close(probeDone)
-		probe(owned, conn, cancel)
+		late = probe(owned, conn, cancel)
 	}()
 	err = work(owned)
 	cancel(nil)
@@ -235,13 +244,15 @@ func (c *coordinationStore) tryLock(ctx context.Context, name string) (*sql.Conn
 // ErrOwnershipLost is the cause of an owned context the probe ended.
 var ErrOwnershipLost = errors.New("store: lock ownership lost")
 
-func probe(owned context.Context, conn *sql.Conn, cancel context.CancelCauseFunc) {
+// probe returns the result channel of a ping still running when it stops, or nil: conn must not
+// be released before that ping returns.
+func probe(owned context.Context, conn *sql.Conn, cancel context.CancelCauseFunc) <-chan error {
 	ticker := time.NewTicker(lockProbeInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-owned.Done():
-			return
+			return nil
 		case <-ticker.C:
 		}
 		ping, stop := context.WithTimeout(owned, lockProbeTimeout)
@@ -254,10 +265,17 @@ func probe(owned context.Context, conn *sql.Conn, cancel context.CancelCauseFunc
 			err = ping.Err()
 		}
 		stop()
-		if err != nil && owned.Err() == nil {
-			cancel(fmt.Errorf("%w: %v", ErrOwnershipLost, err))
-			return
+		if err == nil {
+			continue
 		}
+		var late <-chan error
+		if len(res) == 0 {
+			late = res // timed out or cancelled: the ping may still hold conn
+		}
+		if owned.Err() == nil {
+			cancel(fmt.Errorf("%w: %v", ErrOwnershipLost, err))
+		}
+		return late
 	}
 }
 
