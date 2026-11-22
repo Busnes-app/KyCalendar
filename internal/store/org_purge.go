@@ -82,8 +82,15 @@ func (s *SQLStore) purgeOrg(ctx context.Context, org OrgID) error {
 	if status != "deleted" {
 		return ErrNotPurgeable
 	}
-	if err := s.insertAudit(ctx, s.db, AuditRecord{Action: "platform.org_purge_started", Resource: "org:" + string(org)}); err != nil {
+	// One start row per org, however often a failing purge is retried; none, none deleted.
+	var started int
+	if err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM audit_records WHERE action = 'platform.org_purge_started' AND resource = ?`), "org:"+string(org)).Scan(&started); err != nil {
 		return err
+	}
+	if started == 0 {
+		if err := s.insertAudit(ctx, s.db, AuditRecord{Action: "platform.org_purge_started", Resource: "org:" + string(org)}); err != nil {
+			return err
+		}
 	}
 	objects := 0
 	for {
@@ -165,17 +172,26 @@ func (s *SQLStore) purgeCalendars(ctx context.Context, org OrgID) (int, error) {
 	return len(ids), nil
 }
 
-// purgeRest deletes the org's remaining rows, its usage row and its accounts' logout fences,
-// sets purged_at and writes platform.org_deleted with the row counts, in one transaction.
+// purgeRest sets purged_at, deletes the org's remaining rows, its usage row and its accounts'
+// logout fences, and writes platform.org_deleted with the row counts, in one transaction.
 func (s *SQLStore) purgeRest(ctx context.Context, org OrgID, objects, cals int) error {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	// Claim the finish first: a concurrent purge (the worker beside purge-org) that finished
+	// already leaves nothing to do, and this row lock holds the other back until commit.
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET purged_at = ? WHERE id = ? AND purged_at IS NULL`), time.Now().Unix(), org)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil
+	}
 	counts := []string{fmt.Sprintf("calendar_objects=%d calendars=%d", objects, cals)}
 	// sso_subject_logouts is platform-wide: the org's users are its only map to the org.
-	res, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM sso_subject_logouts WHERE EXISTS (SELECT 1 FROM users u
+	res, err = tx.ExecContext(ctx, s.rebind(`DELETE FROM sso_subject_logouts WHERE EXISTS (SELECT 1 FROM users u
 WHERE u.org_id = ? AND u.sso_issuer = sso_subject_logouts.issuer AND u.sso_subject = sso_subject_logouts.subject)`), org)
 	if err != nil {
 		return err
@@ -192,9 +208,6 @@ WHERE u.org_id = ? AND u.sso_issuer = sso_subject_logouts.issuer AND u.sso_subje
 		}
 	}
 	if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM org_usage WHERE org_id = ?`), org); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET purged_at = ? WHERE id = ?`), time.Now().Unix(), org); err != nil {
 		return err
 	}
 	if err := s.insertAudit(ctx, tx, AuditRecord{Action: "platform.org_deleted", Resource: "org:" + string(org), Details: strings.Join(counts, " ")}); err != nil {

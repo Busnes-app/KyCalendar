@@ -322,3 +322,47 @@ func TestMeasurePurge(t *testing.T) {
 	}
 	t.Logf("%d objects of 2000 bytes: %d batches of %d rows / %d bytes, slowest %v, total %v", n, batches, purgeBatchRows, purgeBatchBytes, slowest, time.Since(start))
 }
+
+// A purge that keeps failing audits its start once, and a second run that reaches the final
+// step after another finished (the worker beside purge-org) changes and audits nothing.
+func TestPurgeAuditsOnceThroughRetriesAndRaces(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		purgeWorld(t, s)
+		count := func(action string) int {
+			var n int
+			if err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM audit_records WHERE action = ?`), action).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE device_pairings RENAME TO pairings_gone`); err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if err := s.purgeOrg(ctx, DefaultOrg); err == nil {
+				t.Fatal("the final step succeeded without device_pairings")
+			}
+		}
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE pairings_gone RENAME TO device_pairings`); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.purgeOrg(ctx, DefaultOrg); err != nil {
+			t.Fatal(err)
+		}
+		var purgedAt int64
+		if err := s.db.QueryRowContext(ctx, s.rebind(`SELECT purged_at FROM orgs WHERE id = ?`), DefaultOrg).Scan(&purgedAt); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.purgeRest(ctx, DefaultOrg, 0, 0); err != nil { // the slower of two runs
+			t.Fatal(err)
+		}
+		var after int64
+		if err := s.db.QueryRowContext(ctx, s.rebind(`SELECT purged_at FROM orgs WHERE id = ?`), DefaultOrg).Scan(&after); err != nil || after != purgedAt {
+			t.Errorf("purged_at %d, was %d (%v)", after, purgedAt, err)
+		}
+		if got := fmt.Sprint(count("platform.org_purge_started"), count("platform.org_deleted")); got != "1 1" {
+			t.Errorf("started and deleted audit rows: %s, want 1 1", got)
+		}
+	})
+}
