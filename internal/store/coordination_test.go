@@ -209,6 +209,9 @@ func TestPanickingWorkReleasesTheLock(t *testing.T) {
 	if !won || err != nil {
 		t.Fatalf("takeover after a panic: won=%v err=%v", won, err)
 	}
+	// Outlive one probe cycle: a probe left running would ping the discarded connection now,
+	// which the race detector reports.
+	time.Sleep(store.ProbeBound() + 500*time.Millisecond)
 }
 
 // A frozen database bounds both taking a lock and holding one: acquisition returns within 3 s,
