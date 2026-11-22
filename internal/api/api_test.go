@@ -44,6 +44,12 @@ func addCSRF(req *http.Request, session *http.Cookie) {
 
 func setupTestServer(t *testing.T) (*api.Server, store.Store, *config.Config) {
 	t.Helper()
+	return setupTestServerWith(t, nil)
+}
+
+// setupTestServerWith is setupTestServer with edit applied to the configuration first.
+func setupTestServerWith(t *testing.T, edit func(*config.Config)) (*api.Server, store.Store, *config.Config) {
+	t.Helper()
 	t.Setenv("KY_DATA_DIR", t.TempDir())
 	t.Setenv("KY_SESSION_SECRET", testSessionSecret)
 	cfg, _ := config.LoadFromEnv()
@@ -56,6 +62,9 @@ func setupTestServer(t *testing.T) (*api.Server, store.Store, *config.Config) {
 	}
 	cfg.Database = db
 	cfg.Captcha.Provider = "none" // disable captcha for unit test speed
+	if edit != nil {
+		edit(cfg)
+	}
 
 	st, err := store.Open(context.Background(), cfg.Database)
 	if err != nil {

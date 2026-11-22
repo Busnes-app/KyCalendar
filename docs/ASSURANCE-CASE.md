@@ -132,7 +132,8 @@ key (they are the server), and a malicious administrator.
   requests on the victim's session.
 - Sign-in from a browser too old to send `Origin` or `Sec-Fetch-Site` skips the pre-session
   token, as a native client does.
-- On SQLite, rate limits are process-local and reset on restart. On PostgreSQL they are shared
+- On SQLite, rate limits are process-local and reset on restart, except the invite-count
+  window, which is counted in the database with each write. On PostgreSQL they are shared
   through the database, the invite-count window and the unknown-credential audit budget included.
 - An administrator can exempt office networks from the per-address limits
   (`KY_RATE_LIMIT_EXEMPT_NETWORKS`, Server settings → Office networks). A listed shared or public

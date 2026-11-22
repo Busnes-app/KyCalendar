@@ -3,10 +3,12 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store"
+	"github.com/Busnes-app/kycalendar/internal/testdb"
 )
 
 func outboxObject(t *testing.T, st store.Store, name string) *store.CalendarObject {
@@ -121,5 +123,64 @@ func TestPendingOutboxCountsOnEveryWrite(t *testing.T) {
 	}
 	if _, err := st.Calendars().PutObject(ctx, other, "", false, store.OwnerLimits{MaxTotalBytes: 6000}); err != nil {
 		t.Fatalf("once delivered, the bodies no longer count: %v", err)
+	}
+}
+
+// New invitees count in the write's transaction against one window in the database: two
+// replicas together admit InviteLimit, a refused or failed write spends nothing, and a
+// recipient named twice counts once.
+func TestInviteLimitIsOneWindowAcrossReplicas(t *testing.T) {
+	cfg := testdb.Config(t)
+	var replicas [2]store.Store
+	for i := range replicas {
+		st, err := store.Open(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.Close() })
+		replicas[i] = st
+	}
+	ctx := context.Background()
+	o := outboxObject(t, replicas[0], "alice")
+	invite := func(st store.Store, name string, from, n int, lim store.OwnerLimits) error {
+		var rows []*store.OutboxMessage
+		for i := from; i < from+n; i++ {
+			r := row(fmt.Sprintf("%s-%d", name, i), "usr_alice", 10)
+			r.Recipient, r.NewInvitee = fmt.Sprintf("mailto:guest%d@example.net", i), true
+			rows = append(rows, r)
+		}
+		obj := *o
+		obj.Name, obj.UID = name+".ics", name
+		_, err := st.Calendars().PutObjectPlanned(ctx, &obj, "", false, lim, plan(rows...))
+		return err
+	}
+	if err := invite(replicas[0], "a", 0, 600, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := invite(replicas[1], "b", 600, 600, store.OwnerLimits{}); !errors.As(err, new(store.InviteLimitError)) {
+		t.Fatalf("1200 invitees across two replicas: %v", err)
+	}
+	if err := invite(replicas[1], "c", 600, 400, store.OwnerLimits{MaxBytes: 1}); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Fatalf("a write over quota: %v", err)
+	}
+	var twice []*store.OutboxMessage
+	for _, id := range []string{"d-1", "d-2"} {
+		r := row(id, "usr_alice", 10)
+		r.Recipient, r.NewInvitee = "mailto:guest600@example.net", true
+		twice = append(twice, r)
+	}
+	obj := *o
+	obj.Name, obj.UID = "d.ics", "d"
+	if _, err := replicas[1].Calendars().PutObjectPlanned(ctx, &obj, "", false, store.OwnerLimits{}, plan(twice...)); err != nil {
+		t.Fatal(err)
+	}
+	if err := invite(replicas[0], "e", 601, 399, store.OwnerLimits{}); err != nil {
+		t.Fatalf("1000 invitees after a refused and a failed write: %v", err)
+	}
+	if err := invite(replicas[0], "f", 1000, 1, store.OwnerLimits{}); !errors.As(err, new(store.InviteLimitError)) {
+		t.Fatalf("invitee 1001: %v", err)
+	}
+	if _, err := replicas[0].Calendars().GetObject(ctx, o.CalendarID, "b.ics"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the refused write was stored: %v", err)
 	}
 }

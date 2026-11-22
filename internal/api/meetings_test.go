@@ -12,6 +12,7 @@ import (
 	"github.com/emersion/go-ical"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -343,6 +344,18 @@ func TestInviteLimitPerHour(t *testing.T) {
 	}
 	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", `{"title":"Solo","start":"2026-11-11T09:00:00Z","end":"2026-11-11T10:00:00Z","zone":"UTC"}`, alice); w.Code != http.StatusCreated {
 		t.Fatalf("an event with no guests is not an invitation: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A meeting write counts its invitees inside its own transaction: on a pool of one connection
+// (SQLite's always) it still completes, so writes waiting on calendar-total can never hold every
+// connection the lock holder needs.
+func TestAMeetingWriteNeedsOneConnection(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServerWith(t, func(cfg *config.Config) { cfg.Database.MaxOpenConns = 1 })
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meetingBody, alice); w.Code != http.StatusCreated {
+		t.Fatalf("a meeting on one connection: %d %s", w.Code, w.Body.String())
 	}
 }
 

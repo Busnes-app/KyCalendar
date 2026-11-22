@@ -21,9 +21,6 @@ type CoordinationStore interface {
 	// TakeAttempt counts one hit in key's window and reports whether it is within limit, with
 	// the window's generation (its expiry, for ReleaseAttempt) and the time left in it.
 	TakeAttempt(ctx context.Context, key string, limit int, window time.Duration) (gen int64, left time.Duration, ok bool, err error)
-	// AdmitCount adds n to key's window only if the total stays within limit, and reports
-	// whether it did; a refused n counts nothing, and left is the time until the window ends.
-	AdmitCount(ctx context.Context, key string, n, limit int, window time.Duration) (ok bool, left time.Duration, err error)
 	// ReleaseAttempt hands one hit back to the window gen, never to a newer one.
 	ReleaseAttempt(ctx context.Context, key string, gen int64) error
 	// AttemptHits reads key's live window without counting.
@@ -95,28 +92,6 @@ RETURNING hits, expires_at, expires_at - ` + now
 		return 0, 0, false, err
 	}
 	return gen, time.Duration(left) * time.Millisecond, hits <= int64(limit), nil
-}
-
-func (c *coordinationStore) AdmitCount(ctx context.Context, key string, n, limit int, window time.Duration) (bool, time.Duration, error) {
-	if key == "" || len(key) > 200 || n < 1 || limit < 1 || window < time.Millisecond || window > 24*time.Hour {
-		return false, 0, errors.New("store: invalid count window")
-	}
-	if n <= limit {
-		now := c.nowMillis()
-		res, err := c.store.db.ExecContext(ctx, c.store.rebind(`INSERT INTO security_windows (key, hits, expires_at) VALUES (?, ?, `+now+` + ?)
-ON CONFLICT (key) DO UPDATE SET
-hits = CASE WHEN security_windows.expires_at <= `+now+` THEN excluded.hits ELSE security_windows.hits + excluded.hits END,
-expires_at = CASE WHEN security_windows.expires_at <= `+now+` THEN excluded.expires_at ELSE security_windows.expires_at END
-WHERE security_windows.expires_at <= `+now+` OR security_windows.hits + excluded.hits <= ?`), key, n, window.Milliseconds(), limit)
-		if err != nil {
-			return false, 0, err
-		}
-		if k, err := res.RowsAffected(); err != nil || k == 1 {
-			return err == nil, 0, err
-		}
-	}
-	_, left, err := c.AttemptHits(ctx, key)
-	return false, left, err
 }
 
 func (c *coordinationStore) ReleaseAttempt(ctx context.Context, key string, gen int64) error {

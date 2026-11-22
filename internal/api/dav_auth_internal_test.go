@@ -166,18 +166,3 @@ func TestReplicasShareTheUnknownAuditBudget(t *testing.T) {
 		t.Fatalf("two replicas audited %d unknown sign-ins, want %d", n, unknownAuthAuditsPerDay)
 	}
 }
-
-// The scheduler's invite window is the database's wherever the rate windows are.
-func TestSchedulerSharesTheInviteWindowWithTheServer(t *testing.T) {
-	t.Setenv("KYCALENDAR_SCHEDULING", "true")
-	s, _ := davInternalServer(t)
-	if s.shared == nil {
-		t.Skip("PostgreSQL only: SQLite keeps every window in its one process")
-	}
-	if s.sched == nil {
-		t.Fatal("scheduling is on but there is no scheduler")
-	}
-	if s.sched.Shared != s.shared {
-		t.Fatalf("scheduler window %v, server windows %v", s.sched.Shared, s.shared)
-	}
-}

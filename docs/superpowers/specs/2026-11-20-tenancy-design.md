@@ -734,7 +734,8 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    `store.ApplyOrgs`), the cursor kept in `tenancy_orgs_since`; (b) the status checks on every
    auth path, suspension and its holds, and the workers' skip of an org that does not serve;
    (c) the purge and restore reconciliation; then the replica-safe limits (owner decision
-   2026-11-22: the per-sender invite window and the unknown-credential audit budget move into
+   2026-11-22: the per-sender invite window moves into `security_windows`, counted in the
+   write's own transaction on both databases, the unknown-credential audit budget into
    `security_windows` on PostgreSQL, and the docs list what stays per process and why); (d) D11
    quotas; (e) `export-org`.
    - Tests: a suspended org is refused on every credential type (session, DAV, MCP, booking page,
