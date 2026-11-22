@@ -103,26 +103,6 @@ func (c *calendarStore) orgUsed(ctx context.Context, tx *sql.Tx, org OrgID) (int
 	} else if err != nil {
 		return 0, err
 	}
-	growth, err := c.cancellationGrowth(ctx, tx, "", "", nil)
-	if err != nil || len(growth) == 0 {
-		return used, err
-	}
-	senders := make([]string, 0, len(growth))
-	for id := range growth {
-		senders = append(senders, id)
-	}
-	in, args := inList(senders)
-	rows, err := tx.QueryContext(ctx, c.q(`SELECT id FROM users WHERE org_id = ? AND id IN (`+in+`)`), append([]any{org}, args...)...)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return 0, err
-		}
-		used += growth[id]
-	}
-	return used, rows.Err()
+	growth, err := c.cancellationGrowthOf(ctx, tx, org, "", "", nil)
+	return used + sumGrowth(growth), err
 }
