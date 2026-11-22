@@ -34,6 +34,17 @@ type unknownAuthAudit struct {
 
 const unknownAuthAuditsPerDay = 200
 
+// admitUnknownAudit spends one row of the budget. On PostgreSQL the budget is one window in the
+// database, 24 hours from its first row, so every replica draws on it; an unanswerable database
+// audits nothing (the sign-in itself is refused either way).
+func (s *Server) admitUnknownAudit(ctx context.Context, now time.Time) bool {
+	if s.shared != nil {
+		_, ok := s.takeShared(ctx, "audit-unknown", unknownAuthAuditsPerDay, 24*time.Hour)
+		return ok
+	}
+	return s.unknownAudit.admit(now)
+}
+
 // admit reports whether one more such row may be written today.
 func (a *unknownAuthAudit) admit(now time.Time) bool {
 	a.mu.Lock()
@@ -233,7 +244,7 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 				s.davFail(r.Context(), "user:"+user.ID, davFailsPerUser, now)
 			}
 			// Not shaped like an app password (an account password, a probe): no row to flood with.
-			if parsed && (user != nil || s.unknownAudit.admit(now)) {
+			if parsed && (user != nil || s.admitUnknownAudit(r.Context(), now)) {
 				_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "dav.auth_failed", Resource: resource, IPAddress: s.requestIP(r)})
 			}
 			davChallenge(w)

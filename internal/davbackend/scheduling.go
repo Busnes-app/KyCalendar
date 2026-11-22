@@ -33,6 +33,10 @@ type Scheduler struct {
 	// no guest links.
 	GuestLink func(ctx context.Context, sender *store.User, uid, email string, queued time.Time) (url string, wait bool, err error)
 
+	// Shared, on PostgreSQL, holds the invite window in the database, so every replica counts
+	// against one limit; nil keeps it in this process (SQLite: one server).
+	Shared store.CoordinationStore
+
 	invitesMu sync.Mutex
 	invites   map[string]*inviteWindow // sender ID -> this hour's new invitees
 }
@@ -59,8 +63,18 @@ func (e InviteLimitError) Error() string {
 }
 
 // admitInvites counts n new invitees for sender against InviteLimit.
-func (s *Scheduler) admitInvites(sender string, n int) error {
+func (s *Scheduler) admitInvites(ctx context.Context, sender string, n int) error {
 	if n == 0 {
+		return nil
+	}
+	if s.Shared != nil {
+		ok, left, err := s.Shared.AdmitCount(ctx, "invites:"+sender, n, InviteLimit, time.Hour)
+		if err != nil {
+			return err // unanswerable: refuse the write, as every shared limit does
+		}
+		if !ok {
+			return InviteLimitError{Until: s.now().Add(left)}
+		}
 		return nil
 	}
 	s.invitesMu.Lock()
@@ -244,7 +258,7 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body, CountInviteBytes: m.Method == itip.MethodRequest && internal[to]})
 			}
 		}
-		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
+		if err := s.admitInvites(ctx, writer.ID, newInvitees(oldCal, msgs)); err != nil {
 			return nil, nil, err
 		}
 		return data, rows, nil

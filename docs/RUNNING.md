@@ -176,8 +176,8 @@ SQLite is the default: one server, one host. On PostgreSQL, KyCalendar can run a
 identical replicas behind a load balancer that health-checks them. This section is what that
 needs. Application replicas are **not** database high availability: every replica depends on
 the one PostgreSQL database, and nothing here makes PostgreSQL itself redundant. No capacity
-or throughput claim is made. The design follows ky_server_base pull request #121, which is
-still open and unapproved.
+or throughput claim is made. The design follows ky_server_base pull request #121 (merged
+2026-11-18).
 
 ### Prerequisites
 
@@ -235,10 +235,14 @@ Sign-in limits, DAV and MCP failure budgets, the office budget, CAPTCHA solution
 event IDs live in the database on database time, so every replica counts against one limit. A
 database that cannot answer a limit denies the request. Sign-in settings saved on one replica
 reach the others within 10 seconds, and a sign-in that started under the old provider is
-refused ("start again"); office networks follow the database within 5 seconds. Per process,
-so N replicas allow N times as much: the invite-count window (the 64 MiB invitation byte budget
-is shared), the audit budget for unknown credentials, the suite caches and the displayed count of
-exempted requests. Each replica looks up its own KyPost and KyMessages links.
+refused ("start again"); office networks follow the database within 5 seconds. The per-sender
+invite-count window and the audit budget for unknown credentials are shared the same way, as is
+the 64 MiB invitation byte budget.
+
+Per process, because none of them limits a caller: the caches of KyIdentity and KyMessages
+answers (suite apps, suite people, presence), which only save calls (the per-account limits on
+those routes are shared); the import gate, which spreads load per process; the displayed count
+of exempted requests; and each replica's own lookup of the KyPost and KyMessages links.
 
 ### Background work
 

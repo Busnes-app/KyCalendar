@@ -144,3 +144,40 @@ func TestDAVUnknownTokenAuditIsBoundedPerDay(t *testing.T) {
 		t.Fatal("the budget did not renew the next day")
 	}
 }
+
+// On PostgreSQL the budget is one window in the database: two replicas together audit at most
+// unknownAuthAuditsPerDay rows.
+func TestReplicasShareTheUnknownAuditBudget(t *testing.T) {
+	s, _ := davInternalServer(t)
+	s.shared = s.store.Coordination()
+	other := &Server{shared: s.store.Coordination()}
+	ctx, now := context.Background(), time.Now()
+	n := 0
+	for i := range unknownAuthAuditsPerDay + 50 {
+		srv := s
+		if i%2 == 1 {
+			srv = other
+		}
+		if srv.admitUnknownAudit(ctx, now) {
+			n++
+		}
+	}
+	if n != unknownAuthAuditsPerDay {
+		t.Fatalf("two replicas audited %d unknown sign-ins, want %d", n, unknownAuthAuditsPerDay)
+	}
+}
+
+// The scheduler's invite window is the database's wherever the rate windows are.
+func TestSchedulerSharesTheInviteWindowWithTheServer(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	s, _ := davInternalServer(t)
+	if s.shared == nil {
+		t.Skip("PostgreSQL only: SQLite keeps every window in its one process")
+	}
+	if s.sched == nil {
+		t.Fatal("scheduling is on but there is no scheduler")
+	}
+	if s.sched.Shared != s.shared {
+		t.Fatalf("scheduler window %v, server windows %v", s.sched.Shared, s.shared)
+	}
+}
