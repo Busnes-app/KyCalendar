@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/emersion/go-ical"
 
 	"github.com/Busnes-app/kycalendar/internal/api"
+	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -343,6 +345,31 @@ func TestInviteLimitPerHour(t *testing.T) {
 	}
 	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", `{"title":"Solo","start":"2026-11-11T09:00:00Z","end":"2026-11-11T10:00:00Z","zone":"UTC"}`, alice); w.Code != http.StatusCreated {
 		t.Fatalf("an event with no guests is not an invitation: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A meeting write counts its invitees inside its own transaction, never on a second
+// connection: with a pool of two, concurrent meeting writes all finish, though while one holds
+// calendar-total the other connection is a write waiting on it (SQLite has one connection).
+func TestConcurrentMeetingWritesNeedNoSecondConnection(t *testing.T) {
+	t.Setenv("KYCALENDAR_SCHEDULING", "true")
+	srv, st, _ := setupTestServerWith(t, func(cfg *config.Config) { cfg.Database.MaxOpenConns = 2 })
+	alice, aliceCal := webUser(t, srv, st, "alice")
+	codes := make([]int, 8)
+	var wg sync.WaitGroup
+	for i := range codes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := strings.Replace(meetingBody, "bob@", fmt.Sprintf("guest%d@", i), 1)
+			codes[i] = call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice).Code
+		}()
+	}
+	wg.Wait()
+	for i, code := range codes {
+		if code != http.StatusCreated {
+			t.Fatalf("meeting %d: %d", i, code)
+		}
 	}
 }
 

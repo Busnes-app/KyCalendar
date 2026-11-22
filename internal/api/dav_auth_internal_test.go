@@ -144,3 +144,25 @@ func TestDAVUnknownTokenAuditIsBoundedPerDay(t *testing.T) {
 		t.Fatal("the budget did not renew the next day")
 	}
 }
+
+// On PostgreSQL the budget is one window in the database: two replicas together audit at most
+// unknownAuthAuditsPerDay rows.
+func TestReplicasShareTheUnknownAuditBudget(t *testing.T) {
+	s, _ := davInternalServer(t)
+	s.shared = s.store.Coordination()
+	other := &Server{shared: s.store.Coordination()}
+	ctx, now := context.Background(), time.Now()
+	n := 0
+	for i := range unknownAuthAuditsPerDay + 50 {
+		srv := s
+		if i%2 == 1 {
+			srv = other
+		}
+		if srv.admitUnknownAudit(ctx, now) {
+			n++
+		}
+	}
+	if n != unknownAuthAuditsPerDay {
+		t.Fatalf("two replicas audited %d unknown sign-ins, want %d", n, unknownAuthAuditsPerDay)
+	}
+}

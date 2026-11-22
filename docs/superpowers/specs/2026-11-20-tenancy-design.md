@@ -40,7 +40,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | # | Decision | Why |
 |---|---|---|
 | D1 | `KYCALENDAR_TENANCY=single` (default) or `multi`, recorded in `server_settings` at first start. A later start with the other value refuses to start. In multi-tenant mode `KYCALENDAR_STAFF_ORG_ID` (D7) gets the same treatment: recorded at first start, a later start with another value refuses to start, and setting it in single-tenant mode is a startup error. Both join the replica configuration fingerprint (`internal/config/replica.go:17`). | Install-time, as decided. A replica started in the wrong mode must not serve. Mirrors T D1. The staff org decides every admin grant and owns the break-glass accounts. If it changed on a restart, existing staff would silently lose admin, and the new org would have no seeded row. If it differed between replicas, they would make different admin decisions on one database. |
-| D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. `KY_SSO_AUTO_PROVISION=false` is a startup error in multi-tenant mode. | Auto-provisioning is what makes a skipped webhook create harmless (Directory webhook): the first sign-in creates the account. The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
+| D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. `KY_SSO_AUTO_PROVISION=false` is a startup error in multi-tenant mode. **Multi-tenant also runs as several replicas across hosts** (owner decision, 2026-11-22): it requires the PostgreSQL replica configuration (`docs/RUNNING.md` "PostgreSQL and replicas": the start guards and the shared-settings fingerprint, `internal/config/replica.go`), and every limit that guards security or abuse lives in the database, so N replicas never allow N times a limit. | Auto-provisioning is what makes a skipped webhook create harmless (Directory webhook): the first sign-in creates the account. The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
 | D3 | Isolation is enforced in the application, through an org-bound store handle (`OrgStore`), as T D3 does. | Each migration names a SQL text per backend (`internal/store/migrations/migrations.go:13-18`). From version 20 on, the registry entries (`migrations.go:571-607`, versions 20–36) give both backends one text, with only column types swapped. The exception is version 32's task search index (`taskSearchSQLite` and `taskSearchPostgres`, `:603`). The table SQL itself lives in constants later in the file, which the Inventory cites. Single-tenant installs on SQLite run the same handlers. App-level scoping covers both. |
 | D4 | Single-tenant installs get one **default org** (`00000000-0000-0000-0000-000000000001`, T's default-org ID). Every org-owned row carries it after the upgrade. Tokens there carry no `org_id` (T D4), and KyCalendar reads none. | One code path. With one org, every query returns what it returns today, which is the zero-change argument the upgrade test proves. |
 | D5 | **In multi-tenant mode every address is external, inside one org too.** `CalendarUser(email)` (`internal/store/scheduling.go`) answers `ErrNotFound` for everyone there. The caller's own address (`EmailOwner`, L2) is unchanged. | That one lookup decides internal delivery, free/busy, the out-of-office comment and meeting membership (Isolation, below). With no peer found, nothing is written into another account's calendar and no busy time is shown, so nothing can cross orgs. Owner decision, 2026-11-21: an org that wants internal scheduling between colleagues gets its own single-tenant install (owner decision 5). This replaces a per-org lookup, which would have threaded the org through every scheduling path. |
@@ -118,7 +118,8 @@ Tables this spec adds:
   is Postgres, and `apply-setup` is already refused there (`AGENTS.md:359`).
 - In memory: per-IP and per-account rate windows (`internal/api/windows.go:33-83`, shared through
   `security_windows` on Postgres), the per-sender invite count (`davbackend.InviteLimit`,
-  `internal/davbackend/scheduling.go:36-43`, per process), and caches keyed by user ID:
+  `internal/davbackend/scheduling.go:36-43`, shared through `security_windows` on Postgres since
+  the replica-limits PR), and caches keyed by user ID:
   suite apps (`internal/api/suite_apps.go:23`), suite people (`internal/api/suite_people.go:39-42`)
   and presence (`internal/api/presence.go:88-91`). Keys are user IDs, which are random and global
   (`usr_<24 hex>`, `internal/api/sso_handlers.go:79`), so no key can name two orgs.
@@ -732,7 +733,11 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    Split: (a) the mirror poll and its sign-in wait (`internal/api/org_mirror.go`,
    `store.ApplyOrgs`), the cursor kept in `tenancy_orgs_since`; (b) the status checks on every
    auth path, suspension and its holds, and the workers' skip of an org that does not serve;
-   (c) the purge and restore reconciliation; (d) D11 quotas; (e) `export-org`.
+   (c) the purge and restore reconciliation; then the replica-safe limits (owner decision
+   2026-11-22: the per-sender invite window moves into `security_windows`, counted in the
+   write's own transaction on both databases, the unknown-credential audit budget into
+   `security_windows` on PostgreSQL, and the docs list what stays per process and why); (d) D11
+   quotas; (e) `export-org`.
    - Tests: a suspended org is refused on every credential type (session, DAV, MCP, booking page,
      KyPost inbound). A resume restores DAV with the same app password. The purge leaves no org
      row, checked against the classification. A restore of a capsule taken before a deletion
@@ -746,7 +751,11 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    `KYCALENDAR_STAFF_ORG_ID`). `ensureOrgs` must insert the staff org `active` and `enabled` (Org
    model, step 1): since PR 4b every staff credential, the break-glass password included, reads
    that row, and no poll ever writes it. A test starts a fresh multi-tenant install and signs the
-   bootstrap administrator in. An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
+   bootstrap administrator in. Startup in multi-tenant mode applies the replica configuration
+   (D2). A two-replica test runs two servers on one PostgreSQL database behind no shared memory:
+   a sign-in on one is a session on the other, a suspension polled by the elected worker refuses
+   both at their next request, and the sign-in, DAV-failure and invite limits admit their value
+   once across both, not twice. An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
    KyMessages: two orgs, an invitation across them by mail, and suspension and deletion of one.
 
 ## Residual risks

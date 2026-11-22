@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -32,62 +31,19 @@ type Scheduler struct {
 	// L), "" when none; wait holds the invitation while KyMessages has not answered yet. nil:
 	// no guest links.
 	GuestLink func(ctx context.Context, sender *store.User, uid, email string, queued time.Time) (url string, wait bool, err error)
-
-	invitesMu sync.Mutex
-	invites   map[string]*inviteWindow // sender ID -> this hour's new invitees
 }
 
-// InviteLimit is how many people one sender may newly invite per hour. Re-sending a meeting to
-// people already on it does not count, so one meeting of the largest size (1000 attendees)
-// always fits; the limit bounds how fast one account can fill other people's calendars.
-const InviteLimit = 1000
+// InviteLimit and InviteLimitError are the store's: it counts new invitees in the write's
+// transaction (OutboxMessage.NewInvitee).
+const InviteLimit = store.InviteLimit
+
+type InviteLimitError = store.InviteLimitError
 
 // InviteBytesLimit bounds internal REQUEST copies per sender per hour, including updates.
 const InviteBytesLimit = store.InviteBytesLimit
 
-type inviteWindow struct {
-	start time.Time
-	n     int
-}
-
-// InviteLimitError refuses a write that would invite more people than InviteLimit this hour.
-type InviteLimitError struct{ Until time.Time }
-
-func (e InviteLimitError) Error() string {
-	return fmt.Sprintf("You have invited more than %d people in the last hour. You can send new invitations again at %s UTC.",
-		InviteLimit, e.Until.UTC().Format("15:04"))
-}
-
-// admitInvites counts n new invitees for sender against InviteLimit.
-func (s *Scheduler) admitInvites(sender string, n int) error {
-	if n == 0 {
-		return nil
-	}
-	s.invitesMu.Lock()
-	defer s.invitesMu.Unlock()
-	now := s.now()
-	if s.invites == nil {
-		s.invites = map[string]*inviteWindow{}
-	}
-	for id, w := range s.invites {
-		if now.Sub(w.start) >= time.Hour {
-			delete(s.invites, id)
-		}
-	}
-	w := s.invites[sender]
-	if w == nil {
-		w = &inviteWindow{start: now}
-		s.invites[sender] = w
-	}
-	if w.n+n > InviteLimit {
-		return InviteLimitError{Until: w.start.Add(time.Hour)}
-	}
-	w.n += n
-	return nil
-}
-
-// newInvitees counts the REQUEST recipients in msgs who were not attendees of oldCal.
-func newInvitees(oldCal *ical.Calendar, msgs []itip.Message) int {
+// attendeesOf is every attendee of oldCal's events, nil for a new object.
+func attendeesOf(oldCal *ical.Calendar) map[itip.Address]bool {
 	had := map[itip.Address]bool{}
 	if oldCal != nil {
 		for _, ev := range oldCal.Children {
@@ -98,18 +54,7 @@ func newInvitees(oldCal *ical.Calendar, msgs []itip.Message) int {
 			}
 		}
 	}
-	seen := map[itip.Address]bool{}
-	for _, m := range msgs {
-		if m.Method != itip.MethodRequest {
-			continue
-		}
-		for _, to := range m.Recipients {
-			if !had[to] {
-				seen[to] = true
-			}
-		}
-	}
-	return len(seen)
+	return had
 }
 
 // KyPostSender mails a message to people outside the instance: a *kypost.Client, or the
@@ -230,6 +175,7 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 			return data, nil, nil
 		}
 		var rows []*store.OutboxMessage
+		had := attendeesOf(oldCal)
 		for _, m := range msgs {
 			body, err := encodeCal(m.Calendar)
 			if err != nil {
@@ -241,11 +187,9 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 				}
 				sum := sha256.Sum256([]byte(writer.ID + "\x00" + m.Method + "\x00" + string(to) + "\x00" + string(body)))
 				rows = append(rows, &store.OutboxMessage{ID: "obx_" + uuid.NewString(), DedupeKey: hex.EncodeToString(sum[:]),
-					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body, CountInviteBytes: m.Method == itip.MethodRequest && internal[to]})
+					SenderID: writer.ID, Method: m.Method, Recipient: string(to), Body: body, CountInviteBytes: m.Method == itip.MethodRequest && internal[to],
+					NewInvitee: m.Method == itip.MethodRequest && !had[to]})
 			}
-		}
-		if err := s.admitInvites(writer.ID, newInvitees(oldCal, msgs)); err != nil {
-			return nil, nil, err
 		}
 		return data, rows, nil
 	}

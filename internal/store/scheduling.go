@@ -8,8 +8,11 @@ import (
 
 // OutboxMessage is one queued iTIP message for one recipient.
 type OutboxMessage struct {
-	// CountInviteBytes is a transient planner input for internal REQUEST copies.
+	// CountInviteBytes and NewInvitee are transient planner inputs: an internal REQUEST copy,
+	// and a REQUEST to someone not on the meeting before (each recipient counts once against
+	// InviteLimit).
 	CountInviteBytes bool
+	NewInvitee       bool
 	ID               string
 	DedupeKey        string // unique: queueing the same message again is a no-op
 	SenderID         string // the user the message speaks for
@@ -64,7 +67,7 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 	now := time.Now().UTC()
 	var inviteBytes, adding int64
 	var fresh []*OutboxMessage
-	seen := map[string]bool{}
+	seen, invitees := map[string]bool{}, map[string]bool{}
 	// calendar-total serializes every producer. Resolve dedupe and reserve quotas before
 	// inserting bodies: a refused large fan-out must not allocate its bytes in SQL/WAL.
 	for _, m := range rows {
@@ -84,8 +87,14 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 		if m.CountInviteBytes {
 			inviteBytes += int64(len(m.Body))
 		}
+		if m.NewInvitee {
+			invitees[m.Recipient] = true
+		}
 	}
 
+	if err := c.admitInvitees(ctx, tx, rows[0].SenderID, len(invitees)); err != nil {
+		return err
+	}
 	if err := c.admitInviteBytes(ctx, tx, rows[0].SenderID, inviteBytes, now); err != nil {
 		return err
 	}
