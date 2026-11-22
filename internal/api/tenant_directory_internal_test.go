@@ -125,6 +125,23 @@ func TestTenantDirectoryRemovalsAlwaysApply(t *testing.T) {
 	}
 }
 
+// An event refused before it was applied is forgotten by the replay guard, so KyIdentity's retry
+// under the same event ID is applied rather than acknowledged as a duplicate.
+func TestTenantDirectoryRetryAfterARefusalIsApplied(t *testing.T) {
+	s, alice, cookie := directoryWorld(t)
+	bad := scimBody("alice", "org-a", false, "alice")
+	delete(bad, "active") // refused: an update must say whether the account is active
+	if code := directoryEvent(t, s, "user.updated", "e1", bad); code != http.StatusBadRequest {
+		t.Fatalf("refusal: %d", code)
+	}
+	if code := directoryEvent(t, s, "user.updated", "e1", scimBody("alice", "org-a", false, "alice")); code != http.StatusNoContent || signedIn(s, cookie) {
+		t.Fatalf("retry: %d, signed in %v", code, signedIn(s, cookie))
+	}
+	if u, _ := s.store.Users().GetUserByID(context.Background(), alice.ID); u.Status != "inactive" {
+		t.Errorf("the retry was not applied: %+v", u)
+	}
+}
+
 // An MFA reset ends sessions and keeps the account active; the directory never creates or
 // activates an account; a bad signature is refused.
 func TestTenantDirectoryNeverGrants(t *testing.T) {

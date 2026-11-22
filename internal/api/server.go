@@ -77,7 +77,7 @@ type Server struct {
 	// kypostReplay remembers KyPost event IDs inside the signature window.
 	kypostReplay syncauth.Replay
 	// directoryReplay guards KyIdentity's multi-tenant directory events (handleTenantDirectory).
-	directoryReplay syncauth.Replay
+	directoryReplay syncauth.Forgetter
 	scim            *scim.Server
 	recovery        recoveryClient
 	mux             *http.ServeMux

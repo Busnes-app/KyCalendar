@@ -16,17 +16,14 @@ import (
 )
 
 // directoryReplay keeps KyIdentity's directory event IDs apart from KyPost's in the shared guard.
-type directoryReplay struct{ inner syncauth.Replay }
+// The guard must forget: a refused event's retry has to be applied, not acknowledged as a replay.
+type directoryReplay struct{ inner syncauth.Forgetter }
 
 func (d directoryReplay) Check(id string, at time.Time) error {
 	return d.inner.Check("directory:"+id, at)
 }
 
-func (d directoryReplay) Forget(id string) {
-	if f, ok := d.inner.(syncauth.Forgetter); ok {
-		f.Forget("directory:" + id)
-	}
-}
+func (d directoryReplay) Forget(id string) { d.inner.Forget("directory:" + id) }
 
 // directoryUser is the part of KyIdentity's signed SCIM User body this receiver reads.
 type directoryUser struct {
