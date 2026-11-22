@@ -167,6 +167,10 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 	if err := c.lockOwner(ctx, tx, ownerKind, ownerID); err != nil {
 		return err
 	}
+	lim, guard, err := c.orgLimits(ctx, tx, calendarID, lim)
+	if err != nil {
+		return err
+	}
 
 	if lim.MaxObjects > 0 || lim.MaxBytes > 0 {
 		// The owner's other calendars plus the new content; this calendar's current objects do not count.
@@ -236,6 +240,9 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 		if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name); err != nil {
 			return err
 		}
+	}
+	if err := guard.check(ctx, c, tx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

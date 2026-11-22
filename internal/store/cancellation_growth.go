@@ -19,12 +19,18 @@ import (
 // organizer, recurrence and sequence bindings. Legacy and paid content never enter this set.
 // ponytail: scan the quota-bounded copy set under calendar-total; index/cache only if measured.
 func (c *calendarStore) cancellationGrowth(ctx context.Context, tx *sql.Tx, excludeCalendar, excludeName string, extra []*OutboxMessage) (map[string]int64, error) {
+	return c.cancellationGrowthOf(ctx, tx, "", excludeCalendar, excludeName, extra)
+}
+
+// cancellationGrowthOf is cancellationGrowth for the senders of org only ("" for every sender).
+func (c *calendarStore) cancellationGrowthOf(ctx context.Context, tx *sql.Tx, org OrgID, excludeCalendar, excludeName string, extra []*OutboxMessage) (map[string]int64, error) {
 	type sponsoredCopy struct {
 		sender, uid string
 		data        []byte
 	}
 	var copies []sponsoredCopy
-	rows, err := tx.QueryContext(ctx, c.q(`SELECT invitation_sender,uid,data FROM calendar_objects WHERE invitation_sender<>'' AND invitation_recipient<>'' AND NOT(calendar_id=? AND (?='' OR name=?))`), excludeCalendar, excludeName, excludeName)
+	rows, err := tx.QueryContext(ctx, c.q(`SELECT invitation_sender,uid,data FROM calendar_objects WHERE invitation_sender<>'' AND invitation_recipient<>'' AND NOT(calendar_id=? AND (?='' OR name=?))
+ AND (?='' OR invitation_sender IN (SELECT id FROM users WHERE org_id=?))`), excludeCalendar, excludeName, excludeName, org, org)
 	if err != nil {
 		return nil, err
 	}

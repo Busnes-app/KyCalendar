@@ -33,6 +33,49 @@ func setOrgStatus(t *testing.T, cfg *config.Config, id store.OrgID, status strin
 	}
 }
 
+// setOrgQuotas sets org id's mirrored quotas, as a poll would for a customer org.
+func setOrgQuotas(t *testing.T, cfg *config.Config, id store.OrgID, quotas string) {
+	t.Helper()
+	driver, q := "sqlite", `UPDATE orgs SET quotas_json = ? WHERE id = ?`
+	if cfg.Database.Driver == "postgres" {
+		driver, q = "pgx", `UPDATE orgs SET quotas_json = $1 WHERE id = $2`
+	}
+	db, err := sql.Open(driver, cfg.Database.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(q, quotas, string(id)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An org whose booking_pages quota is false has no booking pages: its members are told why, may
+// not turn a type on, and its public pages answer as for nobody. The types are kept, so turning
+// the quota back on brings the same page back.
+func TestAnOrgWithoutBookingPagesHasNone(t *testing.T) {
+	w := newBookingWorld(t)
+	page := func() int { return call(t, w.srv, "GET", "/api/book/"+w.slug, "", nil).Code }
+	if page() != 200 {
+		t.Fatal("control: the page does not answer")
+	}
+	setOrgQuotas(t, w.cfg, store.DefaultOrg, `{"booking_pages":false}`)
+	if got := page(); got != 404 {
+		t.Fatalf("the page of an org without booking pages: %d", got)
+	}
+	r := call(t, w.srv, "GET", "/api/booking-types", "", w.bob)
+	if !strings.Contains(r.Body.String(), `"reason":"org_off"`) || !strings.Contains(r.Body.String(), w.typ) {
+		t.Fatalf("member list: %s", r.Body.String())
+	}
+	if r := call(t, w.srv, "PUT", "/api/booking-types/"+w.typ, w.typeBody(true), w.bob); r.Code != 409 || codeOf(t, r.Body.Bytes()) != "org_off" {
+		t.Fatalf("enabling a type: %d %s", r.Code, r.Body.String())
+	}
+	setOrgQuotas(t, w.cfg, store.DefaultOrg, `{"booking_pages":true}`)
+	if got := page(); got != 200 {
+		t.Fatalf("the quota back on: %d", got)
+	}
+}
+
 // An org that is not active is refused on every credential type (tenancy spec D6, Lifecycle):
 // its session ends, DAV and MCP answer org_not_active to the right token only, its booking pages
 // and its KyPost messages answer as for nobody. A resume brings DAV and MCP back with the same
