@@ -589,6 +589,16 @@ The purge is idempotent. A crash between batches leaves `purged_at` unset, and t
 continues from the calendars that are left. The batch size and the purge's total time are measured
 in PR 4 (open question 4).
 
+> **Built in PR 4c (2026-11-22).** `internal/store/org_purge.go`, run by the `org-purge` worker job
+> every 60 s and by `kycalendar purge-org`. The final transaction deletes `groups`, `users`,
+> `scheduling_outbox`, `invitation_byte_budget`, `device_pairings` and `audit_records`; every other
+> org row cascades from them or from the calendars deleted before, which
+> `TestPurgeLeavesNothingOfTheOrg` proves against a row in every table. Logout fences are matched
+> on `(issuer, subject)`, not the subject alone, so another binding's fence for the same subject
+> stays. **Measured** on PostgreSQL 17 (Major, `TestMeasurePurge`): 50,000 objects of 2,000 bytes
+> took 100 batches of 500 rows, the slowest 109 ms, 8.8 s in all. So another org's write waits at
+> most about 0.1 s, far inside the 14 s deadline, and 500 rows and 4 MiB stay.
+
 A test proves the purge leaves no row with the org's ID, or naming one of its users, in any
 O or D table, checked against the table classification. A second test kills the purge between
 batches and proves the next run finishes it.
@@ -743,8 +753,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
 
 - **One writer for every org's calendar writes.** On Postgres every object write takes the
   `calendar-total` advisory lock (`internal/store/calendars.go:322,483`,
-  `internal/store/sqlstore.go:170-176`). A busy org delays writes in every other org. Capacity is
-  unmeasured (open question 4).
+  `internal/store/sqlstore.go:170-176`). A busy org delays writes in every other org. A purge
+  batch holds it for about 0.1 s (measured in PR 4c); ordinary write capacity is unmeasured (open
+  question 4).
 - **Shared pair secrets.** A compromised KyPost or KyMessages can speak for any account in any org,
   since D10's `org_id` is only as honest as the peer. All peers are platform-run.
 - **Backups hold deleted orgs** until the capsules and local copies age out (`KYCALENDAR_BACKUP_KEEP`,
