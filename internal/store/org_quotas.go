@@ -52,13 +52,10 @@ type orgGuard struct {
 	max, before int64
 }
 
-// orgLimits applies the quotas of calendarID's org to a limited write (lim not zero), under
-// calendar-total: max_bytes_per_user replaces lim.MaxBytes, and max_bytes gives a guard to check
-// before commit.
+// orgLimits applies the quotas of calendarID's org to a write, under calendar-total:
+// max_bytes_per_user replaces a per-owner byte cap, and max_bytes gives a guard to check before
+// commit.
 func (c *calendarStore) orgLimits(ctx context.Context, tx *sql.Tx, calendarID string, lim OwnerLimits) (OwnerLimits, *orgGuard, error) {
-	if lim == (OwnerLimits{}) {
-		return lim, nil, nil
-	}
 	var org OrgID
 	var raw string
 	err := tx.QueryRowContext(ctx, c.q(`SELECT c.org_id, o.quotas_json FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).Scan(&org, &raw)

@@ -154,6 +154,31 @@ func TestOrgQuotasBoundTheOrg(t *testing.T) {
 	})
 }
 
+// A delete whose queued messages outweigh the object it removes grows the org, and is refused
+// at max_bytes like any other growth; a delete that shrinks the org passes.
+func TestADeleteThatGrowsTheOrgIsRefused(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := newQuotaWorld(t, s, `{"max_bytes":3000}`, "alice")
+		if err := w.put(s, "alice", "a1", 2500); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "alice", "a2", 200); err != nil {
+			t.Fatal(err)
+		}
+		notify := func(n int) Planner {
+			msg := &OutboxMessage{ID: fmt.Sprint("d", n), DedupeKey: fmt.Sprint("d", n), SenderID: "usr_alice", Method: "CANCEL", Recipient: "mailto:x@example.net", Body: make([]byte, n)}
+			return func([]byte) ([]byte, []*OutboxMessage, error) { return nil, []*OutboxMessage{msg}, nil }
+		}
+		if err := s.Calendars().DeleteObjectPlanned(ctx, w.cal["alice"], "a2.ics", "", installLimits, notify(600)); !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("a delete queueing 600 bytes for 200 at 2700 of 3000: %v", err)
+		}
+		if err := s.Calendars().DeleteObjectPlanned(ctx, w.cal["alice"], "a2.ics", "", installLimits, notify(100)); err != nil {
+			t.Fatalf("a delete that shrinks the org: %v", err)
+		}
+	})
+}
+
 // A missing org_usage row refuses the write: an org is never unmetered.
 func TestOrgWithoutUsageRowRefusesWrites(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
@@ -212,4 +237,70 @@ func TestOrgQuotaAdmitsOneOfTwoParallelWriters(t *testing.T) {
 			_ = replicas[0].Calendars().DeleteObject(ctx, w.cal[[]string{"alice", "bob"}[i]], fmt.Sprintf("r%d-%d.ics", round, i), "")
 		}
 	}
+}
+
+// orgUsed adds the org's pending bodies, reservations and its senders' cancellation growth to
+// org_usage, and nothing of another org's.
+func TestOrgUsedCountsReservationsAndGrowth(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := newQuotaWorld(t, s, `{}`, "alice", "bob", "default-carol")
+		event := func(organizer, extra string) string {
+			return "BEGIN:VEVENT\r\nUID:m-" + organizer + "\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261210T090000Z\r\n" + extra +
+				"ORGANIZER:mailto:" + organizer + "@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com\r\nSEQUENCE:1\r\nEND:VEVENT\r\n"
+		}
+		wrap := func(method, events string) []byte {
+			return []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\n" + method + events + "END:VCALENDAR\r\n")
+		}
+		// alice (org-a) and carol (the default org) each organize a daily meeting whose copy bob
+		// holds, sponsored by its organizer, with a reservation on the source and one occurrence's
+		// CANCEL pending.
+		var pending int64
+		for _, organizer := range []string{"alice", "default-carol"} {
+			data := wrap("", event(organizer, "RRULE:FREQ=DAILY;COUNT=10\r\n"))
+			cancel := wrap("METHOD:CANCEL\r\n", strings.Replace(event(organizer, "RECURRENCE-ID:20261211T090000Z\r\nSTATUS:CANCELLED\r\n"), "DTSTART:20261210", "DTSTART:20261211", 1))
+			if organizer == "alice" {
+				pending = int64(len(cancel))
+			}
+			row := &OutboxMessage{ID: "c-" + organizer, DedupeKey: "c-" + organizer, SenderID: "usr_" + organizer, Method: "CANCEL", Recipient: "mailto:bob@example.com", Body: cancel}
+			src := &CalendarObject{CalendarID: w.cal[organizer], Name: "m.ics", Component: "VEVENT", UID: "m-" + organizer, Data: data}
+			if _, err := s.Calendars().PutObjectPlanned(ctx, src, "", false, OwnerLimits{}, func([]byte) ([]byte, []*OutboxMessage, error) { return nil, []*OutboxMessage{row}, nil }); err != nil {
+				t.Fatal(err)
+			}
+			cp := &CalendarObject{CalendarID: w.cal["bob"], Name: organizer + ".ics", Component: "VEVENT", UID: "m-" + organizer, Data: data}
+			if _, err := s.Calendars().PutObject(ctx, cp, "", false, OwnerLimits{}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO cancellation_reservations (calendar_id, name, sender_id, bytes) VALUES (?, 'm.ics', ?, 700)`), w.cal[organizer], "usr_"+organizer); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.ExecContext(ctx, s.rebind(`UPDATE calendar_objects SET invitation_sender = ?, invitation_recipient = 'usr_bob' WHERE calendar_id = ? AND name = ?`), "usr_"+organizer, w.cal["bob"], organizer+".ics"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		tx, err := s.beginTx(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		c := &calendarStore{store: s}
+		growth, err := c.cancellationGrowth(ctx, tx, "", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if growth["usr_alice"] <= 0 || growth["usr_default-carol"] <= 0 {
+			t.Fatalf("the fixture has no cancellation growth: %v", growth)
+		}
+		var stored int64
+		if err := tx.QueryRowContext(ctx, s.rebind(`SELECT bytes FROM org_usage WHERE org_id = ?`), "org-a").Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		used, err := c.orgUsed(ctx, tx, "org-a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := stored + pending + 700 + growth["usr_alice"]; used != want {
+			t.Fatalf("org-a used %d, want %d stored + %d pending + 700 reserved + %d growth", used, stored, pending, growth["usr_alice"])
+		}
+	})
 }
