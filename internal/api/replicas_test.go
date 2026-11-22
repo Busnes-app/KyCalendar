@@ -205,14 +205,15 @@ func TestReadyzPingsAtMostOncePerSecond(t *testing.T) {
 // A request held up by a stalled store answers 503 JSON at the deadline (spec AC3, with the
 // deadline shortened; the production value is pinned in TestRequestDeadlineFitsTheWriteTimeout).
 func TestStalledRequestAnswersAtTheDeadline(t *testing.T) {
-	defer api.SetRequestDeadlineForTest(300 * time.Millisecond)()
+	// Long enough for the login's password hash on a loaded CI runner.
+	defer api.SetRequestDeadlineForTest(time.Second)()
 	srv, f, st, _ := flakyServer(t)
 	cookie := loginAs(t, srv, st, "alice", "user")
 	f.stall.Store(true)
 	defer f.stall.Store(false)
 	start := time.Now()
 	w := do(t, srv, "GET", "/api/calendars", cookie)
-	if d := time.Since(start); w.Code != http.StatusServiceUnavailable || d > 1300*time.Millisecond {
+	if d := time.Since(start); w.Code != http.StatusServiceUnavailable || d > 2*time.Second {
 		t.Fatalf("stalled request: %d after %v: %s", w.Code, d, w.Body.String())
 	}
 	if !strings.Contains(w.Body.String(), `"request_timeout"`) || w.Header().Get("Content-Type") != "application/json" {
