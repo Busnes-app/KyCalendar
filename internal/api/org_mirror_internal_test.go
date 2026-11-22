@@ -205,3 +205,37 @@ func TestAStopEndsAHungPoll(t *testing.T) {
 		t.Fatal("the stop waited on a hung poll")
 	}
 }
+
+// A sign-in that joins a poll begun before its org existed polls once more, so the new org's
+// first sign-in still succeeds.
+func TestASignInJoiningAnOlderPollPollsAgain(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	reached, release := make(chan struct{}), make(chan struct{})
+	var mu sync.Mutex
+	polls := 0
+	idp.suite = func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		polls++
+		first := polls == 1
+		mu.Unlock()
+		if first { // the worker's poll, begun before org-new existed
+			close(reached)
+			<-release
+			fmt.Fprint(w, `{"orgs":[]}`)
+			return
+		}
+		fmt.Fprint(w, `{"orgs":[{"id":"org-new","status":"active","revision":1,"enabled":true,"quotas":{}}]}`)
+	}
+	worker := make(chan struct{})
+	go func() { s.SyncOrgs(context.Background()); close(worker) }()
+	<-reached
+	signedIn := make(chan struct{})
+	go func() { s.awaitOrg(context.Background(), "org-new"); close(signedIn) }()
+	time.Sleep(100 * time.Millisecond) // let the sign-in join the running poll; a shorter wait only weakens the test
+	close(release)
+	<-worker
+	<-signedIn
+	if !serves(t, s, "org-new") {
+		t.Fatal("a sign-in that joined an older poll was refused")
+	}
+}

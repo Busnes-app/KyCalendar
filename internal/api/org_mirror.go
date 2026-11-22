@@ -40,42 +40,48 @@ func (s *Server) SyncOrgs(ctx context.Context) {
 	}
 }
 
-// pollOrgs starts the shared poll, or joins the one running. It belongs to no caller, so a
-// sign-in that stops waiting cancels nothing others joined; StopDetached ends it, and the
-// store closes only after it returns.
+// pollOrgs starts the shared poll, or joins the one running; its Val is when that poll began.
+// It belongs to no caller, so a sign-in that stops waiting cancels nothing others joined;
+// StopDetached ends it, and the store closes only after it returns.
 func (s *Server) pollOrgs() <-chan singleflight.Result {
 	return s.orgs.flight.DoChan("orgs", func() (any, error) {
+		began := time.Now()
 		s.detached.add()
 		defer s.detached.done()
 		ctx, cancel := context.WithTimeout(s.stopping, 30*time.Second)
 		defer cancel()
-		ten, err := s.store.Tenancy(ctx)
-		if err != nil || !ten.Multi {
-			return nil, err
-		}
-		p := s.signin.Load()
-		if p == nil || p.Kind != sso.KindKyIdentity {
-			return nil, nil
-		}
-		dir, err := p.SuiteDirectory()
-		if err != nil {
-			return nil, err
-		}
-		v, err := s.store.Settings().GetSettings(ctx, store.OrgsCursorSetting)
-		if err != nil {
-			return nil, err
-		}
-		since, _ := strconv.ParseInt(v[store.OrgsCursorSetting], 10, 64) // none or unreadable: read all
-		orgs, next, err := dir.Orgs(ctx, max(since, 0))
-		if err != nil {
-			return nil, err
-		}
-		mirrored := make([]store.MirroredOrg, len(orgs))
-		for i, o := range orgs {
-			mirrored[i] = store.MirroredOrg{ID: store.OrgID(o.ID), Status: o.Status, Revision: o.Revision, Enabled: o.Enabled, Quotas: string(o.Quotas)}
-		}
-		return nil, s.store.ApplyOrgs(ctx, ten.Staff, mirrored, next)
+		return began, s.syncOrgs(ctx)
 	})
+}
+
+// syncOrgs is one poll: read the orgs after the cursor and write them with the next cursor.
+func (s *Server) syncOrgs(ctx context.Context) error {
+	ten, err := s.store.Tenancy(ctx)
+	if err != nil || !ten.Multi {
+		return err
+	}
+	p := s.signin.Load()
+	if p == nil || p.Kind != sso.KindKyIdentity {
+		return nil
+	}
+	dir, err := p.SuiteDirectory()
+	if err != nil {
+		return err
+	}
+	v, err := s.store.Settings().GetSettings(ctx, store.OrgsCursorSetting)
+	if err != nil {
+		return err
+	}
+	since, _ := strconv.ParseInt(v[store.OrgsCursorSetting], 10, 64) // none or unreadable: read all
+	orgs, next, err := dir.Orgs(ctx, max(since, 0))
+	if err != nil {
+		return err
+	}
+	mirrored := make([]store.MirroredOrg, len(orgs))
+	for i, o := range orgs {
+		mirrored[i] = store.MirroredOrg{ID: store.OrgID(o.ID), Status: o.Status, Revision: o.Revision, Enabled: o.Enabled, Quotas: string(o.Quotas)}
+	}
+	return s.store.ApplyOrgs(ctx, ten.Staff, mirrored, next)
 }
 
 // awaitOrg polls for an org a verified token or signed webhook named that does not serve yet,
@@ -100,9 +106,17 @@ func (s *Server) awaitOrg(ctx context.Context, org store.OrgID) {
 	s.orgs.mu.Unlock()
 	t := time.NewTimer(orgAskWait)
 	defer t.Stop()
-	select {
-	case <-s.pollOrgs():
-	case <-t.C:
-	case <-ctx.Done():
+	for {
+		select {
+		case res := <-s.pollOrgs():
+			// A poll already running when the org was named may predate it: run one more.
+			if began, _ := res.Val.(time.Time); !began.Before(now) {
+				return
+			}
+		case <-t.C:
+			return
+		case <-ctx.Done():
+			return
+		}
 	}
 }
