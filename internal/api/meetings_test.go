@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -347,15 +348,28 @@ func TestInviteLimitPerHour(t *testing.T) {
 	}
 }
 
-// A meeting write counts its invitees inside its own transaction: on a pool of one connection
-// (SQLite's always) it still completes, so writes waiting on calendar-total can never hold every
-// connection the lock holder needs.
-func TestAMeetingWriteNeedsOneConnection(t *testing.T) {
+// A meeting write counts its invitees inside its own transaction, never on a second
+// connection: with a pool of two, concurrent meeting writes all finish, though while one holds
+// calendar-total the other connection is a write waiting on it (SQLite has one connection).
+func TestConcurrentMeetingWritesNeedNoSecondConnection(t *testing.T) {
 	t.Setenv("KYCALENDAR_SCHEDULING", "true")
-	srv, st, _ := setupTestServerWith(t, func(cfg *config.Config) { cfg.Database.MaxOpenConns = 1 })
+	srv, st, _ := setupTestServerWith(t, func(cfg *config.Config) { cfg.Database.MaxOpenConns = 2 })
 	alice, aliceCal := webUser(t, srv, st, "alice")
-	if w := call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", meetingBody, alice); w.Code != http.StatusCreated {
-		t.Fatalf("a meeting on one connection: %d %s", w.Code, w.Body.String())
+	codes := make([]int, 8)
+	var wg sync.WaitGroup
+	for i := range codes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := strings.Replace(meetingBody, "bob@", fmt.Sprintf("guest%d@", i), 1)
+			codes[i] = call(t, srv, "POST", "/api/calendars/"+aliceCal+"/events", body, alice).Code
+		}()
+	}
+	wg.Wait()
+	for i, code := range codes {
+		if code != http.StatusCreated {
+			t.Fatalf("meeting %d: %d", i, code)
+		}
 	}
 }
 
