@@ -733,7 +733,10 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    - Tests: the authorization matrix with staff personas in multi-tenant mode, every off route
      `404`, and the existing browser admin flows in single-tenant (`AGENTS.md:281`).
 6. **Enable multi-tenant mode.** Startup accepts `multi` with its requirements (D1, D2,
-   `KYCALENDAR_STAFF_ORG_ID`). An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
+   `KYCALENDAR_STAFF_ORG_ID`). `ensureOrgs` must insert the staff org `active` and `enabled` (Org
+   model, step 1): since PR 4b every staff credential, the break-glass password included, reads
+   that row, and no poll ever writes it. A test starts a fresh multi-tenant install and signs the
+   bootstrap administrator in. An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
    KyMessages: two orgs, an invitation across them by mail, and suspension and deletion of one.
 
 ## Residual risks
