@@ -86,13 +86,18 @@ type Store interface {
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
 	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).
 	ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error
+	// OrgsToPurge, PurgeOrg and TombstoneOrg delete a deleted org's data (org_purge.go).
+	OrgsToPurge(ctx context.Context) ([]OrgID, error)
+	PurgeOrg(ctx context.Context, staff, org OrgID) error
+	TombstoneOrg(ctx context.Context, staff, org OrgID) error
 
 	// SnapshotToSQLite writes a verified SQLite copy of this PostgreSQL database to path
 	// (snapshot.go). SQLite stores refuse: VACUUM INTO is their snapshot.
 	SnapshotToSQLite(ctx context.Context, path string) error
 
 	// ResetAfterRestore ends every session, MFA challenge and app password and writes a new
-	// sync epoch, in one transaction, so nothing issued after the backup is believed.
+	// sync epoch, in one transaction, so nothing issued after the backup is believed. In
+	// multi-tenant mode every customer org also turns stale until a full poll answers.
 	ResetAfterRestore(ctx context.Context) error
 
 	Driver() string
