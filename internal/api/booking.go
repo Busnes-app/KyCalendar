@@ -32,6 +32,7 @@ const (
 	bookingNoKyPost   = "kypost_unpaired"
 	bookingNoAddress  = "no_address"
 	bookingNoIdentity = "no_kypost_account"
+	bookingOrgOff     = "org_off"
 )
 
 func (s *Server) bookingAllowed(ctx context.Context) bool {
@@ -60,6 +61,11 @@ func (s *Server) bookingReason(ctx context.Context, u *store.User) (string, erro
 	}
 	if u == nil {
 		return "", nil
+	}
+	if q, err := s.store.OrgQuotas(ctx, u.OrgID); err != nil {
+		return "", err
+	} else if q.BookingPages != nil && !*q.BookingPages {
+		return bookingOrgOff, nil
 	}
 	if _, ok, err := davbackend.Address(ctx, s.store, u); err != nil || !ok {
 		if err != nil {
@@ -228,6 +234,7 @@ func bookingWords(reason string) string {
 		bookingNoKyPost:   "this server is not paired with KyPost, which mails the invitations",
 		bookingNoAddress:  "your account has no email address of its own",
 		bookingNoIdentity: "your account does not sign in through KyIdentity, so KyPost cannot mail for it",
+		bookingOrgOff:     "your organization's plan does not include booking pages",
 	}[reason]
 }
 

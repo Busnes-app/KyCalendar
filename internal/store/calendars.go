@@ -325,6 +325,10 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 			return false, err
 		}
 	}
+	lim, guard, err := c.orgLimits(ctx, tx, o.CalendarID, lim)
+	if err != nil {
+		return false, err
+	}
 	limited := lim.MaxObjects > 0 || lim.MaxBytes > 0
 	var ownerKind, ownerID string
 	if limited {
@@ -464,6 +468,9 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 	if err := c.touchPresence(ctx, tx, o.CalendarID); err != nil {
 		return false, err
 	}
+	if err := guard.check(ctx, c, tx); err != nil {
+		return false, err
+	}
 	if ownTx {
 		return !exists, tx.Commit()
 	}
@@ -487,6 +494,10 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 			return err
 		}
 		defer tx.Rollback()
+	}
+	lim, guard, err := c.orgLimits(ctx, tx, calendarID, lim)
+	if err != nil {
+		return err
 	}
 	if err := c.bump(ctx, tx, calendarID, name, true); err != nil {
 		return err
@@ -524,6 +535,9 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 		return err
 	}
 	if err := c.touchPresence(ctx, tx, calendarID); err != nil {
+		return err
+	}
+	if err := guard.check(ctx, c, tx); err != nil {
 		return err
 	}
 	if ownTx {

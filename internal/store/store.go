@@ -82,6 +82,8 @@ type Store interface {
 	Org(id OrgID) OrgStore
 	// Tenancy is the install's recorded mode and, in multi-tenant mode, its staff org.
 	Tenancy(ctx context.Context) (Tenancy, error)
+	// OrgQuotas reads org id's quotas from the mirror (org_quotas.go).
+	OrgQuotas(ctx context.Context, id OrgID) (OrgQuotas, error)
 	// OrgServes reports whether org id is mirrored, active and enabled.
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
 	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).

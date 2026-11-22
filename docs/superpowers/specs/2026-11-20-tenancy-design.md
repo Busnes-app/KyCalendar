@@ -660,6 +660,14 @@ question 1.
   passwords and the invite limits (`internal/config/config.go:263-264`, `internal/feed/feed.go:32`,
   `internal/booking/booking.go:23`).
 
+> **Built in PR 4d (2026-11-22).** `internal/store/org_quotas.go`. Rather than repeat each
+> site's arithmetic, the store measures the org's usage (the bytes above) under `calendar-total`
+> before and after an object write, a delete or a feed refresh, and refuses the write when it
+> leaves the org over `max_bytes` and larger than before. `max_bytes_per_user` replaces the
+> per-owner byte cap for any write that has one. A key that is not a positive integer (or a
+> boolean for `booking_pages`) counts as absent. `booking_pages` false gives the member reason
+> `org_off`; the org's booking types are kept and its pages answer `404`.
+
 ## Downstream contract (T "Tokens and suite contracts"), KyCalendar's half
 
 | # | T requires | KyCalendar today | KyCalendar in multi-tenant mode |
