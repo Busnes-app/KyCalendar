@@ -84,6 +84,8 @@ type Store interface {
 	Tenancy(ctx context.Context) (Tenancy, error)
 	// OrgServes reports whether org id is mirrored, active and enabled.
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
+	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).
+	ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error
 
 	// SnapshotToSQLite writes a verified SQLite copy of this PostgreSQL database to path
 	// (snapshot.go). SQLite stores refuse: VACUUM INTO is their snapshot.

@@ -54,7 +54,12 @@ func (s *Server) upsertSSOUser(ctx context.Context, claims *sso.IdentityClaims, 
 			s.auditSSORefusal(ctx, "", "reason=no_org subject="+claims.Subject)
 			return nil, errNoOrg
 		}
-		if ok, err := s.store.OrgServes(ctx, org); err != nil {
+		ok, err := s.store.OrgServes(ctx, org)
+		if err == nil && !ok {
+			s.awaitOrg(ctx, org)
+			ok, err = s.store.OrgServes(ctx, org)
+		}
+		if err != nil {
 			return nil, err
 		} else if !ok {
 			return nil, errOrgNotActive

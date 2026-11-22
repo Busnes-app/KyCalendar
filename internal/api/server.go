@@ -78,6 +78,7 @@ type Server struct {
 	kypostReplay syncauth.Replay
 	// directoryReplay guards KyIdentity's multi-tenant directory events (handleTenantDirectory).
 	directoryReplay syncauth.Forgetter
+	orgs            orgPoll // the single-flight /api/suite/orgs poll (org_mirror.go)
 	scim            *scim.Server
 	recovery        recoveryClient
 	mux             *http.ServeMux

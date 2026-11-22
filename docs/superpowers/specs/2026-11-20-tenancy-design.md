@@ -712,6 +712,10 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
 4. **Org lifecycle and quotas.** `PlatformStore`, the `/api/suite/orgs` poller and mirror, the status checks on
    every auth path, suspension and its holds, the purge, restore reconciliation, `export-org`, and
    D11.
+   Split: (a) the mirror poll and its sign-in wait (`internal/api/org_mirror.go`,
+   `store.ApplyOrgs`), the cursor kept in `tenancy_orgs_since`; (b) the status checks on every
+   auth path, suspension and its holds, and `PlatformStore` for the workers that skip an org;
+   (c) the purge and restore reconciliation; (d) D11 quotas; (e) `export-org`.
    - Tests: a suspended org is refused on every credential type (session, DAV, MCP, booking page,
      KyPost inbound). A resume restores DAV with the same app password. The purge leaves no org
      row, checked against the classification. A restore of a capsule taken before a deletion
