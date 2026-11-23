@@ -513,6 +513,8 @@ Administrators are staff (D7, D8). `access.Resolve` already gives administrators
 calendar (`internal/access/role.go:44-46`), and DAV, MCP and app passwords refuse them
 (`AGENTS.md:301`). **Staff never read calendar content**, which matches T ("staff … cannot read app
 content").
+Content encryption at rest (`2026-11-22-content-encryption-design.md`) makes this cryptographic for
+every encrypted account: the server holds no key to its content between requests.
 
 | Route (`internal/api/server.go`) | Multi-tenant |
 |---|---|
@@ -635,7 +637,9 @@ calendars with any CalDAV client. During `deletion_scheduled` nobody in the org 
 KyCalendar (T's export-only session opens no suite session). v1 therefore adds an operator command,
 `kycalendar export-org -org <id> -out <dir>`: one `.ics` per calendar, grouped by member, and a
 manifest of IDs. Staff run it on the account holder's request, like T open question 9 (c). See open
-question 1.
+question 1. Once content encryption lands (its CE6), the export of an encrypted account holds
+skeletons and sealed content, which each member opens offline with their recovery code
+(`kycalendar open-export`).
 
 **Quotas** (D11):
 
@@ -782,8 +786,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
   T's back-channel logout ends cookie sessions sooner.
 - **Feed egress is shared.** Every org's ICS subscriptions fetch from the platform's addresses, so
   one org's subscriptions can get the platform rate-limited by a feed host.
-- **Operator access.** `export-org` and the database give the operator calendar content. The
-  operator is trusted with the database and keys, as in T.
+- **Operator access.** Until content encryption lands, `export-org` and the database give the
+  operator calendar content, and the operator is trusted with the database and keys, as in T.
+  After it, they give times and attendees only (content encryption spec, Threat model).
 - **Pending invitations drop** when a suspension outlasts the 24-hour outbox lifetime.
 
 ## Open questions, with recommendations
