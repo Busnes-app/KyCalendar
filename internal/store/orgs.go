@@ -66,6 +66,16 @@ func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
 	return ok, err
 }
 
+// OrgExportable reports whether org id is mirrored deletion_scheduled and enabled, with an
+// answer at most OrgFresh old: the only state in which an export_only sign-in is admitted
+// (tenancy spec, Export).
+func (s *SQLStore) OrgExportable(ctx context.Context, id OrgID) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM orgs WHERE id = ? AND status = 'deletion_scheduled' AND enabled AND seen_at >= `+
+		s.dbNow()+` - `+strconv.Itoa(int(OrgFresh.Seconds()))), id).Scan(&n)
+	return n == 1, err
+}
+
 // ServingOrgs lists the orgs that serve now (orgServes), by ID: those whose suite groups the
 // poll reconciles in multi-tenant mode.
 func (s *SQLStore) ServingOrgs(ctx context.Context) ([]OrgID, error) {

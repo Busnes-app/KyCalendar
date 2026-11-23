@@ -708,13 +708,32 @@ every credential type is refused until the poll, and that the poll purges the de
 
 **Export:** KyIdentity's org export holds directory data only (T "Replicas, Postgres and backups").
 Calendar content is KyCalendar's. While an org is active, every member can already copy their own
-calendars with any CalDAV client. During `deletion_scheduled` nobody in the org can reach
-KyCalendar (T's export-only session opens no suite session). v1 therefore adds an operator command,
+calendars with any CalDAV client. During `deletion_scheduled` only an export-only sign-in reaches
+KyCalendar (below). v1 also adds an operator command,
 `kycalendar export-org -org <id> -out <dir>`: one `.ics` per calendar, grouped by member, and a
 manifest of IDs. Staff run it on the account holder's request, like T open question 9 (c). See open
 question 1. Once content encryption lands (its CE6), the export of an encrypted account holds
 skeletons and sealed content, which each member opens offline with their recovery code
 (`kycalendar open-export`).
+
+**Export-only sign-in.** While an org is `deletion_scheduled`, KyIdentity signs in the people
+allowed to export with tokens that carry `"export_only": true`. KyCalendar enforces the claim from
+the token, whatever the mirror says:
+
+- A token with the claim is admitted only in multi-tenant mode, only while the mirror says the
+  org is `deletion_scheduled` and enabled (one poll is awaited if it does not yet), and only for an
+  existing account of that org. It never creates an account or grants a role. A mirror still
+  saying `active` refuses it, so such a token never opens an ordinary session.
+- It opens an export-only session (`sessions.export_only`, migration 39) for at most an hour. That
+  session reaches `GET /api/export`, `GET /api/auth/me` (which reports `exportOnly`) and
+  `POST /api/auth/logout`. Every other route answers `403 export_only`. The session ends when the
+  org leaves `deletion_scheduled`.
+- The sign-in lands on `GET /api/export`: a zip of the caller's own calendars, one `.ics` each,
+  with every object that cannot be merged copied as stored beside it, and `manifest.json`. It is
+  written by `internal/calexport`, the same writer as `export-org`. Every everyday session can
+  use it too. Group calendars are not in it: they belong to the group, and staff export them with
+  `export-org`.
+- A token without the claim, for an org that is not `active`, is refused as before.
 
 > **Built in PR 4e (2026-11-23).** `kycalendar export-org -org <id> -out <dir>`
 > (`cmd/server/exportorg.go`) refuses an org with no mirror row and an output directory that
@@ -919,13 +938,14 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
 
 ## Open questions, with recommendations
 
-1. **Export during `deletion_scheduled`.** T's export-only session reaches no app.
+1. **Export during `deletion_scheduled`.** Settled: members export their own calendars through an
+   export-only sign-in (Export), and staff run `export-org` for the rest. The options were:
    - (a) Staff run `export-org` on the account holder's request.
    - (b) KyIdentity's export page links an app-held export, which needs a new suite contract.
    - (c) KyCalendar serves read-only CalDAV to the org's existing app passwords during the grace
      period.
-   - Recommend (a) for v1, the same answer as T open question 9 (c). (c) contradicts Downstream
-     contract 5.
+   - (a) and an app-held export (b, through KyIdentity's existing export_only sign-in) are both
+     built. (c) contradicts Downstream contract 5.
 2. **Suite group polling cost.** `/api/suite/groups` needs one call per org each minute in
    multi-tenant mode, and with every paid account an org (owner decision 2026-11-23), that is one
    call per customer. Recommend asking KyIdentity for `since=<revision>` on groups, or a

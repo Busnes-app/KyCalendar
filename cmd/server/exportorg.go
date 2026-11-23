@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,14 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/emersion/go-ical"
-
+	"github.com/Busnes-app/kycalendar/internal/calexport"
 	"github.com/Busnes-app/kycalendar/internal/config"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
 // runExportOrg writes one org's calendars for its account holder, on their request (tenancy spec,
-// Lifecycle, Deleted): during deletion_scheduled nobody in the org can reach KyCalendar.
+// Lifecycle, Export): members export their own calendars, and this covers the rest of the org.
 func runExportOrg(args []string) error {
 	fs := flag.NewFlagSet("export-org", flag.ContinueOnError)
 	org := fs.String("org", "", "ID of the org to export (required)")
@@ -148,7 +145,8 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 			folder = filepath.Join("members", unsafeName.ReplaceAllString(u.ID, "_"))
 		}
 		e.File = unique(filepath.ToSlash(filepath.Join(folder, unsafeName.ReplaceAllString(c.ID, "_")+".ics")))
-		body, unmerged, err := exportCalendarICS(ctx, st, c, &e)
+		body, items, unmerged, err := calexport.CalendarICS(ctx, st, c.ID)
+		e.Items = items
 		if err != nil {
 			return nil, fmt.Errorf("calendar %s: %w", c.ID, err)
 		}
@@ -177,99 +175,6 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 	}
 	done = true
 	return m, nil
-}
-
-// exportCalendarICS is one VCALENDAR holding every stored object of c, each time zone once, and
-// the objects it could not merge: those that do not parse or that go-ical cannot write back.
-func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e *exportCalendar) ([]byte, []*store.CalendarObject, error) {
-	objs, err := st.Calendars().ListObjects(ctx, c.ID)
-	if err != nil {
-		return nil, nil, err
-	}
-	var unmerged []*store.CalendarObject
-	out := ical.NewCalendar()
-	out.Props.SetText(ical.PropVersion, "2.0")
-	out.Props.SetText(ical.PropProductID, "-//Busnes-app//KyCalendar export-org//EN")
-	zones := map[string][]byte{} // TZID -> the encoded VTIMEZONE written under it
-	for _, o := range objs {
-		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
-		if err == nil {
-			err = ical.NewEncoder(io.Discard).Encode(cal) // what is merged must write back
-		}
-		if err != nil {
-			unmerged = append(unmerged, o)
-			continue
-		}
-		renamed := map[string]string{}
-		var items []*ical.Component
-		for _, child := range cal.Children {
-			if child.Name != ical.CompTimezone {
-				items = append(items, child)
-				continue
-			}
-			id, _ := child.Props.Text(ical.PropTimezoneID)
-			body, err := zoneBytes(child)
-			if err != nil {
-				return nil, nil, err // the whole object encoded, so its zone does too
-			}
-			// One TZID may name different rules in different objects (Outlook's "Customized Time
-			// Zone"): only an identical definition is shared; another gets a TZID of its own.
-			name := id
-			for n := 2; zones[name] != nil && !bytes.Equal(zones[name], body); n++ {
-				name = fmt.Sprintf("%s (%d)", id, n)
-			}
-			if name != id {
-				renamed[id] = name // set before sharing, so a reused renamed zone is still pointed at
-			}
-			if zones[name] != nil {
-				continue // this exact definition is already written under name
-			}
-			child.Props.SetText(ical.PropTimezoneID, name)
-			zones[name] = body
-			out.Children = append(out.Children, child)
-		}
-		for _, c := range items {
-			renameTZID(c, renamed)
-		}
-		out.Children = append(out.Children, items...)
-		e.Items++
-	}
-	var b bytes.Buffer
-	if len(out.Children) == 0 {
-		// go-ical refuses a calendar with no components; an empty calendar is still exported.
-		b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Busnes-app//KyCalendar export-org//EN\r\nEND:VCALENDAR\r\n")
-		return b.Bytes(), unmerged, nil
-	}
-	if err := ical.NewEncoder(&b).Encode(out); err != nil {
-		return nil, nil, err
-	}
-	return b.Bytes(), unmerged, nil
-}
-
-// zoneBytes is z encoded on its own, to compare two definitions.
-func zoneBytes(z *ical.Component) ([]byte, error) {
-	var b bytes.Buffer
-	err := ical.NewEncoder(&b).Encode(&ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar,
-		Props:    ical.Props{ical.PropVersion: {{Name: ical.PropVersion, Value: "2.0"}}, ical.PropProductID: {{Name: ical.PropProductID, Value: "x"}}},
-		Children: []*ical.Component{z}}})
-	return b.Bytes(), err
-}
-
-// renameTZID points every TZID parameter in c and its children at the renamed zones.
-func renameTZID(c *ical.Component, renamed map[string]string) {
-	if len(renamed) == 0 {
-		return
-	}
-	for _, ps := range c.Props {
-		for i := range ps {
-			if to, ok := renamed[ps[i].Params.Get(ical.ParamTimezoneID)]; ok {
-				ps[i].Params.Set(ical.ParamTimezoneID, to)
-			}
-		}
-	}
-	for _, child := range c.Children {
-		renameTZID(child, renamed)
-	}
 }
 
 // writeExport writes one export file; a test replaces it to fail a write.

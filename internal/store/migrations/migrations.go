@@ -607,6 +607,9 @@ CREATE TABLE sso_logouts (
 	{Version: 36, Name: "replica_coordination", SQLite: replicaCoordination, Postgres: replicaCoordination},
 	{Version: 37, Name: "org_model", SQLite: orgModel(false), Postgres: orgModel(true)},
 	{Version: 38, Name: "content_encryption", SQLite: contentEncryption("BLOB", "DATETIME"), Postgres: contentEncryption("BYTEA", "TIMESTAMPTZ")},
+	// export_only marks a session from a KyIdentity export_only token: it reaches only the
+	// export routes, and only while its org is deletion_scheduled (tenancy spec, Export).
+	{Version: 39, Name: "session_export_only", SQLite: sessionExportOnly, Postgres: sessionExportOnly},
 }
 
 // contentEncryption is content encryption at rest's schema (docs/superpowers/specs/
@@ -1045,6 +1048,8 @@ const invitationSponsorship = `ALTER TABLE calendar_objects ADD COLUMN invitatio
 ALTER TABLE calendar_objects ADD COLUMN invitation_attendee TEXT NOT NULL DEFAULT '';
 ALTER TABLE calendar_objects ADD COLUMN invitation_recipient TEXT NOT NULL DEFAULT '';
 CREATE TABLE invitation_byte_budget (sender_id TEXT PRIMARY KEY, window_start BIGINT NOT NULL, bytes BIGINT NOT NULL);`
+
+const sessionExportOnly = `ALTER TABLE sessions ADD COLUMN export_only BOOLEAN NOT NULL DEFAULT FALSE;`
 
 const sessionUnproven = `ALTER TABLE sessions ADD COLUMN unproven BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE sessions SET unproven = TRUE WHERE user_id IN (SELECT id FROM users WHERE sso_provider <> 'local');`

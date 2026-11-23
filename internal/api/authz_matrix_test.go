@@ -286,6 +286,7 @@ func apiRows(w *world) map[string]apiRow {
 		"PUT /api/calendars/{id}/grants/{group}":    {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
 		"DELETE /api/calendars/{id}/grants/{group}": {method: "DELETE", path: g + "/grp_extra", want: grantManager},
 		"GET /api/calendars":                        {method: "GET", path: "/api/calendars", want: everyday},
+		"GET /api/export":                           {method: "GET", path: "/api/export", want: everyday},
 		"POST /api/calendars":                       {method: "POST", path: "/api/calendars", body: `{"name":"Matrix"}`, want: everyday},
 		"PATCH /api/calendars/{id}":                 {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
 		"DELETE /api/calendars/{id}":                {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},

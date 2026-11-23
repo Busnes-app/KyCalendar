@@ -149,8 +149,9 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessions.RefreshCSRF(w, r, sess)
 
-	s.writeJSON(w, http.StatusOK, map[string]any{
-		"authenticated": true,
-		"user":          user,
-	})
+	me := map[string]any{"authenticated": true, "user": user}
+	if sess.ExportOnly {
+		me["exportOnly"] = true // this sign-in may only download (GET /api/export)
+	}
+	s.writeJSON(w, http.StatusOK, me)
 }
