@@ -36,17 +36,25 @@ func multiTenantSignIn(t *testing.T, staff string, orgs map[string]string) (*Ser
 		t.Fatal(err)
 	}
 	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client()))
-	driver, q := "sqlite", `INSERT INTO orgs (id, status, seen_at) VALUES (?, ?, `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
+	driver, q := "sqlite", `INSERT INTO orgs (id, status, seen_at, pool_since) VALUES (?, ?, `+strconv.FormatInt(time.Now().Unix(), 10)+`, `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
 	if s.config.Database.Driver == "postgres" {
-		driver, q = "pgx", `INSERT INTO orgs (id, status, seen_at) VALUES ($1, $2, `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
+		driver, q = "pgx", `INSERT INTO orgs (id, status, seen_at, pool_since) VALUES ($1, $2, `+strconv.FormatInt(time.Now().Unix(), 10)+`, `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
 	}
 	db, err := sql.Open(driver, s.config.Database.DSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	usageQuery := `INSERT INTO org_usage (org_id, bytes) VALUES (?, 0)`
+	if driver == "pgx" {
+		usageQuery = `INSERT INTO org_usage (org_id, bytes) VALUES ($1, 0)`
+	}
 	for id, status := range orgs {
 		if _, err := db.Exec(q, id, status); err != nil {
+			t.Fatal(err)
+		}
+		// Like ApplyOrgs: a new mirror row has both its meter and first-grace date.
+		if _, err := db.Exec(usageQuery, id); err != nil {
 			t.Fatal(err)
 		}
 	}
