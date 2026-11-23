@@ -25,6 +25,7 @@ func runExportOrg(args []string) error {
 	fs := flag.NewFlagSet("export-org", flag.ContinueOnError)
 	org := fs.String("org", "", "ID of the org to export (required)")
 	out := fs.String("out", "", "new directory to write the export into (required)")
+	allow := fs.Bool("allow-unreadable", false, "write the export even when stored objects cannot be read (they are listed in manifest.json)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -41,11 +42,11 @@ func runExportOrg(args []string) error {
 		return err
 	}
 	defer st.Close()
-	m, err := exportOrg(ctx, st, store.OrgID(*org), *out, time.Now().UTC())
+	m, err := exportOrg(ctx, st, store.OrgID(*org), *out, time.Now().UTC(), *allow)
 	if err != nil {
 		return err
 	}
-	log.Printf("✓ org %s exported to %s: %d calendars, %d items", *org, *out, len(m.Calendars), m.Items)
+	log.Printf("✓ org %s exported to %s: %d calendars, %d items, %d unreadable", *org, *out, len(m.Calendars), m.Items, m.unreadable())
 	return nil
 }
 
@@ -56,6 +57,17 @@ type exportManifest struct {
 	Items      int              `json:"items"`
 	Calendars  []exportCalendar `json:"calendars"`
 }
+
+func (m *exportManifest) unreadable() int {
+	n := 0
+	for _, c := range m.Calendars {
+		n += len(c.Unreadable)
+	}
+	return n
+}
+
+// errUnreadable is an export that would leave stored objects out without the operator agreeing.
+var errUnreadable = errors.New("export-org: stored objects cannot be read")
 
 type exportCalendar struct {
 	ID         string   `json:"id"`
@@ -75,8 +87,10 @@ var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
 // exportOrg writes org's calendars under dir, which must not exist yet: one .ics per calendar,
 // in a folder per member (members/<user ID>/) or groups/, and manifest.json. Every file is 0600
-// and every folder 0700, since they hold calendar content.
-func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string, now time.Time) (*exportManifest, error) {
+// and every folder 0700, since they hold calendar content. A stored object that cannot be read
+// makes it refuse (errUnreadable) and write nothing, unless allow: an export staff hand over
+// before a purge must never be missing events unnoticed.
+func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string, now time.Time, allow bool) (*exportManifest, error) {
 	if _, err := st.OrgQuotas(ctx, org); errors.Is(err, store.ErrNotFound) {
 		return nil, fmt.Errorf("no org %s here", org)
 	} else if err != nil {
@@ -123,6 +137,9 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 		}
 		m.Items += e.Items
 		m.Calendars = append(m.Calendars, e)
+	}
+	if n := m.unreadable(); n > 0 && !allow {
+		return nil, fmt.Errorf("%w: %d of them, which the export would leave out; nothing was written. Rerun with -allow-unreadable to write the export anyway, with them listed in manifest.json", errUnreadable, n)
 	}
 	manifest, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
