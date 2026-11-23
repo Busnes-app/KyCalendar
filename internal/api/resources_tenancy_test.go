@@ -12,6 +12,10 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
+// offD9 is the one plain 404 every route tenancy D9 turns off gives in multi-tenant mode
+// (singleTenantOnly), the same for every role and for no session.
+const offD9 = "404 page not found\n"
+
 // D9 keeps all room and equipment routes off on a multi-tenant install.
 func TestMultiTenantResourceRoutesAnswerAsMissing(t *testing.T) {
 	srv, st, cfg := setupTestServer(t)
@@ -84,8 +88,8 @@ func TestMultiTenantResourceRoutesAnswerAsMissing(t *testing.T) {
 				for _, path := range tc.paths {
 					for _, body := range []string{tc.body, "invalid JSON"} {
 						w := call(t, srv, method, path, body, cookie)
-						if w.Code != missing.Code || w.Body.String() != missing.Body.String() {
-							t.Errorf("%s %s: %d %s; want %d %s", role, path, w.Code, w.Body.String(), missing.Code, missing.Body.String())
+						if w.Code != http.StatusNotFound || w.Body.String() != offD9 {
+							t.Errorf("%s %s: %d %q; want the plain 404 every D9 route gives", role, path, w.Code, w.Body.String())
 						}
 					}
 				}
@@ -112,8 +116,8 @@ func TestResourceRoutesRequireRecordedSingleTenantMode(t *testing.T) {
 		method, path, _ := strings.Cut(pattern, " ")
 		path = strings.ReplaceAll(path, "{id}", "missing")
 		w := call(t, srv, method, path, "invalid JSON", nil)
-		if w.Code != http.StatusNotFound || w.Body.String() != "{\"error\":\"No such room or equipment\"}\n" {
-			t.Errorf("missing mode %s: %d %s", pattern, w.Code, w.Body.String())
+		if w.Code != http.StatusNotFound || w.Body.String() != offD9 {
+			t.Errorf("missing mode %s: %d %q", pattern, w.Code, w.Body.String())
 		}
 	}
 	srv = api.NewServer(cfg, unreadableResourceTenancy{st})
