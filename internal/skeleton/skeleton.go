@@ -143,6 +143,9 @@ func line(b *bytes.Buffer, s string) {
 		for cut > 0 && !utf8.RuneStart(s[cut]) {
 			cut--
 		}
+		if cut == 0 {
+			cut = limit // no character starts in reach (invalid UTF-8): cut by byte, never loop
+		}
 		b.WriteString(s[:cut] + "\r\n ")
 		s = s[cut:]
 		limit = 74 // the leading space counts

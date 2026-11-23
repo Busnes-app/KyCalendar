@@ -86,6 +86,10 @@ func DecodePatch(b []byte) ([]Op, error) {
 	return ops, nil
 }
 
+// structural reports whether name is one iCalendar uses for structure, which a patch must never
+// write: a BEGIN or END line would move readable properties into another component.
+func structural(name string) bool { return name == "BEGIN" || name == "END" }
+
 // lineSafe reports whether s fits in one content line: no control character other than tab,
 // and none of extra.
 func lineSafe(s, extra string) bool {
@@ -125,6 +129,9 @@ func (o Op) check() error {
 		// RECURRENCE-ID that is not a plain date or date-time, could add lines or merge labels.
 		if !nameToken.MatchString(o.Property) || !recurrenceToken.MatchString(o.RecurrenceID) {
 			return errors.New("skeleton: a patch property must be an iCalendar name and its RECURRENCE-ID a date or date-time")
+		}
+		if structural(o.Property) {
+			return errors.New("skeleton: BEGIN and END are component boundaries, never a patch property")
 		}
 		if o.Component != ical.CompEvent && o.Component != ical.CompToDo || o.Property == "" {
 			// apply reaches only the stored components; a patch it cannot apply is refused, never
@@ -320,6 +327,9 @@ func recurrenceID(c *ical.Component) string {
 
 func apply(cal *ical.Calendar, o Op) {
 	o = o.norm()
+	if structural(o.Property) {
+		return // check refuses it; never write a component boundary as a property
+	}
 	if o.Op == "conference" {
 		calendar.SetConference(cal, o.URL)
 		return

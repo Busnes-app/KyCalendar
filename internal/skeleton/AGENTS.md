@@ -29,6 +29,9 @@ until build step CE2.
   - a label never carries a value;
   - a patch older than the newest base doesn't apply.
 - **Patch components:** a patch names `VEVENT` or `VTODO` only, the components `apply` reaches.
+- **Patch names:** a property is an iCalendar name token and never `BEGIN` or `END` (`structural`):
+  a boundary line would move readable properties into another component. `check` and `apply`
+  both refuse it.
 - **Nested components:** every nested child takes its content from the same-named child at the
   same position: alarms from the alarm source, anything else from the newest base.
 - **The writer:** objects are written by the package's own writer, not go-ical's encoder, which

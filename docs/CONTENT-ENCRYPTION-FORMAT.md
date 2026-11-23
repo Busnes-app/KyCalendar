@@ -166,7 +166,8 @@ no control character and no `"`. One operation's values and parameters together,
 link, are at most 2048 bytes. A patch that breaks this is refused, so a sealed patch can
 never corrupt the object it applies to.
 
-A `property` is an iCalendar name token (letters, digits and `-`), and a `recurrence_id` is empty
+A `property` is an iCalendar name token (letters, digits and `-`), and never `BEGIN` or `END`,
+which iCalendar uses for structure, and a `recurrence_id` is empty
 or a plain date or date-time (`YYYYMMDD`, optionally `THHMMSS` and `Z`), as both start content
 lines and labels.
 
@@ -202,6 +203,7 @@ because go-ical's encoder allows only `VALARM` inside an event, while KyCalendar
 a client sends:
 - properties and parameters in name order;
 - a parameter value holding `:`, `;` or `,` in double quotes;
-- lines folded at 75 octets, never inside a UTF-8 character.
+- lines folded at 75 octets, never inside a UTF-8 character; where none starts within reach
+  (invalid UTF-8), by byte.
 
 Whatever it writes must read back with go-ical.

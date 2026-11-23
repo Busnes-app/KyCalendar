@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
@@ -418,14 +419,56 @@ func TestPatchNamesAreTokens(t *testing.T) {
 		"space":       {Op: "remove", Component: "VEVENT", Property: "LOCATION X"},
 		"bad rid":     {Op: "remove", Component: "VEVENT", Property: "LOCATION", RecurrenceID: "2026;x"},
 		"rid newline": {Op: "remove", Component: "VEVENT", Property: "LOCATION", RecurrenceID: "20261117T090000Z\n"},
+		"BEGIN":       {Op: "set", Component: "VEVENT", Property: "BEGIN", Values: []PropValue{{Value: "VEVENT"}}},
+		"END":         {Op: "set", Component: "VEVENT", Property: "END", Values: []PropValue{{Value: "VEVENT"}}},
+		"lower begin": {Op: "set", Component: "VEVENT", Property: "begin", Values: []PropValue{{Value: "VALARM"}}},
+		"remove END":  {Op: "remove", Component: "VEVENT", Property: "END"},
 	} {
 		if _, err := EncodePatch([]Op{op}); err == nil {
 			t.Errorf("%s: encoded", name)
+		}
+		raw, _ := json.Marshal([]Op{op})
+		if _, err := DecodePatch(raw); err == nil {
+			t.Errorf("%s: decoded", name)
 		}
 	}
 	for _, rid := range []string{"", "20261117", "20261117T090000", "20261117T090000Z"} {
 		if _, err := EncodePatch([]Op{{Op: "remove", Component: "VEVENT", Property: "x-apple-travel", RecurrenceID: rid}}); err != nil {
 			t.Errorf("RECURRENCE-ID %q refused: %v", rid, err)
 		}
+	}
+}
+
+// apply never writes a component boundary, even for an op that skipped check.
+func TestApplyNeverWritesABoundary(t *testing.T) {
+	cal := mustDecode(t, []byte(meeting))
+	apply(cal, Op{Op: "set", Component: "VEVENT", Property: "END", Values: []PropValue{{Value: "VEVENT"}}})
+	got, err := encode(cal.Component)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(got), "END:VEVENT") != 1 {
+		t.Errorf("apply wrote a boundary:\n%s", got)
+	}
+}
+
+// The folder never loops on invalid UTF-8: a run of continuation bytes longer than a line is cut
+// by byte.
+func TestLineFoldsInvalidUTF8(t *testing.T) {
+	done := make(chan []byte, 1)
+	go func() {
+		var b bytes.Buffer
+		line(&b, "DESCRIPTION:"+strings.Repeat("\x80", 300))
+		done <- b.Bytes()
+	}()
+	select {
+	case got := <-done:
+		for _, l := range strings.Split(strings.TrimSuffix(string(got), "\r\n"), "\r\n") {
+			if len(l) > 75 {
+				t.Errorf("line of %d octets", len(l))
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("line did not return on invalid UTF-8")
 	}
 }
