@@ -74,6 +74,15 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "export-org":
+			if err := runExportOrg(os.Args[2:]); err != nil {
+				if errors.Is(err, flag.ErrHelp) {
+					return
+				}
+				fmt.Fprintln(os.Stderr, "export-org:", err)
+				os.Exit(1)
+			}
+			return
 		case "restore-reset":
 			runRestoreReset(os.Args[2:])
 			return
