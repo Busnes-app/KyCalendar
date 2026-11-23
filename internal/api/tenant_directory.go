@@ -2,6 +2,7 @@ package api
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -104,17 +105,10 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusServiceUnavailable, "Directory unavailable")
 		return
 	}
-	var u *store.User
-	for _, provider := range []string{"kysignon", "scim", "oidc"} { // a row a KyIdentity login adopted keeps its provider
-		got, err := s.store.Users().GetUserBySSO(ctx, provider, in.ID)
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			fail(http.StatusServiceUnavailable, "Directory unavailable")
-			return
-		}
-		if err == nil && got.SSOIssuer == bound {
-			u = got
-			break
-		}
+	u, err := s.directoryAccount(ctx, bound, in.ID)
+	if err != nil {
+		fail(http.StatusServiceUnavailable, "Directory unavailable")
+		return
 	}
 	if u == nil {
 		w.WriteHeader(http.StatusNoContent) // not this directory's account: nothing to take away
@@ -160,4 +154,19 @@ func (in directoryUser) primaryEmail() string {
 		}
 	}
 	return ""
+}
+
+// directoryAccount is the local account KyIdentity's subject sub signs in as on the bound
+// issuer, or nil.
+func (s *Server) directoryAccount(ctx context.Context, bound, sub string) (*store.User, error) {
+	for _, provider := range []string{"kysignon", "scim", "oidc"} { // a row a KyIdentity login adopted keeps its provider
+		got, err := s.store.Users().GetUserBySSO(ctx, provider, sub)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		if err == nil && got.SSOIssuer == bound {
+			return got, nil
+		}
+	}
+	return nil, nil
 }

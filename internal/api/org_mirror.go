@@ -85,9 +85,15 @@ func (s *Server) syncOrgs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	v, err := s.store.Settings().GetSettings(ctx, store.OrgsCursorSetting)
+	v, err := s.store.Settings().GetSettings(ctx, store.OrgsCursorSetting, store.ErasedPendingSetting)
 	if err != nil {
 		return err
+	}
+	// After a restore, no org answers until every erased person is gone again.
+	if v[store.ErasedPendingSetting] != "" {
+		if err := s.eraseAfterRestore(ctx, dir); err != nil {
+			return err
+		}
 	}
 	since, _ := strconv.ParseInt(v[store.OrgsCursorSetting], 10, 64) // none or unreadable: read all
 	since = max(since, 0)

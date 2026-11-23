@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -354,5 +355,106 @@ func TestOrgPollReachesTheEndAndAgesOut(t *testing.T) {
 	s.SyncOrgs(ctx) // from the cursor at 150: an empty, complete answer
 	if !serves(t, s, "org-1") {
 		t.Fatal("an empty complete poll did not restore a fresh answer")
+	}
+}
+
+// After a restore no org answers until every person KyIdentity lists as erased is deleted again:
+// a failed erased read leaves the restored orgs unserved, and an entry naming another org than
+// the account's deletes nothing.
+func TestRestoreDeletesErasedSubjectsBeforeServing(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-a": "active", "org-b": "active"})
+	for sub, org := range map[string]string{"alice": "org-a", "bob": "org-a", "carol": "org-b"} {
+		if code := loginWithOrg(t, s, idp, sub, org); code != http.StatusFound {
+			t.Fatalf("sign-in of %s: %d", sub, code)
+		}
+	}
+	var mu sync.Mutex
+	erasedUp, erasedReads := false, 0
+	idp.suite = func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/suite/erased":
+			erasedReads++
+			if !erasedUp {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			fmt.Fprint(w, `{"subjects":[{"sub":"alice","org_id":"org-a","revision":1},{"sub":"carol","org_id":"org-a","revision":2}]}`)
+		case "/api/suite/orgs":
+			fmt.Fprint(w, `{"orgs":[{"id":"org-a","status":"active","revision":1,"enabled":true,"quotas":{}},{"id":"org-b","status":"active","revision":2,"enabled":true,"quotas":{}}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	ctx := context.Background()
+	if err := s.store.ResetAfterRestore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	exists := func(sub string) bool {
+		t.Helper()
+		bound, err := sso.Bound(ctx, s.store.Settings())
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := s.directoryAccount(ctx, bound, sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u != nil
+	}
+
+	s.SyncOrgs(ctx)
+	if serves(t, s, "org-a") || !exists("alice") {
+		t.Fatal("a restored org served, or an account went, before the erased list was read")
+	}
+	mu.Lock()
+	erasedUp = true
+	mu.Unlock()
+	s.SyncOrgs(ctx)
+	if exists("alice") || !exists("bob") || !exists("carol") {
+		t.Fatalf("after the erased read: alice %t bob %t carol %t, want only alice gone", exists("alice"), exists("bob"), exists("carol"))
+	}
+	if !serves(t, s, "org-a") || !serves(t, s, "org-b") {
+		t.Fatal("the restored orgs do not serve after the erased read")
+	}
+	s.SyncOrgs(ctx)
+	if erasedReads != 2 {
+		t.Fatalf("%d erased reads, want 2: one failed, one after the restore, none once done", erasedReads)
+	}
+}
+
+// A malformed erased answer fails the whole read: nothing is deleted and the restored orgs stay
+// unserved.
+func TestAMalformedErasedAnswerDeletesNothing(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-a": "active"})
+	if code := loginWithOrg(t, s, idp, "alice", "org-a"); code != http.StatusFound {
+		t.Fatalf("sign-in: %d", code)
+	}
+	ctx := context.Background()
+	bound, err := sso.Bound(ctx, s.store.Settings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{
+		`{"subjects":[{"sub":"alice","org_id":"org-a","revision":2},{"sub":"x","org_id":"org-a","revision":1}]}`, // out of order
+		`{"subjects":[{"sub":"alice","org_id":"","revision":1}]}`,
+		`{"subjects":null}`,
+		`{"subjects":[{"sub":"alice","org_id":"org-a","revision":1}],"next":"9"}`, // cursor not at the last entry
+	} {
+		idp.suite = func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/suite/erased" {
+				fmt.Fprint(w, bad)
+				return
+			}
+			fmt.Fprint(w, `{"orgs":[{"id":"org-a","status":"active","revision":1,"enabled":true,"quotas":{}}]}`)
+		}
+		if err := s.store.ResetAfterRestore(ctx); err != nil {
+			t.Fatal(err)
+		}
+		s.SyncOrgs(ctx)
+		if u, err := s.directoryAccount(ctx, bound, "alice"); err != nil || u == nil || serves(t, s, "org-a") {
+			t.Fatalf("%s: account %v (%v), org-a serves %t", bad, u, err, serves(t, s, "org-a"))
+		}
 	}
 }
