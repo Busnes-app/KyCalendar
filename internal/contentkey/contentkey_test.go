@@ -274,8 +274,16 @@ func TestPartListEncoding(t *testing.T) {
 			t.Errorf("%s decoded", name)
 		}
 	}
-	if _, err := EncodeParts([]Part{{Kind: PartBase, Seq: 1, WorkerKey: "abc"}}); err == nil {
-		t.Error("a bad worker key ID encoded")
+	for _, id := range []string{"abc", "0123456789ABCDEF0123456789ABCDEF", "0123456789abcdef"} {
+		if _, err := EncodeParts([]Part{{Kind: PartBase, Seq: 1, WorkerKey: id}}); err == nil {
+			t.Errorf("worker key ID %q encoded", id)
+		}
+	}
+	// Sealing under a non-canonical ID is refused too, so no such part is ever made.
+	w, _ := NewWorkerKey()
+	w.ID = "0123456789ABCDEF0123456789ABCDEF"
+	if _, err := w.Seal(Part{Kind: PartPatch, Seq: 1, Label: "x"}, "cal_1", "uid", nil); err == nil {
+		t.Error("a part sealed under an uppercase worker key ID")
 	}
 	if _, err := EncodeParts(make([]Part, maxParts+1)); err == nil {
 		t.Error("too many parts encoded")

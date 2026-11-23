@@ -48,8 +48,17 @@ func (p Part) check() error {
 		return errors.New("contentkey: a patch needs a label and keeps no alarms")
 	case len(p.Label) > 255:
 		return errors.New("contentkey: label too long")
+	case p.WorkerKey != "" && !canonicalKeyID(p.WorkerKey):
+		// The AAD binds the ID as written and DecodeParts rebuilds it as lowercase hex, so any
+		// other spelling would seal a part no read could open.
+		return errors.New("contentkey: worker key ID must be 32 lowercase hex characters")
 	}
 	return nil
+}
+
+func canonicalKeyID(id string) bool {
+	b, err := hex.DecodeString(id)
+	return err == nil && len(b) == 16 && hex.EncodeToString(b) == id
 }
 
 // Seal seals plaintext as p under c's AES key: an unlocked write (E4).
