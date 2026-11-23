@@ -170,8 +170,8 @@ it.
 | POST | `/api/book/manage/cancel` | public + CSRF, 30/15 min per IP | 200 |
 | POST | `/api/book/manage/reschedule` | public + CSRF, 30/15 min per IP | 200; 409 `slot_unavailable` |
 
-The rate limits are the server's in-memory windows (`allowPerIP`, `allowAccountAttempt`), per
-process, like the existing login limits. Logs carry booking and type IDs only, never a
+The limits use `allowPerIP` and `allowAccountAttempt` (`internal/api/windows.go`): shared
+database windows on PostgreSQL, and process-local windows on single-process SQLite. Logs carry booking and type IDs only, never a
 name, address, note or token.
 
 ## Meeting room (deliverable 2)
@@ -213,3 +213,58 @@ available to the member (`meetingsFor`).
    pages need scheduling. Default: booking pages stay unavailable there, and the admin screen
    says why.
 3. The slot grid steps by the duration. Default: no separate "start every N minutes" setting.
+
+
+## Hosted booking priority and qualification (owner, 2026-11-23)
+
+**Approved planning constraint:** Calendar booking pages are suite priority 4, after critical
+pooled storage, tenancy/isolation, reliability/security and existing launch/startup gates. Use
+this existing feature and owner; this is qualification and completion work, not a new booking
+product or permission to enable scheduling. The suite direction is recorded in the workspace
+root `AGENTS.md` User Preferences and relayed in `kycalendar-saas-tenancy` post 7765.
+The source research is `zentrimail-site/docs/research/competitor-product-gaps-2026-11-23.md`:
+[Proton appointment scheduling](https://proton.me/business/calendar/appointment-scheduling)
+establishes public conflict-aware booking, while [mailbox appointment polls](https://mailbox.org/en/news/new-collaboration-features-appointment-scheduling-and-multi-user-text-editing/)
+are a different workflow. Sources establish comparison facts, not KyCalendar readiness or
+product contracts. The owner superseded the research's password-manager recommendation:
+no first-party manager or builder/task; existing-manager compatibility is enough and a new
+integration is not mandatory. VPN/AI stay optional, with no new work.
+
+### Existing capability inventory
+
+Code and existing test inspection, not fresh hosted acceptance:
+
+| Existing implementation | Evidence | Qualification still required |
+|---|---|---|
+| Member-owned types, public random links, working windows, duration/buffers, notice/horizon/daily cap and visitor-local time | `internal/api/booking.go`, `internal/booking`; `TestSlotsFollowWallClockAcrossDST`, `TestBookingTypeValidationAndOwnership` | Hosted browser journey, keyboard/phone use, DST and visitor-zone presentation under the approved UI review gates. |
+| Email hold, explicit confirm, ordinary invitation, cancel/reschedule and slug rotation | `TestBookingFlowHoldConfirmInviteCancel`, `TestBookingConfirmRechecksFreeBusy`, `TestBookingHoldExpires`, `TestBookingSlugRotation` | Real KyPost delivery/retry/refusal, expired/replayed links and scanners, restart/recovery, and preserved member/booker changes. |
+| Public page hides busy details and requires an active everyday host in a serving org plus the per-org `booking_pages` entitlement | `booking.go` `hostOf`/`bookingReason`, tenancy D11, cross-org matrix | Multi-tenant tests of every public phase when suspension, deletion, stale mirror or entitlement removal races it; other-org IDs and missing IDs must remain indistinguishable. |
+| Transactional conflict checks, shared PostgreSQL budgets and ordinary event/quota admission | `internal/store/bookings.go`, `internal/api/windows.go`, `TestBookingRaces`, `TestBookingLimits` | Two independent replicas contending with ordinary calendar writes; pooled-byte exhaustion/recovery, sender cancellation reservations and abuse-budget bounds without another org's data leaking. |
+| Fragment tokens, hashed capabilities, CSRF, fixed pre-confirm mail and visitor-field retention | `TestBookingPublicFormsRefuseForgedAndBadInput`, `TestBookingRowForgetsTheVisitorOnceConfirmed` | Verify logs, URLs, mail and screenshots expose only the intended host/public fields; verify erasure/export/restore retention with real delivery. Keep current global anti-abuse protections until an explicit change is approved. |
+| Optional KyMessages room and booker-only guest link | `booking_meeting_internal_test.go` | Coordinate with the existing meeting owner: real guest join/expiry/host controls, retry and guests-off paths. Never leak the member link or inherit unqualified call-encryption claims. |
+
+### Work staged after the existing gates
+
+1. Complete the current tenancy/pool/reliability phases and their required checks first.
+   D16's personal-calendar slug/sharing question remains explicit; booking does not resolve it.
+2. Qualify the existing end-to-end workflow across KyIdentity, KyPost and optional KyMessages,
+   using isolated fixtures with scratch push relays blank. Test blocked mail, retries, duplicate
+   confirmation, cancel/reschedule, host changes and restart/restore before declaring delivery.
+3. Extend hosted tenant/privacy and admission acceptance as listed above. Preserve the current
+   default-off switch, per-org entitlement, shared abuse limits and sender-paid capacity. Keep
+   `KYCALENDAR_SCHEDULING=false` on launch deployments until its separate device gate passes.
+4. Record hosted browser/cross-replica evidence and operator/user instructions; take any interface
+   changes through owner approval. Published booking claims and enablement wait for hosted
+   release/startup, isolation, security, recovery and acceptance gates, not this plan update.
+
+### Distinct product decisions, not selected here
+
+- **Packaging:** the current limit is 20 types per member plus the existing org boolean.
+  Paid-tier page counts, branding/custom domains or a public directory need a product decision;
+  competitor limits select none of them. Keep current links and limits until decided.
+- **Workflow extensions:** appointment/date polls, round-robin/group booking, group-calendar busy
+  aggregation, payments, reminders/custom questions and a separate time-zone picker remain
+  outside this approved implementation. Decide them separately if requested; booking priority
+  alone adds none of them and does not bypass multi-tenant D9's feature restrictions.
+- **External meetings:** the existing meeting workstream owns guest identity, host controls and
+  join/encryption policy. Booking consumes that approved contract; it does not invent one.

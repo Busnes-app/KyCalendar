@@ -417,6 +417,8 @@ Spec `docs/superpowers/specs/2026-10-29-kycalendar-csv-import-design.md`.
 
 #### Booking page contracts
 
+- Owner direction (2026-11-23): after critical pool/tenancy/isolation/reliability/security and launch gates, qualify the existing booking pages as suite priority 4. The owned booking design's "Hosted booking priority and qualification" section records inventory, remaining tenant/privacy/admission/browser acceptance and distinct product choices; read it before booking work. Planning is not hosted readiness or authorization to enable scheduling, change URLs/sharing, or add polls/group booking. The suite excludes first-party password-manager work; compatibility is enough and new integration is optional. VPN/AI have no new work.
+
 Spec `docs/superpowers/specs/2026-11-15-booking-page-design.md`.
 
 - Off by default: the admin switch "Allow booking pages" (Server settings, setting `booking_pages_allowed`, step-up, audited `admin.booking_pages`) cannot be turned on while scheduling is off or KyPost is unpaired (409 `scheduling_off`, `kypost_unpaired`). Available only while all three hold; otherwise every `/api/book/*` route is 404, like an unknown slug. A member also needs an email of their own and a KyIdentity binding.
