@@ -637,6 +637,16 @@ KyCalendar (T's export-only session opens no suite session). v1 therefore adds a
 manifest of IDs. Staff run it on the account holder's request, like T open question 9 (c). See open
 question 1.
 
+> **Built in PR 4e (2026-11-23).** `kycalendar export-org -org <id> -out <dir>`
+> (`cmd/server/exportorg.go`) refuses an org with no mirror row and an output directory that
+> already exists. It writes `members/<user ID>/<calendar ID>.ics` and `groups/<calendar ID>.ics`,
+> one VCALENDAR per calendar with each time zone once, and `manifest.json` (org, time, and per
+> calendar its ID, name, owner, the owner's username and email, components, file and item count,
+> plus any stored object that does not parse). Files are `0600` and folders `0700`. It reads
+> through `OrgStore.ListCalendars`, which selects by `org_id` alone, so another org's calendar
+> cannot appear. It works in any status, `deletion_scheduled` included, and in single-tenant mode
+> on the default org.
+
 **Quotas** (D11):
 
 - `max_bytes` is checked beside the per-owner and instance checks

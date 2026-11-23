@@ -170,6 +170,9 @@ type OrgStore interface {
 	// group list in one transaction; members are this org's accounts in scope. See
 	// suite_groups.go.
 	ReconcileSuiteGroup(ctx context.Context, scope SCIMScope, g SuiteGroup) (SuiteGroupChange, error)
+	// ListCalendars is every calendar in this org, its members' and its group calendars, owner
+	// by owner (export-org).
+	ListCalendars(ctx context.Context) ([]*Calendar, error)
 }
 
 type orgStore struct {
@@ -178,6 +181,10 @@ type orgStore struct {
 }
 
 func (s *SQLStore) Org(id OrgID) OrgStore { return orgStore{s: s, id: id} }
+
+func (o orgStore) ListCalendars(ctx context.Context) ([]*Calendar, error) {
+	return o.s.calendars.queryCalendars(ctx, `SELECT `+calendarCols+` FROM calendars WHERE org_id = ? ORDER BY owner_kind, owner_id, created_at, id`, o.id)
+}
 
 func (o orgStore) GetUser(ctx context.Context, id string) (*User, error) {
 	return o.s.users.scanUser(o.s.db.QueryRowContext(ctx, o.s.rebind(`
