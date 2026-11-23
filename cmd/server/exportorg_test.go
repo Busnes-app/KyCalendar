@@ -18,9 +18,15 @@ import (
 
 func exportFixture(t *testing.T, st store.Store, calID, name, summary string) {
 	t.Helper()
-	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Berlin\r\nBEGIN:STANDARD\r\n" +
-		"DTSTART:19701025T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:" + name +
-		"\r\nDTSTAMP:20261101T000000Z\r\nDTSTART;TZID=Europe/Berlin:20261110T090000\r\nDTEND;TZID=Europe/Berlin:20261110T100000\r\nSUMMARY:" + summary +
+	exportFixtureZone(t, st, calID, name, summary, "Europe/Berlin", "+0100")
+}
+
+// exportFixtureZone stores an event in zone tzid, whose standard offset is offset.
+func exportFixtureZone(t *testing.T, st store.Store, calID, name, summary, tzid, offset string) {
+	t.Helper()
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VTIMEZONE\r\nTZID:" + tzid + "\r\nBEGIN:STANDARD\r\n" +
+		"DTSTART:19701025T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:" + offset + "\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:" + name +
+		"\r\nDTSTAMP:20261101T000000Z\r\nDTSTART;TZID=" + tzid + ":20261110T090000\r\nDTEND;TZID=" + tzid + ":20261110T100000\r\nSUMMARY:" + summary +
 		"\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
 	cal, err := ical.NewDecoder(strings.NewReader(ics)).Decode()
 	if err != nil {
@@ -69,6 +75,9 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 		t.Fatal(err)
 	}
 	exportFixture(t, st, "cal_team", "t1", "Team sync")
+	// Two clients' different rules under one non-IANA TZID: neither may be read with the other's.
+	exportFixtureZone(t, st, "cal_team", "t2", "Outlook one", "Customized Time Zone", "+0100")
+	exportFixtureZone(t, st, "cal_team", "t3", "Outlook two", "Customized Time Zone", "-0500")
 
 	out := filepath.Join(t.TempDir(), "export")
 	m, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC))
@@ -125,9 +134,18 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 	if n := strings.Count(string(b), "BEGIN:VTIMEZONE"); n != 1 {
 		t.Errorf("alice's calendar has %d VTIMEZONEs, want 1", n)
 	}
+	team, _ := os.ReadFile(filepath.Join(out, "groups", "cal_team.ics"))
+	tz := string(team)
+	if !strings.Contains(tz, "TZID:Customized Time Zone\r\n") || !strings.Contains(tz, "TZID:Customized Time Zone (2)\r\n") ||
+		!strings.Contains(tz, "TZOFFSETTO:-0500") || !strings.Contains(tz, "DTSTART;TZID=Customized Time Zone (2):20261110T090000") {
+		t.Errorf("colliding zones were not kept apart:\n%s", tz)
+	}
+	if strings.Count(tz, "BEGIN:VTIMEZONE") != 3 {
+		t.Errorf("team calendar has %d VTIMEZONEs, want 3 (Berlin and two distinct customized zones)", strings.Count(tz, "BEGIN:VTIMEZONE"))
+	}
 	var read exportManifest
 	mb, _ := os.ReadFile(filepath.Join(out, "manifest.json"))
-	if err := json.Unmarshal(mb, &read); err != nil || read.OrgID != store.DefaultOrg || read.Items != 3 || len(read.Calendars) != len(m.Calendars) {
+	if err := json.Unmarshal(mb, &read); err != nil || read.OrgID != store.DefaultOrg || read.Items != 5 || len(read.Calendars) != len(m.Calendars) {
 		t.Errorf("manifest %+v %v", read, err)
 	}
 	for _, c := range read.Calendars {
@@ -139,8 +157,39 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 	if _, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Now()); err == nil {
 		t.Error("an existing output directory was written over")
 	}
+	empty := filepath.Join(t.TempDir(), "empty")
+	if err := os.Mkdir(empty, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exportOrg(ctx, st, store.DefaultOrg, empty, time.Now()); err == nil {
+		t.Error("an existing empty output directory was replaced")
+	}
 	if _, err := exportOrg(ctx, st, "org-none", filepath.Join(t.TempDir(), "x"), time.Now()); err == nil {
 		t.Error("an unknown org was exported")
+	}
+	// A failed export leaves nothing behind, so the same -out works on the retry. An object
+	// that decodes but cannot be written back (an old row with no UID line) fails the encode.
+	if err := davbackend.EnsureDefault(ctx, st, "usr_bert", 0); err != nil {
+		t.Fatal(err)
+	}
+	bad := &store.CalendarObject{CalendarID: calOf("usr_bert"), Name: "bad.ics", UID: "bad", Component: "VEVENT",
+		Data: []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")}
+	if _, err := st.Calendars().PutObject(ctx, bad, "", true, store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	failed := filepath.Join(parent, "export")
+	if _, err := exportOrg(ctx, st, "org-b", failed, time.Now()); err == nil {
+		t.Fatal("an export of an object that cannot be encoded succeeded")
+	}
+	if left, _ := os.ReadDir(parent); len(left) != 0 {
+		t.Errorf("a failed export left %v", left)
+	}
+	if err := st.Calendars().DeleteObject(ctx, bad.CalendarID, bad.Name, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exportOrg(ctx, st, "org-b", failed, time.Now()); err != nil {
+		t.Errorf("the retry with the same -out: %v", err)
 	}
 	outB := filepath.Join(t.TempDir(), "b")
 	if mb, err := exportOrg(ctx, st, "org-b", outB, time.Now()); err != nil || mb.Items != 1 {

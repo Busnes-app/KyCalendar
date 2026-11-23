@@ -82,9 +82,21 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 	} else if err != nil {
 		return nil, err
 	}
-	if err := os.Mkdir(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("the output directory must not exist yet: %w", err)
+	if _, err := os.Lstat(dir); !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("the output directory must not exist yet: %s", dir)
 	}
+	// Written into a private sibling and renamed into place only when complete, so a failed
+	// export leaves nothing that looks like one and a retry can use the same -out.
+	tmp, err := os.MkdirTemp(filepath.Dir(dir), "."+filepath.Base(dir)+".partial-")
+	if err != nil {
+		return nil, err
+	}
+	done := false
+	defer func() {
+		if !done {
+			_ = os.RemoveAll(tmp)
+		}
+	}()
 	cals, err := st.Org(org).ListCalendars(ctx)
 	if err != nil {
 		return nil, err
@@ -106,7 +118,7 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 		if err != nil {
 			return nil, fmt.Errorf("calendar %s: %w", c.ID, err)
 		}
-		if err := writePrivate(filepath.Join(dir, filepath.FromSlash(e.File)), body); err != nil {
+		if err := writePrivate(filepath.Join(tmp, filepath.FromSlash(e.File)), body); err != nil {
 			return nil, err
 		}
 		m.Items += e.Items
@@ -116,7 +128,14 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 	if err != nil {
 		return nil, err
 	}
-	return m, writePrivate(filepath.Join(dir, "manifest.json"), append(manifest, '\n'))
+	if err := writePrivate(filepath.Join(tmp, "manifest.json"), append(manifest, '\n')); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		return nil, err
+	}
+	done = true
+	return m, nil
 }
 
 // exportCalendarICS is one VCALENDAR holding every stored object of c, each time zone once.
@@ -128,23 +147,45 @@ func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e
 	out := ical.NewCalendar()
 	out.Props.SetText(ical.PropVersion, "2.0")
 	out.Props.SetText(ical.PropProductID, "-//Busnes-app//KyCalendar export-org//EN")
-	zones := map[string]bool{}
+	zones := map[string][]byte{} // TZID -> the encoded VTIMEZONE written under it
 	for _, o := range objs {
 		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
 		if err != nil {
 			e.Unreadable = append(e.Unreadable, o.Name)
 			continue
 		}
+		renamed := map[string]string{}
+		var items []*ical.Component
 		for _, child := range cal.Children {
-			if child.Name == ical.CompTimezone {
-				id, _ := child.Props.Text(ical.PropTimezoneID)
-				if zones[id] {
-					continue
-				}
-				zones[id] = true
+			if child.Name != ical.CompTimezone {
+				items = append(items, child)
+				continue
 			}
+			id, _ := child.Props.Text(ical.PropTimezoneID)
+			body, err := zoneBytes(child)
+			if err != nil {
+				return nil, err
+			}
+			// One TZID may name different rules in different objects (Outlook's "Customized Time
+			// Zone"): only an identical definition is shared; another gets a TZID of its own.
+			name := id
+			for n := 2; zones[name] != nil && !bytes.Equal(zones[name], body); n++ {
+				name = fmt.Sprintf("%s (%d)", id, n)
+			}
+			if zones[name] != nil {
+				continue
+			}
+			if name != id {
+				renamed[id] = name
+				child.Props.SetText(ical.PropTimezoneID, name)
+			}
+			zones[name] = body
 			out.Children = append(out.Children, child)
 		}
+		for _, c := range items {
+			renameTZID(c, renamed)
+		}
+		out.Children = append(out.Children, items...)
 		e.Items++
 	}
 	var b bytes.Buffer
@@ -157,6 +198,32 @@ func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+// zoneBytes is z encoded on its own, to compare two definitions.
+func zoneBytes(z *ical.Component) ([]byte, error) {
+	var b bytes.Buffer
+	err := ical.NewEncoder(&b).Encode(&ical.Calendar{Component: &ical.Component{Name: ical.CompCalendar,
+		Props:    ical.Props{ical.PropVersion: {{Name: ical.PropVersion, Value: "2.0"}}, ical.PropProductID: {{Name: ical.PropProductID, Value: "x"}}},
+		Children: []*ical.Component{z}}})
+	return b.Bytes(), err
+}
+
+// renameTZID points every TZID parameter in c and its children at the renamed zones.
+func renameTZID(c *ical.Component, renamed map[string]string) {
+	if len(renamed) == 0 {
+		return
+	}
+	for _, ps := range c.Props {
+		for i := range ps {
+			if to, ok := renamed[ps[i].Params.Get(ical.ParamTimezoneID)]; ok {
+				ps[i].Params.Set(ical.ParamTimezoneID, to)
+			}
+		}
+	}
+	for _, child := range c.Children {
+		renameTZID(child, renamed)
+	}
 }
 
 func writePrivate(path string, data []byte) error {
