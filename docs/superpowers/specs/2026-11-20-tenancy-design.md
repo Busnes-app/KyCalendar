@@ -417,10 +417,17 @@ KyIdentity does not retry it.
 ### Back-channel logout
 
 `POST /api/sso/kysignon/backchannel-logout` (`server.go:313`, `internal/sso/backchannel.go:24-50`)
-ends sessions by `sid` or by `sub` (`sso_handlers.go:387-392`). A logout only takes access away.
-So a logout token with a missing or mismatched `org_id` **still ends** the matching sessions, and
-is audited `auth.sso_org_mismatch`. Refusing it would leave a session alive that KyIdentity meant
-to end.
+ends sessions by `sid` or by `sub` (`sso_handlers.go:387-392`). Before anything changes:
+
+- In multi-tenant mode the token must carry `org_id`, and it must be the org of every local
+  account the token names, by `sub` or by a live session's `sid`. Otherwise it is refused
+  (`400`) and audited `auth.sso_org_mismatch`, and nothing changes. KyIdentity always sends the
+  account's own org, so a refusal means a token from the wrong place, not a logout lost.
+- The token must carry a `jti` and an `iat` neither in the future nor older than five minutes,
+  both with a minute's leeway (as ky-primitives `oidcverify.VerifyLogout` requires).
+- Its `jti` is spent once in `spent_challenges` (keyed by issuer and `jti`, hashed) until the
+  token can no longer be accepted. A replay is refused and audited `auth.sso_logout_replayed`.
+  KyIdentity sends a fresh token for each delivery attempt.
 
 ### Suite answers
 
@@ -750,7 +757,7 @@ skeletons and sealed content, which each member opens offline with their recover
 
 | # | T requires | KyCalendar today | KyCalendar in multi-tenant mode |
 |---|---|---|---|
-| 1 | Refuse a token without `org_id` | Reads no org claim (`internal/sso/oauth.go:179-202`) | ID token without `org_id`: `403`, nothing written (Identity binding). Webhook without it, or with another org: removals applied (deactivation, and a delete downgraded to deactivation), additions and profile changes ignored (Directory webhook). A logout token without it still ends sessions. Removal is always safe on both paths. |
+| 1 | Refuse a token without `org_id` | Reads no org claim (`internal/sso/oauth.go:179-202`) | ID token without `org_id`: `403`, nothing written (Identity binding). Webhook without it, or with another org: removals applied (deactivation, and a delete downgraded to deactivation), additions and profile changes ignored (Directory webhook). A logout token without it, or naming another org than its account's, is refused and changes nothing (Back-channel logout). A webhook removal only takes access away, so it still applies. |
 | 2 | Key every row by `org_id` | No org anywhere | `org_id` on every O table, D tables through their parents, composite FKs where a table joins two org rows, and triggers for existence, immutability and owner agreement (Isolation) |
 | 3 | Bind a local account to `(sub, org_id)`, and refuse a known `sub` with a different `org_id` | Bound to `(sso_provider, sso_subject)` plus `sso_issuer` (`sso_handlers.go:69-110`) | `users.org_id` set at creation from the token or webhook and immutable. A mismatch is refused and audited, and never moves the account. |
 | 4 | Take the org only from a verified token, a signed webhook or a suite answer | n/a | Org sources: ID token, the signed webhook body, `/api/suite/orgs` and `/api/suite/groups` answers. Peer `org_id` is a check only (D10). The only request-chosen org is a staff selection on a staff read route, after the admin check (Admin surface). |

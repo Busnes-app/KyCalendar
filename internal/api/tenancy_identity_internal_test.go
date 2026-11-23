@@ -144,31 +144,58 @@ func TestMultiTenantWithoutAStaffOrgHasNoAdmins(t *testing.T) {
 	}
 }
 
-// A logout token always ends its sessions; in multi-tenant mode a missing or mismatched org_id is
-// audited, never a reason to keep a session KyIdentity meant to end.
-func TestMultiTenantLogoutEndsSessionsWhateverTheOrg(t *testing.T) {
+// In multi-tenant mode a logout token must name the org of the account it ends, by sub or by a
+// live session's sid; a missing or other org_id is refused and audited before anything changes.
+func TestMultiTenantLogoutChecksTheOrgFirst(t *testing.T) {
 	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-a": "active"})
 	idp.extra = map[string]any{"org_id": "org-a"}
 	idp.roles = nil
 	first := ssoSession(ssoLogin(t, s, idp, "alice", "sid-1"))
-	second := ssoSession(ssoLogin(t, s, idp, "alice", "sid-2"))
-	if first == nil || second == nil || !signedIn(s, first) || !signedIn(s, second) {
-		t.Fatal("sign-in did not issue working sessions")
+	if first == nil || !signedIn(s, first) {
+		t.Fatal("sign-in did not issue a working session")
 	}
-	if w := postLogout(s, idp.logoutToken(t, "alice", "sid-1")); w.Code != http.StatusOK || signedIn(s, first) {
-		t.Fatalf("logout without org_id: %d, still signed in %v", w.Code, signedIn(s, first))
+	token := func(jti string, claims map[string]any) string {
+		c := map[string]any{"iss": idp.URL, "aud": "kc", "jti": jti, "iat": time.Now().Unix(), "exp": time.Now().Add(2 * time.Minute).Unix(),
+			"events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}}}
+		for k, v := range claims {
+			c[k] = v
+		}
+		return idp.sign(t, "logout+jwt", c)
 	}
-	mismatched := idp.sign(t, "logout+jwt", map[string]any{
-		"iss": idp.URL, "aud": "kc", "sub": "alice", "sid": "sid-2", "jti": "j2", "org_id": "org-b",
-		"iat": time.Now().Unix(), "exp": time.Now().Add(2 * time.Minute).Unix(),
-		"events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}},
-	})
-	if w := postLogout(s, mismatched); w.Code != http.StatusOK || signedIn(s, second) {
-		t.Fatalf("logout with another org: %d, still signed in %v", w.Code, signedIn(s, second))
+	for name, claims := range map[string]map[string]any{
+		"no org_id":          {"sub": "alice", "sid": "sid-1"},
+		"another org by sub": {"sub": "alice", "org_id": "org-b"},
+		"another org by sid": {"sid": "sid-1", "org_id": "org-b"},
+		"another org, both":  {"sub": "alice", "sid": "sid-1", "org_id": "org-b"},
+	} {
+		if w := postLogout(s, token(name, claims)); w.Code != http.StatusBadRequest || !signedIn(s, first) {
+			t.Fatalf("%s: %d, signed in %v", name, w.Code, signedIn(s, first))
+		}
 	}
-	got := auditDetails(t, s, "auth.sso_org_mismatch")
-	if len(got) != 2 || !strings.Contains(got[0]+got[1], "token_org=org-b") {
+	if got := auditDetails(t, s, "auth.sso_org_mismatch"); len(got) != 4 {
 		t.Fatalf("audit: %q", got)
+	}
+	if w := postLogout(s, token("ok", map[string]any{"sub": "alice", "sid": "sid-1", "org_id": "org-a"})); w.Code != http.StatusOK || signedIn(s, first) {
+		t.Fatalf("logout of the account's org: %d, still signed in %v", w.Code, signedIn(s, first))
+	}
+}
+
+// A logout token is applied at most once: a replay is refused and audited, and changes nothing.
+func TestLogoutTokenIsAppliedOnce(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-a": "active"})
+	idp.extra = map[string]any{"org_id": "org-a"}
+	idp.roles = nil
+	raw := idp.sign(t, "logout+jwt", map[string]any{"iss": idp.URL, "aud": "kc", "sub": "alice", "jti": "once", "org_id": "org-a",
+		"iat": time.Now().Add(-2 * time.Second).Unix(), "exp": time.Now().Add(2 * time.Minute).Unix(),
+		"events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}}})
+	if w := postLogout(s, raw); w.Code != http.StatusOK {
+		t.Fatalf("first delivery: %d", w.Code)
+	}
+	if w := postLogout(s, raw); w.Code != http.StatusBadRequest {
+		t.Fatalf("replay: %d", w.Code)
+	}
+	if got := auditDetails(t, s, "auth.sso_logout_replayed"); len(got) != 1 {
+		t.Fatalf("replay audit: %q", got)
 	}
 }
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 
 func (idp *signingIdP) logoutToken(t *testing.T, sub, sid string) string {
 	claims := map[string]any{
-		"iss": idp.URL, "aud": "kc", "sub": sub, "jti": sub + sid,
+		"iss": idp.URL, "aud": "kc", "sub": sub, "jti": rand.Text(), // each token is new, as a provider sends it
 		"iat": time.Now().Unix(), "exp": time.Now().Add(2 * time.Minute).Unix(),
 		"events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}},
 	}
