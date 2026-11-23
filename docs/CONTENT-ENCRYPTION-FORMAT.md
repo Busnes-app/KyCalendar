@@ -115,5 +115,68 @@ All integers are big-endian.
 A list holds at most 64 parts. A reader refuses unknown magic, a truncated or trailing list, a
 repeated `seq`, a base with a label and a patch without one.
 
-The plaintext of a base and of a patch, and how parts merge with the skeleton, are defined in
-build step CE1b.
+## Skeleton and content
+
+The code is `internal/skeleton`. An object's **skeleton** (`calendar_objects.data`) is the object
+with only its readable properties. Everything else is content, which lives only in the sealed
+parts.
+
+Readable properties, by component:
+
+- **`VCALENDAR`:** `VERSION`, `PRODID`, `CALSCALE`, `METHOD`.
+- **`VEVENT`, `VTODO`, and any other component KyCalendar does not store:**
+  - `UID`, `DTSTART`, `DTEND`, `DUE`, `DURATION`, `RRULE`, `RDATE`, `EXDATE`, `RECURRENCE-ID`;
+  - `SEQUENCE`, `DTSTAMP`, `CREATED`, `LAST-MODIFIED`;
+  - `STATUS`, `TRANSP`, `CLASS`, `PRIORITY`, `COMPLETED`, `PERCENT-COMPLETE`;
+  - `ORGANIZER`, `ATTENDEE`, with all their parameters;
+  - KyCalendar's own markers: `X-KY-REPEAT-FROM`, `X-KY-HABIT`, `X-KY-ESTIMATE`, `X-KY-SOURCE`,
+    `X-KY-REF`, `X-KYCALENDAR-ORGANIZER-SEQUENCE`, `X-KYCALENDAR-OUT-OF-OFFICE` and
+    `X-KYCALENDAR-BOOKING-TYPE`.
+- **`VALARM`:** `ACTION`, `TRIGGER`, `REPEAT`, `DURATION`, `UID`, `ACKNOWLEDGED`.
+- **`VTIMEZONE`:** everything, including its `STANDARD` and `DAYLIGHT` components.
+
+Every other property, including every other `X-` property, is content.
+
+**A base's plaintext** is a whole iCalendar body. For an unlocked write, it's the body exactly as
+the client sent it.
+
+**A patch's plaintext** is a JSON array of operations:
+
+```json
+[{"op": "set", "component": "VEVENT", "recurrence_id": "", "property": "LOCATION",
+  "values": [{"params": {"ALTREP": ["…"]}, "value": "Room 2"}]},
+ {"op": "remove", "component": "VEVENT", "property": "DESCRIPTION"},
+ {"op": "conference", "url": "https://…"}]
+```
+
+- **`set`** replaces every instance of the property in the component whose `RECURRENCE-ID`
+  matches. An empty `recurrence_id` means the master.
+- **`remove`** deletes the property.
+- **`conference`** sets the KyMessages room link on every `VEVENT`, as
+  `calendar.SetConference` does: the `CONFERENCE` property and the final `Join:` description
+  line. An empty `url` removes both.
+- A `set` or `remove` of a readable property is refused, because those change in the skeleton
+  only.
+
+A patch's **label** is `op property component recurrence-id` for each operation, joined by `;`,
+and just `conference` for a conference operation. It never contains a value. A newer patch with
+the same label replaces the older one.
+
+**Merging** (what a reader is served):
+
+1. Parts are taken in `seq` order.
+2. The newest base gives the content. The newest base not marked `keep-alarms` gives the alarms'
+   content; if there is none, the newest base does.
+3. **Fast path:** if the only part is one base and the skeleton equals that base's own skeleton,
+   the base's bytes are served unchanged.
+4. Otherwise every readable property, and the set of components and alarms, comes from the
+   skeleton.
+   - Each component takes its content properties from the newest base's component with the same
+     name and `RECURRENCE-ID`.
+   - An override the base doesn't carry, which a worker made from the master, takes the master's
+     content. An override the base does carry takes only its own.
+   - Each skeleton `VALARM` takes the content of the alarm source's `VALARM` at the same position
+     in that component.
+   - Calendar-level content comes from the newest base.
+5. The patches written after the newest base are applied, in `seq` order. A patch older than the
+   newest base no longer applies.
