@@ -54,7 +54,7 @@ func signingIdPFixture(t *testing.T, tls bool) *signingIdP {
 	idp.Server = newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/api/suite/orgs", "/api/suite/groups", "/api/suite/erased":
+		case "/api/suite/orgs", "/api/suite/groups", "/api/suite/erased", "/api/suite/storage":
 			if idp.suite == nil {
 				http.NotFound(w, r)
 				return

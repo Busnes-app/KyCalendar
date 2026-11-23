@@ -434,3 +434,24 @@ permissions and is removed when the drill returns.
 
 `backup-drill` prints each check and exits 1 when the drill fails, so a script or cron job can
 rely on its status.
+
+
+### Hosted pool report sequence recovery (startup still gated)
+
+A copied database cannot reuse its copied byte grant: restore invalidates that grant and its
+pending report. The next elected org poll reports actual restored usage with a new local
+sequence. If KyIdentity already has a newer sequence, the report is fenced and its log names
+the org and latest remote sequence. Reads/deletes/shrinking remain available subject to the
+normal org reconciliation; growing writes need a successful fresh grant.
+
+After confirming this is the restored instance that should serve, the operator explicitly runs:
+
+```sh
+kycalendar advance-storage-sequence -org <org-id> -past <latest-remote-sequence>
+```
+
+The command is audited and clears the old lease/request. The next report uses a larger sequence;
+it does not grant space itself. Confirm a subsequent report succeeds before treating writes as
+recovered. Never automate adoption of a remote sequence: a stale replica could overwrite the
+newer instance's usage. This runbook does not enable multi-tenant startup or waive its remaining
+object-store, admission/renewal, D16 sharing/slug and suite acceptance gates.
