@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -76,14 +77,61 @@ func PassphraseKEK(p Argon2Params, passphrase string) ([SeedBytes]byte, error) {
 	return k, nil
 }
 
-// WrapAccountSeed seals userID's account seed under kek for slot slotID of kind.
-func WrapAccountSeed(kek [SeedBytes]byte, kind SlotKind, userID, slotID string, account *KeyPair) ([]byte, error) {
-	return sealAES(kek, bind("kycalendar content v1 slot", string(kind), userID, slotID), account.seed[:])
+// A slot is its own key pair (E6): its private seed is wrapped under the slot's KEK
+// (key_slots.wrapped), and the account key is sealed to its public key (key_slots.account_wrap).
+// So a new account key reaches every slot without any slot's secret, which is how the rotation
+// that ends a transition works (E11).
+
+// NewSlot makes slot slotID's key pair and wraps its private seed under kek.
+func NewSlot(kek [SeedBytes]byte, kind SlotKind, userID, slotID string) (slot *KeyPair, wrapped []byte, err error) {
+	if slot, err = NewKeyPair(); err != nil {
+		return nil, nil, err
+	}
+	wrapped, err = sealAES(kek, bind("kycalendar content v1 slot", string(kind), userID, slotID), slot.seed[:])
+	return slot, wrapped, err
 }
 
-// OpenSlot opens a wrap WrapAccountSeed made, giving the account's key pair.
+// OpenSlot opens a slot's key pair with its KEK.
 func OpenSlot(kek [SeedBytes]byte, kind SlotKind, userID, slotID string, wrapped []byte) (*KeyPair, error) {
 	seed, err := openAES(kek, bind("kycalendar content v1 slot", string(kind), userID, slotID), wrapped)
+	if err != nil {
+		return nil, err
+	}
+	return KeyPairFromSeed(seed)
+}
+
+// SealAccountToSlot seals version of userID's account key to a slot's public key. It needs no
+// secret, so a rotation can reach every slot.
+func SealAccountToSlot(slotPublicKey []byte, kind SlotKind, userID, slotID string, version uint32, account *KeyPair) ([]byte, error) {
+	pub, err := parsePublicKey(slotPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return sealTo(pub, "kycalendar content v1 account key", bind(string(kind), userID, slotID, strconv.FormatUint(uint64(version), 10)), account.seed[:])
+}
+
+// OpenAccount opens an account_wrap with the slot's key pair.
+func OpenAccount(slot *KeyPair, kind SlotKind, userID, slotID string, version uint32, accountWrap []byte) (*KeyPair, error) {
+	seed, err := openWith(slot.priv, "kycalendar content v1 account key", bind(string(kind), userID, slotID, strconv.FormatUint(uint64(version), 10)), accountWrap)
+	if err != nil {
+		return nil, err
+	}
+	return KeyPairFromSeed(seed)
+}
+
+// SealPreviousAccount seals an older account key, version old, to the current one's public key,
+// so content under calendar key versions wrapped to the older key still opens (E11).
+func SealPreviousAccount(currentPublicKey []byte, userID string, old uint32, previous *KeyPair) ([]byte, error) {
+	pub, err := parsePublicKey(currentPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return sealTo(pub, "kycalendar content v1 previous account key", bind(userID, strconv.FormatUint(uint64(old), 10)), previous.seed[:])
+}
+
+// OpenPreviousAccount opens what SealPreviousAccount made, with the current account key.
+func OpenPreviousAccount(current *KeyPair, userID string, old uint32, sealed []byte) (*KeyPair, error) {
+	seed, err := openWith(current.priv, "kycalendar content v1 previous account key", bind(userID, strconv.FormatUint(uint64(old), 10)), sealed)
 	if err != nil {
 		return nil, err
 	}

@@ -26,11 +26,11 @@ func TestKeysRebuildFromSeeds(t *testing.T) {
 	if _, err := KeyPairFromSeed(make([]byte, 31)); err == nil {
 		t.Error("a 31-byte seed was accepted")
 	}
-	c, err := NewCalendarKey("cal_1")
+	c, err := NewCalendarKey("cal_1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := CalendarKeyFromSeed("cal_1", c.seed[:])
+	d, err := CalendarKeyFromSeed("cal_1", 1, c.seed[:])
 	if err != nil || !d.Matches(c.PublicKey()) || d.aes != c.aes {
 		t.Fatalf("calendar key from its seed: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestKeysRebuildFromSeeds(t *testing.T) {
 // and that holder.
 func TestCalendarSeedOpensOnlyForItsHolder(t *testing.T) {
 	ann, bob := mustPair(t), mustPair(t)
-	c, err := NewCalendarKey("cal_1")
+	c, err := NewCalendarKey("cal_1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,15 +51,16 @@ func TestCalendarSeedOpensOnlyForItsHolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := OpenCalendarSeed(ann, "cal_1", "usr_ann", wrapped)
+	got, err := OpenCalendarSeed(ann, "cal_1", 1, "usr_ann", wrapped)
 	if err != nil || !got.Matches(c.PublicKey()) {
 		t.Fatalf("ann opens her wrap: %v", err)
 	}
 	for name, open := range map[string]func() error{
-		"another account":  func() error { _, err := OpenCalendarSeed(bob, "cal_1", "usr_ann", wrapped); return err },
-		"another holder":   func() error { _, err := OpenCalendarSeed(ann, "cal_1", "usr_bob", wrapped); return err },
-		"another calendar": func() error { _, err := OpenCalendarSeed(ann, "cal_2", "usr_ann", wrapped); return err },
-		"truncated":        func() error { _, err := OpenCalendarSeed(ann, "cal_1", "usr_ann", wrapped[:100]); return err },
+		"another account":  func() error { _, err := OpenCalendarSeed(bob, "cal_1", 1, "usr_ann", wrapped); return err },
+		"another holder":   func() error { _, err := OpenCalendarSeed(ann, "cal_1", 1, "usr_bob", wrapped); return err },
+		"another calendar": func() error { _, err := OpenCalendarSeed(ann, "cal_2", 1, "usr_ann", wrapped); return err },
+		"truncated":        func() error { _, err := OpenCalendarSeed(ann, "cal_1", 1, "usr_ann", wrapped[:100]); return err },
+		"another version":  func() error { _, err := OpenCalendarSeed(ann, "cal_1", 2, "usr_ann", wrapped); return err },
 	} {
 		if err := open(); !errors.Is(err, ErrOpen) {
 			t.Errorf("%s: %v", name, err)
@@ -70,7 +71,8 @@ func TestCalendarSeedOpensOnlyForItsHolder(t *testing.T) {
 	}
 }
 
-// E6: a slot opens only with its own secret, kind, account and slot ID.
+// E6: a slot is a key pair whose private seed opens only with its own secret, kind, account and
+// slot ID; the account key is sealed to the slot's public key, for one key version.
 func TestSlotsOpenOnlyWithTheirSecret(t *testing.T) {
 	acct := mustPair(t)
 	secret := bytes.Repeat([]byte{7}, 32)
@@ -79,19 +81,29 @@ func TestSlotsOpenOnlyWithTheirSecret(t *testing.T) {
 		if err != nil {
 			t.Fatal(kind, err)
 		}
-		wrapped, err := WrapAccountSeed(kek, kind, "usr_ann", "s1", acct)
+		slot, wrapped, err := NewSlot(kek, kind, "usr_ann", "s1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, err := OpenSlot(kek, kind, "usr_ann", "s1", wrapped); err != nil || !bytes.Equal(got.PublicKey(), acct.PublicKey()) {
+		aw, err := SealAccountToSlot(slot.PublicKey(), kind, "usr_ann", "s1", 1, acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		opened, err := OpenSlot(kek, kind, "usr_ann", "s1", wrapped)
+		if err != nil {
 			t.Fatalf("%s opens: %v", kind, err)
+		}
+		if got, err := OpenAccount(opened, kind, "usr_ann", "s1", 1, aw); err != nil || !bytes.Equal(got.PublicKey(), acct.PublicKey()) {
+			t.Fatalf("%s account: %v", kind, err)
 		}
 		other, _ := SecretKEK(kind, "usr_ann", "s1", bytes.Repeat([]byte{8}, 32))
 		for name, err := range map[string]error{
-			"wrong secret": func() error { _, err := OpenSlot(other, kind, "usr_ann", "s1", wrapped); return err }(),
-			"wrong kind":   func() error { _, err := OpenSlot(kek, "x", "usr_ann", "s1", wrapped); return err }(),
-			"wrong user":   func() error { _, err := OpenSlot(kek, kind, "usr_bob", "s1", wrapped); return err }(),
-			"wrong slot":   func() error { _, err := OpenSlot(kek, kind, "usr_ann", "s2", wrapped); return err }(),
+			"wrong secret":  func() error { _, err := OpenSlot(other, kind, "usr_ann", "s1", wrapped); return err }(),
+			"wrong kind":    func() error { _, err := OpenSlot(kek, "x", "usr_ann", "s1", wrapped); return err }(),
+			"wrong user":    func() error { _, err := OpenSlot(kek, kind, "usr_bob", "s1", wrapped); return err }(),
+			"wrong slot":    func() error { _, err := OpenSlot(kek, kind, "usr_ann", "s2", wrapped); return err }(),
+			"wrong version": func() error { _, err := OpenAccount(opened, kind, "usr_ann", "s1", 2, aw); return err }(),
+			"wrong slot id": func() error { _, err := OpenAccount(opened, kind, "usr_ann", "s2", 1, aw); return err }(),
 		} {
 			if !errors.Is(err, ErrOpen) {
 				t.Errorf("%s %s: %v", kind, name, err)
@@ -103,6 +115,62 @@ func TestSlotsOpenOnlyWithTheirSecret(t *testing.T) {
 	}
 	if _, err := SecretKEK(SlotAppPassword, "u", "s", secret[:15]); err == nil {
 		t.Error("SecretKEK took a 120-bit secret")
+	}
+}
+
+// E11: a rotation reaches every slot with no slot's secret, keeps the old key reachable from the
+// new one, and the transition slot's secret (the deployment key) opens neither the new account
+// key nor the new calendar key version.
+func TestRotationNeedsNoSlotSecretAndLeavesTheTransitionBehind(t *testing.T) {
+	k0 := mustPair(t)
+	transitionKEK, _ := SecretKEK(SlotTransition, "usr_ann", "tr", bytes.Repeat([]byte{1}, 32))
+	appKEK, _ := SecretKEK(SlotAppPassword, "usr_ann", "ap", bytes.Repeat([]byte{2}, 32))
+	tr, trWrapped, _ := NewSlot(transitionKEK, SlotTransition, "usr_ann", "tr")
+	ap, apWrapped, _ := NewSlot(appKEK, SlotAppPassword, "usr_ann", "ap")
+	trAW, _ := SealAccountToSlot(tr.PublicKey(), SlotTransition, "usr_ann", "tr", 1, k0)
+	cal1, _ := NewCalendarKey("cal_1", 1)
+	hold1, _ := cal1.WrapSeed("usr_ann", k0.PublicKey())
+
+	// The rotation: K1 sealed to the app password slot by its public key only, K0 sealed to K1,
+	// version 2 of the calendar key wrapped to K1; the transition slot gets nothing.
+	k1 := mustPair(t)
+	apAW, err := SealAccountToSlot(ap.PublicKey(), SlotAppPassword, "usr_ann", "ap", 2, k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev, _ := SealPreviousAccount(k1.PublicKey(), "usr_ann", 1, k0)
+	cal2, _ := NewCalendarKey("cal_1", 2)
+	hold2, _ := cal2.WrapSeed("usr_ann", k1.PublicKey())
+
+	// The user, with only the app password: K1, then K0 and both calendar versions.
+	slot, _ := OpenSlot(appKEK, SlotAppPassword, "usr_ann", "ap", apWrapped)
+	got1, err := OpenAccount(slot, SlotAppPassword, "usr_ann", "ap", 2, apAW)
+	if err != nil || !bytes.Equal(got1.PublicKey(), k1.PublicKey()) {
+		t.Fatalf("app password opens K1: %v", err)
+	}
+	got0, err := OpenPreviousAccount(got1, "usr_ann", 1, prev)
+	if err != nil || !bytes.Equal(got0.PublicKey(), k0.PublicKey()) {
+		t.Fatalf("K1 opens K0: %v", err)
+	}
+	if _, err := OpenCalendarSeed(got0, "cal_1", 1, "usr_ann", hold1); err != nil {
+		t.Errorf("version 1 through K0: %v", err)
+	}
+	if _, err := OpenCalendarSeed(got1, "cal_1", 2, "usr_ann", hold2); err != nil {
+		t.Errorf("version 2 through K1: %v", err)
+	}
+
+	// The transition-era copy: the transition slot and the deployment key give K0, and K0 opens
+	// version 1, but nothing of K1 or version 2.
+	trSlot, _ := OpenSlot(transitionKEK, SlotTransition, "usr_ann", "tr", trWrapped)
+	leaked, err := OpenAccount(trSlot, SlotTransition, "usr_ann", "tr", 1, trAW)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenCalendarSeed(leaked, "cal_1", 2, "usr_ann", hold2); !errors.Is(err, ErrOpen) {
+		t.Errorf("K0 opened the rotated calendar key: %v", err)
+	}
+	if _, err := OpenAccount(trSlot, SlotAppPassword, "usr_ann", "ap", 2, apAW); !errors.Is(err, ErrOpen) {
+		t.Errorf("the transition slot opened K1: %v", err)
 	}
 }
 
@@ -118,8 +186,13 @@ func TestPassphraseSlots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrapped, _ := WrapAccountSeed(kek, SlotPassphrase, "usr_ann", "pp", acct)
-	if _, err := OpenSlot(kek, SlotPassphrase, "usr_ann", "pp", wrapped); err != nil {
+	slot, wrapped, _ := NewSlot(kek, SlotPassphrase, "usr_ann", "pp")
+	aw, _ := SealAccountToSlot(slot.PublicKey(), SlotPassphrase, "usr_ann", "pp", 1, acct)
+	opened, err := OpenSlot(kek, SlotPassphrase, "usr_ann", "pp", wrapped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := OpenAccount(opened, SlotPassphrase, "usr_ann", "pp", 1, aw); err != nil || !bytes.Equal(got.PublicKey(), acct.PublicKey()) {
 		t.Fatal(err)
 	}
 	wrong, _ := PassphraseKEK(p, "correct horse battery!")
@@ -159,8 +232,8 @@ func TestRecoveryCodes(t *testing.T) {
 // E4, E15: a part opens only as the part, object and calendar it was sealed for; a worker part
 // opens through its wrapped worker key, which only that calendar's key opens.
 func TestPartsAreBound(t *testing.T) {
-	c, _ := NewCalendarKey("cal_1")
-	other, _ := NewCalendarKey("cal_2")
+	c, _ := NewCalendarKey("cal_1", 1)
+	other, _ := NewCalendarKey("cal_2", 1)
 	base, err := c.Seal(Part{Kind: PartBase, Seq: 1}, "uid-1", []byte("BEGIN:VCALENDAR"))
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +252,15 @@ func TestPartsAreBound(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+	c2, _ := CalendarKeyFromSeed("cal_1", 2, c.seed[:])
+	if _, err := c2.Open(base, "uid-1", noWorker); !errors.Is(err, ErrOpen) {
+		t.Errorf("another calendar key version: %v", err)
+	}
+	renumbered := base
+	renumbered.KeyVersion = 2
+	if _, err := c.Open(renumbered, "uid-1", noWorker); !errors.Is(err, ErrOpen) {
+		t.Errorf("a part claiming another key version: %v", err)
+	}
 	if _, err := c.Open(base, "uid-2", noWorker); !errors.Is(err, ErrOpen) {
 		t.Errorf("another object: %v", err)
 	}
@@ -190,11 +272,11 @@ func TestPartsAreBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrap, err := w.WrapFor("cal_1", c.PublicKey())
+	wrap, err := w.WrapFor("cal_1", 1, c.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}
-	patch, err := w.Seal(Part{Kind: PartPatch, Seq: 3, Label: "set LOCATION VEVENT"}, "cal_1", "uid-1", []byte("LOCATION:Room 2"))
+	patch, err := w.Seal(Part{Kind: PartPatch, Seq: 3, Label: "set LOCATION VEVENT"}, "cal_1", 1, "uid-1", []byte("LOCATION:Room 2"))
 	if err != nil || patch.WorkerKey != w.ID {
 		t.Fatal(err)
 	}
@@ -260,7 +342,7 @@ func TestPartListEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 	dup := bytes.Clone(two)
-	second := 6 + 11 + 1 + 4 // magic+count, first header, its key ID length byte, its sealed length
+	second := 6 + 15 + 1 + 4 // magic+count, first header, its key ID length byte, its sealed length
 	dup[second+9] = 1
 	for name, bad := range map[string][]byte{
 		"empty":       nil,
@@ -282,7 +364,7 @@ func TestPartListEncoding(t *testing.T) {
 	// Sealing under a non-canonical ID is refused too, so no such part is ever made.
 	w, _ := NewWorkerKey()
 	w.ID = "0123456789ABCDEF0123456789ABCDEF"
-	if _, err := w.Seal(Part{Kind: PartPatch, Seq: 1, Label: "x"}, "cal_1", "uid", nil); err == nil {
+	if _, err := w.Seal(Part{Kind: PartPatch, Seq: 1, Label: "x"}, "cal_1", 1, "uid", nil); err == nil {
 		t.Error("a part sealed under an uppercase worker key ID")
 	}
 	if _, err := EncodeParts(make([]Part, maxParts+1)); err == nil {

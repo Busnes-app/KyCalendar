@@ -32,7 +32,9 @@ the X-Wing encapsulated key (the 1,088-byte ML-KEM-768 ciphertext and a 32-byte 
 
 - **Account key.** A random 32-byte seed. It is an X-Wing private key as `crypto/hpke`'s
   `NewPrivateKey` takes it. `account_keys.public_key` is the serialized X-Wing public key.
-- **Calendar key.** A random 32-byte seed, from which two keys are derived:
+- **Versions.** Account and calendar keys each have a version, starting at 1. A rotation (design
+  E11) adds a version and keeps the older ones, so content sealed under them still opens.
+- **Calendar key.** A random 32-byte seed per version, from which two keys are derived:
   - the X-Wing key pair, from the seed `HKDF-SHA256(seed, salt = none, info = "kycalendar content v1 calendar kem", 32)`;
   - the AES-256-GCM key, `HKDF-SHA256(seed, salt = none, info = "kycalendar content v1 calendar aes", 32)`.
 
@@ -40,15 +42,25 @@ the X-Wing encapsulated key (the 1,088-byte ML-KEM-768 ciphertext and a 32-byte 
   with the key derived from the seed before sealing to it.
 - **Calendar seed wrap** (`calendar_key_holders.wrapped_seed`): the HPKE seal of the 32-byte
   calendar seed to the holder's account public key, with info `kycalendar content v1 calendar seed`
-  and AAD `bind(calendar ID, holder user ID)`.
+  and AAD `bind(calendar ID, calendar key version, holder user ID)`, the version in decimal.
 - **Worker key.** A random 32-byte AES-256-GCM key with a random 16-byte ID, shown as hex.
-  `worker_keys.wrapped` is the HPKE seal of the key to the calendar's public key, with info
-  `kycalendar content v1 worker key` and AAD `bind(calendar ID, worker key ID)`.
+  `worker_keys.wrapped` is the HPKE seal of the key to one calendar key version's public key, with
+  info `kycalendar content v1 worker key` and AAD `bind(calendar ID, calendar key version, worker
+  key ID)`.
+- **Previous account key** (`account_previous_keys`): the HPKE seal of an older account seed to the
+  current account public key, with info `kycalendar content v1 previous account key` and AAD
+  `bind(user ID, older version)`.
 
 ## Unlock slots
 
-`key_slots.wrapped` is the AES seal of the account seed. Its key is the slot's KEK, and its AAD is
-`bind("kycalendar content v1 slot", kind, user ID, slot ID)`.
+A slot is its own X-Wing key pair:
+- `key_slots.wrapped` is the AES seal of the slot's 32-byte private seed. Its key is the slot's
+  KEK, and its AAD is `bind("kycalendar content v1 slot", kind, user ID, slot ID)`.
+- `key_slots.account_wrap` is the HPKE seal of the account seed to the slot's public key, with info
+  `kycalendar content v1 account key` and AAD `bind(kind, user ID, slot ID, account key version)`.
+
+So a new account key reaches every slot with no slot's secret, which is what lets a rotation run
+with no user present.
 
 There are two KEK rules:
 
@@ -74,7 +86,7 @@ groups of 4, 4, 4, 4, 5 and 5. When reading one, case, spaces and dashes are ign
 ```
 "KCP1" ‖ count(u16)
 then, per part:
-  kind(u8) ‖ flags(u8) ‖ seq(u64) ‖ label_len(u8) ‖ label ‖ key_id_len(u8) ‖ key_id ‖ sealed_len(u32) ‖ sealed
+  kind(u8) ‖ flags(u8) ‖ seq(u64) ‖ key_version(u32) ‖ label_len(u8) ‖ label ‖ key_id_len(u8) ‖ key_id ‖ sealed_len(u32) ‖ sealed
 ```
 
 All integers are big-endian.
@@ -85,17 +97,19 @@ All integers are big-endian.
 - **`seq`:** the object's `parts_version` when the part was written. It is unique within the
   object and orders the parts. A part does not record its position, because removing an earlier
   part must not change the parts after it.
+- **`key_version`:** the calendar key version the part is sealed under, or that its worker key is
+  wrapped to. A reader opens it with that version only.
 - **`label`:** a patch's readable label, its operation, property and component key, never a value.
   A base has an empty label and a patch must have one.
 - **`key_id`:** empty for a part sealed under the calendar's AES key, or the worker key's 16-byte
   ID.
 - **`sealed`:** the AES seal of the part's plaintext, under the calendar's AES key or the worker
   key. The AAD is
-  `bind("kycalendar content v1 part", calendar ID, object UID, kind, keep, seq, label, key ID)`,
+  `bind("kycalendar content v1 part", calendar ID, object UID, kind, keep, seq, key version, label, key ID)`,
   where:
   - `kind` is the decimal kind;
   - `keep` is `"1"` or `"0"`;
-  - `seq` is decimal;
+  - `seq` and `key version` are decimal;
   - `key ID` is lowercase hex, or empty.
 
 A list holds at most 64 parts. A reader refuses unknown magic, a truncated or trailing list, a

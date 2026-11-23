@@ -25,6 +25,7 @@ type Part struct {
 	Kind       PartKind
 	KeepAlarms bool   // a base that takes its alarms from the newest unmarked base before it
 	Seq        uint64 // unique within the object
+	KeyVersion uint32 // the calendar key version it is sealed under, or its worker key is wrapped to
 	Label      string // a patch's operation, property and component key; never a value
 	WorkerKey  string // hex ID of the worker key that sealed it; "" for the calendar's AES key
 	Sealed     []byte
@@ -35,7 +36,8 @@ func (p Part) aad(calendarID, uid string) []byte {
 	if p.KeepAlarms {
 		keep = "1"
 	}
-	return bind("kycalendar content v1 part", calendarID, uid, strconv.Itoa(int(p.Kind)), keep, strconv.FormatUint(p.Seq, 10), p.Label, p.WorkerKey)
+	return bind("kycalendar content v1 part", calendarID, uid, strconv.Itoa(int(p.Kind)), keep, strconv.FormatUint(p.Seq, 10),
+		strconv.FormatUint(uint64(p.KeyVersion), 10), p.Label, p.WorkerKey)
 }
 
 func (p Part) check() error {
@@ -63,7 +65,7 @@ func canonicalKeyID(id string) bool {
 
 // Seal seals plaintext as p under c's AES key: an unlocked write (E4).
 func (c *CalendarKey) Seal(p Part, uid string, plaintext []byte) (Part, error) {
-	p.WorkerKey = ""
+	p.WorkerKey, p.KeyVersion = "", c.version
 	if err := p.check(); err != nil {
 		return Part{}, err
 	}
@@ -74,9 +76,13 @@ func (c *CalendarKey) Seal(p Part, uid string, plaintext []byte) (Part, error) {
 
 // Open opens p of object uid. A part a worker sealed needs that worker key's wrap, which
 // workerKey returns by ID (worker_keys.wrapped).
+// c must be the calendar key version p names; another version is ErrOpen.
 func (c *CalendarKey) Open(p Part, uid string, workerKey func(id string) ([]byte, error)) ([]byte, error) {
 	if err := p.check(); err != nil {
 		return nil, err
+	}
+	if p.KeyVersion != c.version {
+		return nil, ErrOpen
 	}
 	key := c.aes
 	if p.WorkerKey != "" {
@@ -110,18 +116,18 @@ func NewWorkerKey() (*WorkerKey, error) {
 	return &WorkerKey{ID: hex.EncodeToString(id), key: key}, err
 }
 
-// WrapFor seals w to calendarID's public key, for worker_keys. No secret is needed.
-func (w *WorkerKey) WrapFor(calendarID string, calendarPublicKey []byte) ([]byte, error) {
+// WrapFor seals w to version of calendarID's public key, for worker_keys. No secret is needed.
+func (w *WorkerKey) WrapFor(calendarID string, version uint32, calendarPublicKey []byte) ([]byte, error) {
 	pub, err := parsePublicKey(calendarPublicKey)
 	if err != nil {
 		return nil, err
 	}
-	return sealTo(pub, "kycalendar content v1 worker key", bind(calendarID, w.ID), w.key[:])
+	return sealTo(pub, "kycalendar content v1 worker key", bind(calendarID, strconv.FormatUint(uint64(version), 10), w.ID), w.key[:])
 }
 
-// OpenWorkerKey opens worker key id's wrap with c.
+// OpenWorkerKey opens worker key id's wrap with c, the version it was wrapped to.
 func (c *CalendarKey) OpenWorkerKey(id string, wrapped []byte) (*WorkerKey, error) {
-	key, err := openWith(c.pair.priv, "kycalendar content v1 worker key", bind(c.calendarID, id), wrapped)
+	key, err := openWith(c.pair.priv, "kycalendar content v1 worker key", bind(c.calendarID, strconv.FormatUint(uint64(c.version), 10), id), wrapped)
 	if err != nil {
 		return nil, err
 	}
@@ -133,9 +139,10 @@ func (c *CalendarKey) OpenWorkerKey(id string, wrapped []byte) (*WorkerKey, erro
 	return w, nil
 }
 
-// Seal seals plaintext as p of object uid in calendarID under w: a worker write (E4).
-func (w *WorkerKey) Seal(p Part, calendarID, uid string, plaintext []byte) (Part, error) {
-	p.WorkerKey = w.ID
+// Seal seals plaintext as p of object uid in calendarID under w, wrapped to calendar key
+// version: a worker write (E4).
+func (w *WorkerKey) Seal(p Part, calendarID string, version uint32, uid string, plaintext []byte) (Part, error) {
+	p.WorkerKey, p.KeyVersion = w.ID, version
 	if err := p.check(); err != nil {
 		return Part{}, err
 	}
@@ -151,7 +158,8 @@ var partsMagic = []byte("KCP1")
 const maxParts = 64
 
 // EncodeParts is the sealed column's bytes: "KCP1", a count, then each part as kind, flags,
-// sequence, label, worker key ID and sealed bytes, each variable field length-prefixed.
+// sequence, key version, label, worker key ID and sealed bytes, each variable field
+// length-prefixed.
 func EncodeParts(parts []Part) ([]byte, error) {
 	if len(parts) > maxParts {
 		return nil, fmt.Errorf("contentkey: %d parts", len(parts))
@@ -178,6 +186,7 @@ func EncodeParts(parts []Part) ([]byte, error) {
 		}
 		b = append(b, byte(p.Kind), flags)
 		b = binary.BigEndian.AppendUint64(b, p.Seq)
+		b = binary.BigEndian.AppendUint32(b, p.KeyVersion)
 		b = append(b, byte(len(p.Label)))
 		b = append(b, p.Label...)
 		b = append(b, byte(len(id)))
@@ -211,16 +220,16 @@ func DecodeParts(b []byte) ([]Part, error) {
 	parts := make([]Part, 0, n)
 	seen := map[uint64]bool{}
 	for range n {
-		head, ok := take(11)
+		head, ok := take(15)
 		if !ok {
 			return nil, errParts
 		}
-		p := Part{Kind: PartKind(head[0]), KeepAlarms: head[1] == 1, Seq: binary.BigEndian.Uint64(head[2:10])}
+		p := Part{Kind: PartKind(head[0]), KeepAlarms: head[1] == 1, Seq: binary.BigEndian.Uint64(head[2:10]), KeyVersion: binary.BigEndian.Uint32(head[10:14])}
 		if head[1] > 1 || seen[p.Seq] {
 			return nil, errParts
 		}
 		seen[p.Seq] = true
-		label, ok := take(int(head[10]))
+		label, ok := take(int(head[14]))
 		if !ok {
 			return nil, errParts
 		}

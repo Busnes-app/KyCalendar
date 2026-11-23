@@ -23,10 +23,15 @@ calls either until build step CE2.
   - A part binds its calendar, object UID, kind, `keep-alarms` flag, sequence number, label and
     worker key ID.
   - A seed wrap binds its calendar and holder.
-  - A slot binds its kind, user and slot ID.
-  - A worker key binds its calendar and ID.
+  - A slot is a key pair. Its private seed binds its kind, user and slot ID, and the account key
+    sealed to it binds those and the account key version.
+  - A worker key binds its calendar, calendar key version and ID.
+  - A seed wrap binds its calendar key version too, and a previous account key binds its user and
+    version.
 
   A new readable field joins the AAD.
+- **Keys are versioned (E3, E11).** A rotation adds account and calendar key versions and keeps
+  the old ones. A part names and binds its calendar key version, and opens only with it.
 - **Parts bind their sequence number (`parts_version`), never their position.** Removing a
   superseded part must leave the rest openable.
 - **KEK rules:**
