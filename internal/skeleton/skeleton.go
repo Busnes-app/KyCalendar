@@ -8,6 +8,9 @@ package skeleton
 import (
 	"bytes"
 	"fmt"
+	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
 )
@@ -81,8 +84,68 @@ func decode(raw []byte) (*ical.Calendar, error) {
 
 func encode(c *ical.Component) ([]byte, error) {
 	var b bytes.Buffer
-	if err := ical.NewEncoder(&b).Encode(&ical.Calendar{Component: c}); err != nil {
-		return nil, fmt.Errorf("skeleton: %w", err)
+	write(&b, c)
+	// Whatever is written must read back, as every skeleton reader uses go-ical's decoder.
+	if _, err := decode(b.Bytes()); err != nil {
+		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+// write is c as iCalendar text. go-ical's encoder allows only VALARM inside an event, but
+// KyCalendar stores any nesting a client sends (RFC 9073 VLOCATION, PARTICIPANT), so the skeleton
+// and the merged object are written here: properties in name order, parameters in name order and
+// quoted when they hold ':', ';' or ',', lines folded at 75 octets. Values are written as go-ical
+// read them, which is still escaped.
+func write(b *bytes.Buffer, c *ical.Component) {
+	line(b, "BEGIN:"+c.Name)
+	names := make([]string, 0, len(c.Props))
+	for n := range c.Props {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	for _, n := range names {
+		for _, p := range c.Props[n] {
+			var l strings.Builder
+			l.WriteString(n)
+			keys := make([]string, 0, len(p.Params))
+			for k := range p.Params {
+				keys = append(keys, k)
+			}
+			slices.Sort(keys)
+			for _, k := range keys {
+				l.WriteString(";" + k + "=")
+				for i, v := range p.Params[k] {
+					if i > 0 {
+						l.WriteByte(',')
+					}
+					if strings.ContainsAny(v, ":;,") {
+						v = `"` + v + `"`
+					}
+					l.WriteString(v)
+				}
+			}
+			l.WriteString(":" + p.Value)
+			line(b, l.String())
+		}
+	}
+	for _, child := range c.Children {
+		write(b, child)
+	}
+	line(b, "END:"+c.Name)
+}
+
+// line writes s folded at 75 octets (RFC 5545 3.1), never inside a UTF-8 character.
+func line(b *bytes.Buffer, s string) {
+	limit := 75
+	for len(s) > limit {
+		cut := limit
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		b.WriteString(s[:cut] + "\r\n ")
+		s = s[cut:]
+		limit = 74 // the leading space counts
+	}
+	b.WriteString(s + "\r\n")
 }

@@ -83,8 +83,10 @@ func (o Op) check() error {
 	case "conference":
 		return nil
 	case "set", "remove":
-		if o.Component == "" || o.Property == "" {
-			return errors.New("skeleton: patch op needs a component and a property")
+		if o.Component != ical.CompEvent && o.Component != ical.CompToDo || o.Property == "" {
+			// apply reaches only the stored components; a patch it cannot apply is refused, never
+			// stored as if it had been applied.
+			return errors.New("skeleton: patch op needs a VEVENT or VTODO component and a property")
 		}
 		if isReadable(o.Component, o.Property) {
 			return fmt.Errorf("skeleton: %s is readable; it changes in the skeleton, never in a patch", o.Property)
@@ -170,8 +172,9 @@ func cmpSeq(a, b uint64) int {
 	return 0
 }
 
-// merge is skel with src's content properties added and, for each skeleton VALARM, the content
-// of alarmsFrom's VALARM at the same position. Readable properties always come from skel.
+// merge is skel with src's content properties added, and each nested child merged with the child
+// of the same name at the same position: VALARMs from alarmsFrom, every other child (RFC 9073
+// VLOCATION, PARTICIPANT and the like) from src. Readable properties always come from skel.
 func merge(skel, src, alarmsFrom *ical.Component) *ical.Component {
 	out := &ical.Component{Name: skel.Name, Props: ical.Props{}}
 	for name, ps := range skel.Props {
@@ -182,22 +185,26 @@ func merge(skel, src, alarmsFrom *ical.Component) *ical.Component {
 			out.Props[name] = ps
 		}
 	}
-	var srcAlarms []*ical.Component
-	if alarmsFrom != nil {
-		for _, a := range alarmsFrom.Children {
-			if a.Name == ical.CompAlarm {
-				srcAlarms = append(srcAlarms, a)
+	byName := func(c *ical.Component) map[string][]*ical.Component {
+		m := map[string][]*ical.Component{}
+		if c != nil {
+			for _, x := range c.Children {
+				m[x.Name] = append(m[x.Name], x)
 			}
 		}
+		return m
 	}
-	n := 0
+	from, alarms := byName(src), byName(alarmsFrom)
+	seen := map[string]int{}
 	for _, child := range skel.Children {
+		pool := from[child.Name]
 		if child.Name == ical.CompAlarm {
-			if n < len(srcAlarms) {
-				child = merge(child, srcAlarms[n], nil)
-			}
-			n++
+			pool = alarms[child.Name]
 		}
+		if i := seen[child.Name]; i < len(pool) {
+			child = merge(child, pool[i], pool[i])
+		}
+		seen[child.Name]++
 		out.Children = append(out.Children, child)
 	}
 	return out

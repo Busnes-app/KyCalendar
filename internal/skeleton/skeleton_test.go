@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
 )
@@ -27,10 +28,21 @@ func corpus(t *testing.T) map[string][]byte {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if c, err := decode(b); err != nil {
+			c, err := decode(b)
+			if err != nil {
 				continue // a fixture of a parse failure
-			} else if _, err := encode(c.Component); err != nil {
-				continue // not storable as it is: m365.ics holds an event with no UID, which the feed skips
+			}
+			// A stored object is one UID (calendar_objects is unique on it); a whole feed such as
+			// m365.ics, with several UIDs and one event without any, is not one object.
+			uids := map[string]bool{}
+			for _, x := range c.Children {
+				if x.Name == ical.CompEvent || x.Name == ical.CompToDo {
+					uid, _ := x.Props.Text(ical.PropUID)
+					uids[uid] = true
+				}
+			}
+			if len(uids) != 1 || uids[""] {
+				continue
 			}
 			out[filepath.Base(f)] = b
 		}
@@ -49,10 +61,10 @@ func props(c *ical.Component) []string {
 		for _, p := range ps {
 			var params []string
 			for k, v := range p.Params {
-				params = append(params, k+"="+strings.Join(v, ","))
+				params = append(params, fmt.Sprintf("%s=%q", k, v))
 			}
 			slices.Sort(params)
-			out = append(out, fmt.Sprintf("%s %s;%s:%s", c.Name, name, strings.Join(params, ";"), p.Value))
+			out = append(out, fmt.Sprintf("%s %s;%s:%q", c.Name, name, strings.Join(params, ";"), p.Value))
 		}
 	}
 	slices.Sort(out)
@@ -227,6 +239,8 @@ func TestPatchOperations(t *testing.T) {
 		t.Errorf("removed DESCRIPTION came back:\n%s", s)
 	}
 	for _, bad := range []Op{
+		{Op: "set", Component: "VCALENDAR", Property: "X-WR-CALNAME"},
+		{Op: "set", Component: "VALARM", Property: "DESCRIPTION"},
 		{Op: "set", Component: "VEVENT", Property: "DTSTART"},
 		{Op: "set", Component: "VEVENT", Property: "ATTENDEE"},
 		{Op: "set", Property: "LOCATION"},
@@ -242,5 +256,48 @@ func TestPatchOperations(t *testing.T) {
 	}
 	if _, err := Merge(skel, []Layer{{Seq: 1, Plaintext: first}}); err == nil {
 		t.Error("merged with no base")
+	}
+}
+
+// Nested components other than alarms (RFC 9073 VLOCATION, PARTICIPANT) keep their content on
+// the slow path, as the client wrote it.
+func TestNestedComponentsKeepTheirContent(t *testing.T) {
+	raw := strings.Replace(meeting, "BEGIN:VALARM", "BEGIN:VLOCATION\r\nUID:loc-1\r\nNAME:Board room\r\nX-SECRET:x\r\nEND:VLOCATION\r\n"+
+		"BEGIN:PARTICIPANT\r\nUID:p-1\r\nPARTICIPANT-TYPE:SPEAKER\r\nEND:PARTICIPANT\r\nBEGIN:VALARM", 1)
+	skel, err := Split([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(skel), "Board room") {
+		t.Errorf("skeleton keeps a nested component's content:\n%s", skel)
+	}
+	empty, _ := EncodePatch(nil)
+	got, err := Merge(skel, []Layer{{Base: true, Seq: 1, Plaintext: []byte(raw)}, {Seq: 2, Plaintext: empty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := props(mustDecode(t, []byte(raw)).Component), props(mustDecode(t, got).Component); !slices.Equal(a, b) {
+		t.Errorf("slow path lost nested content:\n%s\nwant\n%s", strings.Join(b, "\n"), strings.Join(a, "\n"))
+	}
+}
+
+// The writer folds long lines without splitting a UTF-8 character and quotes parameter values
+// holding ':', ';' or ',', so the slow path reads back exactly what the client wrote.
+func TestWriterFoldsAndQuotes(t *testing.T) {
+	long := strings.Repeat("Réunion ☕ budget, ", 20)
+	raw := strings.Replace(meeting, "DESCRIPTION:Numbers", "DESCRIPTION;ALTREP=\"cid:part1@example.com\":"+long, 1)
+	skel, _ := Split([]byte(raw))
+	empty, _ := EncodePatch(nil)
+	got, err := Merge(skel, []Layer{{Base: true, Seq: 1, Plaintext: []byte(raw)}, {Seq: 2, Plaintext: empty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range strings.Split(string(got), "\r\n") {
+		if len(l) > 75 || !utf8.ValidString(l) {
+			t.Errorf("line of %d octets, or splitting a character: %q", len(l), l)
+		}
+	}
+	if a, b := props(mustDecode(t, []byte(raw)).Component), props(mustDecode(t, got).Component); !slices.Equal(a, b) {
+		t.Errorf("writer changed properties:\n%s\nwant\n%s", strings.Join(b, "\n"), strings.Join(a, "\n"))
 	}
 }

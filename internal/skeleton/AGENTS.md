@@ -28,6 +28,12 @@ until build step CE2.
     refuse a readable one;
   - a label never carries a value;
   - a patch older than the newest base doesn't apply.
+- **Patch components:** a patch names `VEVENT` or `VTODO` only, the components `apply` reaches.
+- **Nested components:** every nested child takes its content from the same-named child at the
+  same position: alarms from the alarm source, anything else from the newest base.
+- **The writer:** objects are written by the package's own writer, not go-ical's encoder, which
+  refuses nesting KyCalendar stores. The writer quotes parameters, folds at 75 octets on character
+  boundaries, and its output must read back with go-ical.
 - **Fast path:** a lone base whose own skeleton equals the stored one is served byte for byte,
   which keeps the "served as the raw bytes received" contract.
 

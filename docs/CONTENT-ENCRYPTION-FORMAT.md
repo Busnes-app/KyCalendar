@@ -155,6 +155,8 @@ the client sent it.
 - **`conference`** sets the KyMessages room link on every `VEVENT`, as
   `calendar.SetConference` does: the `CONFERENCE` property and the final `Join:` description
   line. An empty `url` removes both.
+- A `set` or `remove` names a `VEVENT` or `VTODO` component only. Those are the components KyCalendar
+  stores and patches, so a patch is never stored as if it had been applied.
 - A `set` or `remove` of a readable property is refused, because those change in the skeleton
   only.
 
@@ -175,8 +177,18 @@ the same label replaces the older one.
      name and `RECURRENCE-ID`.
    - An override the base doesn't carry, which a worker made from the master, takes the master's
      content. An override the base does carry takes only its own.
-   - Each skeleton `VALARM` takes the content of the alarm source's `VALARM` at the same position
-     in that component.
+   - Each nested component in the skeleton takes the content of the component with the same name
+     at the same position. For a `VALARM`, that's the alarm source's; for any other, such as an RFC
+     9073 `VLOCATION` or `PARTICIPANT`, it's the newest base's.
    - Calendar-level content comes from the newest base.
 5. The patches written after the newest base are applied, in `seq` order. A patch older than the
    newest base no longer applies.
+
+**Writing.** A skeleton and a merged object are written by `internal/skeleton`'s own writer,
+because go-ical's encoder allows only `VALARM` inside an event, while KyCalendar stores any nesting
+a client sends:
+- properties and parameters in name order;
+- a parameter value holding `:`, `;` or `,` in double quotes;
+- lines folded at 75 octets, never inside a UTF-8 character.
+
+Whatever it writes must read back with go-ical.
