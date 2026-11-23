@@ -8,14 +8,19 @@ Owner decisions (fixed, not reopened here):
 
 1. One binary, both modes. Single-tenant (today's self-hosted) is unchanged on upgrade.
    Multi-tenant is a mode.
-2. Organisations under one sign-in: one KyIdentity issuer for every customer. Each customer (a
-   person or a household) is an org, and tokens carry an opaque `org_id`. KyCalendar is one shared
+2. Organisations under one sign-in: one KyIdentity issuer for every customer. **Every paid
+   account is an org** (owner decision 2026-11-23): Personal is an org of 1 member, Couple 2,
+   Family up to 6, and Business N seats (small teams). Tokens carry an opaque `org_id`. KyCalendar is one shared
    install that separates data by org. Per-customer realms were rejected.
 3. One org per account. There is no org switcher.
 4. No administrators inside customer orgs. Only our staff are administrators. Customers are
    members. Single-tenant installs keep their own administrators.
-5. Businesses do not use the shared service. Each gets its own isolated single-tenant install, set
-   up by hand.
+5. **All four plans (Personal, Couple, Family, Business) run on the shared multi-tenant,
+   multi-server install.** Only Enterprise gets a dedicated install, set up by hand, which is
+   single-tenant; SQLite is fine there (owner decision 2026-11-23, superseding "businesses get
+   their own install"). Plans, kinds and seat caps are KyIdentity's (T "Entitlements", and its
+   2026-11-23 amendment adding a business org kind and seat caps); KyCalendar reads none of them
+   (D13).
 6. Stripe lives only in a separate billing service, built later.
 
 Line references are to KyCalendar `origin/main` at `8f59677`, and to KyIdentity `origin/master` at
@@ -24,7 +29,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 
 ## Summary
 
-| | Single-tenant (self-hosted, business platforms) | Multi-tenant (hosted SaaS) |
+| | Single-tenant (self-hosted, Enterprise) | Multi-tenant (hosted: Personal, Couple, Family, Business) |
 |---|---|---|
 | Mode | `KYCALENDAR_TENANCY=single` (default) | `KYCALENDAR_TENANCY=multi` |
 | Database | SQLite or PostgreSQL, as today | PostgreSQL only (D2) |
@@ -32,6 +37,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | Org of a row | the default org, one per install | the account's `org_id`, from KyIdentity |
 | Administrators | local admins and `kycalendar.admin` holders | staff only: `kycalendar.admin` in the staff org (D7) |
 | Groups and group calendars | local, SCIM and suite groups | suite groups only (D9) |
+| Invitations and free/busy between members of one org | every account on the install, as today | internal, within the org (D5) |
 | Invitations to people in another org | n/a | email (iTIP/iMIP through KyPost) only (D5) |
 | Code paths | one: handlers get an org-bound store bound to the default org | the same code, bound to the caller's org |
 
@@ -43,14 +49,15 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | D2 | **Multi-tenant requires PostgreSQL**, and a KyIdentity provider fixed by environment (`KY_KYSIGNON_ISSUER`, `internal/sso/settings.go:85-114`). The admin Sign-in save is refused in multi-tenant mode. `KY_SSO_AUTO_PROVISION=false` is a startup error in multi-tenant mode. **Multi-tenant also runs as several replicas across hosts** (owner decision, 2026-11-22): it requires the PostgreSQL replica configuration (`docs/RUNNING.md` "PostgreSQL and replicas": the start guards and the shared-settings fingerprint, `internal/config/replica.go`), and every limit that guards security or abuse lives in the database, so N replicas never allow N times a limit. | Auto-provisioning is what makes a skipped webhook create harmless (Directory webhook): the first sign-in creates the account. The hosted service runs PostgreSQL replicas anyway (`AGENTS.md:356`), as T D2 requires for KyIdentity. One issuer (owner decision 2) means the binding never changes, so the binding-change paths (`internal/api/signin.go:69-157`, reattach) are out of scope there. |
 | D3 | Isolation is enforced in the application, through an org-bound store handle (`OrgStore`), as T D3 does. | Each migration names a SQL text per backend (`internal/store/migrations/migrations.go:13-18`). From version 20 on, the registry entries (`migrations.go:571-607`, versions 20–36) give both backends one text, with only column types swapped. The exception is version 32's task search index (`taskSearchSQLite` and `taskSearchPostgres`, `:603`). The table SQL itself lives in constants later in the file, which the Inventory cites. Single-tenant installs on SQLite run the same handlers. App-level scoping covers both. |
 | D4 | Single-tenant installs get one **default org** (`00000000-0000-0000-0000-000000000001`, T's default-org ID). Every org-owned row carries it after the upgrade. Tokens there carry no `org_id` (T D4), and KyCalendar reads none. | One code path. With one org, every query returns what it returns today, which is the zero-change argument the upgrade test proves. |
-| D5 | **In multi-tenant mode every address is external, inside one org too.** `CalendarUser(email)` (`internal/store/scheduling.go`) answers `ErrNotFound` for everyone there. The caller's own address (`EmailOwner`, L2) is unchanged. | That one lookup decides internal delivery, free/busy, the out-of-office comment and meeting membership (Isolation, below). With no peer found, nothing is written into another account's calendar and no busy time is shown, so nothing can cross orgs. Owner decision, 2026-11-21: an org that wants internal scheduling between colleagues gets its own single-tenant install (owner decision 5). This replaces a per-org lookup, which would have threaded the org through every scheduling path. |
+| D5 | **In multi-tenant mode an address is internal only within the org it is looked up for.** `CalendarUser(ctx, org, email)` (`internal/store/scheduling.go`) finds an active everyday account with that email **in `org`**, and answers `ErrNotFound` for an account in any other org, exactly as for a stranger. Each caller passes the org of the account it acts for (L1–L9). In single-tenant mode `org` is the default org, so nothing changes. The caller's own address (`EmailOwner`, L2) is unchanged. | Owner decision 2026-11-23 (given in the KyCalendar thread): members of one org, on every plan, get internal scheduling (direct delivery, free/busy, the local out-of-office comment, meeting membership), and nothing crosses orgs. It replaces the 2026-11-21 rule "every address external, inside one org too", whose reason (an org wanting internal scheduling gets its own install) no longer holds now that Business runs here. That one lookup decides every internal path (Isolation, below), so scoping it by org scopes them all. KyIdentity keeps emails unique across the install (T D5), so an email names at most one account, and the org check only decides whether it counts. |
 | D6 | KyCalendar keeps a local mirror of `/api/suite/orgs` (`orgs` table), polled about every 60 s by the elected worker. Every access check reads the user's org status from that mirror in the same query as the user. | T D6 and Downstream contract 5 and 6. Reading status with the user, as T's `active_principals` does, means a suspension takes effect at the next request on every replica. |
 | D7 | In multi-tenant mode an account is an administrator only when the ID token carries `kycalendar.admin` (`internal/access/admin.go:9-12`) **and** its `org_id` equals the configured staff org (`KYCALENDAR_STAFF_ORG_ID`, required in multi). Every other account is an everyday member, whatever its roles. | Owner decision 4. T D8 already keeps admin roles and delegations in the staff org. This check is defence in depth: a staff mistake that assigns the app role in a customer org grants nothing here. |
 | D8 | Local accounts in multi-tenant mode are staff break-glass administrators only: the bootstrap `admin` and `init-admin` accounts, in the staff org. `create-user`, admin People writes and local everyday sign-in are refused. | A customer account's org must come from a verified token, a signed webhook or a suite answer (Downstream contract 4). A local account has none of those, so it cannot be a customer. |
-| D9 | In multi-tenant mode, local groups, SCIM, rooms and equipment, admin-made group calendars and reattach are off (404). Group calendars come only from KyIdentity suite groups. | Business features. They stay in single-tenant installs (owner decision 5), as T "Per-org features" does for KyIdentity's business features. It also leaves the only group names in use as `suite-group:<KyIdentity id>` (`internal/store/suite_groups.go:33`), which are already unique across orgs. So `groups.display_name UNIQUE` (`migrations.go:76`) and `resources_name` (`migrations.go:663`) need no per-org rewrite. |
+| D9 | In multi-tenant mode, local groups, SCIM, rooms and equipment, admin-made group calendars and reattach are off (404). Group calendars come only from KyIdentity suite groups. | Business features. They stay off for every plan on the shared install in v1, Business included (owner decision 2026-11-23), and stay in single-tenant Enterprise installs, as T "Per-org features" does for KyIdentity's business features (SCIM and HR provisioning off in multi-tenant v1). A Business org gets group calendars through suite groups; rooms and equipment wait until an org can have administrators (owner decision 4). It also leaves the only group names in use as `suite-group:<KyIdentity id>` (`internal/store/suite_groups.go:33`), which are already unique across orgs. So `groups.display_name UNIQUE` (`migrations.go:76`) and `resources_name` (`migrations.go:663`) need no per-org rewrite. |
 | D10 | Every KyCalendar↔KyPost and KyCalendar↔KyMessages body gains `org_id` in multi-tenant mode. KyCalendar fills it from the account row. On receipt, KyCalendar resolves the account by `(sub, issuer)` as today and requires the body's `org_id` to equal the account's. A mismatch or an absent `org_id` answers exactly like an unknown user. | T "Suite directory", `/api/suite/peer`: the pair secret is per pair, not per org, so the org must travel in the signed body and be checked. A peer's `org_id` is a check, never a source: KyCalendar never assigns an org from a peer. |
-| D11 | Org quotas come from `/api/suite/orgs` `quotas` (T "Entitlements"). Keys: `max_bytes` (the org's total calendar storage), `max_bytes_per_user`, `booking_pages` (bool). An absent key falls back to today's install setting. | Downstream contract 6. Today's caps are per owner and per install (`internal/config/config.go:296-307`). A shared install needs an org total between the two. |
+| D11 | Org quotas come from `/api/suite/orgs` `quotas`, which is KyCalendar's `org_apps.quotas_json` row for that org in KyIdentity, set per org (T "Entitlements"). Keys: `max_bytes` (the org's total calendar storage), `max_bytes_per_user`, `booking_pages` (bool). An absent key falls back to today's install setting. Both byte keys are optional and combine, so a plan can be pooled (`max_bytes` only, for example Family), per person (`max_bytes_per_user` only), or both; KyCalendar needs no change for either (owner decision 2026-11-23 leaves Family's choice open). | Downstream contract 6. Today's caps are per owner and per install (`internal/config/config.go:296-307`). A shared install needs an org total between the two. |
 | D12 | A `deleted` org is purged by the elected worker in short, resumable batches behind a fail-closed audit row (Lifecycle, Deleted). It is never one transaction, which would hold `calendar-total` and block every other org's writes. Its `orgs` mirror row stays as a tombstone, so a late token or peer message naming it is refused. | Downstream contract 5. T keeps the same tombstone rule for its own `orgs` rows. |
+| D13 | **KyCalendar has no per-plan or per-kind rule.** It never reads an org's plan, kind (`person`, `household`, `business`) or seat cap. A Business org of N seats runs on exactly the rules a Personal org of 1 does; size changes only how many accounts and rows it has. Seats are enforced by KyIdentity when it adds a member (T "Entitlements"); KyCalendar never refuses an account for its org's size. | Owner decision 2026-11-23 puts every plan on one install. A rule keyed on a plan would drift from KyIdentity's plans and need a release for each plan change. Every rule written with households in mind is checked against a Business org of N seats below (Plans and org size). |
 
 ## Inventory
 
@@ -237,7 +244,7 @@ their handle from middleware:
   groups, pruning, backup) read across orgs through a `PlatformStore`, built in PR 4, where
   suspension first needs a worker to know a row's org. Every row it returns carries `org_id`, and
   each unit of work runs under that row's `OrgStore`. Until then a worker acts only on its row's own
-  account: delivery is external in multi-tenant mode (D5), and a feed refresh writes into its
+  account: delivery reaches only accounts in the sender's org (D5), and a feed refresh writes into its
   subscriber's calendar, whose objects take that calendar's org.
 
   > **Built in PR 4b (2026-11-22), without a `PlatformStore`.** Each worker's due-row query
@@ -254,15 +261,15 @@ caller's org.
 
 | # | Where | Today | Multi-tenant |
 |---|---|---|---|
-| L1 | `CalendarUser`, `internal/store/scheduling.go` | One active everyday account with that email anywhere | Nobody (D5) |
+| L1 | `CalendarUser`, `internal/store/scheduling.go` | One active everyday account with that email anywhere | That account only when it is in the org passed in (D5) |
 | L2 | `Address`, `internal/davbackend/scheduling.go:155-169` | The shared-email rule across the install | Unchanged, through `EmailOwner`. KyIdentity's global emails (T D5) make a cross-org twin impossible. `organizerEdits` uses it too: it only recognises an organizer's own object in a calendar both can edit, and another org's account holds no grant there (L10). |
-| L3 | Internal delivery, `scheduling.go:339-341` | A local recipient gets the message written into their calendar (`deliverToAttendee`, `:477`) | Never. Every recipient goes out through KyPost (`sendExternal`, `internal/davbackend/external.go:36-79`). |
-| L4 | `Plan`, `scheduling.go:204` | Marks attendees internal for the invite budget | None internal |
-| L5 | CalDAV outbox free/busy, `internal/davbackend/surface.go:96-114` | Busy times of any account on the install (`2.0`), else `3.7` | `3.7` for every address, as for a stranger |
-| L6 | `GET /api/freebusy`, `internal/api/freebusy.go:56-75` | Busy times of any account, else `unknown: true` | `unknown` for every address, as for a stranger |
-| L7 | Out-of-office comment, `internal/davbackend/out_of_office.go:104-107` | The local comment for any organizer on the install | The remote comment for everyone |
-| L8 | Meeting membership, `internal/api/events.go:264-270` | The video link stays clickable for any organizer on the install | Plain text for every other organizer |
-| L9 | Group-calendar cancellation, `internal/api/calendars.go:320-345` | Cancels as any organizer on the install | Sends nothing |
+| L3 | Internal delivery, `scheduling.go:283`, `:339-341` | A local recipient gets the message written into their calendar (`deliverToAttendee`, `:477`) | Only a recipient in the outbox row's org (the sender's, `scheduling_outbox.org_id`). Everyone else goes out through KyPost (`sendExternal`, `internal/davbackend/external.go:36-79`). |
+| L4 | `Plan`, `scheduling.go:149`, `:204` | Marks attendees internal for the invite budget | Attendees in the organizer's org |
+| L5 | CalDAV outbox free/busy, `internal/davbackend/surface.go:96-114` | Busy times of any account on the install (`2.0`), else `3.7` | Busy times of an account in the caller's org; `3.7` for everyone else, as for a stranger |
+| L6 | `GET /api/freebusy`, `internal/api/freebusy.go:56-75` | Busy times of any account, else `unknown: true` | Busy times of an account in the caller's org; `unknown` for everyone else |
+| L7 | Out-of-office comment, `internal/davbackend/out_of_office.go:104-107` | The local comment for any organizer on the install | The local comment for an organizer in the absent member's org, the remote one otherwise |
+| L8 | Meeting membership, `internal/api/events.go:264-270` | The video link stays clickable for any organizer on the install | Clickable for an organizer in the caller's org, plain text otherwise |
+| L9 | Group-calendar cancellation, `internal/api/calendars.go:320-345` | Cancels as any organizer on the install | Cancels as an organizer in the calendar's org; sends nothing otherwise |
 | L10 | `SetGrant`, `internal/store/calendars.go:178-198` | Checks only that the group exists | `(org_id, id)`, plus the composite FK. A group ID from another org is `404`. |
 | L11 | Suite group members, `internal/store/suite_groups.go:161-167` | Subjects in the issuer scope | Subjects in the scope **and** the suite group's org |
 | L12 | Admin lists: `ListUsers`, `ListAuditRecords` (`sqlstore.go:1766`) | Whole install | Staff routes only, bound to the selected org (Admin surface) |
@@ -449,10 +456,12 @@ state only to the account's own holder, as T owner answer 4 does.
 
 ### Sharing, invitations and free/busy
 
-- **Inside an org**: group calendars through suite groups (D9) and grants (L10). Invitations and
-  free/busy between colleagues work as across orgs (D5), by email.
-- **Across orgs**: only by email, deliberately. No attendee is a calendar user in multi-tenant
-  mode (D5), so `deliver` hands the message to KyPost (`scheduling.go:339-341`).
+- **Inside an org**, on every plan: group calendars through suite groups (D9) and grants (L10).
+  Invitations between members are delivered directly into each other's calendars, and free/busy,
+  the local out-of-office comment and meeting links work between them, as on a single-tenant
+  install today (D5, L3–L9).
+- **Across orgs**: only by email, deliberately. An attendee in another org is never a calendar
+  user for the sender (D5), so `deliver` hands the message to KyPost (`scheduling.go:339-341`).
   KyPost mails it. If the address is a hosted KyPost mailbox, KyPost forwards it to
   `/api/itip/inbound` for the recipient's own account. A new invitation there is never written: it
   waits as `pending` until the recipient answers through `/api/itip/respond`
@@ -460,8 +469,8 @@ state only to the account's own holder, as T owner answer 4 does.
   way. Nothing crosses the boundary without the recipient's own action.
   - Inbound needs `dkim_aligned` (`itip_handlers.go:203-207`). Whether KyPost marks mail between two
     hosted mailboxes as aligned is unverified (open question 6).
-- **Free/busy** answers every address like a stranger's (L5, L6), so it reveals nothing about
-  any account.
+- **Free/busy** answers every address outside the caller's org like a stranger's (L5, L6), so
+  it reveals nothing about another org's accounts, or whether an address is a customer.
 - **Scheduling switch**: until the device gate passes, launch deployments pin
   `KYCALENDAR_SCHEDULING=false` (`AGENTS.md:323`). With scheduling off, nothing is delivered
   internally or by mail, so nothing crosses orgs at all.
@@ -533,6 +542,26 @@ rest of the audit log (365 days, `AGENTS.md:303`). The org ID is opaque, so the 
 customer data.
 
 Single-tenant keeps every route as it is today.
+
+## Plans and org size
+
+Owner decision 2026-11-23 puts Personal (1 member), Couple (2), Family (up to 6) and Business (N
+seats) on this one install. Every rule above was first written with people and households in mind.
+Checked against a Business org of N seats:
+
+| Rule | Holds for N seats? | Why |
+|---|---|---|
+| No administrators inside customer orgs (owner decision 4, D7, D8) | Yes, unchanged | A Business org's members are everyday members in KyCalendar. Membership, seats and suite groups are managed in KyIdentity. If KyIdentity's 2026-11-23 amendment gives a Business org its own administrators, they act in KyIdentity; KyCalendar grants them no admin power until a later spec says so. Staff keep the per-org admin surface (Admin surface). |
+| Group calendars only from suite groups (D9) | Yes, but now needed | A team shares calendars through KyIdentity suite groups. Today the suite-group poll is single-tenant (Isolation, 4b note), so a Business org has no group calendars until it polls per org (build step 4g, open question 2). |
+| Rooms, equipment, local groups, SCIM off (D9) | Yes, by decision | Off for every plan in v1 (owner decision 2026-11-23). |
+| Scheduling between members (D5) | Yes | Internal within the org on every plan. A Business org of N members works like a single-tenant install of N users today. |
+| Invite limits (1,000 new invitees per sender per hour, `invitation_budget.go:11`) | Yes | Per sender, not per org, so a bigger org gets no smaller share. Internal attendees in the org do not count as new invitees (L4). |
+| Quotas (D11) | Yes | Set per org by KyIdentity from `org_apps.quotas_json`; a Business plan scales `max_bytes` with seats there, not here. |
+| Seats (D13) | Yes | KyIdentity's. KyCalendar never counts them. |
+| Purge (D12) | Yes | Batched and resumable whatever the org's size. |
+| `export-org` (Lifecycle) | Yes | One `.ics` per calendar, grouped by member, for any number of members. |
+| Peer bodies (D10) | Yes | One `org_id` per body, whatever the org's size. |
+| One writer for every org's writes (Residual risks) | Worse | Business orgs write more; capacity is open question 4. |
 
 ## Lifecycle
 
@@ -684,8 +713,8 @@ question 1.
 | Attacker | Goal | Defence |
 |---|---|---|
 | Member of org A | Read or change org B's calendars, events, tasks or bookings by putting B's IDs in API, CalDAV or MCP calls | The DAV home rule (`dav.go:37-42`) and `access.Resolve` (`role.go:43-62`) key on the caller. Every O and D query goes through an `OrgStore` bound to the caller's org. A cross-org ID answers exactly like a missing one, as `TestCrossOrgMatrix` proves. |
-| Member of org A | Write into org B's calendar by inviting a B member | No calendar user in multi-tenant mode (D5, L3). The invitation goes out as mail and waits `pending` until the B member answers it themselves. |
-| Member of org A | Read a B member's busy times, or learn whether an address is a customer | Free/busy is per org (L5, L6). A B member answers like a stranger, byte for byte (matrix test). |
+| Member of org A | Write into org B's calendar by inviting a B member | A B member is never a calendar user for an A sender (D5, L3): `CalendarUser` matches only A's org, and delivery reads the org from the outbox row, never from the message. The invitation goes out as mail and waits `pending` until the B member answers it themselves. A cross-org pair in `TestCrossOrgMatrix` proves an A sender's invitation to a B address writes nothing into B. |
+| Member of org A | Read a B member's busy times, or learn whether an address is a customer | Free/busy is per org (L5, L6): an A colleague's busy times show, a B member answers like a stranger, byte for byte (matrix test). |
 | Calendar manager in org A | Grant an A calendar to an org B group by its ID | `SetGrant` resolves `(org_id, id)` (L10), and the composite FK refuses the write at the database |
 | Customer given `kycalendar.admin` by a staff mistake | Gain administrator access | D7: admin only in the staff org. A customer account is always an everyday member. |
 | Forged or replayed directory webhook | Create an account in another org, or move one | HMAC over the body, which carries `org_id`. The timestamp window is ±5 minutes (`kysignon.go:52`). A known `sub` with another or no org gets removals only, and never a deletion, profile change or create. `users.org_id` is immutable. |
@@ -712,10 +741,10 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
      `TestOrgOwnedTablesHaveOrgID`, and the full `make ci` and `make test-postgres`.
 2. **Store scoping.** `OrgStore`, the pre-org allowlist, and L1–L11, split so each
    PR stays reviewable: (a) users, groups, grants and suite groups; (c) L1–L9 (every address
-   external, D5), `org_id` written from the parent row on calendar, object, outbox and
+   external, the 2026-11-21 D5; step 4f scopes them to the org instead), `org_id` written from the parent row on calendar, object, outbox and
    invite-budget inserts, and cross-org rows for calendars, booking types, task views and goals;
    (d) `org_id` on audit and device-pairing inserts (an audit row joins its user's org, or is a
-   platform row when it names none), and the route-coverage guard. There is no (b): D5 replaced the per-org scheduler lookup. Bookings,
+   platform row when it names none), and the route-coverage guard. There was no (b): the 2026-11-21 D5 replaced the per-org scheduler lookup. Step 4f brings it back for the 2026-11-23 D5. Bookings,
    tasks, meetings and presence are D tables read by the caller's user ID, so they need no store
    change, only the matrix rows.
    - Tests: `TestCrossOrgMatrix` and `TestEveryRouteIsInTheCrossOrgMatrix`, run on SQLite and
@@ -746,6 +775,18 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    write's own transaction on both databases, the unknown-credential audit budget into
    `security_windows` on PostgreSQL, and the docs list what stays per process and why); (d) D11
    quotas; (e) `export-org`.
+   (f) **internal scheduling within an org** (D5, owner decision 2026-11-23):
+   `CalendarUser(ctx, org, email)` with `AND org_id = ?` in multi-tenant mode, and every caller
+   in L1–L9 passing the org of the account it acts for: delivery takes the outbox row's
+   `org_id`, never anything in the message. (g) **suite groups per org**: the poll calls
+   `/api/suite/groups?org_id=` for each serving org (Suite answers, open question 2), so a
+   Business team's suite groups make group calendars.
+   - Tests for (f): two members of one org get direct delivery, free/busy, the local
+     out-of-office comment, clickable meeting links and group-calendar cancellation. A member of
+     another org gets the stranger's answer on each, byte for byte, and an invitation to them
+     writes nothing into their calendar (`TestCrossOrgMatrix`). Single-tenant golden answers are
+     unchanged. Tests for (g): a suite group in each of two orgs makes one group calendar in each,
+     and neither org sees the other's.
    - Tests: a suspended org is refused on every credential type (session, DAV, MCP, booking page,
      KyPost inbound). A resume restores DAV with the same app password. The purge leaves no org
      row, checked against the classification. A restore of a capsule taken before a deletion
@@ -764,7 +805,8 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    a sign-in on one is a session on the other, a suspension polled by the elected worker refuses
    both at their next request, and the sign-in, DAV-failure and invite limits admit their value
    once across both, not twice. An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
-   KyMessages: two orgs, an invitation across them by mail, and suspension and deletion of one.
+   KyMessages: two orgs, an invitation within one delivered directly and one across them by mail, and
+   suspension and deletion of one.
 
 ## Residual risks
 
@@ -773,6 +815,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
   `internal/store/sqlstore.go:170-176`). A busy org delays writes in every other org. A purge
   batch holds it for about 0.1 s (measured in PR 4c); ordinary write capacity is unmeasured (open
   question 4).
+- **Business orgs make one org's mistakes bigger.** A Business org of N seats has internal
+  delivery and free/busy among N members (D5), so a member misusing scheduling reaches N
+  colleagues' calendars, as on a single-tenant install today. It never reaches another org.
 - **Shared pair secrets.** A compromised KyPost or KyMessages can speak for any account in any org,
   since D10's `org_id` is only as honest as the peer. All peers are platform-run.
 - **Backups hold deleted orgs** until the capsules and local copies age out (`KYCALENDAR_BACKUP_KEEP`,
@@ -796,7 +841,8 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    - Recommend (a) for v1, the same answer as T open question 9 (c). (c) contradicts Downstream
      contract 5.
 2. **Suite group polling cost.** `/api/suite/groups` needs one call per org each minute in
-   multi-tenant mode. Recommend asking KyIdentity for `since=<revision>` on groups, or a
+   multi-tenant mode, and with every paid account an org (owner decision 2026-11-23), that is one
+   call per customer. Recommend asking KyIdentity for `since=<revision>` on groups, or a
    platform-scoped listing that carries `org_id` per group, before org count passes a few hundred.
    Until then, poll only orgs that are `active` and `enabled`.
 3. **How KyCalendar knows the staff org.** Recommend `KYCALENDAR_STAFF_ORG_ID` (D7) for v1. Revisit
