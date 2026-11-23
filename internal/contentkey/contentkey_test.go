@@ -251,7 +251,17 @@ func TestPartListEncoding(t *testing.T) {
 			t.Errorf("part %d: %+v want %+v", i, got[i], parts[i])
 		}
 	}
-	dup, _ := EncodeParts([]Part{{Kind: PartBase, Seq: 1}, {Kind: PartPatch, Seq: 1, Label: "x"}})
+	if _, err := EncodeParts([]Part{{Kind: PartBase, Seq: 1}, {Kind: PartPatch, Seq: 1, Label: "x"}}); err == nil {
+		t.Error("a repeated sequence number encoded")
+	}
+	// The same list built by hand: the second part's seq (bytes 2-9 of its header) set to the first's.
+	two, err := EncodeParts([]Part{{Kind: PartBase, Seq: 1}, {Kind: PartPatch, Seq: 2, Label: "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dup := bytes.Clone(two)
+	second := 6 + 11 + 1 + 4 // magic+count, first header, its key ID length byte, its sealed length
+	dup[second+9] = 1
 	for name, bad := range map[string][]byte{
 		"empty":       nil,
 		"wrong magic": append([]byte("KCP2"), b[4:]...),

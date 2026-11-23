@@ -149,10 +149,16 @@ func EncodeParts(parts []Part) ([]byte, error) {
 	}
 	b := append([]byte{}, partsMagic...)
 	b = binary.BigEndian.AppendUint16(b, uint16(len(parts)))
+	seen := map[uint64]bool{}
 	for _, p := range parts {
 		if err := p.check(); err != nil {
 			return nil, err
 		}
+		if seen[p.Seq] {
+			// DecodeParts refuses it, so storing it would make the object unreadable.
+			return nil, fmt.Errorf("contentkey: sequence number %d used twice", p.Seq)
+		}
+		seen[p.Seq] = true
 		id, err := hex.DecodeString(p.WorkerKey)
 		if err != nil || (len(id) != 0 && len(id) != 16) {
 			return nil, errors.New("contentkey: worker key ID")
