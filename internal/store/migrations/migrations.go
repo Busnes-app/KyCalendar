@@ -610,6 +610,23 @@ CREATE TABLE sso_logouts (
 	// export_only marks a session from a KyIdentity export_only token: it reaches only the
 	// export routes, and only while its org is deletion_scheduled (tenancy spec, Export).
 	{Version: 39, Name: "session_export_only", SQLite: sessionExportOnly, Postgres: sessionExportOnly},
+	{Version: 40, Name: "org_storage_pool", SQLite: storagePool("CAST(unixepoch() AS INTEGER)"), Postgres: storagePool("CAST(EXTRACT(EPOCH FROM statement_timestamp()) AS BIGINT)")},
+}
+
+// storagePool is the product-side shared state of KyIdentity's reserved-byte grant.
+// No network or startup mode is enabled by this additive migration.
+func storagePool(now string) string {
+	return `ALTER TABLE orgs ADD COLUMN pool_since BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE orgs ADD COLUMN pool_seq BIGINT NOT NULL DEFAULT 0 CHECK (pool_seq >= 0);
+ALTER TABLE orgs ADD COLUMN pool_report_used BIGINT NOT NULL DEFAULT 0 CHECK (pool_report_used >= 0);
+ALTER TABLE orgs ADD COLUMN pool_report_want BIGINT NOT NULL DEFAULT 0 CHECK (pool_report_want >= 0);
+ALTER TABLE orgs ADD COLUMN pool_sent_at BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE orgs ADD COLUMN pool_applied_seq BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE orgs ADD COLUMN pool_ceiling BIGINT CHECK (pool_ceiling >= 0);
+ALTER TABLE orgs ADD COLUMN pool_expires_at BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE orgs ADD COLUMN pool_stale_seq BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE orgs ADD COLUMN pool_inflight BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE orgs SET pool_since = ` + now + `;`
 }
 
 // contentEncryption is content encryption at rest's schema (docs/superpowers/specs/

@@ -84,6 +84,12 @@ type Store interface {
 	Tenancy(ctx context.Context) (Tenancy, error)
 	// OrgQuotas reads org id's quotas from the mirror (org_quotas.go).
 	OrgQuotas(ctx context.Context, id OrgID) (OrgQuotas, error)
+	// Storage reporting owns its immutable snapshot and monotonic sequence in the shared DB.
+	// The transport is a later phase; it must retry frozen reports and fence stale answers.
+	BeginStorageReport(ctx context.Context, org OrgID, want int64) (StorageReport, error)
+	ApplyStorageGrant(ctx context.Context, org OrgID, seq, ceiling, ttl int64) error
+	StaleStorageReport(ctx context.Context, org OrgID, seq, remoteSeq int64) error
+	AdvanceStorageSequence(ctx context.Context, org OrgID, past int64) error
 	// OrgServes reports whether org id is mirrored, active and enabled.
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
 	// OrgExportable reports whether org id is mirrored deletion_scheduled and enabled.

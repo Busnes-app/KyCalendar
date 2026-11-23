@@ -182,7 +182,8 @@ func (s *SQLStore) purgeRest(ctx context.Context, org OrgID, objects, cals int) 
 	defer tx.Rollback()
 	// Claim the finish first: a concurrent purge (the worker beside purge-org) that finished
 	// already leaves nothing to do, and this row lock holds the other back until commit.
-	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET purged_at = ? WHERE id = ? AND purged_at IS NULL`), time.Now().Unix(), org)
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET purged_at = ?, pool_ceiling = NULL,
+pool_expires_at = 0, pool_inflight = FALSE, pool_since = 0 WHERE id = ? AND purged_at IS NULL`), time.Now().Unix(), org)
 	if err != nil {
 		return err
 	}
