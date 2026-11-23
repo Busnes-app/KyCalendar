@@ -2,6 +2,7 @@ package skeleton
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -358,5 +359,32 @@ func TestPatchNamesAreCaseInsensitive(t *testing.T) {
 	got, err := Merge(skel, []Layer{{Base: true, Seq: 1, Plaintext: []byte(meeting)}, {Seq: 2, Plaintext: patch}})
 	if err != nil || strings.Count(string(got), "LOCATION") != 1 || !strings.Contains(string(got), "LOCATION:Room 7") {
 		t.Errorf("lower-case patch: %v\n%s", err, got)
+	}
+}
+
+// A patch value must already be in escaped wire form: a raw newline, another control character,
+// or a '"' in a parameter value would break the content line, so the patch is refused.
+func TestPatchValuesMustFitOneContentLine(t *testing.T) {
+	ok := Op{Op: "set", Component: "VEVENT", Property: "DESCRIPTION", Values: []PropValue{{Value: `two\nlines`, Params: map[string][]string{"ALTREP": {"cid:x@y"}}}}}
+	if _, err := EncodePatch([]Op{ok}); err != nil {
+		t.Fatalf("escaped value refused: %v", err)
+	}
+	for name, v := range map[string]PropValue{
+		"raw LF":             {Value: "two\nlines"},
+		"raw CR":             {Value: "a\rb"},
+		"NUL":                {Value: "a\x00b"},
+		"DEL":                {Value: "a\x7fb"},
+		"quote in param":     {Value: "x", Params: map[string][]string{"ALTREP": {`a"b`}}},
+		"newline in param":   {Value: "x", Params: map[string][]string{"ALTREP": {"a\nb"}}},
+		"colon in param key": {Value: "x", Params: map[string][]string{"X:Y": {"a"}}},
+	} {
+		op := Op{Op: "set", Component: "VEVENT", Property: "DESCRIPTION", Values: []PropValue{v}}
+		if _, err := EncodePatch([]Op{op}); err == nil {
+			t.Errorf("%s: patch encoded", name)
+		}
+		raw, _ := json.Marshal([]Op{op})
+		if _, err := DecodePatch(raw); err == nil {
+			t.Errorf("%s: patch decoded", name)
+		}
 	}
 }

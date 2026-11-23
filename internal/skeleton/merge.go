@@ -32,7 +32,9 @@ type Op struct {
 	URL          string      `json:"url,omitempty"`    // conference: "" removes it
 }
 
-// PropValue is one property instance in a patch.
+// PropValue is one property instance in a patch, in iCalendar's escaped wire form: Value as
+// go-ical's Prop.Value holds it (a newline is the two characters \n), and parameter values
+// unquoted. check refuses anything that would break a content line.
 type PropValue struct {
 	Params map[string][]string `json:"params,omitempty"`
 	Value  string              `json:"value"`
@@ -83,6 +85,17 @@ func DecodePatch(b []byte) ([]Op, error) {
 	return ops, nil
 }
 
+// lineSafe reports whether s fits in one content line: no control character other than tab,
+// and none of extra.
+func lineSafe(s, extra string) bool {
+	for _, r := range s {
+		if (r < 0x20 && r != '\t') || r == 0x7f || strings.ContainsRune(extra, r) {
+			return false
+		}
+	}
+	return true
+}
+
 // norm is o with its component and property names in upper case: iCalendar names are
 // case-insensitive, and the readable allowlist and go-ical both use upper case.
 func (o Op) norm() Op {
@@ -102,6 +115,21 @@ func (o Op) check() error {
 		}
 		if isReadable(o.Component, o.Property) {
 			return fmt.Errorf("skeleton: %s is readable; it changes in the skeleton, never in a patch", o.Property)
+		}
+		for _, v := range o.Values {
+			if !lineSafe(v.Value, "") {
+				return errors.New("skeleton: a patch value holds a raw control character; use the escaped form")
+			}
+			for k, ps := range v.Params {
+				if !lineSafe(k, `"=;:,`) {
+					return errors.New("skeleton: a patch parameter name holds a character a content line cannot")
+				}
+				for _, p := range ps {
+					if !lineSafe(p, `"`) {
+						return errors.New(`skeleton: a patch parameter value holds '"' or a control character`)
+					}
+				}
+			}
 		}
 		return nil
 	}
