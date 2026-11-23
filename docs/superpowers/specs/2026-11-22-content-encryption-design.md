@@ -311,8 +311,9 @@ turns it on.
    `booking-hold` sealing of a hold's name and note, resource `LOCATION` parts, feed refresh with an HMAC change check,
    KyMessages titles at write time, out-of-office and task flags.
    - Tests: an organizer's update that clears `LOCATION` reaches an attendee's encrypted copy with
-     no location and the attendee's own alarms intact. 40 room or meeting-link changes to a meeting
-     nobody opens stop adding parts at 16 and keep every readable change; the organizer's next read folds them
+     no location and the attendee's own alarms intact. 40 worker patches with distinct labels (one
+     `set LOCATION` on each of 40 occurrences) to a meeting nobody opens stop adding parts at 16,
+     audit `content_part_dropped` for the rest and keep every readable change; the organizer's next read folds them
      to one base with the same ETag.
    - Tests: completing a repeating task from KyPost on an encrypted account moves it to the same
      next occurrence as today, for both repeat-from-due and repeat-from-completion.
