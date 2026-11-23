@@ -1,9 +1,9 @@
 # Content encryption at rest, KyCalendar design
 
-Date: 2026-11-22. Status: proposed design, docs only. Build step CE1 is in held PRs: CE1a #194
-(`internal/contentkey`, keys and sealed formats), CE1b #195 (`internal/skeleton`, the split and
-merge) and CE1c #196 (migration 38). They follow this spec, and change when it does. Nothing reads
-or writes the new formats yet.
+Date: 2026-11-22. Status: proposed design, docs only. Build step CE1 follows this spec: CE1a
+(`internal/contentkey`, keys and sealed formats, #194) and CE1c (migration 38, #196) are merged,
+and CE1b (`internal/skeleton`, the split and merge) is in #195. They change when this spec does.
+Nothing reads or writes the new formats yet.
 
 Owner decisions (fixed, not reopened here):
 
