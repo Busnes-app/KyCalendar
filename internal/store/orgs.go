@@ -61,15 +61,15 @@ func (s *SQLStore) Tenancy(ctx context.Context) (Tenancy, error) {
 }
 
 func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM orgs WHERE id = ? AND status = 'active' AND enabled`), id).Scan(&n)
-	return n == 1, err
+	var ok bool
+	err := s.db.QueryRowContext(ctx, s.rebind(`SELECT `+s.orgServes("?")), id).Scan(&ok)
+	return ok, err
 }
 
-// ServingOrgs lists the orgs that serve now (active and enabled), by ID: those whose suite
-// groups the poll reconciles in multi-tenant mode.
+// ServingOrgs lists the orgs that serve now (orgServes), by ID: those whose suite groups the
+// poll reconciles in multi-tenant mode.
 func (s *SQLStore) ServingOrgs(ctx context.Context) ([]OrgID, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM orgs WHERE status = 'active' AND enabled ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id FROM orgs o WHERE `+s.orgServes("o.id")+` ORDER BY o.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,8 @@ type MirroredOrg struct {
 // ApplyOrgs writes one mirror poll (tenancy spec D6) and its next cursor in one transaction. A
 // row moves only forward in revision, a tombstone never serves again, and the staff and default
 // orgs come from configuration, so a poll never touches them. A new org gets its usage row here,
-// and an org that stops serving loses its sessions.
+// and an org that stops serving loses its sessions. A listing that reached the end (no orgs, or
+// a cursor at its last revision) vouches for every org, so it stamps them all seen (orgServes).
 func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
@@ -141,7 +142,7 @@ func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOr
 		if o.ID == staff || o.ID == DefaultOrg {
 			continue
 		}
-		serving := `SELECT ` + orgServes("?")
+		serving := `SELECT ` + orgActive("?")
 		var before, after bool
 		if err := tx.QueryRowContext(ctx, s.rebind(serving), o.ID).Scan(&before); err != nil {
 			return err
@@ -172,14 +173,42 @@ WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`), OrgsCursorSetting, strconv.FormatInt(next, 10), now); err != nil {
 		return err
 	}
+	if len(orgs) == 0 || next >= orgs[len(orgs)-1].Revision {
+		if _, err := tx.ExecContext(ctx, `UPDATE orgs SET seen_at = `+s.dbNow()+` WHERE status <> 'deleted'`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
+// OrgFresh is how long a customer org serves on its last poll answer. Past it, with KyIdentity
+// unreachable, every customer org stops serving until a poll reaches the end of the listing
+// (tenancy spec, Suite answers). The default and staff orgs come from configuration and never age.
+const OrgFresh = 15 * time.Minute
+
 // orgServes is a SQL condition: the org whose ID is col is active and enabled in the mirror
-// (tenancy spec D6). col is code, never input. Workers pick only such rows, so a suspended org's
-// work stays queued and never fills a batch.
-func orgServes(col string) string {
+// (tenancy spec D6), and a customer org's answer is at most OrgFresh old by the database's clock.
+// col is code, never input. Workers pick only such rows, so a suspended org's work stays queued
+// and never fills a batch.
+func (s *SQLStore) orgServes(col string) string {
+	return "EXISTS (SELECT 1 FROM orgs WHERE orgs.id = " + col + " AND orgs.status = 'active' AND orgs.enabled AND (orgs.seen_at >= " +
+		s.dbNow() + " - " + strconv.Itoa(int(OrgFresh.Seconds())) + " OR orgs.id = '" + string(DefaultOrg) +
+		"' OR orgs.id = (SELECT value FROM server_settings WHERE key = '" + StaffOrgSetting + "')))"
+}
+
+// orgActive is orgServes without the age bound: whether KyIdentity's last answer serves. ApplyOrgs
+// compares it before and after a write, so an org already stale that turns suspended still loses
+// its sessions.
+func orgActive(col string) string {
 	return "EXISTS (SELECT 1 FROM orgs WHERE orgs.id = " + col + " AND orgs.status = 'active' AND orgs.enabled)"
+}
+
+// dbNow is the database's clock in Unix seconds, so no replica's clock decides an org's age.
+func (s *SQLStore) dbNow() string {
+	if s.driver == "postgres" {
+		return "CAST(EXTRACT(EPOCH FROM statement_timestamp()) AS BIGINT)"
+	}
+	return "CAST(unixepoch() AS INTEGER)"
 }
 
 // OrgID names an org. Build one only from an authenticated principal (OrgOf) or, on a
@@ -239,7 +268,7 @@ func (o orgStore) GetUser(ctx context.Context, id string) (*User, error) {
 SELECT id, username, email, display_name, password_hash, role, status,
        sso_provider, sso_subject, sso_issuer, totp_secret_enc, totp_enabled,
        recovery_codes_hash, push_device_id, must_change_password,
-       totp_last_counter, created_at, updated_at, last_login_at, org_id, `+orgServes("users.org_id")+`
+       totp_last_counter, created_at, updated_at, last_login_at, org_id, `+o.s.orgServes("users.org_id")+`
 FROM users WHERE id = ? AND org_id = ?`), id, o.id))
 }
 

@@ -222,9 +222,17 @@ serves. A customer org's row changes in exactly two ways:
 - **`ResetAfterRestore`** sets every non-tombstone customer org to `stale` (Lifecycle,
   Restore). This is the only source of `stale`.
 
-A failed poll changes nothing: every row keeps its last answer. A short KyIdentity outage therefore
-leaves serving orgs serving, and KyIdentity's own token lifetimes and back-channel logouts still
-apply.
+A failed poll changes nothing: every row keeps its last answer. **That answer serves for at most
+15 minutes** (`store.OrgFresh`, the same bound as KyPost's and as the pool allowance, D14):
+an org serves only while its `seen_at`, by the database's clock, is that recent. Only a poll
+that reaches the end of the listing (an empty answer, or a cursor at its last revision) stamps
+every org's `seen_at`, so an incremental poll with nothing new keeps every org fresh. A
+listing cut short at suitedir's page bound stamps only what it listed, and the poll keeps
+listing until it reaches the end. The default and staff orgs come from configuration and never
+age. A KyIdentity outage shorter than the bound leaves serving orgs serving; past it, every
+customer org stops serving, as for a restore, until the next complete poll. Sessions are not
+ended for staleness, so access returns with the poll. A change that stops an org serving still
+ends its sessions when it is read, even if the org was stale already.
 
 ### `OrgStore`
 
@@ -830,7 +838,8 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    2026-11-22: the per-sender invite window moves into `security_windows`, counted in the
    write's own transaction on both databases, the unknown-credential audit budget into
    `security_windows` on PostgreSQL, and the docs list what stays per process and why); (d) D11
-   quotas; (e) `export-org`; (i) **Delete everything hands shared calendars over** (D16).
+   quotas; (e) `export-org`; (i) **Delete everything hands shared calendars over** (D16); (j) **the
+   answer age bound** (`store.OrgFresh`, Org model).
    (f) **internal scheduling within an org** (D5, owner decision 2026-11-23):
    `CalendarUser(ctx, org, email)` with `AND org_id = ?` in multi-tenant mode, and every caller
    in L1–L9 passing the org of the account it acts for: delivery takes the outbox row's

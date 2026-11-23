@@ -1,10 +1,12 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -299,5 +301,58 @@ func TestADeletedOrgIsPurgedAfterThePoll(t *testing.T) {
 	}
 	if _, err := s.store.Users().GetUserBySSO(ctx, "kysignon", "alice"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("a sign-in recreated a purged org's account: %v", err)
+	}
+}
+
+// A listing longer than suitedir's page bound comes back cut short; the poll keeps listing until
+// it reaches the end, so every org is mirrored and fresh. With KyIdentity unreachable past
+// store.OrgFresh nothing serves, and the next complete answer, even an empty one, restores it.
+func TestOrgPollReachesTheEndAndAgesOut(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	const total = 150 // past suitedir's 100-page bound at one org a page
+	var mu sync.Mutex
+	down := false
+	idp.suite = func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if down {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		n, _ := strconv.Atoi(cmp.Or(r.URL.Query().Get("cursor"), r.URL.Query().Get("since")))
+		if n >= total {
+			fmt.Fprint(w, `{"orgs":[]}`)
+			return
+		}
+		next := strconv.Itoa(n + 1)
+		if n+1 == total {
+			next = ""
+		}
+		fmt.Fprintf(w, `{"orgs":[{"id":"org-%d","status":"active","revision":%d,"enabled":true,"quotas":{}}],"next":%q}`, n+1, n+1, next)
+	}
+	ctx := context.Background()
+	s.SyncOrgs(ctx)
+	for _, id := range []store.OrgID{"org-1", "org-100", "org-150"} {
+		if !serves(t, s, id) {
+			t.Fatalf("%s is not mirrored after the poll", id)
+		}
+	}
+
+	if _, err := rawSQL(t, s).Exec(fmt.Sprintf(`UPDATE orgs SET seen_at = seen_at - %d`, int(store.OrgFresh.Seconds())+1)); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	down = true
+	mu.Unlock()
+	s.SyncOrgs(ctx)
+	if serves(t, s, "org-1") || !serves(t, s, "org-staff") {
+		t.Fatal("past OrgFresh with KyIdentity down, a customer org serves or the staff org does not")
+	}
+	mu.Lock()
+	down = false
+	mu.Unlock()
+	s.SyncOrgs(ctx) // from the cursor at 150: an empty, complete answer
+	if !serves(t, s, "org-1") {
+		t.Fatal("an empty complete poll did not restore a fresh answer")
 	}
 }
