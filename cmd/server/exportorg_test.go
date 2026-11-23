@@ -78,6 +78,8 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 	// Two clients' different rules under one non-IANA TZID: neither may be read with the other's.
 	exportFixtureZone(t, st, "cal_team", "t2", "Outlook one", "Customized Time Zone", "+0100")
 	exportFixtureZone(t, st, "cal_team", "t3", "Outlook two", "Customized Time Zone", "-0500")
+	// A third object reuses the renamed definition: it must point at the renamed zone too.
+	exportFixtureZone(t, st, "cal_team", "t4", "Outlook three", "Customized Time Zone", "-0500")
 
 	out := filepath.Join(t.TempDir(), "export")
 	m, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC))
@@ -140,12 +142,15 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 		!strings.Contains(tz, "TZOFFSETTO:-0500") || !strings.Contains(tz, "DTSTART;TZID=Customized Time Zone (2):20261110T090000") {
 		t.Errorf("colliding zones were not kept apart:\n%s", tz)
 	}
+	if n := strings.Count(tz, "DTSTART;TZID=Customized Time Zone (2):20261110T090000"); n != 2 {
+		t.Errorf("%d events point at the renamed zone, want 2 (the object that renamed it and the one that reuses it):\n%s", n, tz)
+	}
 	if strings.Count(tz, "BEGIN:VTIMEZONE") != 3 {
 		t.Errorf("team calendar has %d VTIMEZONEs, want 3 (Berlin and two distinct customized zones)", strings.Count(tz, "BEGIN:VTIMEZONE"))
 	}
 	var read exportManifest
 	mb, _ := os.ReadFile(filepath.Join(out, "manifest.json"))
-	if err := json.Unmarshal(mb, &read); err != nil || read.OrgID != store.DefaultOrg || read.Items != 5 || len(read.Calendars) != len(m.Calendars) {
+	if err := json.Unmarshal(mb, &read); err != nil || read.OrgID != store.DefaultOrg || read.Items != 6 || len(read.Calendars) != len(m.Calendars) {
 		t.Errorf("manifest %+v %v", read, err)
 	}
 	for _, c := range read.Calendars {

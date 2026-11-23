@@ -172,13 +172,13 @@ func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e
 			for n := 2; zones[name] != nil && !bytes.Equal(zones[name], body); n++ {
 				name = fmt.Sprintf("%s (%d)", id, n)
 			}
-			if zones[name] != nil {
-				continue
-			}
 			if name != id {
-				renamed[id] = name
-				child.Props.SetText(ical.PropTimezoneID, name)
+				renamed[id] = name // set before sharing, so a reused renamed zone is still pointed at
 			}
+			if zones[name] != nil {
+				continue // this exact definition is already written under name
+			}
+			child.Props.SetText(ical.PropTimezoneID, name)
 			zones[name] = body
 			out.Children = append(out.Children, child)
 		}
