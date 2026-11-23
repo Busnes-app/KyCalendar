@@ -75,6 +75,24 @@ func (c *calendarStore) orgLimits(ctx context.Context, tx *sql.Tx, calendarID st
 	return lim, &orgGuard{org: org, max: *q.MaxBytes, before: before}, err
 }
 
+// senderByteLimit applies the sender's own org quota to the install's per-user limit.
+func (c *calendarStore) senderByteLimit(ctx context.Context, tx *sql.Tx, sender string, fallback int64) (int64, error) {
+	if fallback <= 0 {
+		return fallback, nil
+	}
+	var raw string
+	err := tx.QueryRowContext(ctx, c.q(`SELECT o.quotas_json FROM users u JOIN orgs o ON o.id=u.org_id WHERE u.id=?`), sender).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fallback, nil
+	} else if err != nil {
+		return 0, err
+	}
+	if q := parseOrgQuotas(raw); q.MaxBytesPerUser != nil {
+		return *q.MaxBytesPerUser, nil
+	}
+	return fallback, nil
+}
+
 func (g *orgGuard) check(ctx context.Context, c *calendarStore, tx *sql.Tx) error {
 	if g == nil {
 		return nil
