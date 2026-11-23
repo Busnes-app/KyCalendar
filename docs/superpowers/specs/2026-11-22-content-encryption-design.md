@@ -113,12 +113,17 @@ Every place that reads `calendar_objects.data` or another content column, from t
   no user to unlock it, and its calendar shows the organizer and times.
 - **Outbox delivery** (`davbackend/scheduling.go:199-305`, `deliverToAttendee` `:422`,
   `deliverReply` `:556`): writes the skeleton and appends the part sealed at queue time (E14). A
-  `REPLY` changes `ATTENDEE` parameters, which are skeleton; a `COMMENT` it carries becomes a `set COMMENT` patch.
+  `REPLY` follows the reply rule below.
 - **Inbound iTIP from KyPost** (`internal/api/itip_handlers.go:211,241`,
   `davbackend/external.go:107-167`): the message arrives in plaintext from mail, is split, and its
   content is sealed to the recipient's calendar public key. An organizer's new version is a new
-  base, as the stored copy is replaced today (`external.go:107-167`). A reply touches skeleton
-  properties only.
+  base, as the stored copy is replaced today (`external.go:107-167`). A `REPLY` follows the reply
+  rule below.
+- **The reply rule**, the same for an internal `REPLY` from the outbox and an external one from
+  KyPost (RFC 5546 lets either carry `COMMENT`): the replying attendee's `ATTENDEE` parameters
+  (`PARTSTAT` and the rest) go to the organizer's skeleton. A `COMMENT` becomes a `set COMMENT`
+  patch sealed to the organizer's calendar public key (E5). Any other content property in the
+  reply is dropped, as the organizer's copy keeps its own content.
 - **Out-of-office and KyPost task flags** (`davbackend/out_of_office.go:26,98`,
   `internal/api/kypost_tasks.go:87`): seal what they write to the public key.
 - **Feed refresh** (`internal/feed/refresh.go:83-96`, `store/subscriptions.go:138-248`): fetched
@@ -245,8 +250,10 @@ turns it on.
      without a slot gets `403`. The database holds no content property in `data`. A multiget of
      2,000 objects stays under 1 s on Major.
 3. **CE3, workers.** Outbox sealing and HMAC dedupe (E14), inbound iTIP, booking confirm and the
-   the `booking-hold` sealing of a hold's name and note, resource `LOCATION` parts, feed refresh with an HMAC change check,
+   `booking-hold` sealing of a hold's name and note, resource `LOCATION` parts, feed refresh with an HMAC change check,
    KyMessages titles at write time, out-of-office and task flags.
+   - Tests: a `REPLY` with a `COMMENT`, internal and from KyPost, updates `PARTSTAT` in the
+     skeleton and puts the comment only in a sealed patch: `data` never contains it.
    - Tests: a booking reschedule, an attendee's reply and a room's answer on an encrypted account
      show up in the next CalDAV read, with the title and description unchanged.
    - Tests: each worker writes content an unlocked read returns, and none of them can open a slot (the
