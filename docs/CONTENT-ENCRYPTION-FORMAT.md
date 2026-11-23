@@ -162,7 +162,8 @@ the client sent it.
 
 A `value` is in iCalendar's escaped wire form: a newline is the two characters `\n`, as in a
 content line. A value may hold no control character other than tab, and a parameter value may hold
-no control character and no `"`. A patch that breaks this is refused, so a sealed patch can
+no control character and no `"`. One operation's values and parameters together, or its room
+link, are at most 2048 bytes. A patch that breaks this is refused, so a sealed patch can
 never corrupt the object it applies to.
 
 Component and property names in a patch are case-insensitive. They're stored, compared and applied in upper case.

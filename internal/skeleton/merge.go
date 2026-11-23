@@ -103,9 +103,16 @@ func (o Op) norm() Op {
 	return o
 }
 
+// MaxPatchValue bounds one operation's values (or room link), in bytes. With at most 16 patches
+// per object it bounds how far plain_size can drift before a fold (content encryption spec E4, E5).
+const MaxPatchValue = 2048
+
 func (o Op) check() error {
 	switch o.Op {
 	case "conference":
+		if len(o.URL) > MaxPatchValue || !lineSafe(o.URL, "") {
+			return errors.New("skeleton: a room link over 2 KiB or with a control character")
+		}
 		return nil
 	case "set", "remove":
 		if o.Component != ical.CompEvent && o.Component != ical.CompToDo || o.Property == "" {
@@ -115,6 +122,19 @@ func (o Op) check() error {
 		}
 		if isReadable(o.Component, o.Property) {
 			return fmt.Errorf("skeleton: %s is readable; it changes in the skeleton, never in a patch", o.Property)
+		}
+		size := 0
+		for _, v := range o.Values {
+			size += len(v.Value)
+			for k, ps := range v.Params {
+				size += len(k)
+				for _, p := range ps {
+					size += len(p)
+				}
+			}
+		}
+		if size > MaxPatchValue {
+			return fmt.Errorf("skeleton: a patch operation's values exceed %d bytes", MaxPatchValue)
 		}
 		for _, v := range o.Values {
 			if !lineSafe(v.Value, "") {

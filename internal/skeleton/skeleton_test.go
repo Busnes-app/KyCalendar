@@ -388,3 +388,22 @@ func TestPatchValuesMustFitOneContentLine(t *testing.T) {
 		}
 	}
 }
+
+// One operation's values, or its room link, are at most MaxPatchValue bytes: that bounds how far
+// plain_size can drift before a fold.
+func TestPatchValuesAreBounded(t *testing.T) {
+	long := strings.Repeat("x", MaxPatchValue+1)
+	for name, op := range map[string]Op{
+		"set":        {Op: "set", Component: "VEVENT", Property: "LOCATION", Values: []PropValue{{Value: long}}},
+		"two values": {Op: "set", Component: "VEVENT", Property: "LOCATION", Values: []PropValue{{Value: long[:1100]}, {Value: long[:1100]}}},
+		"param":      {Op: "set", Component: "VEVENT", Property: "LOCATION", Values: []PropValue{{Value: "x", Params: map[string][]string{"ALTREP": {long}}}}},
+		"room link":  {Op: "conference", URL: "https://" + long},
+	} {
+		if _, err := EncodePatch([]Op{op}); err == nil {
+			t.Errorf("%s over %d bytes encoded", name, MaxPatchValue)
+		}
+	}
+	if _, err := EncodePatch([]Op{{Op: "set", Component: "VEVENT", Property: "LOCATION", Values: []PropValue{{Value: long[:MaxPatchValue]}}}}); err != nil {
+		t.Errorf("exactly %d bytes refused: %v", MaxPatchValue, err)
+	}
+}
