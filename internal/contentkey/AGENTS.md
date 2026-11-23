@@ -20,14 +20,13 @@ calls either until build step CE2.
   TestVectorsStillOpen -update` only for a new format version, and say so in the PR. Clients
   outside the server (option 1) rely on these bytes.
 - **Every wrap binds what it is for.**
-  - A part binds its calendar, object UID, kind, `keep-alarms` flag, sequence number, label and
-    worker key ID.
-  - A seed wrap binds its calendar and holder.
+  - A part binds its calendar, object UID, kind, `keep-alarms` flag, sequence number, calendar
+    key version, label and worker key ID.
+  - A seed wrap binds its calendar, calendar key version and holder.
   - A slot is a key pair. Its private seed binds its kind, user and slot ID, and the account key
     sealed to it binds those and the account key version.
   - A worker key binds its calendar, calendar key version and ID.
-  - A seed wrap binds its calendar key version too, and a previous account key binds its user and
-    version.
+  - A previous account key binds its user and version.
 
   A new readable field joins the AAD.
 - **Keys are versioned (E3, E11).** A rotation adds account and calendar key versions and keeps
