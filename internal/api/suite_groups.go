@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/suitedir"
@@ -46,6 +47,14 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 		log.Printf("suite: groups: orgs: %v", err)
 		return
 	}
+	// Every org is tried each pass, starting where the last pass first failed: the lists share the
+	// client's rate limit at KyIdentity, so a fixed order would starve the same tail every time.
+	if from := s.suiteGroupsFrom.Load(); from != nil {
+		if i := slices.Index(orgs, *from); i > 0 {
+			orgs = append(orgs[i:], orgs[:i]...)
+		}
+	}
+	var failed *store.OrgID
 	for _, org := range orgs {
 		if ctx.Err() != nil {
 			return
@@ -53,12 +62,16 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 		if org == store.DefaultOrg {
 			continue // the single-tenant org (D4); KyIdentity has no such org to list
 		}
-		s.syncOrgSuiteGroups(ctx, scope, org, func(ctx context.Context) ([]suitedir.Group, error) { return dir.OrgGroups(ctx, string(org)) })
+		if !s.syncOrgSuiteGroups(ctx, scope, org, func(ctx context.Context) ([]suitedir.Group, error) { return dir.OrgGroups(ctx, string(org)) }) && failed == nil {
+			failed = &org
+		}
 	}
+	s.suiteGroupsFrom.Store(failed)
 }
 
-// syncOrgSuiteGroups lists one org's suite groups and reconciles them into that org.
-func (s *Server) syncOrgSuiteGroups(ctx context.Context, scope store.SCIMScope, org store.OrgID, list func(context.Context) ([]suitedir.Group, error)) {
+// syncOrgSuiteGroups lists one org's suite groups and reconciles them into that org. It reports
+// whether the list succeeded.
+func (s *Server) syncOrgSuiteGroups(ctx context.Context, scope store.SCIMScope, org store.OrgID, list func(context.Context) ([]suitedir.Group, error)) bool {
 	groups, err := func() ([]suitedir.Group, error) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -67,11 +80,11 @@ func (s *Server) syncOrgSuiteGroups(ctx context.Context, scope store.SCIMScope, 
 	if err != nil {
 		// suitedir errors carry neither the credentials nor the response body.
 		log.Printf("suite: groups: org %s: %v", org, err)
-		return
+		return false
 	}
 	for _, g := range groups {
 		if ctx.Err() != nil {
-			return
+			return true
 		}
 		if len(g.ID) > 128 {
 			continue // past what a group name column holds; KyIdentity IDs are far shorter
@@ -90,4 +103,5 @@ func (s *Server) syncOrgSuiteGroups(ctx context.Context, scope store.SCIMScope, 
 				g.ID, ch.Created, ch.Renamed, ch.Archived, ch.Unarchived, ch.GrantRestored, ch.Added, ch.Removed)
 		}
 	}
+	return true
 }
