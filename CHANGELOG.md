@@ -10,6 +10,9 @@
     organisation.
   - `KYCALENDAR_TENANCY` accepts only `single` (or unset): any other value refuses to start,
     because multi-tenant mode is not built yet.
+  - Erasure groundwork hands restored shared personal calendars to an eligible member of the
+    same organisation, preserving content and sync state. Audit or slug conflicts keep the data
+    for retry with the erased account deactivated; hosted startup remains gated.
   - **Upgrade impact:** the migration adds a column and its checks to the calendar object
     table, which on PostgreSQL validates every row once. Allow for it on a large install.
 

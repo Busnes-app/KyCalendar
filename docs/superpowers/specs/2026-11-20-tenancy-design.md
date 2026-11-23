@@ -1,8 +1,14 @@
 # Tenancy: single-tenant and multi-tenant (SaaS), KyCalendar design
 
-Date: 2026-11-20. Status: proposed design. Nothing is built, and this change is docs only. Product code
-waits for KyIdentity's tenancy step 3 (`org_id` in tokens, userinfo, logout tokens, signed webhooks
-and `/api/suite/orgs`).
+Date: 2026-11-20. Status: implementation in progress; hosted startup remains refused until step 6.
+As-built audit against `origin/main` at `03ee886` (2026-11-23): schema and isolation (1–2), identity
+and peers (3), lifecycle/quota/export/scheduling/groups/freshness (4a–g, 4j), restore erasure
+reconciliation, and staff routes (5) are merged. This phase adds 4i's store handover and erasure
+failure revocation. Remaining: 4i's slug-collision decision (question 12), storage pool (4h),
+object-store backup wiring (D15), content encryption after CE1, and hosted startup plus two-replica
+and suite acceptance (6). KyIdentity's pool contract is now published in its tenancy spec at
+`95305c4` ("POST /api/suite/storage"); ky-primitives `b1501fc` has no storage-report client yet.
+Those dependencies do not block the local lifecycle work here.
 
 Owner decisions (fixed, not reopened here):
 
@@ -681,6 +687,24 @@ A test proves the purge leaves no row with the org's ID, or naming one of its us
 O or D table, checked against the table classification. A second test kills the purge between
 batches and proves the next run finishes it.
 
+**Member erasure handover (4i, D16):** `internal/store/erasure.go` runs in `DeleteUser`'s
+transaction under `calendar-total`, for both the signed webhook and restore reconciliation.
+It selects an active everyday member in the calendar's org by strongest grant, account age and
+ID, changes only `owner_id`, and writes `calendar.owner_transferred`. Calendar caps and byte
+quotas do not admit this move: it adds no content. Private calendars are deleted, group calendars
+and other members' objects stay. Single-tenant deletion remains unchanged.
+
+Before attempting the deletion, both API paths durably deactivate the erased SSO account and
+revoke its credentials. A failed transfer or audit rolls back all data deletion and handovers;
+the webhook returns 503 for retry, and restore retains its pending mark. Access stays revoked.
+
+The public grant writer currently accepts only group calendars (`orgStore.SetGrant`), and the
+access resolver treats personal calendars as owner-only. The handover fixtures seed restored
+shared personal rows directly; this phase adds no personal-sharing route. A per-owner slug
+collision also refuses the erasure rather than renaming or dropping a calendar. Resolving that
+case while retaining D16's "only owner_id changes" needs question 12 answered before hosted
+acceptance; this implementation does not waive that gate.
+
 **Restore:** a capsule is the whole install (`internal/backup/payload.go:45-143`), so a restore
 can bring back an org deleted or suspended since the capsule was made. In multi-tenant mode
 `ResetAfterRestore` (`internal/store/sqlstore.go:81-131`) also sets every customer org's mirror row
@@ -992,3 +1016,12 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    Recommend 15 minutes: long enough to ride out a KyIdentity restart without refusing anyone's
    writes, short enough that other apps cannot overshoot the pool by much. KyIdentity's
    contract may fix its own figure, which then wins.
+
+12. **Handover slug collisions and personal sharing.** `calendars` has a unique
+    `(owner_kind, owner_id, slug)` key; an inheritor commonly already has `default`. Changing only
+    `owner_id` cannot transfer another `default` calendar to that account. The public sharing
+    surface currently grants group calendars only. Recommend retaining group-owned shared
+    calendars in hosted v1, which already survive member erasure, and explicitly deciding the
+    URL/slug rule before enabling personal sharing. If restored shared personal rows collide,
+    this phase preserves their data, revokes the erased account and retries with 503. No automatic
+    rename or schema change is authorized by D16; the hosted acceptance gate remains closed.

@@ -440,8 +440,8 @@ WHERE id = ? AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'i
 	return nil
 }
 
-// DeleteUser also deletes the user's calendars (objects and changes cascade): calendars.owner_id
-// has no foreign key, and orphaned bytes would count against the instance cap forever.
+// DeleteUser keeps shared personal calendars in multi-tenant mode (tenancy spec D16),
+// transferring them before deleting the remaining private calendars.
 func (u *userStore) DeleteUser(ctx context.Context, id string) error {
 	return u.deleteUser(ctx, id, "1 = 1")
 }
@@ -453,7 +453,7 @@ func (u *userStore) DeleteSCIMUser(ctx context.Context, scope SCIMScope, id stri
 
 // deleteUser deletes the user id if it matches the users clause.
 func (u *userStore) deleteUser(ctx context.Context, id, clause string, args ...any) error {
-	tx, err := u.store.db.BeginTx(ctx, nil)
+	tx, err := u.store.lockedTx(ctx, "calendar-total")
 	if err != nil {
 		return err
 	}
@@ -466,6 +466,9 @@ func (u *userStore) deleteUser(ctx context.Context, id, clause string, args ...a
 		return err
 	} else if rows == 0 {
 		return ErrNotFound
+	}
+	if err := u.transferCalendars(ctx, tx, id); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM calendars WHERE owner_kind = 'user' AND owner_id = ?"), id); err != nil {
 		return err

@@ -125,7 +125,7 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 	users := s.store.Users()
 	switch {
 	case event.Type == "user.erased" && own: // Delete everything
-		err = users.DeleteUser(ctx, u.ID)
+		err = s.eraseAccount(ctx, u.ID)
 	case event.Type == "user.mfa_reset":
 		err = users.RevokeSSOUser(ctx, u.ID, false)
 	case removal:
@@ -145,6 +145,15 @@ func (s *Server) handleTenantDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// eraseAccount first ends access durably. A failed handover (for example a slug collision)
+// must not leave an erased identity signed in while KyIdentity retries the erasure.
+func (s *Server) eraseAccount(ctx context.Context, id string) error {
+	if err := s.store.Users().RevokeSSOUser(ctx, id, true); err != nil {
+		return err
+	}
+	return s.store.Users().DeleteUser(ctx, id)
 }
 
 func (in directoryUser) primaryEmail() string {
