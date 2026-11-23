@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/Busnes-app/ky-primitives/suitedir"
@@ -15,34 +16,96 @@ import (
 // SuiteGroupsInterval is how often cmd/server reconciles KyIdentity's suite groups.
 const SuiteGroupsInterval = time.Minute
 
+// One multi-tenant pass lists at most suiteGroupsPerPass orgs, and stops after
+// suiteGroupsFailuresInARow failed lists. KyIdentity allows each client a burst of 120 and 2 a
+// second, which the app rail and people search share, so a pass never takes more than half of it
+// and never keeps calling while it is being refused. The next pass resumes where this one left off.
+const (
+	suiteGroupsPerPass        = 60
+	suiteGroupsFailuresInARow = 3
+)
+
 // SyncSuiteGroups gives each KyIdentity suite group one group calendar here (KyIdentity-server
 // docs/SUITE-DIRECTORY.md, GET /api/suite/groups). Only a live KyIdentity provider has the
-// list. A failed list changes nothing, and a group missing from the list is never archived:
-// only an explicit archived entry archives. Logs carry IDs and counts only, never names or
-// subjects.
+// list. In multi-tenant mode each serving org's groups are listed with its org_id and reconciled
+// into that org alone (tenancy spec, build step 4g); one org's failed list skips only that org.
+// A failed list changes nothing, and a group missing from the list is never archived: only an
+// explicit archived entry archives. Logs carry IDs and counts only, never names or subjects.
 func (s *Server) SyncSuiteGroups(ctx context.Context) {
 	p := s.signin.Load()
 	if p == nil || p.Kind != sso.KindKyIdentity {
 		return
 	}
-	groups, err := func() ([]suitedir.Group, error) {
-		dir, err := p.SuiteDirectory()
-		if err != nil {
-			return nil, err
-		}
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		return dir.Groups(ctx)
-	}()
+	dir, err := p.SuiteDirectory()
 	if err != nil {
-		// suitedir errors carry neither the credentials nor the response body.
 		log.Printf("suite: groups: %v", err)
 		return
 	}
+	ten, err := s.store.Tenancy(ctx)
+	if err != nil {
+		log.Printf("suite: groups: tenancy: %v", err)
+		return
+	}
 	scope := store.SCIMScope{Issuer: p.Binding, Providers: sso.AccountProviders(p.Kind)}
-	for _, g := range groups {
+	if !ten.Multi {
+		s.syncOrgSuiteGroups(ctx, scope, store.DefaultOrg, func(ctx context.Context) ([]suitedir.Group, error) { return dir.Groups(ctx) })
+		return
+	}
+	orgs, err := s.store.ServingOrgs(ctx)
+	if err != nil {
+		log.Printf("suite: groups: orgs: %v", err)
+		return
+	}
+	orgs = slices.DeleteFunc(orgs, func(o store.OrgID) bool { return o == store.DefaultOrg }) // D4: KyIdentity has no such org
+	if len(orgs) == 0 {
+		return
+	}
+	// Every org is tried each pass, round-robin: the lists share the client's rate limit at
+	// KyIdentity, so a fixed order would starve the same tail. The next pass starts just after
+	// the last org that listed, so an org that always fails (gone from KyIdentity, or a steady
+	// error) cannot pin the start; with no success at all, the start moves on by one.
+	start := 0
+	if from := s.suiteGroupsFrom.Load(); from != nil {
+		if i := slices.Index(orgs, *from); i >= 0 {
+			start = i
+		}
+	}
+	lastOK, failures := -1, 0
+	for k := range min(len(orgs), suiteGroupsPerPass) {
 		if ctx.Err() != nil {
 			return
+		}
+		i := (start + k) % len(orgs)
+		org := orgs[i]
+		if s.syncOrgSuiteGroups(ctx, scope, org, func(ctx context.Context) ([]suitedir.Group, error) { return dir.OrgGroups(ctx, string(org)) }) {
+			lastOK, failures = i, 0
+		} else if failures++; failures >= suiteGroupsFailuresInARow {
+			break // being refused, most likely rate-limited: stop spending the shared budget
+		}
+	}
+	next := (start + 1) % len(orgs)
+	if lastOK >= 0 {
+		next = (lastOK + 1) % len(orgs)
+	}
+	s.suiteGroupsFrom.Store(&orgs[next])
+}
+
+// syncOrgSuiteGroups lists one org's suite groups and reconciles them into that org. It reports
+// whether the list succeeded.
+func (s *Server) syncOrgSuiteGroups(ctx context.Context, scope store.SCIMScope, org store.OrgID, list func(context.Context) ([]suitedir.Group, error)) bool {
+	groups, err := func() ([]suitedir.Group, error) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		return list(ctx)
+	}()
+	if err != nil {
+		// suitedir errors carry neither the credentials nor the response body.
+		log.Printf("suite: groups: org %s: %v", org, err)
+		return false
+	}
+	for _, g := range groups {
+		if ctx.Err() != nil {
+			return true
 		}
 		if len(g.ID) > 128 {
 			continue // past what a group name column holds; KyIdentity IDs are far shorter
@@ -51,8 +114,7 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 		if calendar.CheckProps(&name, nil, nil) != nil {
 			name = g.Slug // validated by suitedir
 		}
-		// Single-tenant: one org. Tenancy PR 3 polls each org and reconciles into it.
-		ch, err := s.store.Org(store.DefaultOrg).ReconcileSuiteGroup(ctx, scope, store.SuiteGroup{ID: g.ID, Name: name, Active: g.State == suitedir.GroupActive, Subjects: g.Members})
+		ch, err := s.store.Org(org).ReconcileSuiteGroup(ctx, scope, store.SuiteGroup{ID: g.ID, Name: name, Active: g.State == suitedir.GroupActive, Subjects: g.Members})
 		if err != nil {
 			log.Printf("suite: group %s: reconcile failed: %v", g.ID, err)
 			continue
@@ -62,4 +124,5 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 				g.ID, ch.Created, ch.Renamed, ch.Archived, ch.Unarchived, ch.GrantRestored, ch.Added, ch.Removed)
 		}
 	}
+	return true
 }

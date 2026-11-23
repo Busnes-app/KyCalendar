@@ -45,6 +45,9 @@ type Server struct {
 	// signin is the live sign-in provider, nil until LoadSignIn binds accounts to one; saving
 	// sign-in settings swaps it.
 	signin atomic.Pointer[sso.Provider]
+	// suiteGroupsFrom is the org the next multi-tenant suite-group pass starts at: the one after
+	// the last org the previous pass listed, so a rate-limited tail is served first next time.
+	suiteGroupsFrom atomic.Pointer[store.OrgID]
 	// signinMu: a save holds it through the binding commit and the provider swap; a callback holds
 	// it for reading from its provider recheck to its session, so no save lands in between.
 	signinMu sync.RWMutex

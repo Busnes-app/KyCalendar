@@ -184,3 +184,241 @@ func TestSyncSuiteGroupsOnlyForKyIdentity(t *testing.T) {
 		t.Fatalf("state %s", got)
 	}
 }
+
+// Build step 4g (tenancy spec D9, L11): in multi-tenant mode each serving org's suite groups are
+// listed with its org_id and reconciled into that org alone. A member listed in another org's
+// group never joins it, a suspended org is not asked, and one org's failed list skips only that
+// org.
+func TestSyncSuiteGroupsPerOrg(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	asked := []string{}
+	answers := map[string]string{
+		"org-a": `{"groups":[{"id":"ga","name":"A team","slug":"a-team","state":"active","members":["sub-a","sub-b"]}]}`,
+		"org-b": `{"groups":[{"id":"gb","name":"B team","slug":"b-team","state":"active","members":["sub-b"]}]}`,
+	}
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		org := r.URL.Query().Get("org_id")
+		mu.Lock()
+		asked = append(asked, org)
+		body, ok := answers[org]
+		mu.Unlock()
+		if !ok {
+			http.Error(w, `{"error":"unknown_org"}`, http.StatusNotFound)
+			return
+		}
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(idp.Close)
+	p := sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client())
+	s.signin.Store(p)
+	if err := s.store.ApplyOrgs(ctx, "", []store.MirroredOrg{
+		{ID: "org-a", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"},
+		{ID: "org-b", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"},
+		{ID: "org-c", Status: "suspended", Revision: 1, Enabled: true, Quotas: "{}"},
+		{ID: "org-0", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"}, // polled first; its list fails
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []*store.User{ssoUser("usr_a", "sub-a", p), ssoUser("usr_b", "sub-b", p)} {
+		u.OrgID = "org-a"
+		if u.ID == "usr_b" {
+			u.OrgID = "org-b"
+		}
+		if err := s.store.Users().CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	s.SyncSuiteGroups(ctx)
+
+	mu.Lock()
+	got := fmt.Sprint(asked)
+	mu.Unlock()
+	if !slices.Contains(asked, "org-a") || !slices.Contains(asked, "org-b") || slices.Contains(asked, "org-c") || slices.Contains(asked, "") ||
+		slices.Contains(asked, string(store.DefaultOrg)) || !slices.Contains(asked, "org-0") {
+		t.Errorf("asked for %s", got)
+	}
+	cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+	if err != nil || len(cals) != 2 {
+		t.Fatalf("group calendars %v %v", cals, err)
+	}
+	// Each calendar's group must belong to exactly one org, with that org's member only.
+	found := map[string]string{}
+	for _, c := range cals {
+		gs, err := s.store.Calendars().ListGrants(ctx, c.ID)
+		if err != nil || len(gs) != 1 {
+			t.Fatalf("%s grants %v %v", c.ID, gs, err)
+		}
+		for _, org := range []store.OrgID{"org-a", "org-b"} {
+			if g, err := s.store.Org(org).GetGroup(ctx, gs[0].GroupID); err == nil {
+				found[string(org)] += fmt.Sprintf("%s %v;", g.DisplayName, g.Members)
+			}
+		}
+	}
+	if want := map[string]string{"org-a": "suite-group:ga [usr_a];", "org-b": "suite-group:gb [usr_b];"}; fmt.Sprint(found) != fmt.Sprint(want) {
+		t.Errorf("groups by org %v, want %v", found, want)
+	}
+}
+
+// With more serving orgs than KyIdentity's rate limit lets one pass list, the next pass starts at
+// the first org that failed, so no org is starved: two passes reconcile all four.
+func TestSyncSuiteGroupsPerOrgRotatesPastARateLimit(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	budget := 0
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if budget == 0 {
+			http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+			return
+		}
+		budget--
+		org := r.URL.Query().Get("org_id")
+		fmt.Fprintf(w, `{"groups":[{"id":"g-%s","name":"Team %s","slug":"team","state":"active","members":[]}]}`, org, org)
+	}))
+	t.Cleanup(idp.Close)
+	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client()))
+	var orgs []store.MirroredOrg
+	for _, id := range []store.OrgID{"org-a", "org-b", "org-c", "org-d"} {
+		orgs = append(orgs, store.MirroredOrg{ID: id, Status: "active", Revision: 1, Enabled: true, Quotas: "{}"})
+	}
+	if err := s.store.ApplyOrgs(ctx, "", orgs, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	pass := func() int {
+		t.Helper()
+		mu.Lock()
+		budget = 2
+		mu.Unlock()
+		s.SyncSuiteGroups(ctx)
+		cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(cals)
+	}
+	if n := pass(); n != 2 {
+		t.Fatalf("first pass made %d group calendars, want 2", n)
+	}
+	if n := pass(); n != 4 {
+		t.Errorf("second pass left %d of 4 orgs reconciled: the rate-limited tail was starved", n)
+	}
+}
+
+// An org that always fails (gone from KyIdentity) must not pin the rotation: with it sorted first
+// and two lists allowed per pass, every other org is reconciled within three passes.
+func TestSyncSuiteGroupsPerOrgSurvivesAPermanentFailure(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	budget := 0
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if budget == 0 {
+			http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+			return
+		}
+		budget-- // a refused list costs the client its rate limit too
+		org := r.URL.Query().Get("org_id")
+		if org == "org-0" {
+			http.Error(w, `{"error":"unknown_org"}`, http.StatusNotFound)
+			return
+		}
+		fmt.Fprintf(w, `{"groups":[{"id":"g-%s","name":"Team %s","slug":"team","state":"active","members":[]}]}`, org, org)
+	}))
+	t.Cleanup(idp.Close)
+	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client()))
+	var orgs []store.MirroredOrg
+	for _, id := range []store.OrgID{"org-0", "org-a", "org-b", "org-c", "org-d"} {
+		orgs = append(orgs, store.MirroredOrg{ID: id, Status: "active", Revision: 1, Enabled: true, Quotas: "{}"})
+	}
+	if err := s.store.ApplyOrgs(ctx, "", orgs, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for pass := 0; pass < 3; pass++ {
+		mu.Lock()
+		budget = 2
+		mu.Unlock()
+		s.SyncSuiteGroups(ctx)
+		cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+		if err != nil {
+			t.Fatal(err)
+		}
+		n = len(cals)
+	}
+	if n != 4 {
+		t.Errorf("after three passes %d of 4 orgs reconciled: a permanently failing org pinned the rotation", n)
+	}
+}
+
+// A pass never takes more than its share of KyIdentity's per-client budget: at most
+// suiteGroupsPerPass lists, and only suiteGroupsFailuresInARow once every list is refused. The
+// rotation still reaches every org.
+func TestSyncSuiteGroupsPerOrgSpendsABoundedBudget(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	calls, refuse := 0, false
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if refuse {
+			http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+			return
+		}
+		org := r.URL.Query().Get("org_id")
+		fmt.Fprintf(w, `{"groups":[{"id":"g-%s","name":"Team %s","slug":"team","state":"active","members":[]}]}`, org, org)
+	}))
+	t.Cleanup(idp.Close)
+	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client()))
+	var orgs []store.MirroredOrg
+	for i := range 150 {
+		orgs = append(orgs, store.MirroredOrg{ID: store.OrgID(fmt.Sprintf("org-%03d", i)), Status: "active", Revision: 1, Enabled: true, Quotas: "{}"})
+	}
+	if err := s.store.ApplyOrgs(ctx, "", orgs, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	pass := func() int {
+		t.Helper()
+		mu.Lock()
+		calls = 0
+		mu.Unlock()
+		s.SyncSuiteGroups(ctx)
+		mu.Lock()
+		defer mu.Unlock()
+		return calls
+	}
+	for i := range 3 {
+		if n := pass(); n > suiteGroupsPerPass {
+			t.Fatalf("pass %d sent %d lists, more than %d", i, n, suiteGroupsPerPass)
+		}
+	}
+	cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+	if err != nil || len(cals) != 150 {
+		t.Fatalf("after three passes %d of 150 orgs reconciled: %v", len(cals), err)
+	}
+	mu.Lock()
+	refuse = true
+	mu.Unlock()
+	if n := pass(); n != suiteGroupsFailuresInARow {
+		t.Errorf("a pass that is refused sent %d lists, want %d", n, suiteGroupsFailuresInARow)
+	}
+}

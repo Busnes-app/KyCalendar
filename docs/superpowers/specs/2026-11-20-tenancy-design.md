@@ -254,7 +254,9 @@ their handle from middleware:
   > `EXISTS` on `orgs` the account reads, so a stopped org's rows are never picked, never fill a
   > batch, and stay pending until a resume. Every row a worker picks already belongs to one
   > account of a serving org, and its work acts only on that account, so no separate handle was
-  > needed. Suite groups stay single-tenant until they poll per org.
+  > needed. Suite groups poll per org since build step 4g (2026-11-23): `SyncSuiteGroups` lists
+  > each serving org's groups with `?org_id=` (`suitedir.OrgGroups`, ky-primitives #73) and
+  > reconciles them into that org's `OrgStore` only.
 
 ### The install-wide lookups this changes
 
