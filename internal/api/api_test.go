@@ -61,6 +61,9 @@ func setupTestServerWith(t *testing.T, edit func(*config.Config)) (*api.Server, 
 		db.DSN = config.SQLiteDSN(filepath.Join(db.DataDir, "kycalendar.db"))
 	}
 	cfg.Database = db
+	if db.Driver == "sqlite" {
+		testdb.SeedSQLite(t, db.DSN) // the migrations once per process, not per test
+	}
 	cfg.Captcha.Provider = "none" // disable captcha for unit test speed
 	if edit != nil {
 		edit(cfg)

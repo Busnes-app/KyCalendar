@@ -557,6 +557,21 @@ customer data.
 
 Single-tenant keeps every route as it is today.
 
+> **Built in PR 5 (2026-11-23).** `internal/api/admin_tenancy.go`:
+> - **Off routes:** `singleTenantOnly` answers a plain `404`, the same for every caller and before
+>   any sign-in check. It covers the D9 routes (including the member `/api/resources*` and
+>   `/scim/v2`) and the D8 account writes.
+> - **Sign-in:** `signInFixedInMulti` answers `403 sign_in_fixed`.
+> - **Staff reads:** `staffOrg` checks `?org=` and writes the `staff.read` platform row
+>   (`AuditStore.LogPlatformAudit`) before anything is read, then `GET /api/admin/users` filters
+>   by it (`UserFilter.Org`) and adds each account's stored bytes (`Users().StoredBytes`).
+>   `GET /api/admin/audit` reads `ListOrgAuditRecords`: platform rows by default, or one org's
+>   rows.
+> - **Org mirror:** `GET /api/admin/orgs` (multi-tenant only) lists the mirror with each org's
+>   stored bytes.
+> - **Not changed here:** the web admin pages, which in multi-tenant mode still link to the off
+>   routes. They are step 6's.
+
 ## Plans and org size
 
 Owner decision 2026-11-23 puts Personal (1 member), Couple (2), Family (up to 6) and Business (N

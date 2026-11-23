@@ -501,6 +501,9 @@ func (u *userStore) ListUsers(ctx context.Context, offset, limit int, filter Use
 		clause, sargs := filter.SCIM.where()
 		where, args = where+" AND "+clause, append(args, sargs...)
 	}
+	if filter.Org != "" {
+		where, args = where+" AND org_id = ?", append(args, filter.Org)
+	}
 
 	var total int
 	if err := u.store.db.QueryRowContext(ctx, u.store.rebind("SELECT COUNT(1) FROM users "+where), args...).Scan(&total); err != nil {
@@ -1761,7 +1764,31 @@ VALUES (?, ?, ?, ?, ?, ?, `+userOrg+`)`), r.UserID, r.Action, r.Resource, r.Deta
 	return err
 }
 
+// LogPlatformAudit writes r as a platform row (org_id NULL) although it names a user: a staff
+// read of one org (tenancy spec, Admin surface), which must outlive that org's purge.
+func (a *auditStore) LogPlatformAudit(ctx context.Context, r *AuditRecord) error {
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now().UTC()
+	}
+	_, err := a.store.db.ExecContext(ctx, a.store.rebind(`INSERT INTO audit_records (user_id, action, resource, details, ip_address, created_at, org_id)
+VALUES (?, ?, ?, ?, ?, ?, NULL)`), r.UserID, r.Action, r.Resource, r.Details, r.IPAddress, r.CreatedAt)
+	return err
+}
+
 func (a *auditStore) ListAuditRecords(ctx context.Context, offset, limit int) ([]*AuditRecord, int, error) {
+	return a.listAudit(ctx, "", nil, offset, limit)
+}
+
+// ListOrgAuditRecords is org's rows, or with org "" the platform rows (org_id NULL).
+func (a *auditStore) ListOrgAuditRecords(ctx context.Context, org OrgID, offset, limit int) ([]*AuditRecord, int, error) {
+	if org == "" {
+		return a.listAudit(ctx, "WHERE org_id IS NULL", nil, offset, limit)
+	}
+	return a.listAudit(ctx, "WHERE org_id = ?", []any{org}, offset, limit)
+}
+
+// listAudit is the audit rows matching where (a constant) and args, newest first.
+func (a *auditStore) listAudit(ctx context.Context, where string, args []any, offset, limit int) ([]*AuditRecord, int, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -1770,17 +1797,17 @@ func (a *auditStore) ListAuditRecords(ctx context.Context, offset, limit int) ([
 	}
 
 	var count int
-	err := a.store.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM audit_records").Scan(&count)
+	err := a.store.db.QueryRowContext(ctx, a.store.rebind("SELECT COUNT(1) FROM audit_records "+where), args...).Scan(&count)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	q := a.store.rebind(`
 SELECT id, user_id, action, resource, details, ip_address, created_at
-FROM audit_records
+FROM audit_records ` + where + `
 ORDER BY created_at DESC LIMIT ? OFFSET ?
 `)
-	rows, err := a.store.db.QueryContext(ctx, q, limit, offset)
+	rows, err := a.store.db.QueryContext(ctx, q, append(slices.Clone(args), limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}

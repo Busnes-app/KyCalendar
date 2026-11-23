@@ -357,29 +357,30 @@ func (s *Server) routes() {
 
 	// Group calendars: administrators create and delete them; administrators and managers
 	// change grants. None of these routes reads or writes events.
-	s.handle("GET /api/admin/calendars", s.requireAdmin(s.handleListGroupCalendars))
-	s.handle("POST /api/admin/calendars", s.requireAdmin(s.handleCreateGroupCalendar))
-	s.handle("DELETE /api/admin/calendars/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroupCalendar)))
-	s.handle("GET /api/admin/groups", s.requireAdmin(s.handleListGroups))
-	s.handle("POST /api/admin/groups", s.requireAdmin(s.handleCreateGroup))
-	s.handle("GET /api/admin/groups/{id}", s.requireAdmin(s.handleGetGroup))
-	s.handle("PATCH /api/admin/groups/{id}", s.requireAdmin(s.handleRenameGroup))
-	s.handle("DELETE /api/admin/groups/{id}", s.tracked(s.requireAdmin(s.handleDeleteGroup)))
-	s.handle("PUT /api/admin/groups/{id}/members/{userId}", s.requireAdmin(s.handleAddGroupMember))
-	s.handle("DELETE /api/admin/groups/{id}/members/{userId}", s.requireAdmin(s.handleRemoveGroupMember))
+	s.handle("GET /api/admin/calendars", s.singleTenantOnly(s.requireAdmin(s.handleListGroupCalendars)))
+	s.handle("POST /api/admin/calendars", s.singleTenantOnly(s.requireAdmin(s.handleCreateGroupCalendar)))
+	s.handle("DELETE /api/admin/calendars/{id}", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleDeleteGroupCalendar))))
+	s.handle("GET /api/admin/groups", s.singleTenantOnly(s.requireAdmin(s.handleListGroups)))
+	s.handle("POST /api/admin/groups", s.singleTenantOnly(s.requireAdmin(s.handleCreateGroup)))
+	s.handle("GET /api/admin/groups/{id}", s.singleTenantOnly(s.requireAdmin(s.handleGetGroup)))
+	s.handle("PATCH /api/admin/groups/{id}", s.singleTenantOnly(s.requireAdmin(s.handleRenameGroup)))
+	s.handle("DELETE /api/admin/groups/{id}", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleDeleteGroup))))
+	s.handle("PUT /api/admin/groups/{id}/members/{userId}", s.singleTenantOnly(s.requireAdmin(s.handleAddGroupMember)))
+	s.handle("DELETE /api/admin/groups/{id}/members/{userId}", s.singleTenantOnly(s.requireAdmin(s.handleRemoveGroupMember)))
 	s.handle("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
-	s.handle("POST /api/admin/users", s.tracked(s.requireAdmin(s.handleCreateUser)))
-	s.handle("POST /api/admin/users/{id}/reset-password", s.tracked(s.requireAdmin(s.handleResetUserPassword)))
-	s.handle("PATCH /api/admin/users/{id}", s.tracked(s.requireAdmin(s.handleUpdateUser)))
-	s.handle("POST /api/admin/users/{id}/role", s.tracked(s.requireAdmin(s.handleSetUserRole)))
-	s.handle("POST /api/admin/users/{id}/disable", s.tracked(s.requireAdmin(s.handleDisableUser)))
-	s.handle("POST /api/admin/users/{id}/enable", s.tracked(s.requireAdmin(s.handleEnableUser)))
-	s.handle("POST /api/admin/users/{id}/reattach", s.tracked(s.requireAdmin(s.handleReattachUser)))
+	s.handle("POST /api/admin/users", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleCreateUser))))
+	s.handle("POST /api/admin/users/{id}/reset-password", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleResetUserPassword))))
+	s.handle("PATCH /api/admin/users/{id}", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleUpdateUser))))
+	s.handle("POST /api/admin/users/{id}/role", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleSetUserRole))))
+	s.handle("POST /api/admin/users/{id}/disable", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleDisableUser))))
+	s.handle("POST /api/admin/users/{id}/enable", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleEnableUser))))
+	s.handle("POST /api/admin/users/{id}/reattach", s.singleTenantOnly(s.tracked(s.requireAdmin(s.handleReattachUser))))
 	s.handle("GET /api/admin/audit", s.requireAdmin(s.handleListAudit))
+	s.handle("GET /api/admin/orgs", s.multiTenantOnly(s.requireAdmin(s.handleListOrgs)))
 	s.handle("GET /api/admin/scim", s.requireAdmin(s.handleSCIMStatus))
 	s.handle("GET /api/admin/signin", s.requireAdmin(s.handleGetSignIn))
-	s.handle("POST /api/admin/signin/test", s.requireAdmin(s.handleTestSignIn))
-	s.handle("PUT /api/admin/signin", s.tracked(s.requireAdmin(s.handleSaveSignIn)))
+	s.handle("POST /api/admin/signin/test", s.signInFixedInMulti(s.requireAdmin(s.handleTestSignIn)))
+	s.handle("PUT /api/admin/signin", s.signInFixedInMulti(s.tracked(s.requireAdmin(s.handleSaveSignIn))))
 	s.handle("GET /api/admin/kypost", s.requireAdmin(s.handleKyPostStatus))
 	s.handle("GET /api/admin/kymessages", s.requireAdmin(s.handleKyMessagesStatus))
 	s.handle("GET /api/suite/apps", s.requireSession(s.handleSuiteApps))
@@ -432,13 +433,13 @@ func (s *Server) routes() {
 	// public, need the pre-session CSRF token on every POST, and answer 404 while unavailable.
 	// Rooms and equipment (admin_resources.go): administrators define them; members book them
 	// by adding them to an event.
-	s.handle("GET /api/admin/resources", s.requireAdmin(s.handleListResources))
-	s.handle("POST /api/admin/resources", s.requireAdmin(s.handleCreateResource))
-	s.handle("PUT /api/admin/resources/{id}", s.requireAdmin(s.handleUpdateResource))
-	s.handle("GET /api/resources", s.requireEveryday(s.handleBookableResources))
-	s.handle("GET /api/resources/{id}/busy", s.requireEveryday(s.handleResourceBusy))
-	s.handle("GET /api/resources/requests", s.requireEveryday(s.handleResourceRequests))
-	s.handle("POST /api/resources/requests/{id}", s.requireEveryday(s.handleDecideResourceRequest))
+	s.handle("GET /api/admin/resources", s.singleTenantOnly(s.requireAdmin(s.handleListResources)))
+	s.handle("POST /api/admin/resources", s.singleTenantOnly(s.requireAdmin(s.handleCreateResource)))
+	s.handle("PUT /api/admin/resources/{id}", s.singleTenantOnly(s.requireAdmin(s.handleUpdateResource)))
+	s.handle("GET /api/resources", s.singleTenantOnly(s.requireEveryday(s.handleBookableResources)))
+	s.handle("GET /api/resources/{id}/busy", s.singleTenantOnly(s.requireEveryday(s.handleResourceBusy)))
+	s.handle("GET /api/resources/requests", s.singleTenantOnly(s.requireEveryday(s.handleResourceRequests)))
+	s.handle("POST /api/resources/requests/{id}", s.singleTenantOnly(s.requireEveryday(s.handleDecideResourceRequest)))
 	s.handle("GET /api/admin/booking", s.requireAdmin(s.handleGetBookingAdmin))
 	s.handle("PUT /api/admin/booking", s.requireAdmin(s.handleSetBookingAdmin))
 	s.handle("GET /api/booking-types", s.requireEveryday(s.handleListBookingTypes))
@@ -610,7 +611,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 	// SCIM middleware
 	if strings.HasPrefix(r.URL.Path, "/scim/v2") {
-		s.scim.AuthMiddleware(s.mux).ServeHTTP(w, r)
+		s.singleTenantOnly(s.scim.AuthMiddleware(s.mux).ServeHTTP)(w, r) // D9: SCIM is off in multi-tenant mode
 		return
 	}
 

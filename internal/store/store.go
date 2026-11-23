@@ -88,6 +88,8 @@ type Store interface {
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
 	// ServingOrgs lists the orgs that are active and enabled now.
 	ServingOrgs(ctx context.Context) ([]OrgID, error)
+	// ListMirroredOrgs is the org mirror for staff (GET /api/admin/orgs), by ID.
+	ListMirroredOrgs(ctx context.Context) ([]MirroredOrgView, error)
 	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).
 	ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error
 	// OrgsToPurge, PurgeOrg and TombstoneOrg delete a deleted org's data (org_purge.go).
@@ -125,6 +127,8 @@ type UserStore interface {
 	// EmailOwner is the one active everyday user whose email is email, ignoring case;
 	// ErrNotFound when there is none or more than one.
 	EmailOwner(ctx context.Context, email string) (*User, error)
+	// StoredBytes is each of ids' stored calendar object bytes, across their own calendars.
+	StoredBytes(ctx context.Context, ids []string) (map[string]int64, error)
 	// CalendarUser is EmailOwner as a scheduling peer of an account in org: who gets internal
 	// delivery, free/busy and the local out-of-office text. In multi-tenant mode only an account
 	// in org counts; one in any other org is ErrNotFound, like a stranger (tenancy spec, D5).
@@ -263,6 +267,10 @@ type GroupStore interface {
 type AuditStore interface {
 	LogAudit(ctx context.Context, r *AuditRecord) error
 	ListAuditRecords(ctx context.Context, offset, limit int) ([]*AuditRecord, int, error)
+	// ListOrgAuditRecords is one org's rows, or with org "" the platform rows (org_id NULL).
+	ListOrgAuditRecords(ctx context.Context, org OrgID, offset, limit int) ([]*AuditRecord, int, error)
+	// LogPlatformAudit writes a platform row (org_id NULL) that names a user: a staff read.
+	LogPlatformAudit(ctx context.Context, r *AuditRecord) error
 	// PruneAudit deletes records created before before.
 	PruneAudit(ctx context.Context, before time.Time) error
 }
