@@ -245,7 +245,8 @@ their handle from middleware:
   groups, pruning, backup) read across orgs through a `PlatformStore`, built in PR 4, where
   suspension first needs a worker to know a row's org. Every row it returns carries `org_id`, and
   each unit of work runs under that row's `OrgStore`. Until then a worker acts only on its row's own
-  account: delivery reaches only accounts in the sender's org (D5), and a feed refresh writes into its
+  account: delivery is external in multi-tenant mode (the 2026-11-21 D5, as built in step 2(c)),
+  and reaches accounts in the sender's org only from step 4f; a feed refresh writes into its
   subscriber's calendar, whose objects take that calendar's org.
 
   > **Built in PR 4b (2026-11-22), without a `PlatformStore`.** Each worker's due-row query
