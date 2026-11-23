@@ -15,6 +15,23 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
+// requireSingleTenantResources keeps rooms and equipment off in multi-tenant mode (tenancy D9).
+// Run before the role guard and handler so every resource route gives the missing-room answer.
+func (s *Server) requireSingleTenantResources(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ten, err := s.store.Tenancy(r.Context())
+		if err != nil {
+			s.writeError(w, http.StatusServiceUnavailable, "Service unavailable")
+			return
+		}
+		if ten.Multi {
+			s.writeError(w, http.StatusNotFound, "No such room or equipment")
+			return
+		}
+		h(w, r)
+	}
+}
+
 // maxResourceRange bounds a busy or free query.
 const maxResourceRange = 62 * 24 * time.Hour
 

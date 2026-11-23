@@ -433,13 +433,13 @@ func (s *Server) routes() {
 	// public, need the pre-session CSRF token on every POST, and answer 404 while unavailable.
 	// Rooms and equipment (admin_resources.go): administrators define them; members book them
 	// by adding them to an event.
-	s.handle("GET /api/admin/resources", s.singleTenantOnly(s.requireAdmin(s.handleListResources)))
-	s.handle("POST /api/admin/resources", s.singleTenantOnly(s.requireAdmin(s.handleCreateResource)))
-	s.handle("PUT /api/admin/resources/{id}", s.singleTenantOnly(s.requireAdmin(s.handleUpdateResource)))
-	s.handle("GET /api/resources", s.singleTenantOnly(s.requireEveryday(s.handleBookableResources)))
-	s.handle("GET /api/resources/{id}/busy", s.singleTenantOnly(s.requireEveryday(s.handleResourceBusy)))
-	s.handle("GET /api/resources/requests", s.singleTenantOnly(s.requireEveryday(s.handleResourceRequests)))
-	s.handle("POST /api/resources/requests/{id}", s.singleTenantOnly(s.requireEveryday(s.handleDecideResourceRequest)))
+	s.handle("GET /api/admin/resources", s.requireSingleTenantResources(s.requireAdmin(s.handleListResources)))
+	s.handle("POST /api/admin/resources", s.requireSingleTenantResources(s.requireAdmin(s.handleCreateResource)))
+	s.handle("PUT /api/admin/resources/{id}", s.requireSingleTenantResources(s.requireAdmin(s.handleUpdateResource)))
+	s.handle("GET /api/resources", s.requireSingleTenantResources(s.requireEveryday(s.handleBookableResources)))
+	s.handle("GET /api/resources/{id}/busy", s.requireSingleTenantResources(s.requireEveryday(s.handleResourceBusy)))
+	s.handle("GET /api/resources/requests", s.requireSingleTenantResources(s.requireEveryday(s.handleResourceRequests)))
+	s.handle("POST /api/resources/requests/{id}", s.requireSingleTenantResources(s.requireEveryday(s.handleDecideResourceRequest)))
 	s.handle("GET /api/admin/booking", s.requireAdmin(s.handleGetBookingAdmin))
 	s.handle("PUT /api/admin/booking", s.requireAdmin(s.handleSetBookingAdmin))
 	s.handle("GET /api/booking-types", s.requireEveryday(s.handleListBookingTypes))
