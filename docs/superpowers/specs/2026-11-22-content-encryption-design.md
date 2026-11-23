@@ -49,7 +49,7 @@ attendees, but no content.
 
 | | Today | After |
 |---|---|---|
-| Stolen database, backup or capsule (they include `encryption.key`) | everything | times, recurrence, attendees, sizes |
+| Stolen database, backup or capsule (they include `encryption.key`) | everything | times, recurrence, attendees, sizes for every calendar that has a key; full content for the exceptions in the Threat model |
 | Operator reading the database or running `export-org` | everything | times, attendees; content only with the user's secret (reading only: see Threat model for writing) |
 | Compromised running server | everything | everything that passes through while users are active |
 | Native calendar apps | work | work, with no change on the device |
@@ -245,10 +245,21 @@ that possible:
 ## Threat model
 
 - **Stolen database, replica snapshot, backup or capsule, including `encryption.key`**: gets
-  skeletons, sizes, wrapped keys and sealed content. To read content, the attacker must break a
-  slot: a 256-bit app-password secret, a 128-bit recovery code, a passkey's PRF output, a session
-  token, or a passphrase or password stretched by Argon2id. Passphrases and passwords are the weak
-  point (E8).
+  skeletons, sizes, wrapped keys and sealed content. To read the content of a calendar that has a
+  key, the attacker must break a user slot: a 256-bit app-password secret, a 128-bit recovery
+  code, a passkey's PRF output, a session token, or a passphrase or password stretched by
+  Argon2id. Passphrases and passwords are the weak point (E8).
+
+  **Exceptions:** the stolen `encryption.key` opens these directly, or they were never encrypted:
+  - accounts that have never run setup, and group calendars waiting on a member (E12), as legacy
+    plaintext;
+  - an account in its 14-day transition, whose `transition` slot opens with `encryption.key` (E11),
+    so a capsule taken in those 14 days exposes that account's full content;
+  - queued scheduling messages, for up to 24 hours (E14);
+  - booking holds' names and notes, for up to 15 minutes.
+
+  CE6's updates to `docs/ASSURANCE-CASE.md` and `docs/STRONG-CRYPTO.md` carry this list as it
+  stands here.
 - **Operator or staff** reading the database or running `export-org`: the same as a stolen
   database for every calendar that has a key. Calendars without one are readable in full, as
   today: those of accounts that never ran setup, and group calendars waiting on a member (E12).
