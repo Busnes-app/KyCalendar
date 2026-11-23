@@ -133,7 +133,10 @@ Readable properties, by component:
     `X-KY-REF`, `X-KYCALENDAR-ORGANIZER-SEQUENCE`, `X-KYCALENDAR-OUT-OF-OFFICE` and
     `X-KYCALENDAR-BOOKING-TYPE`.
 - **`VALARM`:** `ACTION`, `TRIGGER`, `REPEAT`, `DURATION`, `UID`, `ACKNOWLEDGED`.
-- **`VTIMEZONE`:** everything, including its `STANDARD` and `DAYLIGHT` components.
+- **`VTIMEZONE`:** `TZID`, `LAST-MODIFIED`; in its `STANDARD` and `DAYLIGHT` components, `DTSTART`,
+  `TZOFFSETFROM`, `TZOFFSETTO`, `RRULE`, `RDATE`. `TZNAME`, `TZURL`, `COMMENT` and vendor
+  properties such as `X-LIC-LOCATION` are content. A time zone's content merges with the one of
+  the same `TZID`.
 
 Every other property, including every other `X-` property, is content.
 

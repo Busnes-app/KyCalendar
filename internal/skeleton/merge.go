@@ -228,10 +228,8 @@ func Merge(skeleton []byte, layers []Layer) ([]byte, error) {
 		}
 	}
 	for _, c := range skel.Children {
-		if c.Name != ical.CompTimezone {
-			if src := find(content.Component, c); src != nil {
-				c = merge(c, src, find(alarmSrc.Component, c))
-			}
+		if src := find(content.Component, c); src != nil {
+			c = merge(c, src, find(alarmSrc.Component, c))
 		}
 		top.Children = append(top.Children, c)
 	}
@@ -299,9 +297,19 @@ func merge(skel, src, alarmsFrom *ical.Component) *ical.Component {
 	return out
 }
 
-// find is the component of in with c's name and RECURRENCE-ID; an override the content does not
-// carry (a worker made it from the master) takes the master, the one with no RECURRENCE-ID.
+// find is the component of in with c's name and RECURRENCE-ID, or for a time zone its TZID; an
+// override the content does not carry (a worker made it from the master) takes the master, the
+// one with no RECURRENCE-ID.
 func find(in *ical.Component, c *ical.Component) *ical.Component {
+	if c.Name == ical.CompTimezone {
+		id, _ := c.Props.Text(ical.PropTimezoneID)
+		for _, x := range in.Children {
+			if tz, _ := x.Props.Text(ical.PropTimezoneID); x.Name == c.Name && tz == id {
+				return x
+			}
+		}
+		return nil
+	}
 	rid := recurrenceID(c)
 	var master *ical.Component
 	for _, x := range in.Children {

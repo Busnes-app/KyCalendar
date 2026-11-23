@@ -472,3 +472,34 @@ func TestLineFoldsInvalidUTF8(t *testing.T) {
 		t.Fatal("line did not return on invalid UTF-8")
 	}
 }
+
+// E1: a time zone keeps only its rules in the skeleton; its free text is content, and each zone
+// gets back its own, matched by TZID.
+func TestTimeZonesKeepOnlyTheirRules(t *testing.T) {
+	zone := func(id, secret string) string {
+		return "BEGIN:VTIMEZONE\r\nTZID:" + id + "\r\nTZURL:https://example.com/" + secret + "\r\nX-LIC-LOCATION:" + secret + "\r\n" +
+			"BEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\n" +
+			"RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nTZNAME:" + secret + "\r\nCOMMENT:" + secret + "\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+	}
+	raw := strings.Replace(meeting, "BEGIN:VEVENT", zone("Europe/Berlin", "secret-one")+zone("Europe/Paris", "secret-two")+"BEGIN:VEVENT", 1)
+	skel, err := Split([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(skel), "secret") {
+		t.Errorf("skeleton keeps a time zone's free text:\n%s", skel)
+	}
+	for _, want := range []string{"TZID:Europe/Paris", "TZOFFSETFROM:+0200", "TZOFFSETTO:+0100", "RRULE:FREQ=YEARLY", "DTSTART:19701025T030000"} {
+		if !strings.Contains(string(skel), want) {
+			t.Errorf("skeleton lost %s", want)
+		}
+	}
+	empty, _ := EncodePatch(nil)
+	got, err := Merge(skel, []Layer{{Base: true, Seq: 1, Plaintext: []byte(raw)}, {Seq: 2, Plaintext: empty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := props(mustDecode(t, []byte(raw)).Component), props(mustDecode(t, got).Component); !slices.Equal(a, b) {
+		t.Errorf("slow path misplaced time zone content:\n%s\nwant\n%s", strings.Join(b, "\n"), strings.Join(a, "\n"))
+	}
+}

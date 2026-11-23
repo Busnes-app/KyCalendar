@@ -16,13 +16,20 @@ import (
 )
 
 // readable is E1's allowlist, per component: everything else, every unknown X- property
-// included, is content. VTIMEZONE is readable whole.
+// included, is content. A time zone keeps only its rules: TZNAME, COMMENT, TZURL and vendor
+// properties are free text, and nothing reads them (zones resolve by TZID).
 var readable = map[string]map[string]bool{
 	ical.CompCalendar: set("VERSION", "PRODID", "CALSCALE", "METHOD"),
 	ical.CompEvent:    eventProps,
 	ical.CompToDo:     eventProps,
 	ical.CompAlarm:    set("ACTION", "TRIGGER", "REPEAT", "DURATION", "UID", "ACKNOWLEDGED"),
+
+	ical.CompTimezone:         set("TZID", "LAST-MODIFIED"),
+	ical.CompTimezoneStandard: zoneRule,
+	ical.CompTimezoneDaylight: zoneRule,
 }
+
+var zoneRule = set("DTSTART", "TZOFFSETFROM", "TZOFFSETTO", "RRULE", "RDATE")
 
 var eventProps = set("UID", "DTSTART", "DTEND", "DUE", "DURATION", "RRULE", "RDATE", "EXDATE", "RECURRENCE-ID",
 	"SEQUENCE", "DTSTAMP", "CREATED", "LAST-MODIFIED", "STATUS", "TRANSP", "CLASS", "PRIORITY", "COMPLETED",
@@ -42,9 +49,6 @@ func set(names ...string) map[string]bool {
 // isReadable reports whether property name of a component named comp stays in the skeleton.
 // A component KyCalendar does not store (VJOURNAL and so on) is treated as an event.
 func isReadable(comp, name string) bool {
-	if comp == ical.CompTimezone || comp == ical.CompTimezoneStandard || comp == ical.CompTimezoneDaylight {
-		return true
-	}
 	allow, ok := readable[comp]
 	if !ok {
 		allow = eventProps
