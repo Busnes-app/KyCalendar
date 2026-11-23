@@ -170,18 +170,18 @@ func (c *calendarStore) PruneOutbox(ctx context.Context, before time.Time) error
 	return err
 }
 
-func (u *userStore) CalendarUser(ctx context.Context, email string) (*User, error) {
-	return u.emailOwner(ctx, email, `AND EXISTS (SELECT 1 FROM server_settings WHERE key = '`+TenancySetting+`' AND value = 'single')`)
+func (u *userStore) CalendarUser(ctx context.Context, org OrgID, email string) (*User, error) {
+	return u.emailOwner(ctx, email, `AND (org_id = ? OR EXISTS (SELECT 1 FROM server_settings WHERE key = '`+TenancySetting+`' AND value = 'single'))`, org)
 }
 
 func (u *userStore) EmailOwner(ctx context.Context, email string) (*User, error) {
 	return u.emailOwner(ctx, email, "")
 }
 
-// emailOwner is EmailOwner with the extra condition and, a constant.
-func (u *userStore) emailOwner(ctx context.Context, email, and string) (*User, error) {
+// emailOwner is EmailOwner with the extra condition and, a constant, and its arguments.
+func (u *userStore) emailOwner(ctx context.Context, email, and string, args ...any) (*User, error) {
 	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(`SELECT id FROM users
-WHERE LOWER(email) = LOWER(?) AND email <> '' AND role = 'user' AND status = 'active' `+and+` LIMIT 2`), email)
+WHERE LOWER(email) = LOWER(?) AND email <> '' AND role = 'user' AND status = 'active' `+and+` LIMIT 2`), append([]any{email}, args...)...)
 	if err != nil {
 		return nil, err
 	}

@@ -53,7 +53,7 @@ func (s *Server) handleFreeBusy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p := personBusy{Email: a.Email(), Busy: []busyView{}}
-		u, err := s.store.Users().CalendarUser(r.Context(), a.Email())
+		u, err := s.store.Users().CalendarUser(r.Context(), sessionUser(r.Context()).OrgID, a.Email())
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			p.Unknown = true

@@ -265,7 +265,7 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 		if ok, seen := members[email]; seen {
 			return ok
 		}
-		_, err := s.store.Users().CalendarUser(ctx, email)
+		_, err := s.store.Users().CalendarUser(ctx, user.OrgID, email)
 		members[email] = err == nil
 		return err == nil
 	}

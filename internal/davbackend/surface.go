@@ -95,7 +95,7 @@ func (b *Backend) ScheduleFreeBusy(ctx context.Context, req *ical.Calendar) ([]c
 		resp := caldav.ScheduleResponse{Recipient: p.Value, Status: "3.7;Invalid calendar user"}
 		if ok {
 			resp.Recipient = string(to)
-			u, err := b.Store.Users().CalendarUser(ctx, to.Email())
+			u, err := b.Store.Users().CalendarUser(ctx, b.User.OrgID, to.Email())
 			switch {
 			case errors.Is(err, store.ErrNotFound):
 			case err != nil:

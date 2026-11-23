@@ -123,10 +123,10 @@ type UserStore interface {
 	// EmailOwner is the one active everyday user whose email is email, ignoring case;
 	// ErrNotFound when there is none or more than one.
 	EmailOwner(ctx context.Context, email string) (*User, error)
-	// CalendarUser is EmailOwner as a scheduling peer: who gets internal delivery, free/busy and
-	// the local out-of-office text. ErrNotFound for everyone in multi-tenant mode, where every
-	// address is external, even inside one org (tenancy spec, D5).
-	CalendarUser(ctx context.Context, email string) (*User, error)
+	// CalendarUser is EmailOwner as a scheduling peer of an account in org: who gets internal
+	// delivery, free/busy and the local out-of-office text. In multi-tenant mode only an account
+	// in org counts; one in any other org is ErrNotFound, like a stranger (tenancy spec, D5).
+	CalendarUser(ctx context.Context, org OrgID, email string) (*User, error)
 	GetUserBySSO(ctx context.Context, provider, subject string) (*User, error)
 	// OutOfOffice is the out-of-office state KyPost last set for userID; ErrNotFound when none.
 	OutOfOffice(ctx context.Context, userID string) (*OutOfOffice, error)

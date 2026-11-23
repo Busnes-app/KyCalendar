@@ -335,28 +335,56 @@ func TestNewRowsJoinTheirParentsOrg(t *testing.T) {
 	})
 }
 
-// TestCalendarUserFailsClosed: without a tenancy_mode of single, nobody is a scheduling peer, so a
-// lost row can never leak across orgs; the next store open (ensureOrgs) writes it back.
-func TestCalendarUserFailsClosed(t *testing.T) {
+// TestCalendarUserIsScopedToTheOrg (tenancy spec D5): in multi-tenant mode a scheduling peer is
+// an account in the org asked for, never one in another org. Without a tenancy_mode row the org
+// still decides, so a lost row can never leak across orgs; single-tenant mode is unchanged.
+func TestCalendarUserIsScopedToTheOrg(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
-		if err := s.Users().CreateUser(ctx, &User{ID: "ua", Username: "a", Email: "a@example.com", Role: "user", Status: "active", SSOProvider: "local"}); err != nil {
+		const b OrgID = "org-b"
+		if err := s.ApplyOrgs(ctx, "", []MirroredOrg{{ID: b, Status: "active", Revision: 1, Enabled: true, Quotas: "{}"}}, 1); err != nil {
 			t.Fatal(err)
 		}
+		for _, u := range []*User{
+			{ID: "ua", Username: "a", Email: "a@example.com", Role: "user", Status: "active", SSOProvider: "local"},
+			{ID: "ub", Username: "b", Email: "b@example.com", Role: "user", Status: "active", SSOProvider: "local", OrgID: b},
+		} {
+			if err := s.Users().CreateUser(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+		}
+		peer := func(org OrgID, email string) string {
+			u, err := s.Users().CalendarUser(ctx, org, email)
+			if errors.Is(err, ErrNotFound) {
+				return "-"
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			return u.ID
+		}
+		check := func(mode string, want map[[2]string]string) {
+			t.Helper()
+			for k, id := range want {
+				if got := peer(OrgID(k[0]), k[1]); got != id {
+					t.Errorf("%s: CalendarUser(%s, %s) = %s, want %s", mode, k[0], k[1], got, id)
+				}
+			}
+		}
+		check("single", map[[2]string]string{{string(DefaultOrg), "a@example.com"}: "ua", {string(DefaultOrg), "b@example.com"}: "ub"})
+		if err := s.Settings().SetSetting(ctx, TenancySetting, "multi"); err != nil {
+			t.Fatal(err)
+		}
+		multi := map[[2]string]string{
+			{string(DefaultOrg), "a@example.com"}: "ua", {string(DefaultOrg), "b@example.com"}: "-",
+			{string(b), "b@example.com"}: "ub", {string(b), "a@example.com"}: "-", {"", "a@example.com"}: "-",
+		}
+		check("multi", multi)
 		if err := s.Settings().DeleteSetting(ctx, TenancySetting); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Users().CalendarUser(ctx, "a@example.com"); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("no tenancy_mode: %v", err)
-		}
-		if u, err := s.Users().EmailOwner(ctx, "a@example.com"); err != nil || u.ID != "ua" {
+		check("no tenancy_mode", multi)
+		if u, err := s.Users().EmailOwner(ctx, "b@example.com"); err != nil || u.ID != "ub" {
 			t.Fatalf("own address without tenancy_mode: %+v %v", u, err)
-		}
-		if err := s.ensureOrgs(ctx); err != nil {
-			t.Fatal(err)
-		}
-		if u, err := s.Users().CalendarUser(ctx, "a@example.com"); err != nil || u.ID != "ua" {
-			t.Fatalf("after the next open: %+v %v", u, err)
 		}
 	})
 }

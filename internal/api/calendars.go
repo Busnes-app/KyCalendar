@@ -318,7 +318,7 @@ func (s *Server) deleteMeetings(ctx context.Context, c *store.Calendar, as *stor
 // sign of it. A copy naming a meeting nobody holds cancels nothing: delivery finds no attendee
 // copy of that UID from that organizer.
 func (s *Server) groupOrganizer(ctx context.Context, c *store.Calendar, org itip.Address, uid string) *store.User {
-	u, err := s.store.Users().CalendarUser(ctx, org.Email())
+	u, err := s.store.Users().CalendarUser(ctx, c.OrgID, org.Email())
 	if err != nil {
 		return nil // an organizer outside this instance: nothing is sent from here
 	}

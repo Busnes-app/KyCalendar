@@ -142,6 +142,7 @@ func IsMCPScope(scope string) bool {
 
 type Calendar struct {
 	ID, OwnerKind, OwnerID, Slug, Name, Color, Description string
+	OrgID                                                  OrgID // read only: a calendar takes its owner's org at creation
 	Seq                                                    int64
 	CreatedAt                                              time.Time
 	Subscribed                                             bool     // mirrors an ICS link; its events are read-only
