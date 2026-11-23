@@ -24,6 +24,9 @@ func davInternalServer(t *testing.T) (*Server, http.Handler) {
 	db := testdb.Config(t)
 	db.DataDir = cfg.Database.DataDir
 	cfg.Database = db
+	if db.Driver == "sqlite" {
+		testdb.SeedSQLite(t, db.DSN) // the migrations once per process, not per test
+	}
 	st, err := store.Open(context.Background(), cfg.Database)
 	if err != nil {
 		t.Fatal(err)
