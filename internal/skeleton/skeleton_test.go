@@ -301,3 +301,62 @@ func TestWriterFoldsAndQuotes(t *testing.T) {
 		t.Errorf("writer changed properties:\n%s\nwant\n%s", strings.Join(b, "\n"), strings.Join(a, "\n"))
 	}
 }
+
+// Each component takes content only from its own RECURRENCE-ID match (or the master), never by
+// position: a worker-made override B never shows a property only a dropped override A had.
+func TestOverrideContentNeverComesFromAnotherOccurrence(t *testing.T) {
+	overrideA := "BEGIN:VEVENT\r\nUID:m1\r\nDTSTAMP:20261101T000000Z\r\nRECURRENCE-ID:20261117T090000Z\r\nDTSTART:20261117T100000Z\r\n" +
+		"DTEND:20261117T110000Z\r\nSUMMARY:Moved review\r\nCOMMENT:Only A\r\nX-ONLY-A:yes\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	base := strings.Replace(meeting, "END:VCALENDAR\r\n", overrideA, 1)
+	skel, _ := Split([]byte(meeting)) // the master only
+	overrideB := "BEGIN:VEVENT\r\nUID:m1\r\nDTSTAMP:20261101T000000Z\r\nRECURRENCE-ID:20261124T090000Z\r\nDTSTART:20261124T130000Z\r\n" +
+		"DTEND:20261124T140000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	withB := strings.Replace(string(skel), "END:VCALENDAR\r\n", overrideB, 1)
+	empty, _ := EncodePatch(nil)
+	got, err := Merge([]byte(withB), []Layer{{Base: true, Seq: 1, Plaintext: []byte(base)}, {Seq: 2, Plaintext: empty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cal := mustDecode(t, got)
+	if s := text(t, cal, "20261124T090000Z", "SUMMARY"); s != "Board review" {
+		t.Errorf("override B SUMMARY %q, want the master's", s)
+	}
+	if strings.Contains(string(got), "Only A") || strings.Contains(string(got), "X-ONLY-A") {
+		t.Errorf("override A's content leaked into the served object:\n%s", got)
+	}
+}
+
+// A keep-alarms base takes alarm content from the unmarked base only: a property only the newest
+// base's alarm has is never served.
+func TestKeepAlarmsTakesNoAlarmContentFromTheNewestBase(t *testing.T) {
+	update := strings.Replace(meeting, "DESCRIPTION:Mine\r\n", "DESCRIPTION:Organizer alarm\r\nATTACH:https://organizer.example/sound\r\n", 1)
+	skel, _ := Split([]byte(update))
+	got, err := Merge(skel, []Layer{{Base: true, Seq: 1, Plaintext: []byte(meeting)}, {Base: true, KeepAlarms: true, Seq: 2, Plaintext: []byte(update)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(got); strings.Contains(s, "organizer.example") || strings.Contains(s, "Organizer alarm") || !strings.Contains(s, "DESCRIPTION:Mine") {
+		t.Errorf("alarm content not from the earlier base alone:\n%s", s)
+	}
+}
+
+// iCalendar names are case-insensitive: a lower-case readable property is refused like an upper-
+// case one, and a lower-case content property applies under its upper-case name.
+func TestPatchNamesAreCaseInsensitive(t *testing.T) {
+	if _, err := DecodePatch([]byte(`[{"op":"set","component":"vevent","property":"dtstart","values":[{"value":"20300101T000000Z"}]}]`)); err == nil {
+		t.Error("a lower-case readable property was accepted")
+	}
+	ops, err := DecodePatch([]byte(`[{"op":"set","component":"vevent","property":"location","values":[{"value":"Room 7"}]}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if Label(ops) != Label([]Op{{Op: "set", Component: "VEVENT", Property: "LOCATION"}}) {
+		t.Errorf("label %q depends on case", Label(ops))
+	}
+	patch, _ := EncodePatch(ops)
+	skel, _ := Split([]byte(meeting))
+	got, err := Merge(skel, []Layer{{Base: true, Seq: 1, Plaintext: []byte(meeting)}, {Seq: 2, Plaintext: patch}})
+	if err != nil || strings.Count(string(got), "LOCATION") != 1 || !strings.Contains(string(got), "LOCATION:Room 7") {
+		t.Errorf("lower-case patch: %v\n%s", err, got)
+	}
+}

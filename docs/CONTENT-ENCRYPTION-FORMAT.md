@@ -160,6 +160,8 @@ the client sent it.
 - A `set` or `remove` of a readable property is refused, because those change in the skeleton
   only.
 
+Component and property names in a patch are case-insensitive. They're stored, compared and applied in upper case.
+
 A patch's **label** is `op property component recurrence-id` for each operation, joined by `;`,
 and just `conference` for a conference operation. It never contains a value. A newer patch with
 the same label replaces the older one.
@@ -172,7 +174,8 @@ the same label replaces the older one.
 3. **Fast path:** if the only part is one base and the skeleton equals that base's own skeleton,
    the base's bytes are served unchanged.
 4. Otherwise every readable property, and the set of components and alarms, comes from the
-   skeleton.
+   skeleton. Each top-level component is merged once, with the content component of the same name
+   and `RECURRENCE-ID`, never by position.
    - Each component takes its content properties from the newest base's component with the same
      name and `RECURRENCE-ID`.
    - An override the base doesn't carry, which a worker made from the master, takes the master's

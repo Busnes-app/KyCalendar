@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/emersion/go-ical"
 
@@ -43,6 +44,7 @@ type PropValue struct {
 func Label(ops []Op) string {
 	var b bytes.Buffer
 	for i, o := range ops {
+		o = o.norm()
 		if i > 0 {
 			b.WriteByte(';')
 		}
@@ -54,10 +56,12 @@ func Label(ops []Op) string {
 	return b.String()
 }
 
-// EncodePatch is a patch's plaintext.
+// EncodePatch is a patch's plaintext, with component and property names in upper case.
 func EncodePatch(ops []Op) ([]byte, error) {
-	for _, o := range ops {
-		if err := o.check(); err != nil {
+	ops = slices.Clone(ops)
+	for i := range ops {
+		ops[i] = ops[i].norm()
+		if err := ops[i].check(); err != nil {
 			return nil, err
 		}
 	}
@@ -70,12 +74,20 @@ func DecodePatch(b []byte) ([]Op, error) {
 	if err := json.Unmarshal(b, &ops); err != nil {
 		return nil, fmt.Errorf("skeleton: patch: %w", err)
 	}
-	for _, o := range ops {
-		if err := o.check(); err != nil {
+	for i := range ops {
+		ops[i] = ops[i].norm()
+		if err := ops[i].check(); err != nil {
 			return nil, err
 		}
 	}
 	return ops, nil
+}
+
+// norm is o with its component and property names in upper case: iCalendar names are
+// case-insensitive, and the readable allowlist and go-ical both use upper case.
+func (o Op) norm() Op {
+	o.Component, o.Property = strings.ToUpper(o.Component), strings.ToUpper(o.Property)
+	return o
 }
 
 func (o Op) check() error {
@@ -137,16 +149,27 @@ func Merge(skeleton []byte, layers []Layer) ([]byte, error) {
 			return nil, err
 		}
 	}
-	out := &ical.Calendar{Component: merge(skel.Component, content.Component, nil)}
-	for _, c := range out.Children {
-		if c.Name == ical.CompTimezone {
-			continue
-		}
-		src := find(content.Component, c)
-		if src != nil {
-			*c = *merge(c, src, find(alarmSrc.Component, c))
+	// One pass: the calendar's own content properties, then each component merged once with the
+	// content component of its name and RECURRENCE-ID (find), never by position, so no content
+	// lands on the wrong occurrence and keep-alarms takes no alarm text from the newest base.
+	top := &ical.Component{Name: skel.Name, Props: ical.Props{}}
+	for name, ps := range skel.Props {
+		top.Props[name] = ps
+	}
+	for name, ps := range content.Props {
+		if !isReadable(ical.CompCalendar, name) {
+			top.Props[name] = ps
 		}
 	}
+	for _, c := range skel.Children {
+		if c.Name != ical.CompTimezone {
+			if src := find(content.Component, c); src != nil {
+				c = merge(c, src, find(alarmSrc.Component, c))
+			}
+		}
+		top.Children = append(top.Children, c)
+	}
+	out := &ical.Calendar{Component: top}
 	for _, l := range layers[newest+1:] {
 		if l.Base {
 			continue
@@ -237,6 +260,7 @@ func recurrenceID(c *ical.Component) string {
 }
 
 func apply(cal *ical.Calendar, o Op) {
+	o = o.norm()
 	if o.Op == "conference" {
 		calendar.SetConference(cal, o.URL)
 		return
