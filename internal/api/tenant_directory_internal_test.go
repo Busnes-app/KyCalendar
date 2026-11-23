@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -248,5 +250,37 @@ func TestTenantDirectoryNeverGrants(t *testing.T) {
 	s.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("bad signature: %d", w.Code)
+	}
+}
+
+// Failure preserves content for retry while taking the erased account's access away.
+type refusedErasureStore struct{ store.Store }
+type refusedErasureUsers struct{ store.UserStore }
+
+func (s refusedErasureStore) Users() store.UserStore { return refusedErasureUsers{s.Store.Users()} }
+func (u refusedErasureUsers) DeleteUser(context.Context, string) error {
+	return fmt.Errorf("handover refused")
+}
+
+func TestTenantDirectoryFailedErasureStillRevokes(t *testing.T) {
+	s, alice, cookie := directoryWorld(t)
+	original := s.store
+	s.store = refusedErasureStore{original}
+	if code := directoryEvent(t, s, "user.erased", "erase-retry", scimBody("alice", "org-a", false, "alice")); code != http.StatusServiceUnavailable {
+		t.Fatalf("failed erasure: %d", code)
+	}
+	if signedIn(s, cookie) {
+		t.Fatal("erased account kept its session after handover failure")
+	}
+	u, err := original.Users().GetUserByID(context.Background(), alice.ID)
+	if err != nil || u.Status != "inactive" {
+		t.Fatalf("account not kept inactive: %+v %v", u, err)
+	}
+	s.store = original
+	if code := directoryEvent(t, s, "user.erased", "erase-retry", scimBody("alice", "org-a", false, "alice")); code != http.StatusNoContent {
+		t.Fatalf("retry: %d", code)
+	}
+	if _, err := original.Users().GetUserByID(context.Background(), alice.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("retry left the account: %v", err)
 	}
 }

@@ -27,7 +27,8 @@ Its security requirements:
 2. **A user reaches only the calendars they own or were granted**, with only that grant's rights,
    on every surface: web API, CalDAV and MCP.
 3. **Access ends when it should.** A password reset, disable, role change or sign-out revokes the
-   credentials that depend on it.
+   credentials that depend on it. Multi-tenant account erasure revokes access before attempting
+   shared-calendar handover; a failed handover preserves data for retry with access still revoked.
 4. **The server cannot be turned against the network it sits in** through calendar subscription
    links, identity-provider settings or the KyPost connection.
 5. **Secrets at rest stay secret**: identity-provider client secrets and subscription links are

@@ -7,6 +7,7 @@ Exposes HTTP REST routes, authentication endpoints, Single Sign-On callbacks, SC
 Owns HTTP routing, request parsing, session cookie validation, CORS headers, and error response formatting.
 
 ## Local Contracts
+- Multi-tenant `user.erased` and restore reconciliation use `eraseAccount`: first deactivate the bound SSO account and revoke credentials durably, then `DeleteUser` transfers shared calendars and deletes private data. A transfer failure returns 503 for retry (restore keeps its pending mark); access stays revoked. Wrong-org erasures keep the existing revoke-only behavior.
 - POST `/api/auth/change-password` accepts any local session (a restricted one with `must_change_password`, or a user changing their own password from Account settings), the current password and a different policy-valid new password; an SSO account gets 409. Browser CSRF and per-IP/account limits apply. Success revokes all sessions and requires sign-in again; flagged sessions get `password_change_required` on protected routes and public-only settings.
 - All JSON API endpoints return structured errors `{"error": "message"}` upon failure.
 - Non-API routes fall back to serving `web.Handler()` for client-side SPA routing.

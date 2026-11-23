@@ -131,7 +131,7 @@ func (s *Server) eraseAfterRestore(ctx context.Context, dir *suitedir.Client) er
 		if u == nil || store.OrgOf(u) != store.OrgID(e.OrgID) {
 			continue
 		}
-		if err := s.store.Users().DeleteUser(ctx, u.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		if err := s.eraseAccount(ctx, u.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("erased subject at revision %d: %w", e.Revision, err)
 		}
 	}
