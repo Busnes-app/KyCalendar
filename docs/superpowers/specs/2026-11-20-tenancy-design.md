@@ -516,7 +516,8 @@ content").
 Content encryption at rest (`2026-11-22-content-encryption-design.md`) makes this cryptographic for
 every encrypted account: the server holds no key to its content between requests, except during
 the account's 14-day transition (its E11) and for an external message waiting up to 24 hours to be
-sent (its E14), which the deployment key opens.
+sent (its E14) or a booking hold's name and note for up to 15 minutes, which the deployment key
+opens.
 
 | Route (`internal/api/server.go`) | Multi-tenant |
 |---|---|

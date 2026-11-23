@@ -69,7 +69,7 @@ attendees, but no content.
 | E8 | **The passphrase is the fallback**, for browsers or authenticators without PRF support. It is at least 12 characters and is stretched with Argon2id (`ky-primitives/password`). | Owner decision 4. A stolen database can be searched offline against a weak passphrase, so the setup page recommends the passkey and states the trade-off. |
 | E9 | **The recovery code is 128 random bits**, shown once at setup as 26 base32 symbols in groups. It can be replaced while unlocked. It does not use `ky-primitives/recoverycode`, whose 60 bits (`recoverycode.go:29`) are too weak for a key someone can attack offline. | Owner decision 5. KyPost's recovery secret is also 128 bits (`frontend/src/lib/keyVault.ts:88`). |
 | E10 | **A credential that cannot unlock an encrypted calendar is refused**, never served the skeleton. CalDAV gets `403` with a body that says to create a new app password; the web shows the unlock screen. | A calendar app that read a skeleton would show untitled events, and writing one back would erase the content. |
-| E11 | **Existing app passwords get a 14-day transition.** At setup, the account key is also wrapped under the deployment key (`KY_ENCRYPTION_KEY`, purpose `content-transition`). Each existing app password or MCP token that is used in those 14 days gets its own slot, and the transition slot is then deleted. After 14 days, unused older credentials are refused (E10). | Without it, every device would have to be set up again at the moment of encryption. The window is the only time an operator with the deployment key can read the account, and the account's admin page shows when it ends. |
+| E11 | **Existing app passwords get a 14-day transition.** At setup, the account key is also wrapped under the deployment key (`KY_ENCRYPTION_KEY`, purpose `content-transition`). Each existing app password or MCP token gets its own slot at its first use in those 14 days. The transition slot stays until `transition_until` passes, however many credentials have moved over, and is deleted then. After that, older credentials that were never used are refused (E10). | Without it, every device would have to be set up again at the moment of encryption. The window is the only time an operator with the deployment key can read the account, and the account's admin page shows when it ends. |
 | E12 | **New calendars and accounts are encrypted from the first unlock.** An account with no key keeps writing legacy rows, as today. Its first web unlock runs setup: create keys, show the recovery code, register a passkey or set a passphrase. A background sweep then seals every legacy row to the calendar's public key. | Owner decision 6. Sealing needs only public keys, so the sweep needs no user present. Setup needs the web because the recovery code must be shown to the user. |
 | E13 | **Sharing a calendar wraps its seed to each holder.** When a grant gives a new account access (a grant change, or a group membership arriving from the suite mirror), a `pending_key_shares` row is queued. Any current holder's next unlocked request completes it. Until then, the new member sees the calendar as locked. Removing access deletes the holder's wrap. | The seed can only be wrapped by someone who can open it. Group calendars have members who are active, so pending shares clear quickly. The seed is not rotated on removal: the removed member could already read it, and the times were never secret. |
 | E14 | **Outgoing scheduling messages** are still created inside the sender's request. For an internal recipient, the content is sealed to the recipient's scheduling calendar at queue time. For an external recipient it is sealed under the deployment key (purpose `outbox`) until sent, and blanked afterwards as today (`internal/store/scheduling.go:154-158`). The dedupe key becomes an HMAC under a deployment-derived key instead of SHA-256 over the body (`davbackend/scheduling.go:188`). | The worker that delivers or sends never needs the sender's key. An external message is mailed in plaintext by design, and it waits for at most 24 hours (`outboxGiveUp`). A bare hash of content would let anyone with the database confirm a guess. |
@@ -97,10 +97,15 @@ Every place that reads `calendar_objects.data` or another content column, from t
 - **Free/busy and presence** (`internal/davbackend/freebusy.go:62`, `davbackend/presence.go:43`):
   skeleton. No change.
 - **Booking pages.** Availability parses skeletons (`internal/booking/booking.go:187-214`).
-  Confirming a booking seals the visitor's title and notes to the host's calendar as a new object
-  (`internal/api/booking.go:734`). The `bookings` columns `name` and `note`
-  (`migrations.go:842-862`) are sealed to the host's account public key. The visitor's `email` stays
-  readable, because confirmation and change mails go to it. Rescheduling changes only skeleton
+  Neither the hold nor the confirmation carries a host secret: both are the visitor's anonymous
+  requests. The hold seals the visitor's `name` and `note` (`bookings`, `migrations.go:842-862`)
+  under the deployment key (purpose `booking-hold`), for at most the 15-minute hold
+  (`internal/booking/booking.go:30`). Confirming opens them and builds the event and the booker's
+  invitation as today (`internal/api/booking.go:734`). It writes the event as a base sealed to the
+  host calendar's public key, and queues the invitation under E14. Then it clears the row's name,
+  note and email, as confirming already does (booking page spec, Retention). An expired hold is
+  deleted unopened. The visitor's `email` stays readable while the hold lasts, because the
+  confirmation link is mailed to it. Rescheduling changes only skeleton
   times (`booking.go:860`).
 - **Resource auto-answer** (`internal/store/resource_bookings.go:107-149`,
   `internal/resource/settle.go:643-644`). Conflicts use skeletons. When it sets `LOCATION` on a
@@ -152,7 +157,8 @@ All in one migration with both backends' SQL, as every migration since version 2
 - `pending_key_shares (calendar_id, user_id, queued_at, PK (calendar_id, user_id))`.
 - `calendar_objects.sealed BLOB/BYTEA NULL`. The usage triggers (`migrations.go:410-428`,
   `:712-730`) add `LENGTH(sealed)`.
-- `scheduling_outbox` gains `sealed`, and `bookings.name` and `bookings.note` become sealed blobs.
+- `scheduling_outbox` gains `sealed`, and `bookings.name` and `bookings.note` become sealed blobs
+  under the `booking-hold` key.
 - `task_search` is dropped.
 
 Every new table is org-owned (class O in the tenancy spec's Inventory) and joins `OrgStore`.
@@ -204,8 +210,8 @@ that possible:
   token, or a passphrase or password stretched by Argon2id. Passphrases and passwords are the weak
   point (E8).
 - **Operator or staff** reading the database or running `export-org`: the same as a stolen
-  database, except during an account's 14-day transition (E11) and for external messages waiting
-  up to 24 hours (E14).
+  database, except during an account's 14-day transition (E11), for external messages waiting
+  up to 24 hours (E14), and for a booking hold's name and note, which wait up to 15 minutes.
 - **Compromised running server**: sees every secret and every object in the requests it handles. A
   fully compromised host can also serve modified web code that leaks the passkey PRF output. Not
   covered; option 1 narrows this only for native apps.
@@ -237,7 +243,7 @@ turns it on.
      without a slot gets `403`. The database holds no content property in `data`. A multiget of
      2,000 objects stays under 1 s on Major.
 3. **CE3, workers.** Outbox sealing and HMAC dedupe (E14), inbound iTIP, booking confirm and the
-   sealed `bookings` columns, resource `LOCATION` parts, feed refresh with an HMAC change check,
+   the `booking-hold` sealing of a hold's name and note, resource `LOCATION` parts, feed refresh with an HMAC change check,
    KyMessages titles at write time, out-of-office and task flags.
    - Tests: each worker writes content an unlocked read returns, and none of them can open a slot (the
      worker gets no slot code path at all).
@@ -251,8 +257,9 @@ turns it on.
 6. **CE6, migration and default on.** Setup's sweep, the 14-day transition, admin status,
    `export-org` and `open-export`, the restore drill. Docs: `docs/ASSURANCE-CASE.md`,
    `docs/STRONG-CRYPTO.md`, `docs/RUNNING.md`, `AGENTS.md`. The setting defaults to on.
-   - Tests: an upgraded install with existing app passwords keeps syncing through the transition. An
-     app password unused past it is refused. The sweep leaves no legacy rows and is resumable. A
+   - Tests: an upgraded install with two existing app passwords and an MCP token keeps all three
+     syncing through the transition: the second and third still unlock after the first has its own
+     slot. An app password unused past the window is refused. The sweep leaves no legacy rows and is resumable. A
      capsule restore reads nothing without a slot secret.
 
 ## Residual risks
@@ -262,8 +269,8 @@ turns it on.
 - **Lost secrets lose content.** No escrow (owner decision 5). The setup flow makes the recovery
   code hard to skip, but users still lose it.
 - **Weak passphrases** can be attacked offline from a stolen database (E8).
-- **The transition and the outbox** are readable with the deployment key for their windows (E11,
-  E14).
+- **The transition, the outbox and booking holds** are readable with the deployment key for
+  their windows: 14 days, 24 hours and 15 minutes (E11, E14, Readers).
 - **Keyed fingerprints.** The outbox dedupe key and the feed change check are HMACs under
   deployment-derived keys, so someone with `encryption.key` can confirm a guessed message or feed
   object.
