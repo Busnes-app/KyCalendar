@@ -335,6 +335,17 @@ func TestExportOnlySignInReachesOnlyTheExport(t *testing.T) {
 		t.Fatalf("export holds %v", files)
 	}
 
+	// A calendar that fails before the download starts is an error, never an empty zip.
+	defer func(f func(context.Context, store.Store, string) ([]byte, int, []*store.CalendarObject, error)) {
+		calendarICS = f
+	}(calendarICS)
+	calendarICS = func(context.Context, store.Store, string) ([]byte, int, []*store.CalendarObject, error) {
+		return nil, 0, nil, errors.New("database unavailable")
+	}
+	if w := get(c, "/api/export"); w.Code != http.StatusServiceUnavailable || w.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("export whose first calendar fails: %d %q", w.Code, w.Header().Get("Content-Disposition"))
+	}
+
 	setStatus("deleted")
 	if w := get(c, "/api/export"); w.Code != http.StatusUnauthorized {
 		t.Fatalf("export after the org was deleted: %d", w.Code)

@@ -16,6 +16,9 @@ import (
 
 var exportUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
+// calendarICS is calexport.CalendarICS; a test replaces it to fail one calendar.
+var calendarICS = calexport.CalendarICS
+
 // exportedCalendar is one manifest.json entry of a member's export.
 type exportedCalendar struct {
 	ID       string   `json:"id"`
@@ -36,11 +39,16 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.writeUnavailable(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="kycalendar-export.zip"`)
-	w.Header().Set("Cache-Control", "no-store")
-	zw := zip.NewWriter(w)
+	// The download starts with its first file, so a failure before that is answered as an error,
+	// never as an empty zip.
+	var zw *zip.Writer
 	put := func(name string, data []byte) error {
+		if zw == nil {
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", `attachment; filename="kycalendar-export.zip"`)
+			w.Header().Set("Cache-Control", "no-store")
+			zw = zip.NewWriter(w)
+		}
 		f, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate, Modified: time.Now().UTC()})
 		if err != nil {
 			return err
@@ -58,13 +66,17 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		used[strings.ToLower(p)] = true
 		return p
 	}
-	// The headers are sent with the first byte, so a failure past here can only cut the zip
-	// short, which a zip reader reports as damaged; it is logged, never served as complete.
+	// Once the first file is out, a failure can only cut the zip short, which a zip reader reports
+	// as damaged; it is logged, never served as complete.
 	fail := func(err error) {
+		if zw == nil {
+			s.writeUnavailable(w, err)
+			return
+		}
 		log.Printf("export: user %s: %v", user.ID, err)
 	}
 	for _, c := range cals {
-		body, items, unmerged, err := calexport.CalendarICS(ctx, s.store, c.ID)
+		body, items, unmerged, err := calendarICS(ctx, s.store, c.ID)
 		if err != nil {
 			fail(err)
 			return
