@@ -178,7 +178,7 @@ a write, so it leaves the stored ETag as it was.
 
 All in one migration with both backends' SQL, as every migration since version 20 is.
 
-- `account_keys (user_id PK, org_id, public_key, created_at, transition_until NULL)`.
+- `account_keys (user_id PK, public_key, created_at, transition_until NULL)`.
 - `key_slots (user_id, slot_id, kind, wrapped, params, created_at, last_used_at, PK (user_id, slot_id))`.
   `kind` is `apppass`, `mcp`, `passkey`, `passphrase`, `password`, `recovery`, `session`,
   `transition`, and later `device`. `params` holds the Argon2id parameters or the PRF salt. An
@@ -201,7 +201,7 @@ All in one migration with both backends' SQL, as every migration since version 2
   columns only for hosts with an account key. Migrations are never edited once released, so the
   schema grows in the phase that adds each reader.
 
-Every new table is org-owned (class O in the tenancy spec's Inventory) and joins `OrgStore`.
+Every new table is derived (class D in the tenancy spec's Inventory): it cascades from `users` or `calendars`, as `sessions` and `app_passwords` do, so an org purge removes it with them and no new org triggers are needed (built in CE1c, migration 38). `calendar_key_holders` also carries `former` (E13).
 
 ## Web flows
 
