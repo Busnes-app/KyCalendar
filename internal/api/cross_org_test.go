@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,9 +24,9 @@ import (
 // multi-tenant mode (tenancy PR 4), so the store has no writer for them yet.
 func addOrg(t *testing.T, cfg *config.Config, id string) {
 	t.Helper()
-	driver, q := "sqlite", `INSERT INTO orgs (id, status) VALUES (?, 'active')`
+	driver, q := "sqlite", `INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
 	if cfg.Database.Driver == "postgres" {
-		driver, q = "pgx", `INSERT INTO orgs (id, status) VALUES ($1, 'active')`
+		driver, q = "pgx", `INSERT INTO orgs (id, status, seen_at) VALUES ($1, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
 	}
 	db, err := sql.Open(driver, cfg.Database.DSN)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -165,7 +166,7 @@ func TestOrgGuardsRefuseCrossOrgRows(t *testing.T) {
 			}
 		}
 		const b = "org-b"
-		must(`INSERT INTO orgs (id, status) VALUES (?, 'active')`, b)
+		must(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`, b)
 		must(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0)`, b)
 		must(`INSERT INTO users (id, username, created_at, updated_at) VALUES ('ua', 'a', ?, ?)`, now, now)
 		must(`INSERT INTO users (id, username, created_at, updated_at, org_id) VALUES ('ub', 'b', ?, ?, ?)`, now, now, b)
@@ -213,7 +214,7 @@ func TestOrgStoreAnswersOtherOrgsLikeMissing(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const b OrgID = "org-b"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), b); err != nil {
 			t.Fatal(err)
 		}
 		const binding = "kyidentity https://id.example"
@@ -294,7 +295,7 @@ func TestNewRowsJoinTheirParentsOrg(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const b = "org-b"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), b); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0)`), b); err != nil {
@@ -396,7 +397,7 @@ func TestAuditRowsJoinTheirUsersOrg(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const b = "org-b"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), b); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.Users().CreateUser(ctx, &User{ID: "ub", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}); err != nil {
@@ -460,7 +461,7 @@ func TestApplyOrgsMirrorsThePoll(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const staff OrgID = "org-staff"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), staff); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), staff); err != nil {
 			t.Fatal(err)
 		}
 		state := func(id OrgID) string {
@@ -638,6 +639,101 @@ func TestAnOrgThatStopsServingIsHeld(t *testing.T) {
 		}
 		if got := audits(); got != "1 false" {
 			t.Errorf("the resume audited a stop: %s", got)
+		}
+	})
+}
+
+// A customer org serves only while KyIdentity's answer for it is at most OrgFresh old. Only a
+// listing that reached its end vouches for every org; the default and staff orgs never age; and
+// an org already stale that turns suspended still loses its sessions.
+func TestAnOrgServesOnlyWhileItsAnswerIsFresh(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const staff OrgID = "org-staff"
+		for _, q := range []struct {
+			sql  string
+			args []any
+		}{
+			{`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`, []any{staff}},
+			{`INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)`, []any{StaffOrgSetting, string(staff), time.Now().UTC()}},
+		} {
+			if _, err := s.db.ExecContext(ctx, s.rebind(q.sql), q.args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		poll := func(orgs []MirroredOrg, next int64) {
+			t.Helper()
+			if err := s.ApplyOrgs(ctx, staff, orgs, next); err != nil {
+				t.Fatal(err)
+			}
+		}
+		age := func() {
+			t.Helper()
+			if _, err := s.db.ExecContext(ctx, s.rebind(`UPDATE orgs SET seen_at = seen_at - ?`), int64(OrgFresh.Seconds())+1); err != nil {
+				t.Fatal(err)
+			}
+		}
+		serving := func() string {
+			t.Helper()
+			ids, err := s.ServingOrgs(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := fmt.Sprint(ids)
+			for _, id := range []OrgID{"org-a", "org-b"} {
+				if ok, err := s.OrgServes(ctx, id); err != nil || ok != slices.Contains(ids, id) {
+					t.Fatalf("OrgServes(%s) %t %v disagrees with %s", id, ok, err, out)
+				}
+			}
+			return out
+		}
+		poll([]MirroredOrg{{ID: "org-a", Status: "active", Revision: 1, Enabled: true, Quotas: `{}`}}, 1)
+		for _, u := range []*User{
+			{ID: "ua", Username: "a", Role: "user", Status: "active", SSOProvider: "local", OrgID: "org-a"},
+			{ID: "ud", Username: "d", Role: "user", Status: "active", SSOProvider: "local", OrgID: DefaultOrg},
+		} {
+			if err := s.Users().CreateUser(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+		}
+		active := func(id string) bool {
+			t.Helper()
+			u, err := s.Users().GetUserByID(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return u.OrgActive
+		}
+		want := fmt.Sprint([]OrgID{DefaultOrg, "org-a", staff})
+		if got := serving(); got != want || !active("ua") {
+			t.Fatalf("control: serving %s, ua active %t", got, active("ua"))
+		}
+
+		age()
+		if got := serving(); got != fmt.Sprint([]OrgID{DefaultOrg, staff}) || active("ua") || !active("ud") {
+			t.Errorf("past OrgFresh: serving %s, ua active %t, ud active %t", got, active("ua"), active("ud"))
+		}
+		poll(nil, 1) // an empty answer that reached the end vouches for org-a
+		if got := serving(); got != want || !active("ua") {
+			t.Errorf("after an empty complete poll: serving %s, ua active %t", got, active("ua"))
+		}
+
+		// A listing cut short (cursor below its last revision) vouches only for what it listed.
+		age()
+		poll([]MirroredOrg{{ID: "org-b", Status: "active", Revision: 5, Enabled: true, Quotas: `{}`}}, 4)
+		if got := serving(); got != fmt.Sprint([]OrgID{DefaultOrg, "org-b", staff}) {
+			t.Errorf("after a partial poll: serving %s", got)
+		}
+
+		now := time.Now().UTC()
+		u, _ := s.Users().GetUserByID(ctx, "ua")
+		if err := s.Sessions().CreateSession(ctx, &Session{TokenHash: "tok_a", UserID: "ua", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.Credentials()); err != nil {
+			t.Fatal(err)
+		}
+		poll([]MirroredOrg{{ID: "org-a", Status: "suspended", Revision: 6, Enabled: true, Quotas: `{}`}}, 6)
+		var n int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE user_id = 'ua'`).Scan(&n); err != nil || n != 0 {
+			t.Errorf("a stale org that turned suspended kept %d sessions (%v)", n, err)
 		}
 	})
 }

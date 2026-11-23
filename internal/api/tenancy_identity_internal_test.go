@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -29,9 +30,9 @@ func multiTenantSignIn(t *testing.T, staff string, orgs map[string]string) (*Ser
 		t.Fatal(err)
 	}
 	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client()))
-	driver, q := "sqlite", `INSERT INTO orgs (id, status) VALUES (?, ?)`
+	driver, q := "sqlite", `INSERT INTO orgs (id, status, seen_at) VALUES (?, ?, `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
 	if s.config.Database.Driver == "postgres" {
-		driver, q = "pgx", `INSERT INTO orgs (id, status) VALUES ($1, $2)`
+		driver, q = "pgx", `INSERT INTO orgs (id, status, seen_at) VALUES ($1, $2, `+strconv.FormatInt(time.Now().Unix(), 10)+`)`
 	}
 	db, err := sql.Open(driver, s.config.Database.DSN)
 	if err != nil {

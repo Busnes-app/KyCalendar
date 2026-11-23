@@ -83,7 +83,7 @@ func (c *calendarStore) OpenMeetings(ctx context.Context, calendarID string) (ma
 }
 
 func (c *calendarStore) DueMeetings(ctx context.Context, now time.Time, limit int) ([]*VideoMeeting, error) {
-	return c.meetings(ctx, `WHERE state <> 'closed' AND rev > done_rev AND next_attempt_at <= ? AND `+orgServes("(SELECT org_id FROM users WHERE users.id = video_meetings.user_id)")+` ORDER BY created_at, id LIMIT ?`, now.UTC(), limit)
+	return c.meetings(ctx, `WHERE state <> 'closed' AND rev > done_rev AND next_attempt_at <= ? AND `+c.store.orgServes("(SELECT org_id FROM users WHERE users.id = video_meetings.user_id)")+` ORDER BY created_at, id LIMIT ?`, now.UTC(), limit)
 }
 
 func (c *calendarStore) meetings(ctx context.Context, rest string, args ...any) ([]*VideoMeeting, error) {

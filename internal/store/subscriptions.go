@@ -84,7 +84,7 @@ func (c *calendarStore) GetSubscription(ctx context.Context, calendarID string) 
 }
 
 func (c *calendarStore) DueSubscriptions(ctx context.Context, now time.Time, limit int) ([]*Subscription, error) {
-	rows, err := c.store.db.QueryContext(ctx, c.q(subscriptionSelect+`WHERE s.next_check_at <= ? AND `+orgServes("c.org_id")+` ORDER BY s.next_check_at LIMIT ?`), now.UTC(), limit)
+	rows, err := c.store.db.QueryContext(ctx, c.q(subscriptionSelect+`WHERE s.next_check_at <= ? AND `+c.store.orgServes("c.org_id")+` ORDER BY s.next_check_at LIMIT ?`), now.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}

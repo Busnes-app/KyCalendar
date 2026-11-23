@@ -90,15 +90,26 @@ func (s *Server) syncOrgs(ctx context.Context) error {
 		return err
 	}
 	since, _ := strconv.ParseInt(v[store.OrgsCursorSetting], 10, 64) // none or unreadable: read all
-	orgs, next, err := dir.Orgs(ctx, max(since, 0))
-	if err != nil {
-		return err
+	since = max(since, 0)
+	// A call cut short at its page bound returns a cursor below its last revision: keep listing
+	// until one reaches the end, the only answer that keeps every org fresh (store.OrgFresh).
+	for {
+		orgs, next, err := dir.Orgs(ctx, since)
+		if err != nil {
+			return err
+		}
+		mirrored := make([]store.MirroredOrg, len(orgs))
+		for i, o := range orgs {
+			mirrored[i] = store.MirroredOrg{ID: store.OrgID(o.ID), Status: o.Status, Revision: o.Revision, Enabled: o.Enabled, Quotas: string(o.Quotas)}
+		}
+		if err := s.store.ApplyOrgs(ctx, ten.Staff, mirrored, next); err != nil {
+			return err
+		}
+		if len(orgs) == 0 || next >= orgs[len(orgs)-1].Revision {
+			return nil
+		}
+		since = next
 	}
-	mirrored := make([]store.MirroredOrg, len(orgs))
-	for i, o := range orgs {
-		mirrored[i] = store.MirroredOrg{ID: store.OrgID(o.ID), Status: o.Status, Revision: o.Revision, Enabled: o.Enabled, Quotas: string(o.Quotas)}
-	}
-	return s.store.ApplyOrgs(ctx, ten.Staff, mirrored, next)
 }
 
 // awaitOrg waits for a poll that began after an org was named: one already running, or, if
