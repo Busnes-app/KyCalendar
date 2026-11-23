@@ -407,3 +407,25 @@ func TestPatchValuesAreBounded(t *testing.T) {
 		t.Errorf("exactly %d bytes refused: %v", MaxPatchValue, err)
 	}
 }
+
+// A property name is an iCalendar name token and a RECURRENCE-ID a plain date or date-time: a
+// name with a line break, ':' or ';' could add lines (even readable properties) or merge labels.
+func TestPatchNamesAreTokens(t *testing.T) {
+	for name, op := range map[string]Op{
+		"line break":  {Op: "set", Component: "VEVENT", Property: "X-A:x\r\nATTENDEE;PARTSTAT=ACCEPTED", Values: []PropValue{{Value: "y"}}},
+		"colon":       {Op: "remove", Component: "VEVENT", Property: "LOCATION:x"},
+		"semicolon":   {Op: "remove", Component: "VEVENT", Property: "LOCATION;X=1"},
+		"space":       {Op: "remove", Component: "VEVENT", Property: "LOCATION X"},
+		"bad rid":     {Op: "remove", Component: "VEVENT", Property: "LOCATION", RecurrenceID: "2026;x"},
+		"rid newline": {Op: "remove", Component: "VEVENT", Property: "LOCATION", RecurrenceID: "20261117T090000Z\n"},
+	} {
+		if _, err := EncodePatch([]Op{op}); err == nil {
+			t.Errorf("%s: encoded", name)
+		}
+	}
+	for _, rid := range []string{"", "20261117", "20261117T090000", "20261117T090000Z"} {
+		if _, err := EncodePatch([]Op{{Op: "remove", Component: "VEVENT", Property: "x-apple-travel", RecurrenceID: rid}}); err != nil {
+			t.Errorf("RECURRENCE-ID %q refused: %v", rid, err)
+		}
+	}
+}

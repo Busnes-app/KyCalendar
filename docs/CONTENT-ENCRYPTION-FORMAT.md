@@ -166,6 +166,10 @@ no control character and no `"`. One operation's values and parameters together,
 link, are at most 2048 bytes. A patch that breaks this is refused, so a sealed patch can
 never corrupt the object it applies to.
 
+A `property` is an iCalendar name token (letters, digits and `-`), and a `recurrence_id` is empty
+or a plain date or date-time (`YYYYMMDD`, optionally `THHMMSS` and `Z`), as both start content
+lines and labels.
+
 Component and property names in a patch are case-insensitive. They're stored, compared and applied in upper case.
 
 A patch's **label** is `op property component recurrence-id` for each operation, joined by `;`,

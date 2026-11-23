@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -103,6 +104,11 @@ func (o Op) norm() Op {
 	return o
 }
 
+var (
+	nameToken       = regexp.MustCompile(`^[A-Z0-9-]+$`)
+	recurrenceToken = regexp.MustCompile(`^([0-9]{8}(T[0-9]{6}Z?)?)?$`)
+)
+
 // MaxPatchValue bounds one operation's values (or room link), in bytes. With at most 16 patches
 // per object it bounds how far plain_size can drift before a fold (content encryption spec E4, E5).
 const MaxPatchValue = 2048
@@ -115,6 +121,11 @@ func (o Op) check() error {
 		}
 		return nil
 	case "set", "remove":
+		// The name starts a content line and the label; anything but an iCalendar name token, or a
+		// RECURRENCE-ID that is not a plain date or date-time, could add lines or merge labels.
+		if !nameToken.MatchString(o.Property) || !recurrenceToken.MatchString(o.RecurrenceID) {
+			return errors.New("skeleton: a patch property must be an iCalendar name and its RECURRENCE-ID a date or date-time")
+		}
 		if o.Component != ical.CompEvent && o.Component != ical.CompToDo || o.Property == "" {
 			// apply reaches only the stored components; a patch it cannot apply is refused, never
 			// stored as if it had been applied.
