@@ -47,26 +47,36 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 		log.Printf("suite: groups: orgs: %v", err)
 		return
 	}
-	// Every org is tried each pass, starting where the last pass first failed: the lists share the
-	// client's rate limit at KyIdentity, so a fixed order would starve the same tail every time.
+	orgs = slices.DeleteFunc(orgs, func(o store.OrgID) bool { return o == store.DefaultOrg }) // D4: KyIdentity has no such org
+	if len(orgs) == 0 {
+		return
+	}
+	// Every org is tried each pass, round-robin: the lists share the client's rate limit at
+	// KyIdentity, so a fixed order would starve the same tail. The next pass starts just after
+	// the last org that listed, so an org that always fails (gone from KyIdentity, or a steady
+	// error) cannot pin the start; with no success at all, the start moves on by one.
+	start := 0
 	if from := s.suiteGroupsFrom.Load(); from != nil {
-		if i := slices.Index(orgs, *from); i > 0 {
-			orgs = append(orgs[i:], orgs[:i]...)
+		if i := slices.Index(orgs, *from); i >= 0 {
+			start = i
 		}
 	}
-	var failed *store.OrgID
-	for _, org := range orgs {
+	lastOK := -1
+	for k := range orgs {
 		if ctx.Err() != nil {
 			return
 		}
-		if org == store.DefaultOrg {
-			continue // the single-tenant org (D4); KyIdentity has no such org to list
-		}
-		if !s.syncOrgSuiteGroups(ctx, scope, org, func(ctx context.Context) ([]suitedir.Group, error) { return dir.OrgGroups(ctx, string(org)) }) && failed == nil {
-			failed = &org
+		i := (start + k) % len(orgs)
+		org := orgs[i]
+		if s.syncOrgSuiteGroups(ctx, scope, org, func(ctx context.Context) ([]suitedir.Group, error) { return dir.OrgGroups(ctx, string(org)) }) {
+			lastOK = i
 		}
 	}
-	s.suiteGroupsFrom.Store(failed)
+	next := (start + 1) % len(orgs)
+	if lastOK >= 0 {
+		next = (lastOK + 1) % len(orgs)
+	}
+	s.suiteGroupsFrom.Store(&orgs[next])
 }
 
 // syncOrgSuiteGroups lists one org's suite groups and reconciles them into that org. It reports

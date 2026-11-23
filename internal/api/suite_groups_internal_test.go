@@ -313,3 +313,54 @@ func TestSyncSuiteGroupsPerOrgRotatesPastARateLimit(t *testing.T) {
 		t.Errorf("second pass left %d of 4 orgs reconciled: the rate-limited tail was starved", n)
 	}
 }
+
+// An org that always fails (gone from KyIdentity) must not pin the rotation: with it sorted first
+// and two lists allowed per pass, every other org is reconciled within three passes.
+func TestSyncSuiteGroupsPerOrgSurvivesAPermanentFailure(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	budget := 0
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if budget == 0 {
+			http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+			return
+		}
+		budget-- // a refused list costs the client its rate limit too
+		org := r.URL.Query().Get("org_id")
+		if org == "org-0" {
+			http.Error(w, `{"error":"unknown_org"}`, http.StatusNotFound)
+			return
+		}
+		fmt.Fprintf(w, `{"groups":[{"id":"g-%s","name":"Team %s","slug":"team","state":"active","members":[]}]}`, org, org)
+	}))
+	t.Cleanup(idp.Close)
+	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client()))
+	var orgs []store.MirroredOrg
+	for _, id := range []store.OrgID{"org-0", "org-a", "org-b", "org-c", "org-d"} {
+		orgs = append(orgs, store.MirroredOrg{ID: id, Status: "active", Revision: 1, Enabled: true, Quotas: "{}"})
+	}
+	if err := s.store.ApplyOrgs(ctx, "", orgs, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for pass := 0; pass < 3; pass++ {
+		mu.Lock()
+		budget = 2
+		mu.Unlock()
+		s.SyncSuiteGroups(ctx)
+		cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+		if err != nil {
+			t.Fatal(err)
+		}
+		n = len(cals)
+	}
+	if n != 4 {
+		t.Errorf("after three passes %d of 4 orgs reconciled: a permanently failing org pinned the rotation", n)
+	}
+}
