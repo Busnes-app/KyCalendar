@@ -514,7 +514,9 @@ calendar (`internal/access/role.go:44-46`), and DAV, MCP and app passwords refus
 (`AGENTS.md:301`). **Staff never read calendar content**, which matches T ("staff … cannot read app
 content").
 Content encryption at rest (`2026-11-22-content-encryption-design.md`) makes this cryptographic for
-every encrypted account: the server holds no key to its content between requests.
+every encrypted account: the server holds no key to its content between requests, except during
+the account's 14-day transition (its E11) and for an external message waiting up to 24 hours to be
+sent (its E14), which the deployment key opens.
 
 | Route (`internal/api/server.go`) | Multi-tenant |
 |---|---|

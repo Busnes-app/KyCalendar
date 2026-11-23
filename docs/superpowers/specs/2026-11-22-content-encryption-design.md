@@ -28,9 +28,10 @@ The server splits every calendar object into a **skeleton** and **content**.
   `calendar_objects.data` as today, so every reader that needs only times or attendees keeps
   working unchanged: free/busy, presence, booking availability, time-range queries, resource
   conflicts and the restore drill.
-- **The content** is the removed properties (title, description, location, notes and so on).
-  They are sealed to the calendar's key in a new column and merged back in when an unlocked
-  request reads the object.
+- **The content** is the object exactly as the client sent it, byte for byte. It is sealed to
+  the calendar's key in a new column and served back as it was when an unlocked request reads the
+  object. The skeleton is a readable copy of its times, recurrence and attendees (title,
+  description, location and notes are left out).
 
 Each calendar has a key pair. Each account has a key pair whose private half is wrapped in
 **slots**, one per unlock secret: each app password, each MCP token, each passkey, the
@@ -59,10 +60,10 @@ attendees, but no content.
 | # | Decision | Why |
 |---|---|---|
 | E1 | **Content properties are an allowlist of readable properties; everything else is content.** Readable: `UID`, `DTSTART`, `DTEND`, `DUE`, `DURATION`, `RRULE`, `RDATE`, `EXDATE`, `RECURRENCE-ID`, `SEQUENCE`, `DTSTAMP`, `CREATED`, `LAST-MODIFIED`, `STATUS`, `TRANSP`, `CLASS`, `PRIORITY`, `COMPLETED`, `PERCENT-COMPLETE`, `ORGANIZER`, `ATTENDEE` (with parameters, including `CN`), `VALARM`'s `ACTION` and `TRIGGER`, and every `VTIMEZONE` component. Every other property, including every `X-` property, is content. | Default to secret. An unknown vendor property, which can hold anything, is sealed. The readable set is what scheduling, availability, recurrence and alarms need (Readers, below). `CN` stays readable because invitations and the attendee list show it, and the attendee's address already identifies them. |
-| E2 | **The skeleton stays in `calendar_objects.data`; content goes in a new `sealed` column.** | Every time-only reader keeps parsing `data` unchanged (Readers). A legacy row has `sealed IS NULL` and holds the full object, which is how unencrypted accounts and the migration work. |
+| E2 | **The skeleton stays in `calendar_objects.data`; the sealed column holds the whole original body.** An unlocked write seals the body exactly as received and stores its skeleton beside it. A read with no worker parts on top (E5) serves those sealed bytes unchanged. | Every time-only reader keeps parsing `data` unchanged (Readers). The contract that PUT bodies are "stored and served as the raw bytes received" (`AGENTS.md:302`) keeps holding, so property order, folding and vendor properties survive, and the interop fixtures (`TestInteropFixturesSurviveWebEdits`) keep passing. The readable properties are stored twice, which costs some space; quotas count both. A legacy row has `sealed IS NULL` and holds the full object in `data`, which is how unencrypted accounts and the migration work. |
 | E3 | **Key hierarchy: account key → calendar key → content.** Each account has an X-Wing key pair. Each calendar has a 32-byte seed. The seed gives an X-Wing key pair (for sealing without a secret) and an AES-256-GCM key (for unlocked writes). The seed is wrapped to each holder's account public key. | Grants are to groups (`calendar_grants`, `migrations.go:368-374`), so several accounts read one calendar; a per-calendar key lets each holder's own secret open it. X-Wing is the KEM already used for capsules and the recovery key (`ky-primitives/capsule/hpke.go`, `recoverykey`), so stolen content sealed today stays safe against a future quantum attacker. |
-| E4 | **Content is sealed as a list of parts.** An unlocked write replaces every part with one part sealed under the calendar's AES key (28 bytes of overhead). A worker appends a part sealed with HPKE to the calendar's public key (about 1.1 KB of overhead). The next unlocked write folds all parts into one. | A worker can then write content without being able to read the existing content. Most writes come from users and stay small; worker parts are rare and get folded. Quotas count `data` plus `sealed`. |
-| E5 | **A part replaces the content of whole components.** It is keyed by component (`VEVENT`, `VTODO` and so on), `RECURRENCE-ID` and, for alarms, the alarm's position. Parts apply in order. | A worker update (an organizer's new version, a booking, a room setting `LOCATION`) names the components it replaces and leaves the others, such as the user's own alarms, untouched. |
+| E4 | **The sealed column is a list of parts: a base and then patches.** The base is a whole body. An unlocked write replaces every part with one base sealed under the calendar's AES key (28 bytes of overhead). A worker that writes a whole new object (a delivered invitation, a booking, a feed object) writes a base sealed with HPKE to the calendar's public key (about 1.1 KB of overhead). A worker that changes an existing object appends a patch sealed with HPKE (E5). The next unlocked write replaces them all with one base again. | A worker can then write content without being able to read the existing content. Most writes come from users and stay small; worker parts are rare and get folded. Quotas count `data` plus `sealed`. |
+| E5 | **A patch is a list of operations on named properties**, never a whole component. Each operation names a component (`VEVENT`, `VTODO` and so on, plus its `RECURRENCE-ID`) and is one of: `set` (replace every instance of one property, for example `LOCATION` or `COMMENT`), `remove` (one property), or `conference` (the KyMessages room: set `CONFERENCE` and the final `Join:` description line, or remove both, with the rules of `calendar.SetConference` and `StripJoin`, `internal/calendar/conference.go:25-86`). Patches apply in order on top of the base. A read that applies any patch serves the merged object re-encoded, as a worker rewrite serves today. | A worker never sees the user's other content, so it must not be able to replace it. Setting one property leaves the title, description and vendor properties exactly as they were. `conference` is its own operation because the `Join:` line lives inside `DESCRIPTION`, which the worker cannot read. Applying it at read time keeps the existing rule that a later `Join:` replaces the earlier one. |
 | E6 | **Unlock secrets.** Each slot wraps the account's private key under a key derived from one secret: an app password or MCP token (HKDF of its 256-bit secret, `internal/apppass/apppass.go:18-30`), a passkey (its WebAuthn PRF output), the passphrase (Argon2id), the recovery code (HKDF of 128 random bits), a local password where one exists (Argon2id), or a browser session (HKDF of the session token, which the server stores only as SHA-256, `internal/auth/session.go:65-66`). | Every request already carries one of these secrets. Unwrapping per request keeps replicas stateless: no unlocked key lives in any process between requests. A session slot dies with its session, so a stolen cookie database (hashes only) opens nothing. |
 | E7 | **Passkeys for unlock only; KyCalendar verifies no assertion.** The browser calls WebAuthn with the PRF extension and a per-slot salt, and sends the PRF output over the signed-in session. A wrong output fails to unwrap. | Sign-in is already KyIdentity's job. The PRF output is the secret, so there is no server-side WebAuthn code to get wrong. A passkey registered with KyCalendar's relying-party ID belongs to KyCalendar, so another app's passkey cannot unlock it. |
 | E8 | **The passphrase is the fallback**, for browsers or authenticators without PRF support. It is at least 12 characters and is stretched with Argon2id (`ky-primitives/password`). | Owner decision 4. A stolen database can be searched offline against a weak passphrase, so the setup page recommends the passkey and states the trade-off. |
@@ -86,7 +87,7 @@ Every place that reads `calendar_objects.data` or another content column, from t
 - The web events API (`internal/api/events.go:293`).
 - MCP tools (`internal/api/mcp.go:260-460`), unlocked by the MCP token's slot.
 - Writes: `davbackend.Write` (`internal/davbackend/write.go:32`) receives the full object, splits
-  it, seals the content under the calendar's AES key, and folds older parts (E4).
+  it, seals the whole body under the calendar's AES key as a new base, and drops older parts (E2, E4).
 - Task search (`internal/api/tasks.go:619-632`). The plaintext `task_search` table
   (`migrations.go:966-974`) is dropped; search decrypts the account's tasks per request. Fine for
   thousands of tasks; measured in CE2.
@@ -103,15 +104,16 @@ Every place that reads `calendar_objects.data` or another content column, from t
   times (`booking.go:860`).
 - **Resource auto-answer** (`internal/store/resource_bookings.go:107-149`,
   `internal/resource/settle.go:643-644`). Conflicts use skeletons. When it sets `LOCATION` on a
-  worker path, it appends a part (E5). A room's own calendar holds the skeleton only: a room has
+  worker path, it appends a `set LOCATION` patch (E5). A room's own calendar holds the skeleton only: a room has
   no user to unlock it, and its calendar shows the organizer and times.
 - **Outbox delivery** (`davbackend/scheduling.go:199-305`, `deliverToAttendee` `:422`,
   `deliverReply` `:556`): writes the skeleton and appends the part sealed at queue time (E14). A
-  `REPLY` changes `ATTENDEE` parameters, which are skeleton; a `COMMENT` it carries becomes a part.
+  `REPLY` changes `ATTENDEE` parameters, which are skeleton; a `COMMENT` it carries becomes a `set COMMENT` patch.
 - **Inbound iTIP from KyPost** (`internal/api/itip_handlers.go:211,241`,
   `davbackend/external.go:107-167`): the message arrives in plaintext from mail, is split, and its
-  content is sealed to the recipient's calendar public key. Merging with the stored copy touches
-  skeleton properties only.
+  content is sealed to the recipient's calendar public key. An organizer's new version is a new
+  base, as the stored copy is replaced today (`external.go:107-167`). A reply touches skeleton
+  properties only.
 - **Out-of-office and KyPost task flags** (`davbackend/out_of_office.go:26,98`,
   `internal/api/kypost_tasks.go:87`): seal what they write to the public key.
 - **Feed refresh** (`internal/feed/refresh.go:83-96`, `store/subscriptions.go:138-248`): fetched
@@ -120,7 +122,9 @@ Every place that reads `calendar_objects.data` or another content column, from t
   (`subscriptions.go:142-143,222`).
 - **KyMessages meeting sync** (`internal/api/video_meetings.go:106-124`) sends the event title as
   the room title. It moves into the write request that creates or renames the meeting, which is
-  unlocked. The background sync stops sending titles.
+  unlocked. The background sync stops sending titles. When the sync writes the room link back to
+  the event, it appends a `conference` patch (E5), which sets `CONFERENCE` and the `Join:` line
+  without reading the description.
 - **Backup** (`internal/backup/payload.go:64-70`): unchanged. The capsule holds sealed content and
   wrapped keys, which `encryption.key` does not open. The restore drill (`internal/backup/drill.go:257`)
   decodes skeletons.
@@ -219,13 +223,17 @@ turns it on.
 1. **CE1, formats and keys.** `internal/contentkey`: the skeleton split (E1), parts (E4, E5),
    seed derivation, slots and the HPKE suite. `docs/CONTENT-ENCRYPTION-FORMAT.md` with test
    vectors. Schema (above). No behaviour change.
-   - Tests: split then merge returns the original object for a corpus of real client objects
-     (Apple, Google, Outlook, Thunderbird, DAVx5 exports, the existing fixtures). A part opens only
+   - Tests: sealing then opening a base returns the original bytes exactly, for a corpus of real
+     client objects (Apple, Google, Outlook, Thunderbird, DAVx5 exports, the existing interop
+     fixtures). Each patch operation changes only its property: a `set LOCATION` or `conference`
+     patch on top of a base leaves `SUMMARY`, `DESCRIPTION` (apart from the `Join:` line) and every
+     `X-` property unchanged. A part opens only
      with its calendar, object and index. Every slot kind opens with its secret and fails with any
      other.
 2. **CE2, store and request paths.** Seal on write, merge on read, folding, app-password and MCP
    slots, session slots, E10 refusal, task search over decrypted content.
-   - Tests: a CalDAV client round trip on an encrypted account keeps every property. A credential
+   - Tests: a CalDAV client round trip on an encrypted account returns the bytes it sent.
+     `TestInteropFixturesSurviveWebEdits` passes on an encrypted account. A credential
      without a slot gets `403`. The database holds no content property in `data`. A multiget of
      2,000 objects stays under 1 s on Major.
 3. **CE3, workers.** Outbox sealing and HMAC dedupe (E14), inbound iTIP, booking confirm and the
