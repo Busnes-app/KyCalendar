@@ -33,6 +33,7 @@ var tableClass = map[string]string{
 	"kypost_out_of_office": "d", "suite_group_calendars": "o",
 	"task_areas": "d", "task_views": "d", "task_search": "d", "task_completions": "d", "task_goals": "d", "task_prefs": "d",
 	"security_windows": "p", "spent_challenges": "p", "kypost_replay": "p",
+	"account_keys": "d", "key_slots": "d", "calendar_keys": "d", "calendar_key_holders": "d", "pending_key_shares": "d", "worker_keys": "d",
 }
 
 // TestEveryTableIsClassified fails when a table has no tenancy class, when the org-owned

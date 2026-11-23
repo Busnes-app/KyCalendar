@@ -35,6 +35,7 @@ var migrationTables = []string{
 	"kypost_out_of_office", "suite_group_calendars",
 	"task_areas", "task_views", "task_search", "task_completions", "task_goals", "task_prefs",
 	"security_windows", "spent_challenges", "kypost_replay",
+	"account_keys", "key_slots", "calendar_keys", "calendar_key_holders", "pending_key_shares", "worker_keys",
 }
 
 // notData are tables that exist but are never copied: the migration record (the target is
