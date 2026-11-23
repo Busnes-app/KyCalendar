@@ -7,10 +7,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -25,7 +27,6 @@ func runExportOrg(args []string) error {
 	fs := flag.NewFlagSet("export-org", flag.ContinueOnError)
 	org := fs.String("org", "", "ID of the org to export (required)")
 	out := fs.String("out", "", "new directory to write the export into (required)")
-	allow := fs.Bool("allow-unreadable", false, "write the export even when stored objects cannot be read (they are listed in manifest.json)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -42,11 +43,11 @@ func runExportOrg(args []string) error {
 		return err
 	}
 	defer st.Close()
-	m, err := exportOrg(ctx, st, store.OrgID(*org), *out, time.Now().UTC(), *allow)
+	m, err := exportOrg(ctx, st, store.OrgID(*org), *out, time.Now().UTC())
 	if err != nil {
 		return err
 	}
-	log.Printf("✓ org %s exported to %s: %d calendars, %d items, %d unreadable", *org, *out, len(m.Calendars), m.Items, m.unreadable())
+	log.Printf("✓ org %s exported to %s: %d calendars, %d items, %d copied as stored because they could not be merged (see manifest.json)", *org, *out, len(m.Calendars), m.Items, m.unmerged())
 	return nil
 }
 
@@ -58,16 +59,13 @@ type exportManifest struct {
 	Calendars  []exportCalendar `json:"calendars"`
 }
 
-func (m *exportManifest) unreadable() int {
+func (m *exportManifest) unmerged() int {
 	n := 0
 	for _, c := range m.Calendars {
-		n += len(c.Unreadable)
+		n += len(c.Unmerged)
 	}
 	return n
 }
-
-// errUnreadable is an export that would leave stored objects out without the operator agreeing.
-var errUnreadable = errors.New("export-org: stored objects cannot be read")
 
 type exportCalendar struct {
 	ID         string   `json:"id"`
@@ -80,17 +78,20 @@ type exportCalendar struct {
 	Subscribed bool     `json:"subscribed,omitempty"`
 	File       string   `json:"file"`
 	Items      int      `json:"items"`
-	Unreadable []string `json:"unreadable,omitempty"` // stored objects that do not parse, by name
+	// Unmerged are stored objects that could not go into File (they do not parse, or go-ical cannot
+	// write them back), each copied byte for byte into its own file, by path.
+	Unmerged []string `json:"unmerged,omitempty"`
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
 // exportOrg writes org's calendars under dir, which must not exist yet: one .ics per calendar,
 // in a folder per member (members/<user ID>/) or groups/, and manifest.json. Every file is 0600
-// and every folder 0700, since they hold calendar content. A stored object that cannot be read
-// makes it refuse (errUnreadable) and write nothing, unless allow: an export staff hand over
-// before a purge must never be missing events unnoticed.
-func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string, now time.Time, allow bool) (*exportManifest, error) {
+// and every folder 0700, since they hold calendar content. Nothing stored is ever left out: an
+// object that cannot be merged into its calendar's file is copied as stored next to it
+// (<calendar ID>.unmerged/<object name>) and listed in the manifest, so an export handed over
+// before a purge is never short and no single object can stop it.
+func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string, now time.Time) (*exportManifest, error) {
 	if _, err := st.OrgQuotas(ctx, org); errors.Is(err, store.ErrNotFound) {
 		return nil, fmt.Errorf("no org %s here", org)
 	} else if err != nil {
@@ -128,24 +129,28 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 			folder = filepath.Join("members", unsafeName.ReplaceAllString(u.ID, "_"))
 		}
 		e.File = filepath.ToSlash(filepath.Join(folder, unsafeName.ReplaceAllString(c.ID, "_")+".ics"))
-		body, err := exportCalendarICS(ctx, st, c, &e)
+		body, unmerged, err := exportCalendarICS(ctx, st, c, &e)
 		if err != nil {
 			return nil, fmt.Errorf("calendar %s: %w", c.ID, err)
 		}
-		if err := writePrivate(filepath.Join(tmp, filepath.FromSlash(e.File)), body); err != nil {
+		if err := writeExport(filepath.Join(tmp, filepath.FromSlash(e.File)), body); err != nil {
 			return nil, err
+		}
+		for _, o := range unmerged {
+			f := strings.TrimSuffix(e.File, ".ics") + ".unmerged/" + unsafeName.ReplaceAllString(o.Name, "_")
+			if err := writeExport(filepath.Join(tmp, filepath.FromSlash(f)), o.Data); err != nil {
+				return nil, err
+			}
+			e.Unmerged = append(e.Unmerged, f)
 		}
 		m.Items += e.Items
 		m.Calendars = append(m.Calendars, e)
-	}
-	if n := m.unreadable(); n > 0 && !allow {
-		return nil, fmt.Errorf("%w: %d of them, which the export would leave out; nothing was written. Rerun with -allow-unreadable to write the export anyway, with them listed in manifest.json", errUnreadable, n)
 	}
 	manifest, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	if err := writePrivate(filepath.Join(tmp, "manifest.json"), append(manifest, '\n')); err != nil {
+	if err := writeExport(filepath.Join(tmp, "manifest.json"), append(manifest, '\n')); err != nil {
 		return nil, err
 	}
 	if err := os.Rename(tmp, dir); err != nil {
@@ -155,20 +160,25 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 	return m, nil
 }
 
-// exportCalendarICS is one VCALENDAR holding every stored object of c, each time zone once.
-func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e *exportCalendar) ([]byte, error) {
+// exportCalendarICS is one VCALENDAR holding every stored object of c, each time zone once, and
+// the objects it could not merge: those that do not parse or that go-ical cannot write back.
+func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e *exportCalendar) ([]byte, []*store.CalendarObject, error) {
 	objs, err := st.Calendars().ListObjects(ctx, c.ID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var unmerged []*store.CalendarObject
 	out := ical.NewCalendar()
 	out.Props.SetText(ical.PropVersion, "2.0")
 	out.Props.SetText(ical.PropProductID, "-//Busnes-app//KyCalendar export-org//EN")
 	zones := map[string][]byte{} // TZID -> the encoded VTIMEZONE written under it
 	for _, o := range objs {
 		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+		if err == nil {
+			err = ical.NewEncoder(io.Discard).Encode(cal) // what is merged must write back
+		}
 		if err != nil {
-			e.Unreadable = append(e.Unreadable, o.Name)
+			unmerged = append(unmerged, o)
 			continue
 		}
 		renamed := map[string]string{}
@@ -181,7 +191,7 @@ func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e
 			id, _ := child.Props.Text(ical.PropTimezoneID)
 			body, err := zoneBytes(child)
 			if err != nil {
-				return nil, err
+				return nil, nil, err // the whole object encoded, so its zone does too
 			}
 			// One TZID may name different rules in different objects (Outlook's "Customized Time
 			// Zone"): only an identical definition is shared; another gets a TZID of its own.
@@ -209,12 +219,12 @@ func exportCalendarICS(ctx context.Context, st store.Store, c *store.Calendar, e
 	if len(out.Children) == 0 {
 		// go-ical refuses a calendar with no components; an empty calendar is still exported.
 		b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Busnes-app//KyCalendar export-org//EN\r\nEND:VCALENDAR\r\n")
-		return b.Bytes(), nil
+		return b.Bytes(), unmerged, nil
 	}
 	if err := ical.NewEncoder(&b).Encode(out); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return b.Bytes(), nil
+	return b.Bytes(), unmerged, nil
 }
 
 // zoneBytes is z encoded on its own, to compare two definitions.
@@ -242,6 +252,9 @@ func renameTZID(c *ical.Component, renamed map[string]string) {
 		renameTZID(child, renamed)
 	}
 }
+
+// writeExport writes one export file; a test replaces it to fail a write.
+var writeExport = writePrivate
 
 func writePrivate(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

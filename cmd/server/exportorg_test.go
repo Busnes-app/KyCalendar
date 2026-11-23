@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -83,7 +84,7 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 	exportFixtureZone(t, st, "cal_team", "t4", "Outlook three", "Customized Time Zone", "-0500")
 
 	out := filepath.Join(t.TempDir(), "export")
-	m, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC), false)
+	m, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,65 +161,71 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 		}
 	}
 
-	if _, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Now(), false); err == nil {
+	if _, err := exportOrg(ctx, st, store.DefaultOrg, out, time.Now()); err == nil {
 		t.Error("an existing output directory was written over")
 	}
 	empty := filepath.Join(t.TempDir(), "empty")
 	if err := os.Mkdir(empty, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := exportOrg(ctx, st, store.DefaultOrg, empty, time.Now(), false); err == nil {
+	if _, err := exportOrg(ctx, st, store.DefaultOrg, empty, time.Now()); err == nil {
 		t.Error("an existing empty output directory was replaced")
 	}
-	if _, err := exportOrg(ctx, st, "org-none", filepath.Join(t.TempDir(), "x"), time.Now(), false); err == nil {
+	if _, err := exportOrg(ctx, st, "org-none", filepath.Join(t.TempDir(), "x"), time.Now()); err == nil {
 		t.Error("an unknown org was exported")
 	}
-	// A failed export leaves nothing behind, so the same -out works on the retry. An object
-	// that decodes but cannot be written back (an old row with no UID line) fails the encode.
-	if err := davbackend.EnsureDefault(ctx, st, "usr_bert", 0); err != nil {
-		t.Fatal(err)
-	}
-	bad := &store.CalendarObject{CalendarID: calOf("usr_bert"), Name: "bad.ics", UID: "bad", Component: "VEVENT",
+	// Nothing stored is left out: an object that does not parse, and one that parses but go-ical
+	// cannot write back (an old row with no UID line), are copied as stored next to their calendar
+	// and listed, and the export still succeeds.
+	garbled := &store.CalendarObject{CalendarID: calOf("usr_bert"), Name: "garbled.ics", UID: "garbled", Component: "VEVENT", Data: []byte("not a calendar")}
+	noUID := &store.CalendarObject{CalendarID: calOf("usr_bert"), Name: "no uid.ics", UID: "nouid", Component: "VEVENT",
 		Data: []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")}
-	if _, err := st.Calendars().PutObject(ctx, bad, "", true, store.OwnerLimits{}); err != nil {
-		t.Fatal(err)
+	for _, o := range []*store.CalendarObject{garbled, noUID} {
+		if _, err := st.Calendars().PutObject(ctx, o, "", true, store.OwnerLimits{}); err != nil {
+			t.Fatal(err)
+		}
 	}
+	kept := filepath.Join(t.TempDir(), "kept")
+	mk, err := exportOrg(ctx, st, "org-b", kept, time.Now())
+	if err != nil || mk.Items != 1 || mk.unmerged() != 2 {
+		t.Fatalf("export with unmergeable objects: %+v %v", mk, err)
+	}
+	for _, c := range mk.Calendars {
+		for _, f := range c.Unmerged {
+			b, err := os.ReadFile(filepath.Join(kept, filepath.FromSlash(f)))
+			if err != nil || (!bytes.Equal(b, garbled.Data) && !bytes.Equal(b, noUID.Data)) {
+				t.Errorf("unmerged copy %s: %q %v", f, b, err)
+			}
+		}
+	}
+
+	// A failed write leaves nothing behind, so the same -out works on the retry.
 	parent := t.TempDir()
 	failed := filepath.Join(parent, "export")
-	if _, err := exportOrg(ctx, st, "org-b", failed, time.Now(), false); err == nil {
-		t.Fatal("an export of an object that cannot be encoded succeeded")
+	writeExport = func(path string, data []byte) error {
+		if filepath.Base(path) == "manifest.json" {
+			return errors.New("disk full")
+		}
+		return writePrivate(path, data)
+	}
+	_, err = exportOrg(ctx, st, "org-b", failed, time.Now())
+	writeExport = writePrivate
+	if err == nil {
+		t.Fatal("an export whose manifest write failed succeeded")
 	}
 	if left, _ := os.ReadDir(parent); len(left) != 0 {
 		t.Errorf("a failed export left %v", left)
 	}
-	if err := st.Calendars().DeleteObject(ctx, bad.CalendarID, bad.Name, ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := exportOrg(ctx, st, "org-b", failed, time.Now(), false); err != nil {
+	if _, err := exportOrg(ctx, st, "org-b", failed, time.Now()); err != nil {
 		t.Errorf("the retry with the same -out: %v", err)
 	}
-	// An object that cannot be read refuses the export and writes nothing, unless the operator
-	// accepts it; then it is written and the object listed.
-	garbled := &store.CalendarObject{CalendarID: calOf("usr_bert"), Name: "garbled.ics", UID: "garbled", Component: "VEVENT", Data: []byte("not a calendar")}
-	if _, err := st.Calendars().PutObject(ctx, garbled, "", true, store.OwnerLimits{}); err != nil {
-		t.Fatal(err)
-	}
-	refused := filepath.Join(t.TempDir(), "refused")
-	if _, err := exportOrg(ctx, st, "org-b", refused, time.Now(), false); !errors.Is(err, errUnreadable) || !strings.Contains(err.Error(), "1 of them") {
-		t.Fatalf("export with an unreadable object: %v", err)
-	}
-	if _, err := os.Stat(refused); !os.IsNotExist(err) {
-		t.Errorf("a refused export left %s: %v", refused, err)
-	}
-	accepted, err := exportOrg(ctx, st, "org-b", refused, time.Now(), true)
-	if err != nil || accepted.unreadable() != 1 {
-		t.Fatalf("export accepting the unreadable object: %+v %v", accepted, err)
-	}
-	if err := st.Calendars().DeleteObject(ctx, garbled.CalendarID, garbled.Name, ""); err != nil {
-		t.Fatal(err)
+	for _, o := range []*store.CalendarObject{garbled, noUID} {
+		if err := st.Calendars().DeleteObject(ctx, o.CalendarID, o.Name, ""); err != nil {
+			t.Fatal(err)
+		}
 	}
 	outB := filepath.Join(t.TempDir(), "b")
-	if mb, err := exportOrg(ctx, st, "org-b", outB, time.Now(), false); err != nil || mb.Items != 1 {
+	if mb, err := exportOrg(ctx, st, "org-b", outB, time.Now()); err != nil || mb.Items != 1 {
 		t.Fatalf("org-b, deletion scheduled: %+v %v", mb, err)
 	}
 }

@@ -638,9 +638,10 @@ manifest of IDs. Staff run it on the account holder's request, like T open quest
 question 1.
 
 > **Built in PR 4e (2026-11-23).** `kycalendar export-org -org <id> -out <dir>`
-> (`cmd/server/exportorg.go`) refuses an org with no mirror row, an output directory that
-> already exists, and, unless run with `-allow-unreadable`, any stored object it cannot read, so
-> an export handed over before a purge is never silently short. It writes `members/<user ID>/<calendar ID>.ics` and `groups/<calendar ID>.ics`,
+> (`cmd/server/exportorg.go`) refuses an org with no mirror row and an output directory that
+> already exists. Nothing stored is left out: an object that does not parse, or that go-ical
+> cannot write back, is copied as stored into `<calendar>.unmerged/` and listed under
+> `unmerged` in the manifest, so no single object can stop an export or shorten it. It writes `members/<user ID>/<calendar ID>.ics` and `groups/<calendar ID>.ics`,
 > one VCALENDAR per calendar with each time zone once, and `manifest.json` (org, time, and per
 > calendar its ID, name, owner, the owner's username and email, components, file and item count,
 > plus any stored object that does not parse). Files are `0600` and folders `0700`. It reads
