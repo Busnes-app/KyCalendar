@@ -83,7 +83,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), cal.ID, cal.OwnerKind, cal.OwnerID, cal
 	return tx.Commit()
 }
 
-const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, components, seq, created_at,
+const calendarCols = `id, owner_kind, owner_id, slug, name, color, description, components, seq, created_at, org_id,
 (SELECT COUNT(*) FROM calendar_subscriptions s WHERE s.calendar_id = calendars.id),
 (SELECT COUNT(*) FROM suite_group_calendars a WHERE a.calendar_id = calendars.id AND a.archived)`
 
@@ -91,7 +91,7 @@ func scanCalendar(row interface{ Scan(...any) error }) (*Calendar, error) {
 	var cal Calendar
 	var subscribed, archived int
 	var comps string
-	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &comps, &cal.Seq, &cal.CreatedAt, &subscribed, &archived)
+	err := row.Scan(&cal.ID, &cal.OwnerKind, &cal.OwnerID, &cal.Slug, &cal.Name, &cal.Color, &cal.Description, &comps, &cal.Seq, &cal.CreatedAt, &cal.OrgID, &subscribed, &archived)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

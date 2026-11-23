@@ -146,7 +146,7 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 				if _, ok := resource.IDOf(a.Address); ok {
 					continue
 				}
-				_, err := s.Store.Users().CalendarUser(ctx, a.Address.Email())
+				_, err := s.Store.Users().CalendarUser(ctx, writer.OrgID, a.Address.Email())
 				if err != nil && !errors.Is(err, store.ErrNotFound) {
 					return func([]byte) ([]byte, []*store.OutboxMessage, error) { return nil, nil, err }
 				}
@@ -280,7 +280,9 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 	if (method == itip.MethodReply && org != to) || (method != itip.MethodReply && org != from) {
 		return errPermanent{"not_organizer"}
 	}
-	recipient, err := s.Store.Users().CalendarUser(ctx, to.Email())
+	// The sender's org is the row's org_id: it is written from the sender's row, which never
+	// changes org. Nothing in the message chooses it.
+	recipient, err := s.Store.Users().CalendarUser(ctx, sender.OrgID, to.Email())
 	if errors.Is(err, store.ErrNotFound) {
 		return s.sendExternal(ctx, m, sender, from, to, uid, msg)
 	}

@@ -102,7 +102,7 @@ func (s *Scheduler) autoTentative(ctx context.Context, u *store.User, uid string
 	}
 	comment := o.CommentRemote
 	if org, ok := itip.Organizer(invite); ok {
-		if _, err := s.Store.Users().CalendarUser(ctx, org.Email()); err == nil {
+		if _, err := s.Store.Users().CalendarUser(ctx, u.OrgID, org.Email()); err == nil {
 			comment = o.CommentLocal
 		}
 	}

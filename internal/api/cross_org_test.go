@@ -50,7 +50,7 @@ func init() {
 			"GET /api/tasks/views", "POST /api/tasks/views", "GET /api/booking-types", "POST /api/booking-types",
 			"POST /api/subscriptions", "GET /api/presence/me", "PUT /api/presence/me", "GET /api/suite/apps",
 			"/api/auth/change-password", "/api/auth/logout", "/api/auth/me", "/api/settings", "/api/settings/theme", "/mcp"},
-		// Addresses, not IDs: D5 makes every address external in multi-tenant mode (TestMultiTenant*).
+		// Addresses, not IDs: D5 counts an address as internal only inside the caller's org (TestMultiTenant*).
 		"address": {"GET /api/freebusy"},
 		// Resolved by KyIdentity as the caller, which answers only from the caller's org (T D5).
 		"kyidentity": {"POST /api/presence", "GET /api/suite/people", "POST /api/suite/chat"},
@@ -261,12 +261,27 @@ func multiTenant(t *testing.T, st store.Store) {
 	}
 }
 
-// In multi-tenant mode every address is external, inside one org too (tenancy spec, D5): an
-// invitation goes to KyPost and writes nothing here, and free/busy answers as for a stranger.
-func TestMultiTenantSchedulesByEmail(t *testing.T) {
+// otherOrgUser is an active account called name in a second org, org-other.
+func otherOrgUser(t *testing.T, st store.Store, name string) {
+	t.Helper()
+	ctx := context.Background()
+	if err := st.ApplyOrgs(ctx, "", []store.MirroredOrg{{ID: "org-other", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"}}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Users().CreateUser(ctx, &store.User{ID: "usr_" + name, Username: name, Email: name + "@example.com", Role: "user", Status: "active",
+		SSOProvider: "local", OrgID: "org-other"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// In multi-tenant mode an address is internal only inside the caller's org (tenancy spec, D5): a
+// colleague's free/busy shows and an invitation is written into their calendar, while an account
+// in another org answers as a stranger and its invitation goes to KyPost.
+func TestMultiTenantSchedulesWithinTheOrg(t *testing.T) {
 	srv, ts, st, kp := kypostCardWorld(t)
 	alice, _ := webUser(t, srv, st, "alice")
 	bob, bobCal := webUser(t, srv, st, "bob")
+	otherOrgUser(t, st, "dave")
 	busy := `{"title":"Busy","start":"2026-11-10T13:00:00Z","end":"2026-11-10T14:00:00Z","zone":"UTC"}`
 	if r := call(t, srv, "POST", "/api/calendars/"+bobCal+"/events", busy, bob); r.Code != http.StatusCreated {
 		t.Fatalf("bob's event %d", r.Code)
@@ -275,30 +290,36 @@ func TestMultiTenantSchedulesByEmail(t *testing.T) {
 		r := call(t, srv, "GET", "/api/freebusy?users="+who+"&start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z", "", alice)
 		return fmt.Sprint(r.Code, " ", strings.ReplaceAll(r.Body.String(), who, "X"))
 	}
-	if freeBusy("bob@example.com") == freeBusy("nobody@example.com") {
-		t.Fatal("control: single-tenant free/busy should show bob's busy time")
-	}
 	multiTenant(t, st)
-	if got, stranger := freeBusy("bob@example.com"), freeBusy("nobody@example.com"); got != stranger {
-		t.Errorf("free/busy for bob %s, for a stranger %s", got, stranger)
+	stranger := freeBusy("nobody@example.com")
+	if got := freeBusy("bob@example.com"); got == stranger || !strings.Contains(got, "13:00") {
+		t.Errorf("free/busy for colleague bob %s", got)
+	}
+	if got := freeBusy("dave@example.com"); got != stranger {
+		t.Errorf("free/busy for dave in another org %s, for a stranger %s", got, stranger)
 	}
 
 	carol := ssoUser(t, st, "carol") // KyPost mails only for a KyIdentity account
-	if r := rawDAV(t, ts, "PUT", "/dav/usr_carol/calendars/default/plan.ics", "carol", carol, meeting("plan", "carol", "ATTENDEE;RSVP=TRUE:mailto:bob@example.com"),
+	if r := rawDAV(t, ts, "PUT", "/dav/usr_carol/calendars/default/plan.ics", "carol", carol,
+		meeting("plan", "carol", "ATTENDEE;RSVP=TRUE:mailto:bob@example.com", "ATTENDEE;RSVP=TRUE:mailto:dave@example.com"),
 		map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 201 {
 		t.Fatalf("carol's PUT %d", r.StatusCode)
 	}
 	srv.DeliverScheduled(context.Background())
-	if bobCopy(t, st, "plan") != nil {
-		t.Error("the invitation was written into bob's calendar")
+	if bobCopy(t, st, "plan") == nil {
+		t.Error("the invitation was not written into colleague bob's calendar")
 	}
-	if sent := kp.take(); len(sent) != 1 || fmt.Sprint(sent[0].Recipients) != "[bob@example.com]" || sent[0].Method != "REQUEST" ||
+	if sent := kp.take(); len(sent) != 1 || fmt.Sprint(sent[0].Recipients) != "[dave@example.com]" || sent[0].Method != "REQUEST" ||
 		sent[0].OrgID != string(store.DefaultOrg) { // D10: the sender's org
 		t.Errorf("KyPost sends %+v", sent)
 	}
+	if cals, err := st.Calendars().ListCalendarsByOwner(context.Background(), "user", "usr_dave"); err != nil || len(cals) != 0 {
+		t.Errorf("dave's calendars %v %v: nothing may be written for another org", cals, err)
+	}
 }
 
-// The CalDAV outbox answers a member's free/busy, in multi-tenant mode, as for a stranger.
+// The CalDAV outbox answers a colleague's free/busy, in multi-tenant mode, and another org's
+// member's as for a stranger.
 func TestMultiTenantOutboxFreeBusy(t *testing.T) {
 	w := newSchedWorld(t, true)
 	busy := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VEVENT\r\nUID:bob-busy\r\nDTSTAMP:20261001T000000Z\r\n" +
@@ -306,19 +327,26 @@ func TestMultiTenantOutboxFreeBusy(t *testing.T) {
 	if code, _ := w.put("bob", "busy.ics", busy, ""); code != 201 {
 		t.Fatal("bob's event")
 	}
+	otherOrgUser(t, w.st, "dave")
 	multiTenant(t, w.st)
 	ask := func(who string) string {
 		code, body := w.outbox("alice", fbRequest("alice@example.com", who))
 		return fmt.Sprint(code, " ", strings.ReplaceAll(body, who, "X"))
 	}
-	if got, stranger := ask("bob@example.com"), ask("nobody@example.com"); got != stranger || !strings.Contains(got, "3.7;") {
-		t.Errorf("outbox for bob:\n%s\nfor a stranger:\n%s", got, stranger)
+	stranger := ask("nobody@example.com")
+	if got := ask("bob@example.com"); got == stranger || !strings.Contains(got, "2.0;") {
+		t.Errorf("outbox for colleague bob:\n%s", got)
+	}
+	if got := ask("dave@example.com"); got != stranger || !strings.Contains(got, "3.7;") {
+		t.Errorf("outbox for dave in another org:\n%s\nfor a stranger:\n%s", got, stranger)
 	}
 }
 
-// In multi-tenant mode a colleague's invitation gets the remote out-of-office text.
-func TestMultiTenantOutOfOfficeIsRemote(t *testing.T) {
+// In multi-tenant mode out-of-office answers a colleague's invitation internally, as on a
+// single-tenant install, and one from another org's member by mail with the remote text.
+func TestMultiTenantOutOfOfficeByOrg(t *testing.T) {
 	w := newOOOWorld(t)
+	otherOrgUser(t, w.st, "dave")
 	multiTenant(t, w.st)
 	now := time.Now().UTC()
 	on := kypost.OutOfOfficeRequest{Revision: 1, Away: true, Start: now.Add(-time.Hour).Format(time.RFC3339), End: now.Add(48 * time.Hour).Format(time.RFC3339),
@@ -328,15 +356,36 @@ func TestMultiTenantOutOfOfficeIsRemote(t *testing.T) {
 	if r := w.set(t, on); r.Code != 200 {
 		t.Fatalf("set: %d %s", r.Code, r.Body.String())
 	}
-	invite := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:alice-1\r\nDTSTAMP:20261101T000000Z\r\n" +
-		"DTSTART:20261212T090000Z\r\nDTEND:20261212T100000Z\r\nSUMMARY:Plan\r\nORGANIZER:mailto:alice@example.com\r\n" +
+	invite := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:dave-1\r\nDTSTAMP:20261101T000000Z\r\n" +
+		"DTSTART:20261212T090000Z\r\nDTEND:20261212T100000Z\r\nSUMMARY:Plan\r\nORGANIZER:mailto:dave@example.com\r\n" +
 		"ATTENDEE;RSVP=TRUE:mailto:bob@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	if r := signedPost(t, w.srv, "/api/itip/inbound", kypost.EventInbound, "in-1", kypost.InboundRequest{User: bob, From: "alice@example.com", DKIMAligned: true, ICS: invite}); !strings.Contains(r.Body.String(), "applied") {
+	in := kypost.InboundRequest{User: bob, From: "dave@example.com", DKIMAligned: true, ICS: invite}
+	if r := signedPost(t, w.srv, "/api/itip/inbound", kypost.EventInbound, "in-1", in); !strings.Contains(r.Body.String(), "applied") {
 		t.Fatalf("inbound: %d %s", r.Code, r.Body.String())
 	}
 	w.srv.DeliverScheduled(context.Background())
 	if sent := w.fake.take(); len(sent) != 1 || !strings.Contains(sent[0].ICS, "COMMENT:I am away.") {
-		t.Fatalf("reply %+v", sent)
+		t.Fatalf("reply to dave in another org %+v", sent)
+	}
+
+	// alice, a colleague, invites bob: his answer reaches her event internally, never by mail.
+	ts := httptest.NewServer(w.srv)
+	defer ts.Close()
+	if r := rawDAV(t, ts, "PUT", "/dav/usr_alice/calendars/default/plan.ics", "alice", w.tokens["alice"], meeting("plan", "alice", "ATTENDEE;RSVP=TRUE:mailto:bob@example.com"),
+		map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 201 {
+		t.Fatalf("alice's PUT %d", r.StatusCode)
+	}
+	w.srv.DeliverScheduled(context.Background())
+	w.srv.DeliverScheduled(context.Background())
+	got := readAll(rawDAV(t, ts, "GET", "/dav/usr_alice/calendars/default/plan.ics", "alice", w.tokens["alice"], "", nil))
+	if !strings.Contains(got, "ATTENDEE;PARTSTAT=TENTATIVE;RSVP=TRUE:mailto:bob@example.com") {
+		t.Fatalf("alice's event after bob's automatic answer:\n%s", got)
+	}
+	if sent := w.fake.take(); len(sent) != 0 {
+		t.Errorf("a colleague's answer went by mail: %+v", sent)
+	}
+	if o := bobCopy(t, w.st, "plan"); o == nil || !strings.Contains(string(o.Data), `COMMENT:Away\; ask Sam.`) {
+		t.Errorf("bob's copy of a colleague's invitation should carry the local text: %v", o)
 	}
 }
 
