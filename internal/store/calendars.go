@@ -325,6 +325,7 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 			return false, err
 		}
 	}
+	installLimits := lim
 	lim, guard, err := c.orgLimits(ctx, tx, o.CalendarID, lim)
 	if err != nil {
 		return false, err
@@ -394,6 +395,15 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	if reserve != nil {
 		reserved = reserve.bytes
 	}
+	var senders []string
+	ownerMaxBytes := lim.MaxBytes
+	if kind == "user" {
+		senders = append(senders, id)
+		ownerMaxBytes, err = c.senderByteLimit(ctx, tx, id, installLimits.MaxBytes)
+		if err != nil {
+			return false, err
+		}
+	}
 	if limited {
 		var ownerReserve int64
 		if reserve != nil && kind == "user" && id == reserve.sender {
@@ -403,17 +413,24 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		if err != nil {
 			return false, err
 		}
-		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (lim.MaxBytes > 0 && used+int64(len(o.Data))+ownerReserve > lim.MaxBytes) {
+		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (ownerMaxBytes > 0 && used+int64(len(o.Data))+ownerReserve > ownerMaxBytes) {
 			return false, ErrQuotaExceeded
 		}
 	}
 
+	if reserve != nil {
+		senders = append(senders, reserve.sender)
+	}
 	if reserve != nil && lim.MaxBytes > 0 && (kind != "user" || id != reserve.sender) {
+		maxBytes, err := c.senderByteLimit(ctx, tx, reserve.sender, installLimits.MaxBytes)
+		if err != nil {
+			return false, err
+		}
 		_, used, err := c.ownerUsage(ctx, tx, "user", reserve.sender, o.CalendarID, o.Name)
 		if err != nil {
 			return false, err
 		}
-		if used+reserved > lim.MaxBytes {
+		if used+reserved > maxBytes {
 			return false, ErrQuotaExceeded
 		}
 	}
@@ -459,7 +476,7 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 	if err := c.writeCancellationReserve(ctx, tx, o, reserve); err != nil {
 		return false, err
 	}
-	if err := c.queue(ctx, tx, rows, lim); err != nil {
+	if err := c.queue(ctx, tx, rows, installLimits, senders...); err != nil {
 		return false, err
 	}
 	if err := c.touchMeeting(ctx, tx, o.CalendarID, o.Name, o.WriterID, o.Meeting, false); err != nil {
@@ -495,7 +512,7 @@ func (c *calendarStore) deleteObjectPlanned(ctx context.Context, calendarID, nam
 		}
 		defer tx.Rollback()
 	}
-	lim, guard, err := c.orgLimits(ctx, tx, calendarID, lim)
+	_, guard, err := c.orgLimits(ctx, tx, calendarID, lim)
 	if err != nil {
 		return err
 	}

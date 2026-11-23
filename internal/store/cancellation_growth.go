@@ -263,7 +263,7 @@ func sumGrowth(growth map[string]int64) int64 {
 
 // Called after object/source changes but before allocating fresh queue bodies. Both the old
 // pending liabilities and the proposed notices participate in the same locked admission.
-func (c *calendarStore) checkCancellationGrowth(ctx context.Context, tx *sql.Tx, lim OwnerLimits, extra []*OutboxMessage) error {
+func (c *calendarStore) checkCancellationGrowth(ctx context.Context, tx *sql.Tx, lim OwnerLimits, extra []*OutboxMessage, senders ...string) error {
 	current, err := c.cancellationGrowth(ctx, tx, "", "", nil)
 	if err != nil {
 		return err
@@ -283,15 +283,21 @@ func (c *calendarStore) checkCancellationGrowth(ctx context.Context, tx *sql.Tx,
 		totalAdding += n
 	}
 	if lim.MaxBytes > 0 {
-		for sender, n := range next {
-			if n == 0 {
+		checked := map[string]bool{}
+		for _, sender := range senders {
+			if checked[sender] {
 				continue
+			}
+			checked[sender] = true
+			maxBytes, err := c.senderByteLimit(ctx, tx, sender, lim.MaxBytes)
+			if err != nil {
+				return err
 			}
 			_, used, err := c.ownerUsage(ctx, tx, "user", sender, "", "")
 			if err != nil {
 				return err
 			}
-			if used+n-current[sender]+adding[sender] > lim.MaxBytes {
+			if used+next[sender]-current[sender]+adding[sender] > maxBytes {
 				return ErrQuotaExceeded
 			}
 		}

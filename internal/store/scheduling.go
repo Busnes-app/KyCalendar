@@ -59,9 +59,9 @@ func (c *calendarStore) runPlan(ctx context.Context, tx *sql.Tx, o *CalendarObje
 // against MaxBytes, and every pending body plus every stored object against MaxTotalBytes, so
 // a meeting with many attendees cannot fill the disk or the backup capsule. Over either limit
 // the whole write is refused (ErrQuotaExceeded).
-func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMessage, lim OwnerLimits) error {
+func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMessage, lim OwnerLimits, senders ...string) error {
 	if len(rows) == 0 {
-		return c.checkCancellationGrowth(ctx, tx, lim, nil)
+		return c.checkCancellationGrowth(ctx, tx, lim, nil, senders...)
 	}
 
 	now := time.Now().UTC()
@@ -98,15 +98,6 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 	if err := c.admitInviteBytes(ctx, tx, rows[0].SenderID, inviteBytes, now); err != nil {
 		return err
 	}
-	if lim.MaxBytes > 0 {
-		_, used, err := c.ownerUsage(ctx, tx, "user", rows[0].SenderID, "", "")
-		if err != nil {
-			return err
-		}
-		if used+adding > lim.MaxBytes {
-			return ErrQuotaExceeded
-		}
-	}
 	if lim.MaxTotalBytes > 0 {
 		var used int64
 		if err := tx.QueryRowContext(ctx, c.q(`SELECT (SELECT bytes FROM calendar_usage WHERE id = 1) + `+pendingOutboxBytes+` + `+cancellationReserveBytes)).Scan(&used); err != nil {
@@ -117,7 +108,10 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 		}
 	}
 
-	if err := c.checkCancellationGrowth(ctx, tx, lim, fresh); err != nil {
+	for _, m := range rows {
+		senders = append(senders, m.SenderID)
+	}
+	if err := c.checkCancellationGrowth(ctx, tx, lim, fresh, senders...); err != nil {
 		return err
 	}
 

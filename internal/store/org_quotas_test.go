@@ -244,7 +244,7 @@ func TestOrgQuotaAdmitsOneOfTwoParallelWriters(t *testing.T) {
 func TestOrgUsedCountsReservationsAndGrowth(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
-		w := newQuotaWorld(t, s, `{}`, "alice", "bob", "default-carol")
+		w := newQuotaWorld(t, s, `{"max_bytes_per_user":20000}`, "alice", "bob", "default-carol")
 		event := func(organizer, extra string) string {
 			return "BEGIN:VEVENT\r\nUID:m-" + organizer + "\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261210T090000Z\r\n" + extra +
 				"ORGANIZER:mailto:" + organizer + "@example.com\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com\r\nSEQUENCE:1\r\nEND:VEVENT\r\n"
@@ -291,6 +291,18 @@ func TestOrgUsedCountsReservationsAndGrowth(t *testing.T) {
 		if growth["usr_alice"] <= 0 || growth["usr_default-carol"] <= 0 {
 			t.Fatalf("the fixture has no cancellation growth: %v", growth)
 		}
+		// Admission resolves only affected senders, each from their own org.
+		lim := OwnerLimits{MaxBytes: 1}
+		if err := c.checkCancellationGrowth(ctx, tx, lim, nil); err != nil {
+			t.Fatalf("unaffected senders: %v", err)
+		}
+		if err := c.checkCancellationGrowth(ctx, tx, lim, nil, "usr_alice"); err != nil {
+			t.Fatalf("sender within own org limit: %v", err)
+		}
+		if err := c.checkCancellationGrowth(ctx, tx, lim, nil, "usr_default-carol"); !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("affected sender over install fallback: %v", err)
+		}
+
 		var stored int64
 		if err := tx.QueryRowContext(ctx, s.rebind(`SELECT bytes FROM org_usage WHERE org_id = ?`), "org-a").Scan(&stored); err != nil {
 			t.Fatal(err)
