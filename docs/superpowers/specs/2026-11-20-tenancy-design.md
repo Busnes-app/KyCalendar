@@ -526,6 +526,16 @@ Administrators are staff (D7, D8). `access.Resolve` already gives administrators
 calendar (`internal/access/role.go:44-46`), and DAV, MCP and app passwords refuse them
 (`AGENTS.md:301`). **Staff never read calendar content**, which matches T ("staff … cannot read app
 content").
+Content encryption at rest (`2026-11-22-content-encryption-design.md`) makes this cryptographic for
+every calendar that has a key: the server holds no key to its content between requests. The
+exceptions, which the database and the deployment key still open:
+- accounts that have never run setup, and every calendar they share (its E12);
+- a group calendar until its last member runs setup (its E12);
+- from a database or backup copy made during an account's 14-day transition, the content that
+  account and the calendars it shares held before the transition ended. The rotation that ends
+  the transition keeps everything written later out of reach (its E11);
+- an outgoing scheduling message waiting up to 24 hours (its E14);
+- a booking hold's name and note, for up to 15 minutes.
 
 | Route (`internal/api/server.go`) | Multi-tenant |
 |---|---|
@@ -669,7 +679,9 @@ calendars with any CalDAV client. During `deletion_scheduled` nobody in the org 
 KyCalendar (T's export-only session opens no suite session). v1 therefore adds an operator command,
 `kycalendar export-org -org <id> -out <dir>`: one `.ics` per calendar, grouped by member, and a
 manifest of IDs. Staff run it on the account holder's request, like T open question 9 (c). See open
-question 1.
+question 1. Once content encryption lands (its CE6), the export of an encrypted account holds
+skeletons and sealed content, which each member opens offline with their recovery code
+(`kycalendar open-export`).
 
 > **Built in PR 4e (2026-11-23).** `kycalendar export-org -org <id> -out <dir>`
 > (`cmd/server/exportorg.go`) refuses an org with no mirror row and an output directory that
@@ -854,8 +866,13 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
   T's back-channel logout ends cookie sessions sooner.
 - **Feed egress is shared.** Every org's ICS subscriptions fetch from the platform's addresses, so
   one org's subscriptions can get the platform rate-limited by a feed host.
-- **Operator access.** `export-org` and the database give the operator calendar content. The
-  operator is trusted with the database and keys, as in T.
+- **Operator access.** Until content encryption lands, `export-org` and the database give the
+  operator calendar content, and the operator is trusted with the database and keys, as in T.
+  After it, they give times and attendees for every calendar that has a key. They still give full
+  content for the exceptions listed under Admin surface: accounts that never ran setup, group
+  calendars waiting on a member, content stored before a transition ended, read from a copy made
+  during that transition, queued scheduling messages and booking holds (content encryption spec,
+  Threat model).
 - **Pending invitations drop** when a suspension outlasts the 24-hour outbox lifetime.
 
 ## Open questions, with recommendations
