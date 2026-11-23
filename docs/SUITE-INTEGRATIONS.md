@@ -488,8 +488,9 @@ Contract: KyIdentity-server `docs/SUITE-DIRECTORY.md` (`GET /api/suite/groups`) 
 
 - **Poll.** `Server.SyncSuiteGroups` (`internal/api/suite_groups.go`) runs at start and every
   60 s from `cmd/server`, only while the live sign-in provider is KyIdentity, under KyCalendar's
-  own client credentials. Any error from the list changes nothing; a group missing from the
-  list is never archived. A removed member leaves at the next pass, at most about a minute.
+  own client credentials. In multi-tenant mode it lists each serving org's groups with
+  `?org_id=` and reconciles them into that org only. Any error from a list changes nothing for
+  that org; a group missing from the list is never archived. A removed member leaves at the next pass, at most about a minute.
 - **One calendar per group, keyed on the KyIdentity group ID** (`suite_group_calendars`,
   migration 31), never the name or slug, so a recreated namesake gets a new calendar. The
   members live in a local group of source `suite` named `suite-group:<id>` (admin writes

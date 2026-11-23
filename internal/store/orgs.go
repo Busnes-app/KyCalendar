@@ -66,6 +66,25 @@ func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
 	return n == 1, err
 }
 
+// ServingOrgs lists the orgs that serve now (active and enabled), by ID: those whose suite
+// groups the poll reconciles in multi-tenant mode.
+func (s *SQLStore) ServingOrgs(ctx context.Context) ([]OrgID, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM orgs WHERE status = 'active' AND enabled ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OrgID
+	for rows.Next() {
+		var id OrgID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // OrgsCursorSetting is the /api/suite/orgs revision the next mirror poll starts after.
 const OrgsCursorSetting = "tenancy_orgs_since"
 

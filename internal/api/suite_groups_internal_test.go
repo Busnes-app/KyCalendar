@@ -184,3 +184,82 @@ func TestSyncSuiteGroupsOnlyForKyIdentity(t *testing.T) {
 		t.Fatalf("state %s", got)
 	}
 }
+
+// Build step 4g (tenancy spec D9, L11): in multi-tenant mode each serving org's suite groups are
+// listed with its org_id and reconciled into that org alone. A member listed in another org's
+// group never joins it, a suspended org is not asked, and one org's failed list skips only that
+// org.
+func TestSyncSuiteGroupsPerOrg(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	asked := []string{}
+	answers := map[string]string{
+		"org-a": `{"groups":[{"id":"ga","name":"A team","slug":"a-team","state":"active","members":["sub-a","sub-b"]}]}`,
+		"org-b": `{"groups":[{"id":"gb","name":"B team","slug":"b-team","state":"active","members":["sub-b"]}]}`,
+	}
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		org := r.URL.Query().Get("org_id")
+		mu.Lock()
+		asked = append(asked, org)
+		body, ok := answers[org]
+		mu.Unlock()
+		if !ok {
+			http.Error(w, `{"error":"unknown_org"}`, http.StatusNotFound)
+			return
+		}
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(idp.Close)
+	p := sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client())
+	s.signin.Store(p)
+	if err := s.store.ApplyOrgs(ctx, "", []store.MirroredOrg{
+		{ID: "org-a", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"},
+		{ID: "org-b", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"},
+		{ID: "org-c", Status: "suspended", Revision: 1, Enabled: true, Quotas: "{}"},
+		{ID: "org-0", Status: "active", Revision: 1, Enabled: true, Quotas: "{}"}, // polled first; its list fails
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []*store.User{ssoUser("usr_a", "sub-a", p), ssoUser("usr_b", "sub-b", p)} {
+		u.OrgID = "org-a"
+		if u.ID == "usr_b" {
+			u.OrgID = "org-b"
+		}
+		if err := s.store.Users().CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	s.SyncSuiteGroups(ctx)
+
+	mu.Lock()
+	got := fmt.Sprint(asked)
+	mu.Unlock()
+	if !slices.Contains(asked, "org-a") || !slices.Contains(asked, "org-b") || slices.Contains(asked, "org-c") || slices.Contains(asked, "") ||
+		slices.Contains(asked, string(store.DefaultOrg)) || !slices.Contains(asked, "org-0") {
+		t.Errorf("asked for %s", got)
+	}
+	cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+	if err != nil || len(cals) != 2 {
+		t.Fatalf("group calendars %v %v", cals, err)
+	}
+	// Each calendar's group must belong to exactly one org, with that org's member only.
+	found := map[string]string{}
+	for _, c := range cals {
+		gs, err := s.store.Calendars().ListGrants(ctx, c.ID)
+		if err != nil || len(gs) != 1 {
+			t.Fatalf("%s grants %v %v", c.ID, gs, err)
+		}
+		for _, org := range []store.OrgID{"org-a", "org-b"} {
+			if g, err := s.store.Org(org).GetGroup(ctx, gs[0].GroupID); err == nil {
+				found[string(org)] += fmt.Sprintf("%s %v;", g.DisplayName, g.Members)
+			}
+		}
+	}
+	if want := map[string]string{"org-a": "suite-group:ga [usr_a];", "org-b": "suite-group:gb [usr_b];"}; fmt.Sprint(found) != fmt.Sprint(want) {
+		t.Errorf("groups by org %v, want %v", found, want)
+	}
+}

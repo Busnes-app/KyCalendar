@@ -86,6 +86,8 @@ type Store interface {
 	OrgQuotas(ctx context.Context, id OrgID) (OrgQuotas, error)
 	// OrgServes reports whether org id is mirrored, active and enabled.
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
+	// ServingOrgs lists the orgs that are active and enabled now.
+	ServingOrgs(ctx context.Context) ([]OrgID, error)
 	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).
 	ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error
 	// OrgsToPurge, PurgeOrg and TombstoneOrg delete a deleted org's data (org_purge.go).
