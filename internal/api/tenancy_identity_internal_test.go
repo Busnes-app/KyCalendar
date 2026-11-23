@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Busnes-app/kycalendar/internal/auth"
+	"github.com/Busnes-app/kycalendar/internal/calexport"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -344,6 +345,26 @@ func TestExportOnlySignInReachesOnlyTheExport(t *testing.T) {
 	}
 	if w := get(c, "/api/export"); w.Code != http.StatusServiceUnavailable || w.Header().Get("Content-Disposition") != "" {
 		t.Fatalf("export whose first calendar fails: %d %q", w.Code, w.Header().Get("Content-Disposition"))
+	}
+
+	// With KyIdentity unreachable past store.OrgFresh, export admission fails closed too.
+	if _, err := rawSQL(t, s).Exec(fmt.Sprintf(`UPDATE orgs SET seen_at = seen_at - %d WHERE id = 'org-a'`, int(store.OrgFresh.Seconds())+1)); err != nil {
+		t.Fatal(err)
+	}
+	calendarICS = calexport.CalendarICS
+	if w := get(c, "/api/export"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("export with a stale org answer: %d", w.Code)
+	}
+	if w := signIn("alice", true); w.Code != http.StatusForbidden || ssoSession(w) != nil {
+		t.Fatalf("export_only sign-in with a stale org answer: %d", w.Code)
+	}
+	if _, err := rawSQL(t, s).Exec(fmt.Sprintf(`UPDATE orgs SET seen_at = %d WHERE id = 'org-a'`, time.Now().Unix())); err != nil {
+		t.Fatal(err)
+	}
+	if w := signIn("alice", true); ssoSession(w) == nil {
+		t.Fatalf("export_only sign-in after a fresh answer: %d", w.Code)
+	} else {
+		c = ssoSession(w)
 	}
 
 	setStatus("deleted")
