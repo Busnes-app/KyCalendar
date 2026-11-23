@@ -606,6 +606,64 @@ CREATE TABLE sso_logouts (
 	{Version: 35, Name: "resource_bookings", SQLite: resourceBookings("DATETIME"), Postgres: resourceBookings("TIMESTAMPTZ")},
 	{Version: 36, Name: "replica_coordination", SQLite: replicaCoordination, Postgres: replicaCoordination},
 	{Version: 37, Name: "org_model", SQLite: orgModel(false), Postgres: orgModel(true)},
+	{Version: 38, Name: "content_encryption", SQLite: contentEncryption("BLOB", "DATETIME"), Postgres: contentEncryption("BYTEA", "TIMESTAMPTZ")},
+}
+
+// contentEncryption is content encryption at rest's schema (docs/superpowers/specs/
+// 2026-11-22-content-encryption-design.md, Schema; build step CE1c), additive only: nothing reads
+// or writes it until CE2, and no column a running reader uses changes. Every new table cascades
+// from users or calendars, so an org purge removes it with them.
+func contentEncryption(blob, ts string) string {
+	return `CREATE TABLE account_keys (
+ user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ public_key ` + blob + ` NOT NULL,
+ created_at ` + ts + ` NOT NULL,
+ transition_until ` + ts + `
+);
+CREATE TABLE key_slots (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ slot_id TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK (kind IN ('apppass', 'mcp', 'session', 'passkey', 'recovery', 'transition', 'passphrase', 'password', 'device')),
+ wrapped ` + blob + ` NOT NULL,
+ params TEXT NOT NULL DEFAULT '',
+ created_at ` + ts + ` NOT NULL,
+ last_used_at ` + ts + `,
+ PRIMARY KEY (user_id, slot_id)
+);
+CREATE TABLE calendar_keys (
+ calendar_id TEXT PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
+ public_key ` + blob + ` NOT NULL
+);
+CREATE TABLE calendar_key_holders (
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ wrapped_seed ` + blob + ` NOT NULL,
+ former BOOLEAN NOT NULL DEFAULT FALSE,
+ PRIMARY KEY (calendar_id, user_id)
+);
+CREATE INDEX calendar_key_holders_user ON calendar_key_holders(user_id);
+CREATE TABLE pending_key_shares (
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ queued_at ` + ts + ` NOT NULL,
+ PRIMARY KEY (calendar_id, user_id)
+);
+CREATE TABLE worker_keys (
+ id TEXT PRIMARY KEY,
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ wrapped ` + blob + ` NOT NULL,
+ created_at ` + ts + ` NOT NULL,
+ ended_at ` + ts + `
+);
+CREATE INDEX worker_keys_calendar ON worker_keys(calendar_id);
+ALTER TABLE calendar_objects ADD COLUMN sealed ` + blob + `;
+ALTER TABLE calendar_objects ADD COLUMN parts_version BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE calendar_objects ADD COLUMN plain_size BIGINT;
+ALTER TABLE scheduling_outbox ADD COLUMN sealed ` + blob + `;
+ALTER TABLE bookings ADD COLUMN sealed_hold ` + blob + `;
+ALTER TABLE bookings ADD COLUMN public_key ` + blob + `;
+ALTER TABLE bookings ADD COLUMN wrapped_seed ` + blob + `;
+ALTER TABLE bookings ADD COLUMN sealed_copy ` + blob + `;`
 }
 
 // DefaultOrgID is the one org of a single-tenant install (KyIdentity's default-org ID).

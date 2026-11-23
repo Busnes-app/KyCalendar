@@ -38,14 +38,14 @@ var fixture = []struct {
 	{`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, created_at) VALUES ('c2', 'group', 'c2', 'team', 'Team', ?)`, []any{fixtureTime}},
 	{`INSERT INTO calendar_objects (calendar_id, name, uid, etag, data, first_start, last_end, modified_at, component, invitation_sender)
 	  VALUES ('c1', 'a.ics', 'uid-a', 'etag-a', ?, 1700000000, NULL, ?, 'VEVENT', 'u2')`, []any{[]byte("BEGIN:VCALENDAR\r\nSUMMARY:Réunion ☕\r\nEND:VCALENDAR\r\n"), fixtureTime}},
-	{`INSERT INTO calendar_objects (calendar_id, name, uid, etag, data, first_start, last_end, modified_at, component)
-	  VALUES ('c1', 't.ics', 'uid-t', 'etag-t', ?, 1700000000, 1700003600, ?, 'VTODO')`, []any{[]byte("BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"), fixtureTime}},
+	{`INSERT INTO calendar_objects (calendar_id, name, uid, etag, data, first_start, last_end, modified_at, component, sealed, parts_version, plain_size)
+	  VALUES ('c1', 't.ics', 'uid-t', 'etag-t', ?, 1700000000, 1700003600, ?, 'VTODO', ?, 7, 4096)`, []any{[]byte("BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"), fixtureTime, []byte("KCP1\x00\x00")}},
 	{`INSERT INTO calendar_changes (calendar_id, seq, name, deleted, changed_at) VALUES ('c1', 5, 'a.ics', 1, ?)`, []any{fixtureTime}},
 	{`INSERT INTO calendar_grants (calendar_id, group_id, role) VALUES ('c2', 'g1', 'editor')`, nil},
 	{`INSERT INTO calendar_subscriptions (calendar_id, url_sealed, url_host, next_check_at, refreshed_at) VALUES ('c2', 'sealed', 'example.test', ?, ?)`, []any{fixtureTime, fixtureTime}},
 	{`INSERT INTO app_passwords (id, user_id, label, hash, created_at, last_used_at, scope) VALUES ('p1', 'u1', 'agent', 'h', ?, ?, 'mcp:read')`, []any{fixtureTime, fixtureTime}},
 	{`INSERT INTO mcp_events (token_id, calendar_id, uid) VALUES ('p1', 'c1', 'uid-a')`, nil},
-	{`INSERT INTO scheduling_outbox (id, dedupe_key, sender_id, method, recipient, body, next_attempt_at, created_at) VALUES ('o1', 'dk', 'u1', 'REQUEST', 'x@example.test', ?, ?, ?)`, []any{[]byte("body ✉"), fixtureTime, fixtureTime}},
+	{`INSERT INTO scheduling_outbox (id, dedupe_key, sender_id, method, recipient, body, next_attempt_at, created_at, sealed) VALUES ('o1', 'dk', 'u1', 'REQUEST', 'x@example.test', ?, ?, ?, ?)`, []any{[]byte("body ✉"), fixtureTime, fixtureTime, []byte{1, 2}}},
 	// A finished message keeps an empty body: an empty BLOB reads back as nil and must stay non-NULL.
 	{`INSERT INTO scheduling_outbox (id, dedupe_key, sender_id, method, recipient, body, status, next_attempt_at, created_at) VALUES ('o2', 'dk2', 'u1', 'REPLY', 'y@example.test', ?, 'sent', ?, ?)`, []any{[]byte{}, fixtureTime, fixtureTime}},
 	{`INSERT INTO invitation_byte_budget (sender_id, window_start, bytes) VALUES ('u1', 1700000000, 42)`, nil},
@@ -57,7 +57,7 @@ var fixture = []struct {
 	{`INSERT INTO presence_pushes (user_id, rev, done_rev, next_attempt_at) VALUES ('u1', 4, 1, ?)`, []any{fixtureTime}},
 	{`INSERT INTO booking_types (id, user_id, slug, enabled, title, duration_min, zone, windows, notice_min, horizon_days, calendar_id, meeting_room, created_at, updated_at)
 	  VALUES ('b1', 'u1', 'slug', TRUE, 'Chat', 30, 'UTC', '[]', 60, 14, 'c1', TRUE, ?, ?)`, []any{fixtureTime, fixtureTime}},
-	{`INSERT INTO bookings (id, type_id, user_id, status, start_at, end_at, uid, created_at) VALUES ('bk1', 'b1', 'u1', 'held', 1, 2, 'uid-b', ?)`, []any{fixtureTime}},
+	{`INSERT INTO bookings (id, type_id, user_id, status, start_at, end_at, uid, created_at, sealed_hold, public_key, wrapped_seed, sealed_copy) VALUES ('bk1', 'b1', 'u1', 'held', 1, 2, 'uid-b', ?, ?, ?, ?, ?)`, []any{fixtureTime, []byte{4}, []byte{5}, []byte{6}, []byte{0}}},
 	{`INSERT INTO resources (id, kind, name, audience, approval, max_minutes, horizon_days, enabled, created_at, updated_at) VALUES ('r1', 'room', 'Salle', 'groups', 'auto', 60, 30, FALSE, ?, ?)`, []any{fixtureTime, fixtureTime}},
 	{`INSERT INTO resource_groups (resource_id, group_id) VALUES ('r1', 'g1')`, nil},
 	{`INSERT INTO resource_approvers (resource_id, user_id) VALUES ('r1', 'u2')`, nil},
@@ -74,6 +74,12 @@ var fixture = []struct {
 	{`INSERT INTO security_windows (key, hits, expires_at) VALUES ('acct:x', 3, 9999999999999)`, nil},
 	{`INSERT INTO spent_challenges (salt, expires_at) VALUES ('salt', 9999999999999)`, nil},
 	{`INSERT INTO kypost_replay (event_id, expires_at) VALUES ('evt', 9999999999999)`, nil},
+	{`INSERT INTO account_keys (user_id, public_key, created_at, transition_until) VALUES ('u1', ?, ?, ?)`, []any{[]byte{0, 1, 0xfe}, fixtureTime, fixtureTime}},
+	{`INSERT INTO key_slots (user_id, slot_id, kind, wrapped, params, created_at, last_used_at) VALUES ('u1', 'ks1', 'passphrase', ?, '{"time":3}', ?, ?)`, []any{[]byte{9, 0}, fixtureTime, fixtureTime}},
+	{`INSERT INTO calendar_keys (calendar_id, public_key) VALUES ('c1', ?)`, []any{[]byte{7, 7}}},
+	{`INSERT INTO calendar_key_holders (calendar_id, user_id, wrapped_seed, former) VALUES ('c2', 'u2', ?, TRUE)`, []any{[]byte{5}}},
+	{`INSERT INTO pending_key_shares (calendar_id, user_id, queued_at) VALUES ('c2', 'u1', ?)`, []any{fixtureTime}},
+	{`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at) VALUES ('wk1', 'c1', ?, ?, ?)`, []any{[]byte{3, 0, 3}, fixtureTime, fixtureTime}},
 }
 
 // fixtureSource writes the fixture into a new SQLite database and returns its path.
