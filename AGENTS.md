@@ -463,6 +463,7 @@ Spec `docs/superpowers/specs/2026-11-15-tasks-design.md` (mapping table, routes,
 - [internal/kymessages/AGENTS.md](internal/kymessages/AGENTS.md): The signed video meeting requests to KyMessages, and KyCalendar's client.
 - [internal/agentskill/AGENTS.md](internal/agentskill/AGENTS.md): The SKILL.md that teaches AI agents the MCP tools, embedded and served.
 - [internal/feed/AGENTS.md](internal/feed/AGENTS.md): Published ICS links mirrored into read-only subscribed calendars.
+- [internal/contentkey/AGENTS.md](internal/contentkey/AGENTS.md): Content encryption's keys, unlock slots and sealed byte formats (version 1), unused until CE2.
 - [internal/csvimport/AGENTS.md](internal/csvimport/AGENTS.md): Outlook and Google Calendar CSV files read into event rows for a one-time import.
 - [internal/resource/AGENTS.md](internal/resource/AGENTS.md): Pure rules for rooms and equipment: the definition, its bounds and the resource address.
 - [internal/tasks/AGENTS.md](internal/tasks/AGENTS.md): Pure VTODO reading and in-place editing for the Tasks screens and MCP task tools.
