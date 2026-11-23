@@ -118,6 +118,15 @@ func TestVerifyLogoutToken(t *testing.T) {
 			delete(c, "sub")
 			return key
 		},
+		"no jti": func(h map[string]string, c map[string]any) *rsa.PrivateKey { delete(c, "jti"); return key },
+		"iat in the future": func(h map[string]string, c map[string]any) *rsa.PrivateKey {
+			c["iat"], c["exp"] = time.Now().Add(5*time.Minute).Unix(), time.Now().Add(7*time.Minute).Unix()
+			return key
+		},
+		"iat too old": func(h map[string]string, c map[string]any) *rsa.PrivateKey {
+			c["iat"] = time.Now().Add(-7 * time.Minute).Unix()
+			return key
+		},
 		"JWT typ":  func(h map[string]string, c map[string]any) *rsa.PrivateKey { h["typ"] = "JWT"; return key },
 		"alg none": func(h map[string]string, c map[string]any) *rsa.PrivateKey { h["alg"] = "none"; return key },
 	}

@@ -222,6 +222,8 @@ type SessionStore interface {
 	EndSSOSubject(ctx context.Context, issuer, subject string, cutoff, fenceUntil time.Time) error
 	// EndSSOSession ends every session of an SSO login and fences its sid until fenceUntil.
 	EndSSOSession(ctx context.Context, sid string, fenceUntil time.Time) error
+	// SSOSessionUser is the account a live session of the SSO login sid belongs to, or "".
+	SSOSessionUser(ctx context.Context, sid string) (string, error)
 	CleanExpiredSessions(ctx context.Context) error
 }
 

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -449,6 +451,27 @@ func (s *Server) handleBackchannelLogout(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadGateway, "The sign-in provider could not be reached")
 		return
 	}
+	if refused, err := s.logoutOrgRefused(r.Context(), p, claims); err != nil {
+		log.Printf("sso: back-channel logout failed: %v", err)
+		s.writeError(w, http.StatusInternalServerError, "logout failed")
+		return
+	} else if refused {
+		s.writeError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	// The ledger is written before anything changes, so a token is applied at most once.
+	spent := sha256.Sum256([]byte(p.Binding + "\x00" + claims.JWTID))
+	fresh, err := s.store.Coordination().SpendChallenge(r.Context(), "logout:"+base64.RawURLEncoding.EncodeToString(spent[:]), claims.ReplayUntil.UnixMilli())
+	if err != nil {
+		log.Printf("sso: back-channel logout failed: %v", err)
+		s.writeError(w, http.StatusInternalServerError, "logout failed")
+		return
+	}
+	if !fresh {
+		_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "auth.sso_logout_replayed", Resource: "session", IPAddress: s.requestIP(r)})
+		s.writeError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
 	fenceUntil := time.Now().Add(ssoLogoutFence)
 	if claims.SessionID != "" {
 		err = s.store.Sessions().EndSSOSession(r.Context(), ssoSID(p, claims.SessionID), fenceUntil)
@@ -463,31 +486,56 @@ func (s *Server) handleBackchannelLogout(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{Action: "auth.sso_backchannel_logout", Resource: "session", IPAddress: s.requestIP(r)})
-	s.auditLogoutOrg(r.Context(), claims)
 	w.WriteHeader(http.StatusOK)
 }
 
-// auditLogoutOrg records a multi-tenant logout token whose org_id is missing or is not its
-// account's. The logout has already ended the sessions: it only takes access away, so refusing
-// it would leave alive a session KyIdentity meant to end.
-func (s *Server) auditLogoutOrg(ctx context.Context, claims *sso.LogoutClaims) {
+// logoutOrgRefused, in multi-tenant mode, refuses a logout token whose org_id is missing or is
+// not the org of an account it names, by sub or by a live session's sid, before anything
+// changes; the refusal is audited auth.sso_org_mismatch. A token naming no local account ends
+// nothing but its fences, so it passes.
+func (s *Server) logoutOrgRefused(ctx context.Context, p *sso.Provider, claims *sso.LogoutClaims) (bool, error) {
 	ten, err := s.store.Tenancy(ctx)
 	if err != nil || !ten.Multi {
-		return
+		return false, err
 	}
-	userID, details := "", "reason=no_org"
+	refuse := func(userID, details string) (bool, error) {
+		_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: userID, Action: "auth.sso_org_mismatch", Resource: "session", Details: details})
+		return true, nil
+	}
+	if claims.OrgID == "" {
+		return refuse("", "reason=no_org")
+	}
+	var named []*store.User
 	if claims.Subject != "" {
-		if u, err := s.store.Users().GetUserBySSO(ctx, "kysignon", claims.Subject); err == nil {
-			if store.OrgOf(u) == store.OrgID(claims.OrgID) {
-				return
-			}
-			userID = u.ID
-			details = "org=" + string(store.OrgOf(u)) + " token_org=" + claims.OrgID
+		u, err := s.store.Users().GetUserBySSO(ctx, "kysignon", claims.Subject)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return false, err
+		}
+		if u != nil {
+			named = append(named, u)
 		}
 	}
-	if claims.OrgID == "" || userID != "" {
-		_ = s.store.Audit().LogAudit(ctx, &store.AuditRecord{UserID: userID, Action: "auth.sso_org_mismatch", Resource: "session", Details: details})
+	if claims.SessionID != "" {
+		id, err := s.store.Sessions().SSOSessionUser(ctx, ssoSID(p, claims.SessionID))
+		if err != nil {
+			return false, err
+		}
+		if id != "" {
+			u, err := s.store.Users().GetUserByID(ctx, id)
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				return false, err
+			}
+			if u != nil {
+				named = append(named, u)
+			}
+		}
 	}
+	for _, u := range named {
+		if store.OrgOf(u) != store.OrgID(claims.OrgID) {
+			return refuse(u.ID, "org="+string(store.OrgOf(u))+" token_org="+claims.OrgID)
+		}
+	}
+	return false, nil
 }
 
 func (s *Server) handleSAMLMetadata(w http.ResponseWriter, r *http.Request) {

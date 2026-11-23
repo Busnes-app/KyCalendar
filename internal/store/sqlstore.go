@@ -685,6 +685,15 @@ func (s *sessionStore) EndSSOSession(ctx context.Context, sid string, fenceUntil
 	return err
 }
 
+func (s *sessionStore) SSOSessionUser(ctx context.Context, sid string) (string, error) {
+	var id string
+	err := s.store.db.QueryRowContext(ctx, s.store.rebind(`SELECT user_id FROM sessions WHERE sso_sid = ? LIMIT 1`), sid).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
 // EndSSOSubject commits the subject's cutoff fence first, then deletes its sessions dated before
 // it (see CreateSession). The fence never moves back; expired ones are pruned here.
 func (s *sessionStore) EndSSOSubject(ctx context.Context, issuer, subject string, cutoff, fenceUntil time.Time) error {
