@@ -59,6 +59,8 @@ var (
 	// KyPost's routes take only its signature, and are absent (404) until KyPost is configured,
 	// which no matrix world is; TestKyPostRoutes covers them configured.
 	kypostOnly = expect{anon: 404, deactivated: 404, admin: 404, owner: 404, reader: 404, editor: 404, manager: 404, nonmember: 404}
+	// multiOnly is a multi-tenant-only route: absent (404) in this single-tenant world.
+	multiOnly = kypostOnly
 	// MCP takes only a bearer MCP token, likewise.
 	mcpOnly = scimOnly
 )
@@ -278,18 +280,20 @@ func apiRows(w *world) map[string]apiRow {
 		"POST /api/admin/users/{id}/reattach":            {method: "POST", path: "/api/admin/users/usr_reattachee/reattach", body: `{"binding":"kyidentity https://matrix.example"}`, want: adminOnly},
 		"GET /api/admin/audit":                           {method: "GET", path: "/api/admin/audit", want: adminOnly},
 		"GET /api/admin/scim":                            {method: "GET", path: "/api/admin/scim", want: adminOnly},
-		"GET /api/calendars/{id}/grants":                 {method: "GET", path: g, want: grantManager},
-		"PUT /api/calendars/{id}/grants/{group}":         {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
-		"DELETE /api/calendars/{id}/grants/{group}":      {method: "DELETE", path: g + "/grp_extra", want: grantManager},
-		"GET /api/calendars":                             {method: "GET", path: "/api/calendars", want: everyday},
-		"POST /api/calendars":                            {method: "POST", path: "/api/calendars", body: `{"name":"Matrix"}`, want: everyday},
-		"PATCH /api/calendars/{id}":                      {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
-		"DELETE /api/calendars/{id}":                     {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
-		"GET /api/events":                                {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
-		"GET /api/admin/signin":                          {method: "GET", path: "/api/admin/signin", want: adminOnly},
-		"GET /api/admin/kypost":                          {method: "GET", path: "/api/admin/kypost", want: adminOnly},
-		"GET /api/admin/kymessages":                      {method: "GET", path: "/api/admin/kymessages", want: adminOnly},
-		"GET /api/suite/apps":                            {method: "GET", path: "/api/suite/apps", want: anySession},
+		// Multi-tenant only (tenancy PR 5); this single-tenant world answers 404 to everyone.
+		"GET /api/admin/orgs":                       {method: "GET", path: "/api/admin/orgs", want: multiOnly},
+		"GET /api/calendars/{id}/grants":            {method: "GET", path: g, want: grantManager},
+		"PUT /api/calendars/{id}/grants/{group}":    {method: "PUT", path: g + "/grp_extra", body: `{"role":"reader"}`, want: grantManager},
+		"DELETE /api/calendars/{id}/grants/{group}": {method: "DELETE", path: g + "/grp_extra", want: grantManager},
+		"GET /api/calendars":                        {method: "GET", path: "/api/calendars", want: everyday},
+		"POST /api/calendars":                       {method: "POST", path: "/api/calendars", body: `{"name":"Matrix"}`, want: everyday},
+		"PATCH /api/calendars/{id}":                 {method: "PATCH", path: "/api/calendars/" + w.group.ID, body: `{"name":"Team"}`, want: groupManage},
+		"DELETE /api/calendars/{id}":                {method: "DELETE", path: "/api/calendars/" + w.spare.ID, want: ownerOnly},
+		"GET /api/events":                           {method: "GET", path: "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-31T00:00:00Z", want: everyday},
+		"GET /api/admin/signin":                     {method: "GET", path: "/api/admin/signin", want: adminOnly},
+		"GET /api/admin/kypost":                     {method: "GET", path: "/api/admin/kypost", want: adminOnly},
+		"GET /api/admin/kymessages":                 {method: "GET", path: "/api/admin/kymessages", want: adminOnly},
+		"GET /api/suite/apps":                       {method: "GET", path: "/api/suite/apps", want: anySession},
 		// http:// is refused before any request, so the admin cell is a 422 without the network.
 		"POST /api/admin/signin/test": {method: "POST", path: "/api/admin/signin/test", body: `{"provider":"oidc","display_name":"M","issuer":"http://idp.invalid","client_id":"m"}`, want: adminOnly},
 		// none touches no account and leaves sign-in closed, as every other row expects.
