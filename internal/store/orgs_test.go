@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -165,7 +166,7 @@ func TestOrgGuardsRefuseCrossOrgRows(t *testing.T) {
 			}
 		}
 		const b = "org-b"
-		must(`INSERT INTO orgs (id, status) VALUES (?, 'active')`, b)
+		must(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`, b)
 		must(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0)`, b)
 		must(`INSERT INTO users (id, username, created_at, updated_at) VALUES ('ua', 'a', ?, ?)`, now, now)
 		must(`INSERT INTO users (id, username, created_at, updated_at, org_id) VALUES ('ub', 'b', ?, ?, ?)`, now, now, b)
@@ -213,7 +214,7 @@ func TestOrgStoreAnswersOtherOrgsLikeMissing(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const b OrgID = "org-b"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), b); err != nil {
 			t.Fatal(err)
 		}
 		const binding = "kyidentity https://id.example"
@@ -294,7 +295,7 @@ func TestNewRowsJoinTheirParentsOrg(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const b = "org-b"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), b); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0)`), b); err != nil {
@@ -396,7 +397,7 @@ func TestAuditRowsJoinTheirUsersOrg(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const b = "org-b"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), b); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), b); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.Users().CreateUser(ctx, &User{ID: "ub", Username: "b", Role: "user", Status: "active", SSOProvider: "local", OrgID: b}); err != nil {
@@ -460,7 +461,7 @@ func TestApplyOrgsMirrorsThePoll(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		const staff OrgID = "org-staff"
-		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status) VALUES (?, 'active')`), staff); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), staff); err != nil {
 			t.Fatal(err)
 		}
 		state := func(id OrgID) string {
@@ -653,7 +654,7 @@ func TestAnOrgServesOnlyWhileItsAnswerIsFresh(t *testing.T) {
 			sql  string
 			args []any
 		}{
-			{`INSERT INTO orgs (id, status) VALUES (?, 'active')`, []any{staff}},
+			{`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`, []any{staff}},
 			{`INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?)`, []any{StaffOrgSetting, string(staff), time.Now().UTC()}},
 		} {
 			if _, err := s.db.ExecContext(ctx, s.rebind(q.sql), q.args...); err != nil {

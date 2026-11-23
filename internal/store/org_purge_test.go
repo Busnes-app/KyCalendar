@@ -84,7 +84,7 @@ func purgeWorld(t *testing.T, s *SQLStore) (gone, kept []string) {
 	for _, q := range []string{
 		`UPDATE users SET sso_subject = 'sub-1' WHERE id = 'u1'`,
 		`INSERT INTO sso_subject_logouts (issuer, subject, cutoff, expires_at) VALUES ('kyidentity https://id.example', 'sub-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-		`INSERT INTO orgs (id, status) VALUES ('org-a', 'active')`,
+		`INSERT INTO orgs (id, status, seen_at) VALUES ('org-a', 'active', ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
 		`INSERT INTO org_usage (org_id, bytes) VALUES ('org-a', 0)`,
 		`INSERT INTO users (id, username, sso_provider, sso_subject, sso_issuer, created_at, updated_at, org_id) VALUES ('ua', 'a', 'kysignon', 'sub-1', 'kyidentity https://other.example', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'org-a')`,
 		`INSERT INTO sso_subject_logouts (issuer, subject, cutoff, expires_at) VALUES ('kyidentity https://other.example', 'sub-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
@@ -205,11 +205,11 @@ func TestRestoreMakesCustomerOrgsStale(t *testing.T) {
 		ctx := context.Background()
 		const staff OrgID = "org-staff"
 		for _, q := range []string{
-			`INSERT INTO orgs (id, status) VALUES ('org-staff', 'active')`,
-			`INSERT INTO orgs (id, status, revision) VALUES ('org-a', 'active', 4)`,
-			`INSERT INTO orgs (id, status, revision) VALUES ('org-b', 'suspended', 4)`,
-			`INSERT INTO orgs (id, status, revision) VALUES ('org-c', 'active', 4)`,
-			`INSERT INTO orgs (id, status, revision, purged_at) VALUES ('org-d', 'deleted', 3, 1)`,
+			`INSERT INTO orgs (id, status, seen_at) VALUES ('org-staff', 'active', ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
+			`INSERT INTO orgs (id, status, revision, seen_at) VALUES ('org-a', 'active', 4, ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
+			`INSERT INTO orgs (id, status, revision, seen_at) VALUES ('org-b', 'suspended', 4, ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
+			`INSERT INTO orgs (id, status, revision, seen_at) VALUES ('org-c', 'active', 4, ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
+			`INSERT INTO orgs (id, status, revision, purged_at, seen_at) VALUES ('org-d', 'deleted', 3, 1, ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
 		} {
 			if _, err := s.db.ExecContext(ctx, q); err != nil {
 				t.Fatal(err)
@@ -292,7 +292,7 @@ func TestMeasurePurge(t *testing.T) {
 	defer st.Close()
 	s := st.(*SQLStore)
 	for _, q := range []string{
-		`INSERT INTO orgs (id, status) VALUES ('org-m', 'deleted')`,
+		`INSERT INTO orgs (id, status, seen_at) VALUES ('org-m', 'deleted', ` + strconv.FormatInt(time.Now().Unix(), 10) + `)`,
 		`INSERT INTO users (id, username, created_at, updated_at, org_id) VALUES ('um', 'm', now(), now(), 'org-m')`,
 		`INSERT INTO calendars (id, owner_kind, owner_id, slug, name, created_at, org_id) VALUES ('cm', 'user', 'um', 'default', 'M', now(), 'org-m')`,
 		`INSERT INTO calendar_objects (calendar_id, name, uid, etag, data, first_start, modified_at, component, org_id)
