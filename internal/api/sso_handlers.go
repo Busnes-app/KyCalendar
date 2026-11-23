@@ -303,7 +303,15 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
 		return
 	}
-	user, err := s.upsertSSOUser(r.Context(), claims, p.Binding)
+	upsert := s.upsertSSOUser
+	if claims.ExportOnly {
+		if stepUp {
+			s.writeError(w, http.StatusForbidden, "This sign-in can only download your calendars")
+			return
+		}
+		upsert = s.exportOnlyUser
+	}
+	user, err := upsert(r.Context(), claims, p.Binding)
 	switch {
 	case errors.Is(err, store.ErrBindingChanged):
 		go s.refreshSignIn(context.WithoutCancel(r.Context()))
@@ -361,7 +369,7 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	if s.shared != nil {
 		binding = p.Binding
 	}
-	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, binding, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero())
+	_, _, err = s.sessions.IssueSSOSession(r.Context(), w, r, user, binding, ssoSID(p, claims.SessionID), verified, claims.AuthTime.IsZero(), claims.ExportOnly)
 	if errors.Is(err, store.ErrBindingChanged) {
 		go s.refreshSignIn(context.WithoutCancel(r.Context()))
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
@@ -376,7 +384,64 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if claims.ExportOnly {
+		http.Redirect(w, r, "/api/export", http.StatusFound) // the download is all this sign-in may do
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// exportOnlyUser is the existing account a KyIdentity export_only sign-in names (tenancy spec,
+// Export): multi-tenant mode only, and only while its org is deletion_scheduled, waiting once for
+// the poll if the mirror has not caught up. It never creates an account or grants a role, and
+// a token naming an org in any other state is refused, so an export_only token never gets an
+// ordinary session, whatever the mirror says.
+func (s *Server) exportOnlyUser(ctx context.Context, claims *sso.IdentityClaims, binding string) (*store.User, error) {
+	ten, err := s.store.Tenancy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ten.Multi {
+		return nil, errNotProvisioned
+	}
+	org := store.OrgID(claims.OrgID)
+	if org == "" {
+		s.auditSSORefusal(ctx, "", "reason=no_org export_only subject="+claims.Subject)
+		return nil, errNoOrg
+	}
+	ok, err := s.store.OrgExportable(ctx, org)
+	if err == nil && !ok {
+		s.awaitOrg(ctx, org)
+		ok, err = s.store.OrgExportable(ctx, org)
+	}
+	if err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, errOrgNotActive
+	}
+	var u *store.User
+	for _, provider := range []string{"kysignon", "scim"} { // KyIdentity's SCIM externalId is this sub
+		got, err := s.store.Users().GetUserBySSO(ctx, provider, claims.Subject)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		if err == nil {
+			u = got
+			break
+		}
+	}
+	switch {
+	case u == nil:
+		return nil, errNotProvisioned // nothing of theirs to export
+	case u.SSOIssuer != binding:
+		return nil, errOtherIssuer
+	case store.OrgOf(u) != org:
+		s.auditSSORefusal(ctx, u.ID, "reason=org_mismatch export_only org="+string(store.OrgOf(u))+" token_org="+string(org))
+		return nil, errOrgMismatch
+	case u.Status != "active":
+		return nil, errAccountInactive
+	}
+	return u, nil
 }
 
 func (s *Server) handleKySignOnSyncWebhook(w http.ResponseWriter, r *http.Request) {

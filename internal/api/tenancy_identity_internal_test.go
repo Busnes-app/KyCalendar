@@ -1,10 +1,16 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/Busnes-app/kycalendar/internal/auth"
+	"github.com/Busnes-app/kycalendar/internal/calexport"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -234,4 +240,135 @@ func passwordLogin(t *testing.T, s *Server, username, pw string) int {
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	return w.Code
+}
+
+// An export_only sign-in never gets an ordinary session: refused while the mirror says active,
+// admitted to the export routes alone while the org is deletion_scheduled, for at most an hour,
+// for an existing account only, and ended once the org moves on.
+func TestExportOnlySignInReachesOnlyTheExport(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-a": "active"})
+	ctx := context.Background()
+	if code := loginWithOrg(t, s, idp, "alice", "org-a"); code != http.StatusFound {
+		t.Fatalf("ordinary sign-in: %d", code)
+	}
+	alice, err := s.store.Users().GetUserBySSO(ctx, "kysignon", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Calendars().CreateCalendar(ctx, &store.Calendar{ID: "cal-a", OwnerKind: "user", OwnerID: alice.ID, Slug: "work", Name: "Work"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	ics := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261110T090000Z\r\nSUMMARY:Board review\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+	if _, err := s.store.Calendars().PutObjectPlanned(ctx, &store.CalendarObject{CalendarID: "cal-a", Name: "e1.ics", Component: "VEVENT", UID: "e1", ETag: "1", Data: ics, WriterID: alice.ID}, "", true, store.OwnerLimits{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	setStatus := func(status string) {
+		t.Helper()
+		if _, err := rawSQL(t, s).Exec(fmt.Sprintf(`UPDATE orgs SET status = '%s' WHERE id = 'org-a'`, status)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signIn := func(sub string, exportOnly bool) *httptest.ResponseRecorder {
+		t.Helper()
+		idp.extra, idp.roles = map[string]any{"org_id": "org-a"}, nil
+		if exportOnly {
+			idp.extra["export_only"] = true
+		}
+		return ssoLogin(t, s, idp, sub, "sid-"+sub)
+	}
+	get := func(c *http.Cookie, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(c)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	if w := signIn("alice", true); w.Code != http.StatusForbidden || ssoSession(w) != nil {
+		t.Fatalf("export_only while the mirror says active: %d, session %v", w.Code, ssoSession(w))
+	}
+	setStatus("deletion_scheduled")
+	if w := signIn("alice", false); w.Code != http.StatusForbidden || ssoSession(w) != nil {
+		t.Fatalf("an ordinary token during deletion_scheduled: %d", w.Code)
+	}
+	if w := signIn("nobody", true); w.Code != http.StatusForbidden || ssoSession(w) != nil {
+		t.Fatalf("export_only for an unknown subject: %d", w.Code)
+	}
+	if _, err := s.store.Users().GetUserBySSO(ctx, "kysignon", "nobody"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("export_only created an account: %v", err)
+	}
+
+	w := signIn("alice", true)
+	c := ssoSession(w)
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/api/export" || c == nil {
+		t.Fatalf("export_only during deletion_scheduled: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if time.Until(c.Expires) > auth.ExportOnlyTTL+time.Minute {
+		t.Fatalf("export-only session lives until %v", c.Expires)
+	}
+	if me := get(c, "/api/auth/me"); !strings.Contains(me.Body.String(), `"exportOnly":true`) {
+		t.Fatalf("/api/auth/me: %s", me.Body.String())
+	}
+	for _, path := range []string{"/api/calendars", "/api/app-passwords"} {
+		if w := get(c, path); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "export_only") {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	ex := get(c, "/api/export")
+	if ex.Code != http.StatusOK || ex.Header().Get("Content-Type") != "application/zip" {
+		t.Fatalf("export: %d %q", ex.Code, ex.Header().Get("Content-Type"))
+	}
+	zr, err := zip.NewReader(bytes.NewReader(ex.Body.Bytes()), int64(ex.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		files[f.Name] = string(b)
+	}
+	if !strings.Contains(files["calendars/cal-a.ics"], "SUMMARY:Board review") || !strings.Contains(files["manifest.json"], `"name": "Work"`) {
+		t.Fatalf("export holds %v", files)
+	}
+
+	// A calendar that fails before the download starts is an error, never an empty zip.
+	defer func(f func(context.Context, store.Store, string) ([]byte, int, []*store.CalendarObject, error)) {
+		calendarICS = f
+	}(calendarICS)
+	calendarICS = func(context.Context, store.Store, string) ([]byte, int, []*store.CalendarObject, error) {
+		return nil, 0, nil, errors.New("database unavailable")
+	}
+	if w := get(c, "/api/export"); w.Code != http.StatusServiceUnavailable || w.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("export whose first calendar fails: %d %q", w.Code, w.Header().Get("Content-Disposition"))
+	}
+
+	// With KyIdentity unreachable past store.OrgFresh, export admission fails closed too.
+	if _, err := rawSQL(t, s).Exec(fmt.Sprintf(`UPDATE orgs SET seen_at = seen_at - %d WHERE id = 'org-a'`, int(store.OrgFresh.Seconds())+1)); err != nil {
+		t.Fatal(err)
+	}
+	calendarICS = calexport.CalendarICS
+	if w := get(c, "/api/export"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("export with a stale org answer: %d", w.Code)
+	}
+	if w := signIn("alice", true); w.Code != http.StatusForbidden || ssoSession(w) != nil {
+		t.Fatalf("export_only sign-in with a stale org answer: %d", w.Code)
+	}
+	if _, err := rawSQL(t, s).Exec(fmt.Sprintf(`UPDATE orgs SET seen_at = %d WHERE id = 'org-a'`, time.Now().Unix())); err != nil {
+		t.Fatal(err)
+	}
+	if w := signIn("alice", true); ssoSession(w) == nil {
+		t.Fatalf("export_only sign-in after a fresh answer: %d", w.Code)
+	} else {
+		c = ssoSession(w)
+	}
+
+	setStatus("deleted")
+	if w := get(c, "/api/export"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("export after the org was deleted: %d", w.Code)
+	}
 }

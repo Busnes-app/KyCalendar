@@ -396,6 +396,7 @@ func (s *Server) routes() {
 	// Calendars and events for everyday users. Roles come from access.Resolve; a calendar the
 	// caller cannot read is 404.
 	s.handle("GET /api/calendars", s.requireEveryday(s.handleListCalendars))
+	s.handle("GET /api/export", s.requireEveryday(s.handleExport))
 	s.handle("POST /api/calendars", s.requireEveryday(s.handleCreateCalendar))
 	s.handle("PATCH /api/calendars/{id}", s.requireEveryday(s.handlePatchCalendar))
 	s.handle("DELETE /api/calendars/{id}", s.tracked(s.requireEveryday(s.handleDeleteCalendar)))
@@ -486,6 +487,8 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (*store.Us
 	switch {
 	case errors.Is(err, auth.ErrPasswordChangeRequired):
 		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Change your password before continuing", "code": "password_change_required"})
+	case errors.Is(err, auth.ErrExportOnly):
+		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "This sign-in can only download your calendars", "code": "export_only"})
 	case auth.SignedOut(err):
 		s.writeError(w, http.StatusUnauthorized, "Authentication required")
 	default:

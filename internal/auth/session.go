@@ -30,6 +30,21 @@ const (
 
 var ErrPasswordChangeRequired = errors.New("password change required")
 
+// ErrExportOnly is a request of an export-only session (store.Session.ExportOnly) to a route
+// other than the export routes.
+var ErrExportOnly = errors.New("export-only session")
+
+// ExportOnlyTTL caps an export-only session: KyIdentity gives such a sign-in no refresh token,
+// and one download needs minutes.
+const ExportOnlyTTL = time.Hour
+
+// exportOnlyRoute is a route an export-only session may reach: who am I, sign out, and the
+// export itself.
+func exportOnlyRoute(r *http.Request) bool {
+	return r.Method == http.MethodGet && (r.URL.Path == "/api/auth/me" || r.URL.Path == "/api/export") ||
+		r.Method == http.MethodPost && r.URL.Path == "/api/auth/logout"
+}
+
 // SignedOut reports whether an AuthenticateRequest error means no valid session. Any other
 // error is the store failing to answer, which must never read as signed out.
 func SignedOut(err error) bool {
@@ -51,16 +66,17 @@ func NewSessionManager(st store.Store, cfg config.SecurityConfig) *SessionManage
 // IssueSession creates an active session for credentials verified just now and writes the
 // HttpOnly cookie + CSRF token.
 func (sm *SessionManager) IssueSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User) (*store.Session, string, error) {
-	return sm.IssueSSOSession(ctx, w, r, user, "", "", time.Now(), false)
+	return sm.IssueSSOSession(ctx, w, r, user, "", "", time.Now(), false, false)
 }
 
 // IssueSSOSession is IssueSession for an SSO login the provider names by sid, dated by the ID
 // token's issuedAt, so a back-channel logout for that sid or subject ends it. unproven marks a
-// date that is not when credentials were given (see store.Session). It fails with
+// date that is not when credentials were given (see store.Session), and exportOnly a session
+// held to the export routes for at most ExportOnlyTTL. It fails with
 // store.ErrSSOSessionEnded when the provider already ended that login.
 // A non-empty binding must still be the stored sign-in binding and the account's when the
 // session is written (store.ErrBindingChanged otherwise).
-func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, binding, sid string, issuedAt time.Time, unproven bool) (*store.Session, string, error) {
+func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *store.User, binding, sid string, issuedAt time.Time, unproven, exportOnly bool) (*store.Session, string, error) {
 	authenticatedAt := issuedAt.UTC()
 	rawToken := crypto.RandomHex(32)
 	tokenHash := crypto.SHA256Hex([]byte(rawToken))
@@ -69,16 +85,20 @@ func (sm *SessionManager) IssueSSOSession(ctx context.Context, w http.ResponseWr
 	if ttl <= 0 {
 		ttl = 7 * 24 * time.Hour
 	}
+	if exportOnly {
+		ttl = min(ttl, ExportOnlyTTL)
+	}
 
 	sess := &store.Session{
-		TokenHash: tokenHash,
-		UserID:    user.ID,
-		UserAgent: r.UserAgent(),
-		IPAddress: ClientIP(r, sm.config.TrustedProxies),
-		CreatedAt: authenticatedAt,
-		ExpiresAt: time.Now().UTC().Add(ttl),
-		SSOSID:    sid,
-		Unproven:  unproven,
+		TokenHash:  tokenHash,
+		UserID:     user.ID,
+		UserAgent:  r.UserAgent(),
+		IPAddress:  ClientIP(r, sm.config.TrustedProxies),
+		CreatedAt:  authenticatedAt,
+		ExpiresAt:  time.Now().UTC().Add(ttl),
+		SSOSID:     sid,
+		Unproven:   unproven,
+		ExportOnly: exportOnly,
 	}
 
 	creds := user.Credentials()
@@ -235,8 +255,15 @@ func (sm *SessionManager) AuthenticateRequest(r *http.Request) (*store.User, *st
 	if err != nil {
 		return nil, nil, err // unavailable: the session stays
 	}
-	// A session of an org that is not active (tenancy spec D6) ends as an inactive account's does.
-	if !allowed || user.Status != "active" || !user.OrgActive {
+	// A session of an org that is not active (tenancy spec D6) ends as an inactive account's does;
+	// an export-only one lives only while its org is deletion_scheduled.
+	orgOK := user.OrgActive
+	if sess.ExportOnly {
+		if orgOK, err = sm.store.OrgExportable(r.Context(), store.OrgOf(user)); err != nil {
+			return nil, nil, err
+		}
+	}
+	if !allowed || user.Status != "active" || !orgOK {
 		_ = sm.store.Sessions().DeleteSession(r.Context(), tokenHash)
 		return nil, nil, store.ErrNotFound
 	}
@@ -247,6 +274,9 @@ func (sm *SessionManager) AuthenticateRequest(r *http.Request) (*store.User, *st
 		return nil, nil, err
 	}
 
+	if sess.ExportOnly && !exportOnlyRoute(r) {
+		return nil, nil, ErrExportOnly
+	}
 	// A restricted session never authorizes product operations or private settings.
 	if user.MustChangePassword && !((r.Method == http.MethodGet && r.URL.Path == "/api/auth/me") || (r.Method == http.MethodPost && (r.URL.Path == "/api/auth/change-password" || r.URL.Path == "/api/auth/logout"))) {
 		return nil, nil, ErrPasswordChangeRequired

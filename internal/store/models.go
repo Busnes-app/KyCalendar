@@ -61,6 +61,8 @@ type Session struct {
 	// Unproven: an SSO login whose ID token had no auth_time. CreatedAt is then the token's
 	// issue time, which says nothing about when credentials were given: no step-up.
 	Unproven bool `json:"-"`
+	// ExportOnly: a session from a KyIdentity export_only token, held to the export routes.
+	ExportOnly bool `json:"-"`
 }
 
 // DevicePairing represents a 90-second ephemeral session to link mobile/PWA wrappers.

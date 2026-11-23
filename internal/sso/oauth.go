@@ -187,6 +187,7 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 		Roles             any     `json:"roles"`
 		AuthTime          float64 `json:"auth_time"`
 		OrgID             string  `json:"org_id"`
+		ExportOnly        bool    `json:"export_only"`
 	}
 	if err := idToken.Claims(&raw); err != nil || raw.Sub == "" {
 		return nil, ErrInvalidIDToken
@@ -199,5 +200,5 @@ func claimsFromIDToken(idToken *oidc.IDToken) (*IdentityClaims, error) {
 		username = raw.Sub
 	}
 	// The global `role` claim is deliberately not read: it is never a KyCalendar admin.
-	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, EmailVerified: raw.EmailVerified == true || raw.EmailVerified == "true", Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles), SessionID: raw.SID, IssuedAt: idToken.IssuedAt, AuthTime: authTime(raw.AuthTime), OrgID: raw.OrgID}, nil
+	return &IdentityClaims{Issuer: idToken.Issuer, Subject: raw.Sub, Email: raw.Email, EmailVerified: raw.EmailVerified == true || raw.EmailVerified == "true", Name: raw.Name, PreferredUsername: username, Roles: access.RoleValues(raw.Roles), SessionID: raw.SID, IssuedAt: idToken.IssuedAt, AuthTime: authTime(raw.AuthTime), OrgID: raw.OrgID, ExportOnly: raw.ExportOnly}, nil
 }

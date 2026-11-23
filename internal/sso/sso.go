@@ -32,6 +32,9 @@ type IdentityClaims struct {
 	AuthTime time.Time `json:"-"`
 	// OrgID is the ID token's org_id: KyIdentity sends it in multi-tenant mode only.
 	OrgID string `json:"-"`
+	// ExportOnly is KyIdentity's export_only: the org is deletion_scheduled and this sign-in may
+	// only export (tenancy spec, Export).
+	ExportOnly bool `json:"-"`
 }
 
 // SSOState represents ephemeral state held during OAuth/OIDC authorization flow.

@@ -45,7 +45,7 @@ var crossOrgExempt = map[string]string{}
 func init() {
 	for reason, routes := range map[string][]string{
 		// No object ID from the request: the route reads or writes only the caller's own rows.
-		"own": {"GET /api/app-passwords", "POST /api/app-passwords", "GET /api/calendars", "POST /api/calendars",
+		"own": {"GET /api/app-passwords", "POST /api/app-passwords", "GET /api/calendars", "POST /api/calendars", "GET /api/export",
 			"GET /api/tasks", "POST /api/tasks/inbox", "GET /api/tasks/areas", "PUT /api/tasks/areas", "GET /api/tasks/stats",
 			"GET /api/tasks/insights", "GET /api/tasks/goals", "POST /api/tasks/goals", "GET /api/tasks/prefs", "PUT /api/tasks/prefs",
 			"GET /api/tasks/views", "POST /api/tasks/views", "GET /api/booking-types", "POST /api/booking-types",
