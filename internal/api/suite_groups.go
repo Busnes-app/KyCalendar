@@ -16,6 +16,15 @@ import (
 // SuiteGroupsInterval is how often cmd/server reconciles KyIdentity's suite groups.
 const SuiteGroupsInterval = time.Minute
 
+// One multi-tenant pass lists at most suiteGroupsPerPass orgs, and stops after
+// suiteGroupsFailuresInARow failed lists. KyIdentity allows each client a burst of 120 and 2 a
+// second, which the app rail and people search share, so a pass never takes more than half of it
+// and never keeps calling while it is being refused. The next pass resumes where this one left off.
+const (
+	suiteGroupsPerPass        = 60
+	suiteGroupsFailuresInARow = 3
+)
+
 // SyncSuiteGroups gives each KyIdentity suite group one group calendar here (KyIdentity-server
 // docs/SUITE-DIRECTORY.md, GET /api/suite/groups). Only a live KyIdentity provider has the
 // list. In multi-tenant mode each serving org's groups are listed with its org_id and reconciled
@@ -61,15 +70,17 @@ func (s *Server) SyncSuiteGroups(ctx context.Context) {
 			start = i
 		}
 	}
-	lastOK := -1
-	for k := range orgs {
+	lastOK, failures := -1, 0
+	for k := range min(len(orgs), suiteGroupsPerPass) {
 		if ctx.Err() != nil {
 			return
 		}
 		i := (start + k) % len(orgs)
 		org := orgs[i]
 		if s.syncOrgSuiteGroups(ctx, scope, org, func(ctx context.Context) ([]suitedir.Group, error) { return dir.OrgGroups(ctx, string(org)) }) {
-			lastOK = i
+			lastOK, failures = i, 0
+		} else if failures++; failures >= suiteGroupsFailuresInARow {
+			break // being refused, most likely rate-limited: stop spending the shared budget
 		}
 	}
 	next := (start + 1) % len(orgs)

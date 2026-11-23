@@ -364,3 +364,61 @@ func TestSyncSuiteGroupsPerOrgSurvivesAPermanentFailure(t *testing.T) {
 		t.Errorf("after three passes %d of 4 orgs reconciled: a permanently failing org pinned the rotation", n)
 	}
 }
+
+// A pass never takes more than its share of KyIdentity's per-client budget: at most
+// suiteGroupsPerPass lists, and only suiteGroupsFailuresInARow once every list is refused. The
+// rotation still reaches every org.
+func TestSyncSuiteGroupsPerOrgSpendsABoundedBudget(t *testing.T) {
+	ctx := context.Background()
+	s, _ := davInternalServer(t)
+	var mu sync.Mutex
+	calls, refuse := 0, false
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if refuse {
+			http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+			return
+		}
+		org := r.URL.Query().Get("org_id")
+		fmt.Fprintf(w, `{"groups":[{"id":"g-%s","name":"Team %s","slug":"team","state":"active","members":[]}]}`, org, org)
+	}))
+	t.Cleanup(idp.Close)
+	s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "single sign-on", idp.URL, "kycalendar", "suite-secret", idp.Client()))
+	var orgs []store.MirroredOrg
+	for i := range 150 {
+		orgs = append(orgs, store.MirroredOrg{ID: store.OrgID(fmt.Sprintf("org-%03d", i)), Status: "active", Revision: 1, Enabled: true, Quotas: "{}"})
+	}
+	if err := s.store.ApplyOrgs(ctx, "", orgs, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
+		t.Fatal(err)
+	}
+	pass := func() int {
+		t.Helper()
+		mu.Lock()
+		calls = 0
+		mu.Unlock()
+		s.SyncSuiteGroups(ctx)
+		mu.Lock()
+		defer mu.Unlock()
+		return calls
+	}
+	for i := range 3 {
+		if n := pass(); n > suiteGroupsPerPass {
+			t.Fatalf("pass %d sent %d lists, more than %d", i, n, suiteGroupsPerPass)
+		}
+	}
+	cals, err := s.store.Calendars().ListCalendarsByKind(ctx, "group")
+	if err != nil || len(cals) != 150 {
+		t.Fatalf("after three passes %d of 150 orgs reconciled: %v", len(cals), err)
+	}
+	mu.Lock()
+	refuse = true
+	mu.Unlock()
+	if n := pass(); n != suiteGroupsFailuresInARow {
+		t.Errorf("a pass that is refused sent %d lists, want %d", n, suiteGroupsFailuresInARow)
+	}
+}
