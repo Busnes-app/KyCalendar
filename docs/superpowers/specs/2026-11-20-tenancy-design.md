@@ -641,7 +641,9 @@ question 1.
 > (`cmd/server/exportorg.go`) refuses an org with no mirror row and an output directory that
 > already exists. Nothing stored is left out: an object that does not parse, or that go-ical
 > cannot write back, is copied as stored into `<calendar>.unmerged/` and listed under
-> `unmerged` in the manifest, so no single object can stop an export or shorten it. It writes `members/<user ID>/<calendar ID>.ics` and `groups/<calendar ID>.ics`,
+> `unmerged` in the manifest with its stored name, so no single object can stop an export or
+> shorten it. Every path is unique: one whose safe name is already taken gets a `~2`, `~3`
+> suffix, so nothing is written over. It writes `members/<user ID>/<calendar ID>.ics` and `groups/<calendar ID>.ics`,
 > one VCALENDAR per calendar with each time zone once, and `manifest.json` (org, time, and per
 > calendar its ID, name, owner, the owner's username and email, components, file and item count,
 > plus any stored object that does not parse). Files are `0600` and folders `0700`. It reads

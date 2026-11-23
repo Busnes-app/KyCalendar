@@ -79,8 +79,14 @@ type exportCalendar struct {
 	File       string   `json:"file"`
 	Items      int      `json:"items"`
 	// Unmerged are stored objects that could not go into File (they do not parse, or go-ical cannot
-	// write them back), each copied byte for byte into its own file, by path.
-	Unmerged []string `json:"unmerged,omitempty"`
+	// write them back), each copied byte for byte into its own file.
+	Unmerged []unmergedCopy `json:"unmerged,omitempty"`
+}
+
+// unmergedCopy is one object copied as stored: its file and the object name it was stored under.
+type unmergedCopy struct {
+	File string `json:"file"`
+	Name string `json:"name"`
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]`)
@@ -117,6 +123,19 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 		return nil, err
 	}
 	m := &exportManifest{OrgID: org, ExportedAt: now, Calendars: []exportCalendar{}}
+	// Names are made safe by replacing characters, so two can collide (a b.ics, a_b.ics): every
+	// path gets a numbered suffix until it is unused, and nothing is written over.
+	used := map[string]bool{"manifest.json": true}
+	unique := func(path string) string {
+		ext := filepath.Ext(path)
+		stem := strings.TrimSuffix(path, ext)
+		p := path
+		for n := 2; used[strings.ToLower(p)]; n++ {
+			p = fmt.Sprintf("%s~%d%s", stem, n, ext)
+		}
+		used[strings.ToLower(p)] = true
+		return p
+	}
 	for _, c := range cals {
 		e := exportCalendar{ID: c.ID, Name: c.Name, OwnerKind: c.OwnerKind, OwnerID: c.OwnerID, Components: c.Components, Subscribed: c.Subscribed}
 		folder := "groups"
@@ -128,7 +147,7 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 			e.Username, e.Email = u.Username, u.Email
 			folder = filepath.Join("members", unsafeName.ReplaceAllString(u.ID, "_"))
 		}
-		e.File = filepath.ToSlash(filepath.Join(folder, unsafeName.ReplaceAllString(c.ID, "_")+".ics"))
+		e.File = unique(filepath.ToSlash(filepath.Join(folder, unsafeName.ReplaceAllString(c.ID, "_")+".ics")))
 		body, unmerged, err := exportCalendarICS(ctx, st, c, &e)
 		if err != nil {
 			return nil, fmt.Errorf("calendar %s: %w", c.ID, err)
@@ -137,11 +156,11 @@ func exportOrg(ctx context.Context, st store.Store, org store.OrgID, dir string,
 			return nil, err
 		}
 		for _, o := range unmerged {
-			f := strings.TrimSuffix(e.File, ".ics") + ".unmerged/" + unsafeName.ReplaceAllString(o.Name, "_")
+			f := unique(strings.TrimSuffix(e.File, ".ics") + ".unmerged/" + unsafeName.ReplaceAllString(o.Name, "_"))
 			if err := writeExport(filepath.Join(tmp, filepath.FromSlash(f)), o.Data); err != nil {
 				return nil, err
 			}
-			e.Unmerged = append(e.Unmerged, f)
+			e.Unmerged = append(e.Unmerged, unmergedCopy{File: f, Name: o.Name})
 		}
 		m.Items += e.Items
 		m.Calendars = append(m.Calendars, e)

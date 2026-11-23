@@ -192,10 +192,49 @@ func TestExportOrgWritesOnlyThatOrg(t *testing.T) {
 	}
 	for _, c := range mk.Calendars {
 		for _, f := range c.Unmerged {
-			b, err := os.ReadFile(filepath.Join(kept, filepath.FromSlash(f)))
+			b, err := os.ReadFile(filepath.Join(kept, filepath.FromSlash(f.File)))
 			if err != nil || (!bytes.Equal(b, garbled.Data) && !bytes.Equal(b, noUID.Data)) {
-				t.Errorf("unmerged copy %s: %q %v", f, b, err)
+				t.Errorf("unmerged copy %+v: %q %v", f, b, err)
 			}
+		}
+	}
+
+	// Names that become the same safe name (a b.ics, a_b.ics) each keep their own file.
+	twins := []*store.CalendarObject{
+		{CalendarID: calOf("usr_bert"), Name: "a b.ics", UID: "twin-1", Component: "VEVENT", Data: []byte("first twin")},
+		{CalendarID: calOf("usr_bert"), Name: "a_b.ics", UID: "twin-2", Component: "VEVENT", Data: []byte("second twin")},
+	}
+	for _, o := range twins {
+		if _, err := st.Calendars().PutObject(ctx, o, "", true, store.OwnerLimits{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	twinOut := filepath.Join(t.TempDir(), "twins")
+	mt, err := exportOrg(ctx, st, "org-b", twinOut, time.Now())
+	if err != nil || mt.unmerged() != 4 {
+		t.Fatalf("export with colliding names: %+v %v", mt, err)
+	}
+	seen := map[string]string{}
+	for _, c := range mt.Calendars {
+		for _, f := range c.Unmerged {
+			b, err := os.ReadFile(filepath.Join(twinOut, filepath.FromSlash(f.File)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prev, ok := seen[f.File]; ok {
+				t.Errorf("%s written for both %s and %s", f.File, prev, f.Name)
+			}
+			seen[f.File] = f.Name
+			for _, o := range twins {
+				if o.Name == f.Name && !bytes.Equal(b, o.Data) {
+					t.Errorf("%s (%s) holds %q, want %q", f.File, f.Name, b, o.Data)
+				}
+			}
+		}
+	}
+	for _, o := range twins {
+		if err := st.Calendars().DeleteObject(ctx, o.CalendarID, o.Name, ""); err != nil {
+			t.Fatal(err)
 		}
 	}
 
