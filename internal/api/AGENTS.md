@@ -24,6 +24,20 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 | PUT | `/api/backup/schedule` | `handleSetSchedule` | `{interval_sec}` read back from the store |
 | GET | `/api/backup/status` | `handleBackupStatus` | pairing, key, local copies, schedule, members, `database_driver`, `last_run`; never the token |
 
+**Multi-tenant admin surface** (`admin_tenancy.go`, tenancy spec "Admin surface", build step 5). Single-tenant answers are unchanged.
+- **`404` (plain, the same for every caller), via `singleTenantOnly`:**
+  - business features (D9): `/api/admin/groups*`, `/api/admin/calendars*`, `/api/admin/resources*`, `/api/resources*` and `/scim/v2`;
+  - account writes (D8): `POST`/`PATCH /api/admin/users…`, `role`, `disable`, `enable`, `reset-password` and `reattach`.
+
+  The gate runs before sign-in, so the answer never depends on who asks.
+- **`PUT /api/admin/signin` and `POST /api/admin/signin/test`** answer `403 sign_in_fixed` (D2).
+- **`GET /api/admin/users`** needs `?org=<id>` (`400 org_required`, `400 bad_org`). It lists that org's accounts and adds `bytes`, each listed account's stored calendar bytes.
+- **`GET /api/admin/audit`** lists platform rows (`org_id` NULL) by default, or with `?org=<id>` that org's rows.
+- **Every `?org=` read** first writes a `staff.read` platform row (`LogPlatformAudit`: staff user, `org=… route=…`), which outlives the org's purge. A failed write answers 503 and reads nothing.
+- **`GET /api/admin/scim`** shows `enabled:false`.
+- **New `GET /api/admin/orgs`** (multi-tenant only; 404 in single-tenant): the org mirror (`ListMirroredOrgs`: status, revision, enabled, quotas, `seen_at`, stored bytes).
+- **Tests:** `TestMultiTenantAdminSurface` and `TestSingleTenantAdminSurfaceUnchanged`.
+
 | Method | Path | Guard | Response |
 |---|---|---|---|
 | GET | `/api/admin/calendars` | admin | `[{id,name,color,description,created_at,grants:[{group_id,group_name,role}]}]` |

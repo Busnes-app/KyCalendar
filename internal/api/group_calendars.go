@@ -153,7 +153,23 @@ func (s *Server) handleDeleteGroupCalendar(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	offset, limit := listPage(r)
-	recs, total, err := s.store.Audit().ListAuditRecords(r.Context(), offset, limit)
+	ten, err := s.store.Tenancy(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusServiceUnavailable, "Try again in a moment")
+		return
+	}
+	var recs []*store.AuditRecord
+	var total int
+	if ten.Multi {
+		// Platform rows by default; ?org= reads one org's rows, recorded as a staff read.
+		org, ok := s.staffOrg(w, r, false)
+		if !ok {
+			return
+		}
+		recs, total, err = s.store.Audit().ListOrgAuditRecords(r.Context(), org, offset, limit)
+	} else {
+		recs, total, err = s.store.Audit().ListAuditRecords(r.Context(), offset, limit)
+	}
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to list audit records")
 		return

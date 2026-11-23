@@ -88,6 +88,8 @@ type Store interface {
 	OrgServes(ctx context.Context, id OrgID) (bool, error)
 	// ServingOrgs lists the orgs that are active and enabled now.
 	ServingOrgs(ctx context.Context) ([]OrgID, error)
+	// ListMirroredOrgs is the org mirror for staff (GET /api/admin/orgs), by ID.
+	ListMirroredOrgs(ctx context.Context) ([]MirroredOrgView, error)
 	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).
 	ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOrg, next int64) error
 	// OrgsToPurge, PurgeOrg and TombstoneOrg delete a deleted org's data (org_purge.go).

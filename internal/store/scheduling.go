@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -172,6 +173,33 @@ func (c *calendarStore) PruneOutbox(ctx context.Context, before time.Time) error
 
 func (u *userStore) CalendarUser(ctx context.Context, org OrgID, email string) (*User, error) {
 	return u.emailOwner(ctx, email, `AND (org_id = ? OR EXISTS (SELECT 1 FROM server_settings WHERE key = '`+TenancySetting+`' AND value = 'single'))`, org)
+}
+
+func (u *userStore) StoredBytes(ctx context.Context, ids []string) (map[string]int64, error) {
+	out := map[string]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(`SELECT c.owner_id, COALESCE(SUM(LENGTH(o.data)), 0)
+FROM calendars c JOIN calendar_objects o ON o.calendar_id = c.id
+WHERE c.owner_kind = 'user' AND c.owner_id IN (?`+strings.Repeat(", ?", len(ids)-1)+`) GROUP BY c.owner_id`), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
 }
 
 func (u *userStore) EmailOwner(ctx context.Context, email string) (*User, error) {

@@ -85,6 +85,35 @@ func (s *SQLStore) ServingOrgs(ctx context.Context) ([]OrgID, error) {
 	return out, rows.Err()
 }
 
+// MirroredOrgView is one org as staff see it: the mirror row and its stored object bytes.
+type MirroredOrgView struct {
+	ID       OrgID  `json:"id"`
+	Status   string `json:"status"`
+	Revision int64  `json:"revision"`
+	Enabled  bool   `json:"enabled"`
+	Quotas   string `json:"quotas"`  // a JSON object, as KyIdentity sent it
+	SeenAt   int64  `json:"seen_at"` // unix seconds of the last poll that listed it
+	Bytes    int64  `json:"bytes"`
+}
+
+func (s *SQLStore) ListMirroredOrgs(ctx context.Context) ([]MirroredOrgView, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id, o.status, o.revision, o.enabled, o.quotas_json, o.seen_at, COALESCE(u.bytes, 0)
+FROM orgs o LEFT JOIN org_usage u ON u.org_id = o.id ORDER BY o.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MirroredOrgView{}
+	for rows.Next() {
+		var v MirroredOrgView
+		if err := rows.Scan(&v.ID, &v.Status, &v.Revision, &v.Enabled, &v.Quotas, &v.SeenAt, &v.Bytes); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 // OrgsCursorSetting is the /api/suite/orgs revision the next mirror poll starts after.
 const OrgsCursorSetting = "tenancy_orgs_since"
 

@@ -71,8 +71,11 @@ func init() {
 			"DELETE /api/backup/pairing", "POST /api/backup/pin-key", "PUT /api/backup/schedule", "GET /api/backup/status",
 			"GET /api/settings/rate-limit-networks", "PUT /api/settings/rate-limit-networks", "GET /api/admin/signin",
 			"POST /api/admin/signin/test", "PUT /api/admin/signin", "GET /api/admin/kypost", "GET /api/admin/kymessages",
-			"GET /api/admin/booking", "PUT /api/admin/booking"},
-		// Admin people and lists: staff only, bound to a selected org, in tenancy PR 5 (L12).
+			"GET /api/admin/booking", "PUT /api/admin/booking",
+			// The org mirror itself, staff only and multi-tenant only (TestMultiTenantAdminSurface).
+			"GET /api/admin/orgs"},
+		// Admin people and lists: staff only, bound to a ?org= read that writes staff.read, or 404 in
+		// multi-tenant mode (tenancy PR 5, L12; TestMultiTenantAdminSurface).
 		"admin": {"GET /api/admin/users", "POST /api/admin/users", "POST /api/admin/users/{id}/reset-password",
 			"PATCH /api/admin/users/{id}", "POST /api/admin/users/{id}/role", "POST /api/admin/users/{id}/disable",
 			"POST /api/admin/users/{id}/enable", "GET /api/admin/audit", "GET /api/admin/groups", "GET /api/admin/calendars"},

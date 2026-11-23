@@ -203,6 +203,7 @@ type UserFilter struct {
 	Field UserField
 	Value string
 	SCIM  *SCIMScope
+	Org   OrgID // when set, only this org's accounts (the staff People list, tenancy spec Admin surface)
 }
 
 // SCIMScope is the accounts SCIM may reach: non-local rows of Providers bound to Issuer, the

@@ -64,6 +64,19 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		filter = store.UserFilter{Field: store.UserFieldSearch, Value: q}
 	}
+	// Multi-tenant: staff read one chosen org's accounts, recorded as a staff read (Admin surface).
+	ten, err := s.store.Tenancy(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusServiceUnavailable, "Try again in a moment")
+		return
+	}
+	if ten.Multi {
+		org, ok := s.staffOrg(w, r, true)
+		if !ok {
+			return
+		}
+		filter.Org = org
+	}
 	users, total, err := s.store.Users().ListUsers(r.Context(), offset, limit, filter)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to list people")
@@ -78,7 +91,21 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	if p != nil {
 		binding = p.Binding
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"users": out, "total": total, "signin_binding": binding})
+	resp := map[string]any{"users": out, "total": total, "signin_binding": binding}
+	if ten.Multi {
+		// Staff answer customers about quotas: each listed account's stored bytes (Admin surface).
+		ids := make([]string, len(users))
+		for i, u := range users {
+			ids[i] = u.ID
+		}
+		bytes, err := s.store.Users().StoredBytes(r.Context(), ids)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, "Failed to list people")
+			return
+		}
+		resp["bytes"] = bytes
+	}
+	s.writeJSON(w, http.StatusOK, resp)
 }
 
 // newTemporaryPassword returns a one-time password (120 random bits, 20 characters) and its

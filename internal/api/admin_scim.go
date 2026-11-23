@@ -11,6 +11,13 @@ import (
 // the accounts SCIM manages (its scope), newest first. Only whether a token is set ever leaves
 // the server, never the token.
 func (s *Server) handleSCIMStatus(w http.ResponseWriter, r *http.Request) {
+	if ten, err := s.store.Tenancy(r.Context()); err != nil {
+		s.writeError(w, http.StatusServiceUnavailable, "Try again in a moment")
+		return
+	} else if ten.Multi { // D9: SCIM is off, and /scim/v2 answers 404
+		s.writeJSON(w, http.StatusOK, map[string]any{"enabled": false, "token_configured": false, "endpoint": "", "users": []userView{}, "total": 0, "multi_tenant": true})
+		return
+	}
 	scope, err := scim.Scope(r.Context(), s.store.Settings())
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to load the sign-in binding")
