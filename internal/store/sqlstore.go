@@ -128,6 +128,11 @@ AND COALESCE((SELECT value FROM server_settings WHERE key = ?), '') <> 'single'`
 	if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM server_settings WHERE key = ?`), OrgsCursorSetting); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO server_settings (key, value, updated_at)
+SELECT ?, '1', ? WHERE COALESCE((SELECT value FROM server_settings WHERE key = ?), '') <> 'single'
+ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`), ErasedPendingSetting, time.Now().UTC(), TenancySetting); err != nil {
+		return err
+	}
 	epoch := crypto.RandomHex(8)
 	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_meta SET value = ? WHERE key = 'sync_epoch'`), epoch)
 	if err != nil {

@@ -691,6 +691,13 @@ Every access check (sessions, DAV, MCP, booking pages, KyPost inbound) refuses a
 refuses a suspended one. Only the next successful poll writes KyIdentity's current status back, and
 that poll re-reads every org from revision 0. The purge then runs again for any org now `deleted`.
 
+A capsule can also hold a person who used Delete everything after it was made, in an org that is
+still active. So the reset also sets `tenancy_erased_pending`, and the next poll first reads
+KyIdentity's `GET /api/suite/erased` from revision 0 (every page, refused whole if any entry is
+malformed). It deletes each listed account as `user.erased` does, only when the entry's org is
+the account's, and clears the mark. Only then does it apply any org's status. If the read fails,
+the mark stays, every restored org stays `stale`, and the next poll tries again.
+
 This relies on a KyIdentity contract that T implies but does not state: a full listing from
 revision 0 includes every org ever created for the calling app, with tombstones as `deleted`. T
 keeps every `orgs` row as a tombstone and never reuses an ID ("Data model"), so the data exists.

@@ -127,6 +127,11 @@ FROM orgs o LEFT JOIN org_usage u ON u.org_id = o.id ORDER BY o.id`)
 // OrgsCursorSetting is the /api/suite/orgs revision the next mirror poll starts after.
 const OrgsCursorSetting = "tenancy_orgs_since"
 
+// ErasedPendingSetting is set by ResetAfterRestore in multi-tenant mode: the next mirror poll
+// first deletes every account KyIdentity lists as erased (/api/suite/erased from 0), and only
+// then answers for any org, so a restore cannot bring an erased person back.
+const ErasedPendingSetting = "tenancy_erased_pending"
+
 // MirroredOrg is one org as KyIdentity's /api/suite/orgs lists it to this app.
 type MirroredOrg struct {
 	ID       OrgID
