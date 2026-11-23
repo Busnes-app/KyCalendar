@@ -514,10 +514,13 @@ calendar (`internal/access/role.go:44-46`), and DAV, MCP and app passwords refus
 (`AGENTS.md:301`). **Staff never read calendar content**, which matches T ("staff … cannot read app
 content").
 Content encryption at rest (`2026-11-22-content-encryption-design.md`) makes this cryptographic for
-every encrypted account: the server holds no key to its content between requests, except during
-the account's 14-day transition (its E11) and for an outgoing scheduling message waiting up to 24
-hours to be delivered or sent (its E14) or a booking hold's name and note for up to 15 minutes, which the deployment key
-opens.
+every calendar that has a key: the server holds no key to its content between requests. The
+exceptions, which the database and the deployment key still open:
+- accounts that have never run setup, and every calendar they share (its E12);
+- a group calendar until its last member runs setup (its E12);
+- an account's 14-day transition (its E11);
+- an outgoing scheduling message waiting up to 24 hours (its E14);
+- a booking hold's name and note, for up to 15 minutes.
 
 | Route (`internal/api/server.go`) | Multi-tenant |
 |---|---|
@@ -791,7 +794,10 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
   one org's subscriptions can get the platform rate-limited by a feed host.
 - **Operator access.** Until content encryption lands, `export-org` and the database give the
   operator calendar content, and the operator is trusted with the database and keys, as in T.
-  After it, they give times and attendees only (content encryption spec, Threat model).
+  After it, they give times and attendees for every calendar that has a key. They still give full
+  content for the exceptions listed under Admin surface: accounts that never ran setup, group
+  calendars waiting on a member, the 14-day transition, queued scheduling messages and booking
+  holds (content encryption spec, Threat model).
 - **Pending invitations drop** when a suspension outlasts the 24-hour outbox lifetime.
 
 ## Open questions, with recommendations
