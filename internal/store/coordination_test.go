@@ -190,10 +190,7 @@ func TestLockLossCancelsTheOwner(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("owned work was never cancelled")
 	}
-	won, err := b.Coordination().WithLock(ctx, "scheduled-worker", func(context.Context) error { return nil })
-	if !won || err != nil {
-		t.Fatalf("takeover: won=%v err=%v", won, err)
-	}
+	takeOver(t, b, "scheduled-worker")
 }
 
 // Work that panics still stops the probe and releases the lock: another replica takes it.
@@ -205,9 +202,26 @@ func TestPanickingWorkReleasesTheLock(t *testing.T) {
 		defer func() { _ = recover() }()
 		_, _ = a.Coordination().WithLock(ctx, "panics", func(context.Context) error { panic("work") })
 	}()
-	won, err := b.Coordination().WithLock(ctx, "panics", func(context.Context) error { return nil })
-	if !won || err != nil {
-		t.Fatalf("takeover after a panic: won=%v err=%v", won, err)
+	takeOver(t, b, "panics")
+}
+
+// takeOver wins name on st within 3 s. A session's advisory locks are freed when its backend
+// exits, which can be just after the owner's WithLock returns.
+func takeOver(t *testing.T, st store.Store, name string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		won, err := st.Coordination().WithLock(context.Background(), name, func(context.Context) error { return nil })
+		if err != nil {
+			t.Fatalf("takeover of %s: %v", name, err)
+		}
+		if won {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s still held 3 s after its owner ended", name)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
