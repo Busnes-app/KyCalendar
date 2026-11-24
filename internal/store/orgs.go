@@ -107,8 +107,18 @@ type MirroredOrgView struct {
 }
 
 func (s *SQLStore) ListMirroredOrgs(ctx context.Context) ([]MirroredOrgView, error) {
+	return s.listMirroredOrgs(ctx, "")
+}
+
+// StorageRefreshOrgs lists changed or ambiguous reports for early renewal,
+// excluding fenced/deleted orgs. The regular mirror pass still reports every customer.
+func (s *SQLStore) StorageRefreshOrgs(ctx context.Context) ([]MirroredOrgView, error) {
+	return s.listMirroredOrgs(ctx, "WHERE (o.pool_refresh OR o.pool_inflight) AND o.pool_stale_seq=0 AND o.status<>'deleted'")
+}
+
+func (s *SQLStore) listMirroredOrgs(ctx context.Context, where string) ([]MirroredOrgView, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT o.id, o.status, o.revision, o.enabled, o.quotas_json, o.seen_at, COALESCE(u.bytes, 0)
-FROM orgs o LEFT JOIN org_usage u ON u.org_id = o.id ORDER BY o.id`)
+FROM orgs o LEFT JOIN org_usage u ON u.org_id = o.id `+where+` ORDER BY o.id`)
 	if err != nil {
 		return nil, err
 	}

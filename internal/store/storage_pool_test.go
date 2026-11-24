@@ -287,3 +287,116 @@ func TestStoragePoolTwoReplicasShareLastBytes(t *testing.T) {
 		t.Fatalf("replica snapshot: %+v %+v %v", r, other, err)
 	}
 }
+
+func TestStorageHalfGrantAndShrinkRequestEarlyRefresh(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := poolWorld(t, s)
+		poolGrant(t, s, 1000)
+		if err := w.put(s, "alice", "one", 400); err != nil {
+			t.Fatal(err)
+		}
+		due, err := s.StorageRefreshOrgs(ctx)
+		if err != nil || len(due) != 0 {
+			t.Fatalf("early below half: %+v %v", due, err)
+		}
+		if err := w.put(s, "alice", "one", 500); err != nil {
+			t.Fatal(err)
+		}
+		due, err = s.StorageRefreshOrgs(ctx)
+		if err != nil || len(due) != 1 || due[0].ID != "org-a" {
+			t.Fatalf("half grant not signalled: %+v %v", due, err)
+		}
+		r, err := s.BeginStorageReport(ctx, "org-a", 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Recent 500-byte growth asks for twice that rate, rather than the tiny base demand.
+		if r.WantBytes != 1000 {
+			t.Fatalf("request not adaptive: %+v", r)
+		}
+		if err := s.ApplyStorageGrant(ctx, "org-a", r.Seq, r.UsedBytes+1000, 900); err != nil {
+			t.Fatal(err)
+		}
+		due, err = s.StorageRefreshOrgs(ctx)
+		if err != nil || len(due) != 0 {
+			t.Fatalf("applied request still due: %+v %v", due, err)
+		}
+		if err := w.put(s, "alice", "one", 300); err != nil {
+			t.Fatal(err)
+		}
+		due, err = s.StorageRefreshOrgs(ctx)
+		if err != nil || len(due) != 1 {
+			t.Fatalf("shrunk usage not due: %+v %v", due, err)
+		}
+	})
+}
+
+// Early renewal must not relax #208's first-report admission rule on an outage.
+func TestStorageFirstReportStillFencesGrowth(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := poolWorld(t, s)
+		if _, err := s.BeginStorageReport(ctx, "org-a", 1000); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "alice", "first", 100); !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("outstanding first report allowed growth: %v", err)
+		}
+	})
+}
+
+func TestStorageRefreshKeepsChangesDuringReport(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := poolWorld(t, s)
+		poolGrant(t, s, 1000)
+		if err := w.put(s, "alice", "one", 400); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "alice", "one", 1100); !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("over-grant write: %v", err)
+		}
+		if due, err := s.StorageRefreshOrgs(ctx); err != nil || len(due) != 0 {
+			t.Fatalf("refused growth committed a signal: %+v %v", due, err)
+		}
+		r, err := s.BeginStorageReport(ctx, "org-a", 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "alice", "one", 300); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ApplyStorageGrant(ctx, "org-a", r.Seq, r.UsedBytes+1000, 900); err != nil {
+			t.Fatal(err)
+		}
+		if due, err := s.StorageRefreshOrgs(ctx); err != nil || len(due) != 1 {
+			t.Fatalf("response lost a concurrent shrink: %+v %v", due, err)
+		}
+		next, err := s.BeginStorageReport(ctx, "org-a", 1000)
+		if err != nil || next.UsedBytes != 300 {
+			t.Fatalf("next report missed committed usage: %+v %v", next, err)
+		}
+	})
+}
+
+func TestStorageErasureRequestsEarlyRefresh(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := poolWorld(t, s)
+		poolGrant(t, s, 1000)
+		if err := w.put(s, "alice", "one", 400); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Users().DeleteUser(ctx, "usr_alice"); err != nil {
+			t.Fatal(err)
+		}
+		if due, err := s.StorageRefreshOrgs(ctx); err != nil || len(due) != 1 || due[0].ID != "org-a" {
+			t.Fatalf("erasure not signalled: %+v %v", due, err)
+		}
+		r, err := s.BeginStorageReport(ctx, "org-a", 1000)
+		if err != nil || r.UsedBytes != 0 {
+			t.Fatalf("report retained erased bytes: %+v %v", r, err)
+		}
+	})
+}

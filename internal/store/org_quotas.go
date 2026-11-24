@@ -48,9 +48,10 @@ func (s *SQLStore) OrgQuotas(ctx context.Context, org OrgID) (OrgQuotas, error) 
 // leaves the org over max_bytes and larger than before, so a lower quota never deletes data and
 // a write that shrinks the org always passes.
 type orgGuard struct {
-	org         OrgID
-	max, before int64
-	pool        *int64 // nil exempts single/staff/default orgs and the initial bounded grace
+	org               OrgID
+	max, before       int64
+	pool              *int64 // nil exempts single/staff/default orgs and the initial bounded grace
+	reported, ceiling int64
 }
 
 // orgLimits applies the quotas of calendarID's org to a write, under calendar-total:
@@ -94,7 +95,7 @@ FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).
 		return lim, nil, nil
 	}
 	before, err := c.orgUsed(ctx, tx, org)
-	guard := &orgGuard{org: org, before: before, pool: pool}
+	guard := &orgGuard{org: org, before: before, pool: pool, reported: used, ceiling: ceiling.Int64}
 	if q.MaxBytes != nil {
 		guard.max = *q.MaxBytes
 	}
@@ -129,6 +130,13 @@ func (g *orgGuard) check(ctx context.Context, c *calendarStore, tx *sql.Tx) erro
 	}
 	if after > g.before && (g.max > 0 && after > g.max || g.pool != nil && after > *g.pool) {
 		return ErrQuotaExceeded
+	}
+	// Signal after half the granted headroom is consumed, and promptly release shrunk
+	// usage. The flag commits with the successful write, never with a refused one.
+	grant := max(g.ceiling-g.reported, 0)
+	if g.pool != nil && after != g.before && (after < g.before || after-g.reported >= (grant+1)/2) {
+		_, err = tx.ExecContext(ctx, c.q(`UPDATE orgs SET pool_refresh=TRUE WHERE id=?`), g.org)
+		return err
 	}
 	return nil
 }

@@ -611,6 +611,7 @@ CREATE TABLE sso_logouts (
 	// export routes, and only while its org is deletion_scheduled (tenancy spec, Export).
 	{Version: 39, Name: "session_export_only", SQLite: sessionExportOnly, Postgres: sessionExportOnly},
 	{Version: 40, Name: "org_storage_pool", SQLite: storagePool("CAST(unixepoch() AS INTEGER)"), Postgres: storagePool("CAST(EXTRACT(EPOCH FROM statement_timestamp()) AS BIGINT)")},
+	{Version: 41, Name: "pool_refresh", SQLite: `ALTER TABLE orgs ADD COLUMN pool_refresh BOOLEAN NOT NULL DEFAULT FALSE;`, Postgres: `ALTER TABLE orgs ADD COLUMN pool_refresh BOOLEAN NOT NULL DEFAULT FALSE;`},
 }
 
 // storagePool is the product-side shared state of KyIdentity's reserved-byte grant.

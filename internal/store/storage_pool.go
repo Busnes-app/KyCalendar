@@ -50,12 +50,16 @@ func (s *SQLStore) BeginStorageReport(ctx context.Context, org OrgID, want int64
 	if err != nil {
 		return r, err
 	}
-	if stale > 0 || r.Seq == math.MaxInt64 {
+	if stale > 0 {
 		return r, ErrStorageSequence
 	}
 	if inflight {
 		return r, tx.Commit()
 	}
+	if r.Seq == math.MaxInt64 {
+		return r, ErrStorageSequence
+	}
+	previousUsed := r.UsedBytes
 	r.UsedBytes, err = s.calendars.orgUsed(ctx, tx, org)
 	if err != nil {
 		return r, err
@@ -64,12 +68,15 @@ func (s *SQLStore) BeginStorageReport(ctx context.Context, org OrgID, want int64
 		return r, ErrStorageGrant
 	}
 	r.Seq++
+	if want > 0 {
+		want = min(max(want, 2*max(r.UsedBytes-previousUsed, 0)), maxStorageReportBytes)
+	}
 	r.WantBytes = want
 	err = tx.QueryRowContext(ctx, `SELECT `+s.dbNow()).Scan(&r.SentAt)
 	if err != nil {
 		return r, err
 	}
-	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_seq=?,pool_report_used=?,pool_report_want=?,pool_sent_at=?,pool_inflight=TRUE WHERE id=?`), r.Seq, r.UsedBytes, r.WantBytes, r.SentAt, org)
+	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_seq=?,pool_report_used=?,pool_report_want=?,pool_sent_at=?,pool_inflight=TRUE,pool_refresh=FALSE WHERE id=?`), r.Seq, r.UsedBytes, r.WantBytes, r.SentAt, org)
 	if err != nil {
 		return r, err
 	}
@@ -120,7 +127,7 @@ func (s *SQLStore) StaleStorageReport(ctx context.Context, org OrgID, seq, remot
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_stale_seq=CASE WHEN pool_stale_seq<? THEN ? ELSE pool_stale_seq END
+	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_refresh=FALSE,pool_stale_seq=CASE WHEN pool_stale_seq<? THEN ? ELSE pool_stale_seq END
 WHERE `+storageCustomer+` AND pool_seq=? AND pool_applied_seq<? AND pool_inflight`), remoteSeq, remoteSeq, org, seq, seq)
 	if err != nil {
 		return err
@@ -139,7 +146,7 @@ func (s *SQLStore) AdvanceStorageSequence(ctx context.Context, org OrgID, past i
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_seq=?,pool_stale_seq=0,pool_inflight=FALSE,pool_ceiling=NULL,pool_expires_at=0,pool_since=0
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_seq=?,pool_stale_seq=0,pool_inflight=FALSE,pool_ceiling=NULL,pool_expires_at=0,pool_since=0,pool_refresh=TRUE
 WHERE `+storageCustomer+` AND pool_seq<=? AND pool_stale_seq<=?`), past, org, past, past)
 	if err != nil {
 		return err
@@ -168,10 +175,19 @@ func (s *SQLStore) ForgetStorageGrant(ctx context.Context, org OrgID, seq int64)
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_ceiling=NULL,pool_expires_at=0,pool_since=0,pool_inflight=FALSE,pool_applied_seq=?
+	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_ceiling=NULL,pool_expires_at=0,pool_since=0,pool_inflight=FALSE,pool_refresh=FALSE,pool_applied_seq=?
  WHERE `+storageCustomer+` AND pool_seq=? AND pool_applied_seq<? AND pool_inflight`), seq, org, seq, seq)
 	if err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// MarkStorageRefresh makes a committed lifecycle byte change visible to the elected worker.
+func (s *SQLStore) MarkStorageRefresh(ctx context.Context, org OrgID) error {
+	return s.markStorageRefresh(ctx, s.db, org)
+}
+func (s *SQLStore) markStorageRefresh(ctx context.Context, db txQuerier, org OrgID) error {
+	_, err := db.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_refresh=TRUE WHERE `+storageCustomer+` AND status<>'deleted'`), org)
+	return err
 }
