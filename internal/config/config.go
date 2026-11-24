@@ -18,6 +18,7 @@ import (
 	"github.com/Busnes-app/ky-primitives/applysetup"
 	"github.com/Busnes-app/ky-primitives/keyfile"
 	"github.com/Busnes-app/ky-primitives/netallow"
+	"github.com/Busnes-app/ky-primitives/s3"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 )
 
@@ -32,6 +33,54 @@ type Config struct {
 	Backup       BackupConfig    `json:"backup"`
 	Captcha      CaptchaConfig   `json:"captcha"`
 	Calendar     CalendarConfig  `json:"calendar"`
+	// ObjectStorage is the S3 bucket a multi-tenant install keeps its backup copies in
+	// (tenancy spec D15). Empty Endpoint: none configured.
+	ObjectStorage ObjectStorageConfig `json:"-"`
+}
+
+// ObjectStorageConfig is KYCALENDAR_S3_*: an S3-compatible HTTPS endpoint, its bucket and
+// credentials. The secret key comes from KYCALENDAR_S3_SECRET_KEY_FILE, never the environment.
+type ObjectStorageConfig struct {
+	Endpoint  string
+	Bucket    string
+	Region    string
+	AccessKey string
+	SecretKey string
+}
+
+// Configured reports whether an object store is set.
+func (o ObjectStorageConfig) Configured() bool { return o.Endpoint != "" }
+
+// S3 is o as the ky-primitives S3 client takes it.
+func (o ObjectStorageConfig) S3() s3.Config {
+	return s3.Config{Endpoint: o.Endpoint, Bucket: o.Bucket, Region: o.Region, AccessKey: o.AccessKey, SecretKey: o.SecretKey}
+}
+
+// objectStorage reads KYCALENDAR_S3_*. Any one set requires the endpoint, bucket, access key
+// and secret key file, so a half-configured store is a startup error, never a silent disk.
+func objectStorage() (ObjectStorageConfig, error) {
+	o := ObjectStorageConfig{
+		Endpoint:  getEnv("KYCALENDAR_S3_ENDPOINT", ""),
+		Bucket:    getEnv("KYCALENDAR_S3_BUCKET", ""),
+		Region:    getEnv("KYCALENDAR_S3_REGION", ""),
+		AccessKey: getEnv("KYCALENDAR_S3_ACCESS_KEY", ""),
+	}
+	file := getEnv("KYCALENDAR_S3_SECRET_KEY_FILE", "")
+	if o == (ObjectStorageConfig{}) && file == "" {
+		return o, nil
+	}
+	if o.Endpoint == "" || o.Bucket == "" || o.AccessKey == "" || file == "" {
+		return ObjectStorageConfig{}, errors.New("KYCALENDAR_S3_*: set KYCALENDAR_S3_ENDPOINT, KYCALENDAR_S3_BUCKET, KYCALENDAR_S3_ACCESS_KEY and KYCALENDAR_S3_SECRET_KEY_FILE together")
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return ObjectStorageConfig{}, fmt.Errorf("KYCALENDAR_S3_SECRET_KEY_FILE: %w", err)
+	}
+	o.SecretKey = string(bytes.TrimSpace(raw))
+	if _, err := s3.New(o.S3()); err != nil {
+		return ObjectStorageConfig{}, errors.New("KYCALENDAR_S3_*: invalid: the endpoint must be https://host[:port] with no path query or credentials, and the bucket, access key and region must not contain separators")
+	}
+	return o, nil
 }
 
 // CalendarConfig bounds per-user calendar storage, and MaxBytesTotal (0 = off) every user's.
@@ -334,6 +383,11 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("KY_RATE_LIMIT_EXEMPT_NETWORKS: %w", err)
 	}
 
+	objects, err := objectStorage()
+	if err != nil {
+		return nil, err
+	}
+
 	// SCIM is on only with a token the operator chose and gave the IdP.
 	scimToken := getEnv("KY_SCIM_TOKEN", "")
 	scimOn := getEnv("KY_SCIM_ENABLED", "") == "" || getEnvBool("KY_SCIM_ENABLED", true)
@@ -397,7 +451,8 @@ func LoadFromEnv() (*Config, error) {
 			SecretKey:     getEnv("KY_CAPTCHA_SECRET_KEY", ""),
 			DifficultyPoW: getEnvInt("KY_CAPTCHA_POW_DIFFICULTY", 4),
 		},
-		Calendar: calCfg,
+		Calendar:      calCfg,
+		ObjectStorage: objects,
 	}
 
 	return cfg, nil

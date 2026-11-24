@@ -975,8 +975,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    - Tests: the authorization matrix with staff personas in multi-tenant mode, every off route
      `404`, and the existing browser admin flows in single-tenant (`AGENTS.md:281`).
 6. **Enable multi-tenant mode.** Startup accepts `multi` with its requirements (D1, D2, D15,
-   `KYCALENDAR_STAFF_ORG_ID`). D15's object storage for backup copies waits on the ky-primitives S3
-   type. A test starts multi-tenant mode without `KY_ENCRYPTION_KEY`, without
+   `KYCALENDAR_STAFF_ORG_ID`). D15's backup copies to object storage are built
+   (`internal/backup/objects.go`, ky-primitives `s3` at `b5f5853`): `platform/backups/` in the
+   `KYCALENDAR_S3_*` bucket, pruned to `KYCALENDAR_BACKUP_KEEP` with every old version erased. A test starts multi-tenant mode without `KY_ENCRYPTION_KEY`, without
    `KY_ADMIN_PASSWORD` on an empty database, and without object storage, and each refuses to start. A backup run writes its local copy to object storage and
    nothing under `KY_DATA_DIR` survives it. `ensureOrgs` must insert the staff org `active` and `enabled` (Org
    model, step 1): since PR 4b every staff credential, the break-glass password included, reads

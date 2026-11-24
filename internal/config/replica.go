@@ -119,6 +119,13 @@ var replicaFields = map[string]replicaField{
 	"Calendar.KyMessagesURL":          {"KYCALENDAR_KYMESSAGES_URL", func(c *Config) string { return c.Calendar.KyMessagesURL }},
 	"Calendar.KyMessagesSecret":       {"KYCALENDAR_KYMESSAGES_SECRET_FILE", func(c *Config) string { return digest(c.Calendar.KyMessagesSecret) }},
 	"Calendar.KyMessagesAllowPrivate": {"KYCALENDAR_KYMESSAGES_ALLOW_PRIVATE", func(c *Config) string { return strconv.FormatBool(c.Calendar.KyMessagesAllowPrivate) }},
+
+	"ObjectStorage.Endpoint":  {"KYCALENDAR_S3_ENDPOINT", func(c *Config) string { return c.ObjectStorage.Endpoint }},
+	"ObjectStorage.Bucket":    {"KYCALENDAR_S3_BUCKET", func(c *Config) string { return c.ObjectStorage.Bucket }},
+	"ObjectStorage.Region":    {"KYCALENDAR_S3_REGION", func(c *Config) string { return c.ObjectStorage.Region }},
+	"ObjectStorage.AccessKey": {"KYCALENDAR_S3_ACCESS_KEY", func(c *Config) string { return c.ObjectStorage.AccessKey }},
+	// Keyed like every value (ReplicaFingerprint), as KY_SESSION_SECRET is.
+	"ObjectStorage.SecretKey": {"KYCALENDAR_S3_SECRET_KEY_FILE", func(c *Config) string { return c.ObjectStorage.SecretKey }},
 }
 
 // ReplicaFingerprint maps each shared setting's name to HMAC-SHA256 of its value under a key
