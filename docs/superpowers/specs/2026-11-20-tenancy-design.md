@@ -833,8 +833,18 @@ operator operation is audited and clears the old grant. Restore clears all custo
 pending snapshots without restarting grace; the next report takes a new local sequence and can
 be fenced if KyIdentity has a newer one. Purge also clears the grant.
 
-**Unbuilt in this phase:** the shared `suitedir` storage-report transport, elected worker polling,
-early half-grant refresh, immediate post-purge/restore reporting and operator CLI wiring. The
+**Integration follow-up (4h.2):** shared `suitedir.ReportStorage` (ky-primitives #76) is the
+transport. The elected org job reports after its successful mirror pass, including the first
+restore reconciliation, in batches of 200. It requests 64MiB of initial headroom (zero for a
+stopped/disabled org); KyIdentity's reservation cap remains authoritative. `unknown_org` revokes
+its matching local grant, and a stale org is fenced without starving the remaining batch.
+`advance-storage-sequence -org <id> -past <latest-remote-sequence>` is the audited operator path;
+`docs/RESTORE.md` explains it. Single mode does no report I/O.
+
+**Still unbuilt:** adaptive request sizing/early half-grant refresh and prompt demand/purge
+notifications. Fixed-demand reservation fairness, renewal refusal latency, backlog/batch scale
+and real suite recovery must be qualified before startup acceptance. No claim of completed 4h
+or hosted rollout follows from the scheduled reporting integration. The
 methods remain behind the existing multi startup gate until those phases and phase 6 acceptance
 are complete. `TestStorage*` covers the local contract on both databases and two independent
 PostgreSQL replicas. Snapshot/copy preserve the new columns through existing catalog-driven code.

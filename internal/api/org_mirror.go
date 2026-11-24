@@ -43,6 +43,8 @@ func (s *Server) SyncOrgs(ctx context.Context) {
 		if r.err != nil {
 			// suitedir errors carry neither the credentials nor the response body.
 			log.Printf("suite: orgs: %v", r.err)
+		} else {
+			s.SyncStoragePool(ctx)
 		}
 	case <-ctx.Done():
 	}

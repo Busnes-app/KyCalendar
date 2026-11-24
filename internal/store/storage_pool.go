@@ -156,3 +156,22 @@ WHERE `+storageCustomer+` AND pool_seq<=? AND pool_stale_seq<=?`), past, org, pa
 	}
 	return tx.Commit()
 }
+
+// ForgetStorageGrant applies unknown_org for the outstanding report. An older reply
+// cannot revoke a newer grant, and a revoked grant never re-enters initial grace.
+func (s *SQLStore) ForgetStorageGrant(ctx context.Context, org OrgID, seq int64) error {
+	if seq <= 0 {
+		return ErrStorageGrant
+	}
+	tx, err := s.lockedTx(ctx, "calendar-total")
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET pool_ceiling=NULL,pool_expires_at=0,pool_since=0,pool_inflight=FALSE,pool_applied_seq=?
+ WHERE `+storageCustomer+` AND pool_seq=? AND pool_applied_seq<? AND pool_inflight`), seq, org, seq, seq)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}

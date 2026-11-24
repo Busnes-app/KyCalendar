@@ -74,6 +74,15 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "advance-storage-sequence":
+			if err := runAdvanceStorageSequence(os.Args[2:]); err != nil {
+				if errors.Is(err, flag.ErrHelp) {
+					return
+				}
+				fmt.Fprintln(os.Stderr, "advance-storage-sequence:", err)
+				os.Exit(1)
+			}
+			return
 		case "export-org":
 			if err := runExportOrg(os.Args[2:]); err != nil {
 				if errors.Is(err, flag.ErrHelp) {
