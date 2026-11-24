@@ -50,6 +50,7 @@ func (s *SQLStore) OrgQuotas(ctx context.Context, org OrgID) (OrgQuotas, error) 
 type orgGuard struct {
 	org         OrgID
 	max, before int64
+	pool        *int64 // nil exempts single/staff/default orgs and the initial bounded grace
 }
 
 // orgLimits applies the quotas of calendarID's org to a write, under calendar-total:
@@ -57,8 +58,16 @@ type orgGuard struct {
 // commit.
 func (c *calendarStore) orgLimits(ctx context.Context, tx *sql.Tx, calendarID string, lim OwnerLimits) (OwnerLimits, *orgGuard, error) {
 	var org OrgID
-	var raw string
-	err := tx.QueryRowContext(ctx, c.q(`SELECT c.org_id, o.quotas_json FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).Scan(&org, &raw)
+	var raw, mode, staff string
+	var since, seq, expires, used, now int64
+	var ceiling sql.NullInt64
+	var inflight bool
+	err := tx.QueryRowContext(ctx, c.q(`SELECT c.org_id, o.quotas_json,
+COALESCE((SELECT value FROM server_settings WHERE key='tenancy_mode'), ''),
+COALESCE((SELECT value FROM server_settings WHERE key='tenancy_staff_org'), ''),
+o.pool_since,o.pool_seq,o.pool_ceiling,o.pool_expires_at,o.pool_inflight,o.pool_report_used,`+c.store.dbNow()+`
+FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).
+		Scan(&org, &raw, &mode, &staff, &since, &seq, &ceiling, &expires, &inflight, &used, &now)
 	if errors.Is(err, sql.ErrNoRows) {
 		return lim, nil, ErrNotFound
 	} else if err != nil {
@@ -68,11 +77,28 @@ func (c *calendarStore) orgLimits(ctx context.Context, tx *sql.Tx, calendarID st
 	if q.MaxBytesPerUser != nil && lim.MaxBytes > 0 {
 		lim.MaxBytes = *q.MaxBytesPerUser
 	}
-	if q.MaxBytes == nil {
+	var pool *int64
+	if mode != "single" && org != DefaultOrg && string(org) != staff {
+		budget := int64(0)
+		if ceiling.Valid && expires > now {
+			budget = ceiling.Int64
+			if inflight {
+				budget = min(budget, used)
+			}
+			pool = &budget
+		} else if seq != 0 || since <= now-StorageGrantTTL || since > now {
+			pool = &budget // no first grace, or an expired grant: shrinking only
+		}
+	}
+	if q.MaxBytes == nil && pool == nil {
 		return lim, nil, nil
 	}
 	before, err := c.orgUsed(ctx, tx, org)
-	return lim, &orgGuard{org: org, max: *q.MaxBytes, before: before}, err
+	guard := &orgGuard{org: org, before: before, pool: pool}
+	if q.MaxBytes != nil {
+		guard.max = *q.MaxBytes
+	}
+	return lim, guard, err
 }
 
 // senderByteLimit applies the sender's own org quota to the install's per-user limit.
@@ -101,7 +127,7 @@ func (g *orgGuard) check(ctx context.Context, c *calendarStore, tx *sql.Tx) erro
 	if err != nil {
 		return err
 	}
-	if after > g.max && after > g.before {
+	if after > g.before && (g.max > 0 && after > g.max || g.pool != nil && after > *g.pool) {
 		return ErrQuotaExceeded
 	}
 	return nil

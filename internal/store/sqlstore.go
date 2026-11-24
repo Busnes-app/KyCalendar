@@ -120,7 +120,8 @@ ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.up
 	// A capsule's org states are as old as the capsule (tenancy spec, Lifecycle, Restore): every
 	// customer org but a tombstone is stale, refused everywhere, until a poll from revision 0
 	// answers for it. Absent the mode row the install is multi-tenant (Tenancy).
-	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET status = 'stale', revision = 0
+	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE orgs SET status = 'stale', revision = 0,
+pool_ceiling = NULL, pool_expires_at = 0, pool_inflight = FALSE, pool_since = 0
 WHERE status <> 'deleted' AND id <> ? AND id <> COALESCE((SELECT value FROM server_settings WHERE key = ?), '')
 AND COALESCE((SELECT value FROM server_settings WHERE key = ?), '') <> 'single'`), DefaultOrg, StaffOrgSetting, TenancySetting); err != nil {
 		return err

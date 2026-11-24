@@ -162,7 +162,7 @@ func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOr
 		if err := tx.QueryRowContext(ctx, s.rebind(serving), o.ID).Scan(&before); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, revision, enabled, quotas_json, seen_at) VALUES (?, ?, ?, ?, ?, ?)
+		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, revision, enabled, quotas_json, seen_at, pool_since) VALUES (?, ?, ?, ?, ?, ?, `+s.dbNow()+`)
 ON CONFLICT (id) DO UPDATE SET status = excluded.status, revision = excluded.revision, enabled = excluded.enabled, quotas_json = excluded.quotas_json, seen_at = excluded.seen_at
 WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o.Status, o.Revision, o.Enabled, o.Quotas, now.Unix()); err != nil {
 			return err

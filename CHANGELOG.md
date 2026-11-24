@@ -13,6 +13,9 @@
   - Erasure groundwork hands restored shared personal calendars to an eligible member of the
     same organisation, preserving content and sync state. Audit or slug conflicts keep the data
     for retry with the erased account deactivated; hosted startup remains gated.
+  - Migration 40 adds shared storage-pool report/lease state. In gated multi-tenant code,
+    expired grants refuse growth while shrinking remains allowed; renewal snapshots cannot
+    spend capacity released remotely. Single-tenant storage limits remain unchanged.
   - **Upgrade impact:** the migration adds a column and its checks to the calendar object
     table, which on PostgreSQL validates every row once. Allow for it on a large install.
 

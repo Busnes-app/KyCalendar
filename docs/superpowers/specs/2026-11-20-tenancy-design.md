@@ -3,8 +3,9 @@
 Date: 2026-11-20. Status: implementation in progress; hosted startup remains refused until step 6.
 As-built audit against `origin/main` at `03ee886` (2026-11-23): schema and isolation (1–2), identity
 and peers (3), lifecycle/quota/export/scheduling/groups/freshness (4a–g, 4j), restore erasure
-reconciliation, and staff routes (5) are merged. This phase adds 4i's store handover and erasure
-failure revocation. Remaining: 4i's slug-collision decision (question 12), storage pool (4h),
+reconciliation, staff routes (5), and 4i's handover/revocation are merged through `d44eca3`.
+This phase adds 4h's shared-database report state and write admission. Remaining: 4i's
+slug-collision decision (question 12), the 4h transport/worker and operator CLI integration,
 object-store backup wiring (D15), content encryption after CE1, and hosted startup plus two-replica
 and suite acceptance (6). KyIdentity's pool contract is now published in its tenancy spec at
 `95305c4` ("POST /api/suite/storage"); ky-primitives `b1501fc` has no storage-report client yet.
@@ -64,7 +65,7 @@ as **T**). "Unverified" marks a claim this spec did not check in code.
 | D11 | Org quotas come from `/api/suite/orgs` `quotas`, which is KyCalendar's `org_apps.quotas_json` row for that org in KyIdentity, set per org (T "Entitlements"). Keys: `max_bytes` (the org's total calendar storage), `max_bytes_per_user`, `booking_pages` (bool). An absent key falls back to today's install setting. Both byte keys are optional and combine, so a plan can be pooled (`max_bytes` only, for example Family), per person (`max_bytes_per_user` only), or both; KyCalendar needs no change for either (owner decision 2026-11-23 leaves Family's choice open). | Downstream contract 6. Today's caps are per owner and per install (`internal/config/config.go:296-307`). A shared install needs an org total between the two. |
 | D12 | A `deleted` org is purged by the elected worker in short, resumable batches behind a fail-closed audit row (Lifecycle, Deleted). It is never one transaction, which would hold `calendar-total` and block every other org's writes. Its `orgs` mirror row stays as a tombstone, so a late token or peer message naming it is refused. | Downstream contract 5. T keeps the same tombstone rule for its own `orgs` rows. |
 | D13 | **KyCalendar has no per-plan or per-kind rule.** It never reads an org's plan, kind (`person`, `household`, `business`) or seat cap. A Business org of N seats runs on exactly the rules a Personal org of 1 does; size changes only how many accounts and rows it has. Seats are enforced by KyIdentity when it adds a member (T "Entitlements"); KyCalendar never refuses an account for its org's size. | Owner decision 2026-11-23 puts every plan on one install. A rule keyed on a plan would drift from KyIdentity's plans and need a release for each plan change. Every rule written with households in mind is checked against a Business org of N seats below (Plans and org size). |
-| D14 | **One storage pool per org, across all apps, held by KyIdentity** (owner decision 2026-11-23, launch sizes: Personal 20 GB, Couple 40 GB, Family 100 GB, Business 30 GB per seat, Enterprise custom). KyCalendar does three things, on its half of the contract KyIdentity's tenancy spec defines (worker `kyint-ki-plans`, board `kyidentity-business-orgs`, tracking `Busnes-app/ky-launch#4`): **(1) Counts** the bytes it stores for the org, which is the org total D11 already computes (`orgUsed`, `internal/store/org_quotas.go`): every stored calendar object (`org_usage`), pending outbox bodies, cancellation reservations and pending cancellation growth. That includes event and task bodies, inline `ATTACH` values and pasted task images (stored base64 in the task, `internal/tasks/image.go`, at most 512 KiB each), subscribed feed objects, and, with content encryption, the sealed copy. **(2) Reports** that figure to KyIdentity's usage report for each serving org: the elected worker sends it after the mirror poll (about every 60 s) whenever it changed, and at once after a purge or restore. **(3) Checks headroom** before a write that adds bytes: the org guard (D11) refuses a write that leaves the org above its allowance and larger than before, where the allowance is the pool less what every other app reports, as KyIdentity's headroom check answers it. The allowance is kept in the `orgs` mirror row, so every replica checks the same figure inside the write's own transaction, with no call to KyIdentity per write. The worker refreshes it with the report. The write path never calls KyIdentity, since it holds `calendar-total` for the whole write; a write that leaves less than a tenth of the allowance marks the org, and the worker refreshes a marked org at once instead of waiting for its next poll. | One number per account across apps is KyIdentity's to hold, because only it sees every app. Checking a cached allowance keeps the existing guard (its two-writer test on PostgreSQL, D11) and its rule that shrinking always passes, and adds no network call to a CalDAV `PUT`. **Not counted:** files linked from events and tasks (`File:` lines, `internal/calendar/files.go`), which live in KyDrive and count there; metadata rows (accounts, grants, audit, booking types, task views), which are small and bounded by install caps. **If KyIdentity is unreachable**, writes keep checking the last allowance for 15 minutes (open question 11). After that, a write that adds bytes is refused as over quota, and shrinking writes still pass. **Before an org has any allowance**, which is every org when step (h) ships and a new org before its first refresh, the `orgs` row carries `pool_since`, the time it gained the allowance column or was first mirrored. Writes pass under the per-app limits alone (D11) for 15 minutes from `pool_since`, then growth is refused as for a stale allowance. The worker reports and fetches every serving org's allowance as soon as it starts and then after each mirror poll, so an org normally has an allowance within a minute and never sees the refusal. Nothing is refused at rollout, and the pool is enforced within a minute. A stale allowance can let the pool be overshot by what other apps added in that window, which KyIdentity's design bounds. A per-app `max_bytes` (D11) still applies; the smaller limit wins. Single-tenant and Enterprise installs have no pool, so nothing changes there. |
+| D14 | **One storage pool per org, across apps, held by KyIdentity.** KyCalendar counts `orgUsed` (objects, pending outbox bodies, cancellation reservations and pending cancellation growth), reports it to `POST /api/suite/storage`, and stores the returned reserved-byte `ceiling_bytes` plus expiry in the shared `orgs` row. A growing write must fit both D11 and a fresh grant, checked inside its own `calendar-total` transaction. A shrink, delete or move adds no usage and always passes this pool check. The report sequence comes from the shared database. Expiry is the database time the report snapshot was prepared plus `ttl_seconds` (at most 900), never receipt time. A stale sequence fences reporting until an operator advances it; no automatic jump to KyIdentity's sequence is allowed. | Authoritative contract: KyIdentity tenancy spec at `95305c4`, "POST /api/suite/storage" and "The check an app makes". This supersedes the earlier pool-minus-other-apps calculation: a grant reserves capacity, so another app cannot concurrently spend it. Plan sizes are KyIdentity's; KyCalendar reads no plan. Before the first report, D11 alone applies for 15 minutes from `pool_since` (migration/first mirror insert); a poll never resets that date. Once reporting begins, growth needs a valid grant. Default/staff orgs and single-tenant installs have no pool check. Files linked from KyDrive count there, and metadata is outside `orgUsed`. Content-encryption accounting must be extended when sealed copies are written. |
 | D15 | **Multi-tenant mode keeps no file on a disk volume** (owner decision 2026-11-23, `Busnes-app/ky-launch#4`: object storage only in multi-tenant mode, with no disk-volume fallback). Every byte of content is already a PostgreSQL row (D14 lists them), so `KY_DATA_DIR` holds only these, each handled here: **(1)** `encryption.key`: `KY_ENCRYPTION_KEY` is required, and the fallback to a file in `KY_DATA_DIR` (`internal/config/config.go:235-243`) is a startup error. **(2)** `initial-admin-password`: on an empty database `KY_ADMIN_PASSWORD` is required (`cmd/server/bootstrap.go:33`), and no password is generated into a file. **(3)** `recovery.pub`: rebuilt from the sealed record in the database at every start (`SyncRecoveryKey`, `internal/backup/recoverykey.go:207`), so it is a cache. **(4)** The backup scratch directory (`internal/backup/scratch.go`): emptied at the end of every run. **(5)** The backup's local copies (`KYCALENDAR_BACKUP_KEEP`): written to object storage through the ky-primitives S3 type, under `platform/backups/`, never to `KY_DATA_DIR`. Startup in multi-tenant mode refuses without the object storage settings. | A replica's disk can be lost with the host (D2: replicas across hosts), so state there either is rebuilt from the database or lives in object storage. Single-tenant installs keep their volume and every file on it, unchanged. |
 | D16 | **Delete everything hands shared calendars over** (owner decision 2026-11-23: shared content passes to the longest-standing admin, then an editor, then any member). When `user.erased` deletes an account (`internal/api/tenant_directory.go:133`), each calendar it owns (`owner_kind = 'user'`) that a grant shares with another active account of the same org passes to one of them, in the same transaction as the deletion: the longest-standing account whose highest role on the calendar, across its groups' grants, is `manager` (earliest `users.created_at`, then ID), else the longest-standing `editor`, else the longest-standing `reader`. Only `owner_id` changes. The grants, objects, sync history and ETags stay, so every member's clients keep syncing with no change. Each handover is audited `calendar.owner_transferred` with the calendar and both account IDs. A calendar nobody else can read is deleted, as today. Group calendars already belong to their group and are untouched. Nothing other accounts wrote is deleted: copies of the erased person's invitations in other calendars, and their replies, stay. The handover never fails for the new owner's calendar cap (`KY_CALENDAR_MAX_CALENDARS_PER_USER`) or quota, since it moves bytes within one org and adds none. | Deleting a calendar other people use would delete their data with the leaver's. A manager already runs the calendar, so they get it first. With content encryption on (content encryption spec, E13), the new owner reads it through the key they already hold. A calendar whose key no other holder has yet keeps only its times. |
 | D17 | **No automatic version pruning at launch** (owner decision 2026-11-23). KyCalendar keeps no object versions: a write replaces the object's one row. Its pruning jobs remove expired records, never a version of content: sync history past its window (`PruneChanges`, `internal/store/calendars.go:579`), task completion history (`PruneTasks`), delivered outbox rows, ended bookings and old audit rows. They stay as they are, and nothing in this spec adds a version or a pruning job. | The decision is suite-wide. For KyCalendar it confirms the current behaviour. |
@@ -811,6 +812,33 @@ the token, whatever the mirror says:
 > boolean for `booking_pages`) counts as absent. `booking_pages` false gives the member reason
 > `org_off`; the org's booking types are kept and its pages answer `404`.
 
+### Storage pool as built: database admission (4h.1)
+
+Migration 40 adds the report sequence, frozen usage/want/send-time, applied sequence, ceiling,
+expiry, initial-grace date, in-flight flag and stale-sequence fence to `orgs`. No new table or
+startup mode is added. `storage_pool.go` owns local types; transport types are not re-exported.
+
+`BeginStorageReport` holds `calendar-total` only while counting `orgUsed` and persisting the
+snapshot. Every replica retries an ambiguous report with identical bytes, sequence and send time.
+While it is outstanding, the local usable ceiling is narrowed to at most the reported usage:
+a write cannot spend the old reservation after the report might have released it remotely.
+Shrinking stays available, and no SQL lock is held during network I/O. This conservative first
+implementation can refuse a growing write during renewal or an ambiguous request; latency and
+retry behavior need qualification before hosted acceptance.
+
+Only the outstanding sequence can apply a grant; duplicate/old replies cannot renew it. A slow
+reply can already be expired when it arrives. Stale answers retain the greatest observed remote
+sequence and fence retries until the explicit operator recovery method advances past it. The
+operator operation is audited and clears the old grant. Restore clears all customer grants and
+pending snapshots without restarting grace; the next report takes a new local sequence and can
+be fenced if KyIdentity has a newer one. Purge also clears the grant.
+
+**Unbuilt in this phase:** the shared `suitedir` storage-report transport, elected worker polling,
+early half-grant refresh, immediate post-purge/restore reporting and operator CLI wiring. The
+methods remain behind the existing multi startup gate until those phases and phase 6 acceptance
+are complete. `TestStorage*` covers the local contract on both databases and two independent
+PostgreSQL replicas. Snapshot/copy preserve the new columns through existing catalog-driven code.
+
 ## Downstream contract (T "Tokens and suite contracts"), KyCalendar's half
 
 | # | T requires | KyCalendar today | KyCalendar in multi-tenant mode |
@@ -896,8 +924,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    `org_id`, never anything in the message. (g) **suite groups per org**: the poll calls
    `/api/suite/groups?org_id=` for each serving org (Suite answers, open question 2), so a
    Business team's suite groups make group calendars.
-   (h) **the storage pool** (D14): the usage report, the allowance in the `orgs` mirror and the
-   guard's use of it, after KyIdentity publishes the contract.
+   (h) **the storage pool** (D14): (h.1) shared-database snapshots, sequence/expiry and transactional
+   admission; (h.2) shared transport and elected reporter; (h.3) operator restore-sequence CLI,
+   prompt reporting after purge/restore and early renewal. KyIdentity has published the contract.
    - Tests for (f): two members of one org get direct delivery, free/busy, the local
      out-of-office comment, clickable meeting links and group-calendar cancellation. A member of
      another org gets the stranger's answer on each, byte for byte, and an invitation to them
@@ -1012,10 +1041,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
     is created only when its org serves. It answers `204` once applied, so KyIdentity stops
     retrying. **Resolved in PR 3c** (Directory webhook): the receiver is the managed
     `/api/sso/kysignon/sync` in multi-tenant mode, and it creates no account.
-11. **How long a stale pool allowance is trusted** (D14) when KyIdentity cannot be reached.
-   Recommend 15 minutes: long enough to ride out a KyIdentity restart without refusing anyone's
-   writes, short enough that other apps cannot overshoot the pool by much. KyIdentity's
-   contract may fix its own figure, which then wins.
+11. **Grant lifetime.** Resolved by KyIdentity's published storage contract: at most 900 seconds
+    from the app's request time. Reserved grants replace the earlier heuristic allowance; no
+    app may extend a grant on retry or automatically advance a stale restored sequence.
 
 12. **Handover slug collisions and personal sharing.** `calendars` has a unique
     `(owner_kind, owner_id, slug)` key; an inheritor commonly already has `default`. Changing only
