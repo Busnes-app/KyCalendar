@@ -18,6 +18,8 @@ import (
 type SQLStore struct {
 	db     *sql.DB
 	driver string
+	// cells are the home regions this deployment serves (ServeCells); nil checks none.
+	cells []string
 	// lockPath is the SQLite database file its flocks sit beside; "" on PostgreSQL.
 	lockPath     string
 	users        *userStore

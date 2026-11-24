@@ -76,80 +76,159 @@ func TestAnOrgWithoutBookingPagesHasNone(t *testing.T) {
 	}
 }
 
+// orgProbes reaches w as each credential type does (session, password sign-in, DAV with the
+// right and a wrong token, MCP, booking page, KyPost inbound) and records what each answers
+// when the org serves, for refused to compare against what nobody gets.
+type orgProbes struct {
+	session, login func() int
+	dav            func(pass string) string
+	mcp            func() string
+	page           func(slug string) string
+	kyPost         func(sub string) string
+	davToken       string
+	noPage, nobody string
+}
+
+func newOrgProbes(t *testing.T, w *bookingWorld) *orgProbes {
+	t.Helper()
+	ts := httptest.NewServer(w.srv)
+	t.Cleanup(ts.Close)
+	_, davToken := seedToken(t, w.st, "usr_bob", store.ScopeDAV)
+	_, mcpToken := seedToken(t, w.st, "usr_bob", store.ScopeMCPRead)
+	p := &orgProbes{davToken: davToken}
+	p.session = func() int { return call(t, w.srv, "GET", "/api/calendars", "", w.bob).Code }
+	p.dav = func(pass string) string {
+		r := rawDAV(t, ts, "PROPFIND", "/dav/usr_bob/", "bob", pass, `<propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>`,
+			map[string]string{"Depth": "0", "Content-Type": "application/xml"})
+		return fmt.Sprint(r.StatusCode)
+	}
+	p.mcp = func() string {
+		r := rawMCP(t, w.srv, map[string]string{"Authorization": "Bearer " + mcpToken})
+		return fmt.Sprint(r.Code, " ", strings.Contains(r.Body.String(), "org_not_active"))
+	}
+	p.page = func(slug string) string {
+		r := call(t, w.srv, "GET", "/api/book/"+slug, "", nil)
+		return fmt.Sprint(r.Code, " ", r.Body.String())
+	}
+	n := 0
+	p.kyPost = func(sub string) string {
+		n++
+		in := kypost.InboundRequest{User: kypost.User{Sub: sub, Issuer: "https://id.example"}, From: "carol@example.net", DKIMAligned: true, ICS: "x"}
+		r := signedPost(t, w.srv, "/api/itip/inbound", kypost.EventInbound, fmt.Sprintf("org-status-%s-%d", t.Name(), n), in)
+		return fmt.Sprint(r.Code, " ", r.Body.String())
+	}
+	p.noPage, p.nobody = p.page(strings.Repeat("z", 32)), p.kyPost("sub-nobody")
+	loginAs(t, w.srv, w.st, "carol", "user") // a password account in the same org
+	p.login = func() int {
+		r := call(t, w.srv, "POST", "/api/auth/login", `{"username":"carol","password":"SuperSecretPass123!"}`, nil)
+		return r.Code
+	}
+	return p
+}
+
+// served fails t unless every credential type reaches w.
+func (p *orgProbes) served(t *testing.T, w *bookingWorld, when string) {
+	t.Helper()
+	if got := p.dav(p.davToken); got != "207" {
+		t.Errorf("%s: DAV %s", when, got)
+	}
+	if got := p.mcp(); got != "200 false" {
+		t.Errorf("%s: MCP %s", when, got)
+	}
+	if got := p.page(w.slug); got == p.noPage {
+		t.Errorf("%s: the booking page answers as for nobody", when)
+	}
+	if got := p.kyPost("sub-bob"); got == p.nobody {
+		t.Errorf("%s: KyPost for bob answers as for nobody", when)
+	}
+}
+
+// refused fails t unless every credential type is refused as for an org that does not serve.
+func (p *orgProbes) refused(t *testing.T, w *bookingWorld, when string) {
+	t.Helper()
+	if got := p.session(); got != http.StatusUnauthorized {
+		t.Errorf("%s: session %d", when, got)
+	}
+	if got := p.login(); got != http.StatusUnauthorized {
+		t.Errorf("%s: password sign-in %d", when, got)
+	}
+	if got := p.dav(p.davToken); got != "403" {
+		t.Errorf("%s: DAV with the right token %s", when, got)
+	}
+	if got := p.dav("kc_wrong_secret"); got != "401" {
+		t.Errorf("%s: DAV with a wrong token %s, want the usual challenge", when, got)
+	}
+	if got := p.mcp(); got != "403 true" {
+		t.Errorf("%s: MCP %s", when, got)
+	}
+	if got := p.page(w.slug); got != p.noPage {
+		t.Errorf("%s: booking page %.40q, want %q", when, got, p.noPage)
+	}
+	if got := p.kyPost("sub-bob"); got != p.nobody {
+		t.Errorf("%s: KyPost for bob %q, want %q", when, got, p.nobody)
+	}
+}
+
 // An org that is not active is refused on every credential type (tenancy spec D6, Lifecycle):
 // its session ends, DAV and MCP answer org_not_active to the right token only, its booking pages
 // and its KyPost messages answer as for nobody. A resume brings DAV and MCP back with the same
 // app passwords; the session stays gone.
 func TestASuspendedOrgIsRefusedEverywhere(t *testing.T) {
 	w := newBookingWorld(t)
-	ts := httptest.NewServer(w.srv)
-	t.Cleanup(ts.Close)
-	_, davToken := seedToken(t, w.st, "usr_bob", store.ScopeDAV)
-	_, mcpToken := seedToken(t, w.st, "usr_bob", store.ScopeMCPRead)
-
-	session := func() int { return call(t, w.srv, "GET", "/api/calendars", "", w.bob).Code }
-	dav := func(pass string) string {
-		r := rawDAV(t, ts, "PROPFIND", "/dav/usr_bob/", "bob", pass, `<propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>`,
-			map[string]string{"Depth": "0", "Content-Type": "application/xml"})
-		return fmt.Sprint(r.StatusCode)
+	p := newOrgProbes(t, w)
+	if p.session() != 200 {
+		t.Fatal("control: no session")
 	}
-	mcp := func() string {
-		r := rawMCP(t, w.srv, map[string]string{"Authorization": "Bearer " + mcpToken})
-		return fmt.Sprint(r.Code, " ", strings.Contains(r.Body.String(), "org_not_active"))
-	}
-	page := func(slug string) string {
-		r := call(t, w.srv, "GET", "/api/book/"+slug, "", nil)
-		return fmt.Sprint(r.Code, " ", r.Body.String())
-	}
-	n := 0
-	kyPost := func(sub string) string {
-		n++
-		in := kypost.InboundRequest{User: kypost.User{Sub: sub, Issuer: "https://id.example"}, From: "carol@example.net", DKIMAligned: true, ICS: "x"}
-		r := signedPost(t, w.srv, "/api/itip/inbound", kypost.EventInbound, fmt.Sprintf("org-status-%d", n), in)
-		return fmt.Sprint(r.Code, " ", r.Body.String())
-	}
-	noPage, nobody := page(strings.Repeat("z", 32)), kyPost("sub-nobody")
-	loginAs(t, w.srv, w.st, "carol", "user") // a password account in the same org
-	login := func() int {
-		r := call(t, w.srv, "POST", "/api/auth/login", `{"username":"carol","password":"SuperSecretPass123!"}`, nil)
-		return r.Code
-	}
-
-	if session() != 200 || dav(davToken) != "207" || mcp() != "200 false" || page(w.slug) == noPage || kyPost("sub-bob") == nobody {
-		t.Fatalf("control: session %d dav %s mcp %s page %.3s kypost %q", session(), dav(davToken), mcp(), page(w.slug), kyPost("sub-bob"))
-	}
-
+	p.served(t, w, "control")
 	setOrgStatus(t, w.cfg, store.DefaultOrg, "suspended")
-	if got := session(); got != http.StatusUnauthorized {
-		t.Errorf("session: %d", got)
-	}
-	if got := login(); got != http.StatusUnauthorized {
-		t.Errorf("password sign-in: %d", got)
-	}
-	if got := dav(davToken); got != "403" {
-		t.Errorf("DAV with the right token: %s", got)
-	}
-	if got := dav("kc_wrong_secret"); got != "401" {
-		t.Errorf("DAV with a wrong token: %s, want the usual challenge", got)
-	}
-	if got := mcp(); got != "403 true" {
-		t.Errorf("MCP: %s", got)
-	}
-	if got := page(w.slug); got != noPage {
-		t.Errorf("booking page %.40q, want %q", got, noPage)
-	}
-	if got := kyPost("sub-bob"); got != nobody {
-		t.Errorf("KyPost for bob %q, want %q", got, nobody)
-	}
-
+	p.refused(t, w, "suspended")
 	setOrgStatus(t, w.cfg, store.DefaultOrg, "active")
-	if got := dav(davToken); got != "207" {
+	if got := p.dav(p.davToken); got != "207" {
 		t.Errorf("DAV after the resume: %s", got)
 	}
-	if got := mcp(); got != "200 false" {
+	if got := p.mcp(); got != "200 false" {
 		t.Errorf("MCP after the resume: %s", got)
 	}
-	if got := session(); got != http.StatusUnauthorized {
+	if got := p.session(); got != http.StatusUnauthorized {
 		t.Errorf("the session came back with the resume: %d", got)
 	}
+}
+
+// setOrgRegion sets org id's mirrored home_region, as a poll would.
+func setOrgRegion(t *testing.T, cfg *config.Config, id store.OrgID, region string) {
+	t.Helper()
+	driver, q := "sqlite", `UPDATE orgs SET home_region = ? WHERE id = ?`
+	if cfg.Database.Driver == "postgres" {
+		driver, q = "pgx", `UPDATE orgs SET home_region = $1 WHERE id = $2`
+	}
+	db, err := sql.Open(driver, cfg.Database.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(q, region, string(id)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Cells (tenancy spec, C5): with KY_CELLS set, an active org whose home_region is not one of
+// them is refused on every credential type, exactly as a suspended one; in a served cell it
+// serves; a move to another cell refuses it again. The org here is the fixtures' default org,
+// which in a deployment with cells is checked like any customer org.
+func TestAnOrgOfAnotherCellIsRefusedEverywhere(t *testing.T) {
+	w := newBookingWorld(t)
+	p := newOrgProbes(t, w)
+	if p.session() != 200 {
+		t.Fatal("control: no session")
+	}
+	p.served(t, w, "no cells")
+	if err := w.st.ServeCells([]string{"us-east-2", "us-east-3"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.st.ServeCells(nil) })
+	p.refused(t, w, "no home region")
+	setOrgRegion(t, w.cfg, store.DefaultOrg, "us-east-3")
+	p.served(t, w, "a served cell")
+	setOrgRegion(t, w.cfg, store.DefaultOrg, "us-east-1")
+	p.refused(t, w, "another cell")
 }

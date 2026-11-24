@@ -871,6 +871,37 @@ PostgreSQL replicas. Snapshot/copy preserve the new columns through existing cat
 | 5 | Stop serving an org that is not `active`, and keep its data unless `deleted` | n/a | The mirror poll, the status read with every account, and the suspension and purge rules (Lifecycle) |
 | 6 | Enforce its own quotas from `/api/suite/orgs` | Install and per-owner caps (`config.go:296-307`) | `max_bytes`, `max_bytes_per_user` and `booking_pages` (D11) |
 
+## Cells
+
+KyIdentity's tenancy spec, "Cells (amendment, 2026-11-24)" (owner decision 2026-11-24, KyIdentity
+`21f0eff`), scales the shared install by cells, never a database or schema per org. A cell is a
+home region with a finer slug; every org lives in one. KyCalendar's part of C1–C5:
+
+- **C1, the slug.** `KY_CELLS` is the comma-separated list of cells a deployment serves, each a
+  KyIdentity home region slug (`^[a-z][a-z0-9-]{1,31}$`, `<geography>-<n>` such as `us-east-2`),
+  at most 32 and no duplicates. It is required in multi-tenant mode, checked at startup, refused in
+  single-tenant mode, and a shared replica setting. The poll mirrors each org's `home_region`
+  (`orgs.home_region`, migration 42).
+- **C2, databases.** One KyCalendar deployment (its replicas and one PostgreSQL database) may
+  serve several cells; KyIdentity's region map points them at its origin.
+- **C3, placement** is billing's; KyCalendar places no org.
+- **C4, no moves.** There is no move path. If KyIdentity's record of an org's cell ever changes,
+  the next poll writes it and the org stops serving here, with its sessions, as a suspension does.
+- **C5, refusal.** `orgServes`, the one SQL condition every way in reads with the account (session,
+  password sign-in, DAV, MCP, booking page, KyPost inbound, export-only sign-in) and every worker
+  reads to pick work, also requires the org's `home_region` to be one of the deployment's cells
+  (`store.ServeCells`). Only the staff org, which comes from configuration, is exempt. An org of
+  another cell is answered exactly as an org that does not serve. `TestAnOrgOfAnotherCellIsRefusedEverywhere`
+  checks each credential type; `TestCellsDecideWhichOrgsServe` checks the mirror and the move.
+- **Object storage prefix** (with startup, step 6). The first multi-tenant start records the first of `KY_CELLS` as the
+  install's storage cell (`tenancy_storage_cell`); later starts refuse a `KY_CELLS` without it.
+  Every object key is under `cells/<storage cell>/` (backup copies: `cells/<cell>/platform/backups/`),
+  so deployments sharing a bucket never list or prune each other's keys, and adding or reordering
+  cells never moves them.
+- **Not built:** the check of `KY_CELLS` against KyIdentity's region map for KyCalendar. KyCalendar
+  reads no region map of its own (`suitedir.Peer.Regions` is a peer's). Recommend that the first
+  mirror poll compares them once KyIdentity exposes the app's own map.
+
 ## Threat model
 
 | Attacker | Goal | Defence |
