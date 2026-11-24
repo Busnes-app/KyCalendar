@@ -25,7 +25,8 @@ import (
 )
 
 // bookingWorld is a server with scheduling on and KyPost linked (sends recorded by fake), booking
-// pages allowed, and bob's booking type: 60 minutes, any hour of any day, no notice.
+// pages allowed, and bob's booking type: 60 minutes, any hour of any day, one hour's notice.
+// The first offered slot must stay in the future while requests race across an hour boundary.
 type bookingWorld struct {
 	srv   *api.Server
 	st    store.Store
@@ -81,7 +82,7 @@ func newBookingWorld(t *testing.T) *bookingWorld {
 }
 
 func (w *bookingWorld) typeBody(enabled bool) string {
-	return fmt.Sprintf(`{"enabled":%t,"title":"Intro call","duration_min":60,"zone":"UTC","notice_min":0,"horizon_days":3,
+	return fmt.Sprintf(`{"enabled":%t,"title":"Intro call","duration_min":60,"zone":"UTC","notice_min":60,"horizon_days":3,
 "windows":[{"day":0,"start":"00:00","end":"24:00"},{"day":1,"start":"00:00","end":"24:00"},{"day":2,"start":"00:00","end":"24:00"},
 {"day":3,"start":"00:00","end":"24:00"},{"day":4,"start":"00:00","end":"24:00"},{"day":5,"start":"00:00","end":"24:00"},{"day":6,"start":"00:00","end":"24:00"}],
 "calendar_id":%q}`, enabled, w.cal)
@@ -305,27 +306,31 @@ func TestBookingRaces(t *testing.T) {
 	v := newVisitor()
 	slots := v.page(t, w, w.slug).Slots
 	id, token := w.hold(t, v, slots[0].Start)
-	codes := make(chan int, 8)
+	confirms := make(chan *httptest.ResponseRecorder, 8)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			x := &visitor{ip: fmt.Sprintf("203.0.113.%d:1", i+1), cookies: v.cookies, csrf: v.csrf}
-			codes <- x.do(t, w.srv, "POST", "/api/book/confirm", linkJSON(id, token)).Code
+			confirms <- x.do(t, w.srv, "POST", "/api/book/confirm", linkJSON(id, token))
 		}()
 	}
 	wg.Wait()
-	close(codes)
+	close(confirms)
 	won := 0
-	for c := range codes {
-		if c == 200 {
+	for r := range confirms {
+		if r.Code == 200 {
 			won++
-		} else if c != 409 {
-			t.Errorf("a racing confirm answered %d", c)
+		} else if r.Code != 409 || codeOf(t, r.Body.Bytes()) != "already_confirmed" {
+			t.Errorf("a racing confirm answered %d: %s", r.Code, r.Body.String())
 		}
 	}
-	if objs, _ := w.st.Calendars().ListObjects(context.Background(), w.cal); won != 1 || len(objs) != 1 {
+	objs, err := w.st.Calendars().ListObjects(context.Background(), w.cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if won != 1 || len(objs) != 1 {
 		t.Fatalf("%d confirms won, %d events", won, len(objs))
 	}
 
