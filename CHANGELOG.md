@@ -16,6 +16,9 @@
   - Migration 40 adds shared storage-pool report/lease state. In gated multi-tenant code,
     expired grants refuse growth while shrinking remains allowed; renewal snapshots cannot
     spend capacity released remotely. Single-tenant storage limits remain unchanged.
+  - Migration 41 records early pool-refresh signals with half-grant/shrinking writes and member
+    erasure. The elected worker reports marked usage every five seconds and sizes demand from
+    recent growth; storage admission and hosted startup remain gated as before.
   - **Upgrade impact:** the migration adds a column and its checks to the calendar object
     table, which on PostgreSQL validates every row once. Allow for it on a large install.
 

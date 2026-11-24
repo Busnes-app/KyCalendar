@@ -90,6 +90,8 @@ type Store interface {
 	ApplyStorageGrant(ctx context.Context, org OrgID, seq, ceiling, ttl int64) error
 	StaleStorageReport(ctx context.Context, org OrgID, seq, remoteSeq int64) error
 	ForgetStorageGrant(ctx context.Context, org OrgID, seq int64) error
+	StorageRefreshOrgs(ctx context.Context) ([]MirroredOrgView, error)
+	MarkStorageRefresh(ctx context.Context, org OrgID) error
 	AdvanceStorageSequence(ctx context.Context, org OrgID, past int64) error
 	// OrgServes reports whether org id is mirrored, active and enabled.
 	OrgServes(ctx context.Context, id OrgID) (bool, error)

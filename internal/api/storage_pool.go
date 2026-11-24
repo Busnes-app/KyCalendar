@@ -12,14 +12,22 @@ import (
 
 // SyncStoragePool is called by the elected org worker after a successful mirror poll.
 // Each bounded batch is snapshotted durably before HTTP, so takeover retries exact bytes.
-// No network call holds calendar-total. This first integration renews once per mirror poll;
-// early demand-based refresh is a separate acceptance prerequisite.
+// No network call holds calendar-total. The mirror job and early-refresh job share the
+// same persisted snapshots and idempotent result handling.
 func (s *Server) SyncStoragePool(ctx context.Context) {
 	if err := s.syncStoragePool(ctx); err != nil {
 		log.Printf("suite: storage: %v", err)
 	}
 }
-func (s *Server) syncStoragePool(ctx context.Context) error {
+
+// SyncStorageRefresh runs only inside the existing elected application worker.
+func (s *Server) SyncStorageRefresh(ctx context.Context) {
+	if err := s.reportStoragePool(ctx, true); err != nil {
+		log.Printf("suite: storage refresh: %v", err)
+	}
+}
+func (s *Server) syncStoragePool(ctx context.Context) error { return s.reportStoragePool(ctx, false) }
+func (s *Server) reportStoragePool(ctx context.Context, early bool) error {
 	ten, err := s.store.Tenancy(ctx)
 	if err != nil || !ten.Multi {
 		return err
@@ -32,7 +40,19 @@ func (s *Server) syncStoragePool(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	orgs, err := s.store.ListMirroredOrgs(ctx)
+	var orgs []store.MirroredOrgView
+	if early {
+		v, readErr := s.store.Settings().GetSettings(ctx, store.ErasedPendingSetting)
+		if readErr != nil {
+			return readErr
+		}
+		if v[store.ErasedPendingSetting] != "" {
+			return nil
+		}
+		orgs, err = s.store.StorageRefreshOrgs(ctx)
+	} else {
+		orgs, err = s.store.ListMirroredOrgs(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -73,8 +93,8 @@ func (s *Server) syncStoragePool(ctx context.Context) error {
 		if o.ID == store.DefaultOrg || o.ID == ten.Staff || o.Status == "deleted" {
 			continue
 		}
-		// Fixed initial demand is bounded by KyIdentity's org grant cap. Qualification of
-		// adaptive demand and first-write/fan-out latency remains behind the startup gate.
+		// The base demand is bounded by KyIdentity; the store increases it for recent growth.
+		// First-write/fan-out latency and reservation fairness remain acceptance gates.
 		want := int64(64 << 20)
 		if o.Status != "active" || !o.Enabled {
 			want = 0

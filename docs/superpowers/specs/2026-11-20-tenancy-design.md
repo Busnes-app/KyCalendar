@@ -841,9 +841,20 @@ its matching local grant, and a stale org is fenced without starving the remaini
 `advance-storage-sequence -org <id> -past <latest-remote-sequence>` is the audited operator path;
 `docs/RESTORE.md` explains it. Single mode does no report I/O.
 
-**Still unbuilt:** adaptive request sizing/early half-grant refresh and prompt demand/purge
-notifications. Fixed-demand reservation fairness, renewal refusal latency, backlog/batch scale
-and real suite recovery must be qualified before startup acceptance. No claim of completed 4h
+**Early renewal (4h.3):** migration 41 adds `pool_refresh`. Successful guarded writes mark an
+org when half its granted headroom is consumed or when usage shrinks; member erasure marks its
+org in the same transaction as the data deletion. The same elected application worker checks marked or ambiguous
+reports every five seconds, using the same validated batches and frozen retries. It does no
+reporting while restore erasures are still pending. Requests grow to at least twice the positive
+usage change since the preceding snapshot, bounded by the published report limit. Stale and
+unknown-org outcomes stop early retry; operator sequence recovery marks a fresh report due.
+This phase preserves the existing first-report grace rule and conservative in-flight admission
+limit. Extending grace through an attempted/failed first report is not selected here.
+
+**Still unbuilt/unchecked:** failed-write demand signalling beyond the base requested headroom,
+reservation fairness, renewal refusal latency, backlog/batch scale and real suite recovery.
+These remain explicit startup/acceptance prerequisites; neither scheduled reporting nor early
+renewal proves hosted readiness. No claim of completed 4h
 or hosted rollout follows from the scheduled reporting integration. The
 methods remain behind the existing multi startup gate until those phases and phase 6 acceptance
 are complete. `TestStorage*` covers the local contract on both databases and two independent

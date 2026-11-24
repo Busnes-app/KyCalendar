@@ -459,19 +459,21 @@ func (u *userStore) deleteUser(ctx context.Context, id, clause string, args ...a
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ? AND "+clause+" AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id)"), append([]any{id}, args...)...)
+	var org OrgID
+	err = tx.QueryRowContext(ctx, u.store.rebind("DELETE FROM users WHERE id = ? AND "+clause+" AND NOT EXISTS (SELECT 1 FROM server_settings z WHERE z.key LIKE 'installer.user.%' AND 'usr_' || substr(z.key,16,24) = users.id) RETURNING org_id"), append([]any{id}, args...)...).Scan(&org)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
-	}
-	if rows, err := res.RowsAffected(); err != nil {
-		return err
-	} else if rows == 0 {
-		return ErrNotFound
 	}
 	if err := u.transferCalendars(ctx, tx, id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, u.store.rebind("DELETE FROM calendars WHERE owner_kind = 'user' AND owner_id = ?"), id); err != nil {
+		return err
+	}
+	if err := u.store.markStorageRefresh(ctx, tx, org); err != nil {
 		return err
 	}
 	return tx.Commit()

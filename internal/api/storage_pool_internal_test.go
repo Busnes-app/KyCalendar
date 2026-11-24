@@ -108,3 +108,43 @@ func TestStorageReporterIsSingleModeNoop(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestStorageEarlyRefreshOnlyMarkedOrPending(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{poolOrgTest: "active", poolOtherTest: "active"})
+	var requests []suitedir.StorageReport
+	idp.suite = func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Reports []suitedir.StorageReport `json:"reports"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Error(err)
+		}
+		requests = append(requests, in.Reports...)
+		results := []map[string]any{}
+		for _, v := range in.Reports {
+			results = append(results, map[string]any{"org_id": v.OrgID, "result": "ok", "seq": v.Seq, "ceiling_bytes": v.UsedBytes + 256, "ttl_seconds": 900, "pool_bytes": 10000, "org_used_bytes": v.UsedBytes})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"results": results})
+	}
+	s.SyncStorageRefresh(context.Background())
+	if len(requests) != 0 {
+		t.Fatal("unmarked orgs were reported early")
+	}
+	if err := s.store.MarkStorageRefresh(context.Background(), store.OrgID(poolOtherTest)); err != nil {
+		t.Fatal(err)
+	}
+	s.SyncStorageRefresh(context.Background())
+	if len(requests) != 1 || requests[0].OrgID != poolOtherTest {
+		t.Fatalf("early subset: %+v", requests)
+	}
+	if err := s.store.Settings().SetSetting(context.Background(), store.ErasedPendingSetting, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.MarkStorageRefresh(context.Background(), store.OrgID(poolOrgTest)); err != nil {
+		t.Fatal(err)
+	}
+	s.SyncStorageRefresh(context.Background())
+	if len(requests) != 1 {
+		t.Fatal("reported before restored erasures were reconciled")
+	}
+}
