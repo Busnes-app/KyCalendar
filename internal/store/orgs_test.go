@@ -737,3 +737,83 @@ func TestAnOrgServesOnlyWhileItsAnswerIsFresh(t *testing.T) {
 		}
 	})
 }
+
+// Cells (tenancy spec, C5): with ServeCells set, an org serves only when its mirrored
+// home_region is one of them, the staff org always; a poll that moves an org to another cell
+// stops it with its sessions, as a suspension does; export_only follows the same rule; nil
+// cells (single-tenant) check none.
+func TestCellsDecideWhichOrgsServe(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		const staff OrgID = "org-staff"
+		if _, err := s.db.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, seen_at) VALUES (?, 'active', `+strconv.FormatInt(time.Now().Unix(), 10)+`)`), staff); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Settings().SetSetting(ctx, StaffOrgSetting, string(staff)); err != nil {
+			t.Fatal(err)
+		}
+		poll := func(rev int64, orgs ...MirroredOrg) {
+			t.Helper()
+			if err := s.ApplyOrgs(ctx, staff, orgs, rev); err != nil {
+				t.Fatal(err)
+			}
+		}
+		org := func(id OrgID, status, region string, rev int64) MirroredOrg {
+			return MirroredOrg{ID: id, Status: status, Revision: rev, Enabled: true, Quotas: `{}`, HomeRegion: region}
+		}
+		poll(4, org("org-here", "active", "us-east-2", 1), org("org-there", "active", "us-east-1", 2),
+			org("org-none", "active", "", 3), org("org-leaving", "deletion_scheduled", "us-east-2", 4))
+		serving := func() string {
+			t.Helper()
+			ids, err := s.ServingOrgs(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return fmt.Sprint(ids)
+		}
+		if got := serving(); got != "[00000000-0000-0000-0000-000000000001 org-here org-none org-staff org-there]" {
+			t.Fatalf("no cells: %s", got)
+		}
+		if err := s.ServeCells([]string{"us-east-2", "us-east-3"}); err != nil {
+			t.Fatal(err)
+		}
+		if got := serving(); got != "[org-here org-staff]" {
+			t.Fatalf("cells us-east-2,3: %s", got)
+		}
+		for id, want := range map[OrgID]bool{"org-here": true, "org-there": false, "org-none": false, staff: true, DefaultOrg: false} {
+			if ok, err := s.OrgServes(ctx, id); err != nil || ok != want {
+				t.Errorf("%s serves: %t %v, want %t", id, ok, err, want)
+			}
+		}
+		if ok, err := s.OrgExportable(ctx, "org-leaving"); err != nil || !ok {
+			t.Errorf("a served cell's org is not exportable: %t %v", ok, err)
+		}
+
+		// A move away (C4 forbids it at launch; KyIdentity's record still wins) stops the org.
+		u := &User{ID: "uh", Username: "h", Role: "user", Status: "active", SSOProvider: "local", OrgID: "org-here"}
+		if err := s.Users().CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		if err := s.Sessions().CreateSession(ctx, &Session{TokenHash: "tok_h", UserID: "uh", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, u.Credentials()); err != nil {
+			t.Fatal(err)
+		}
+		poll(6, org("org-here", "active", "us-east-1", 5), org("org-leaving", "deletion_scheduled", "us-east-1", 6))
+		var sessions, audits int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE user_id = 'uh'`).Scan(&sessions); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_records WHERE action = 'platform.org_stopped' AND resource = 'org:org-here'`).Scan(&audits); err != nil {
+			t.Fatal(err)
+		}
+		if got := serving(); got != "[org-staff]" || sessions != 0 || audits != 1 {
+			t.Fatalf("after the move: serving %s, %d sessions, %d audit rows", got, sessions, audits)
+		}
+		if ok, err := s.OrgExportable(ctx, "org-leaving"); err != nil || ok {
+			t.Errorf("another cell's org is exportable: %t %v", ok, err)
+		}
+		if err := s.ServeCells([]string{"us-east-2", "US-East"}); err == nil {
+			t.Error("a cell that is not a slug was accepted")
+		}
+	})
+}

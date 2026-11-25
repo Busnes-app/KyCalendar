@@ -108,7 +108,7 @@ func (s *Server) syncOrgs(ctx context.Context) error {
 		}
 		mirrored := make([]store.MirroredOrg, len(orgs))
 		for i, o := range orgs {
-			mirrored[i] = store.MirroredOrg{ID: store.OrgID(o.ID), Status: o.Status, Revision: o.Revision, Enabled: o.Enabled, Quotas: string(o.Quotas)}
+			mirrored[i] = store.MirroredOrg{ID: store.OrgID(o.ID), Status: o.Status, Revision: o.Revision, Enabled: o.Enabled, Quotas: string(o.Quotas), HomeRegion: o.HomeRegion}
 		}
 		if err := s.store.ApplyOrgs(ctx, ten.Staff, mirrored, next); err != nil {
 			return err

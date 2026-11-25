@@ -3,7 +3,11 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/store/migrations"
@@ -72,7 +76,7 @@ func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {
 func (s *SQLStore) OrgExportable(ctx context.Context, id OrgID) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, s.rebind(`SELECT COUNT(*) FROM orgs WHERE id = ? AND status = 'deletion_scheduled' AND enabled AND seen_at >= `+
-		s.dbNow()+` - `+strconv.Itoa(int(OrgFresh.Seconds()))), id).Scan(&n)
+		s.dbNow()+` - `+strconv.Itoa(int(OrgFresh.Seconds()))+s.inCell()), id).Scan(&n)
 	return n == 1, err
 }
 
@@ -149,6 +153,8 @@ type MirroredOrg struct {
 	Revision int64
 	Enabled  bool
 	Quotas   string // a JSON object
+	// HomeRegion is the org's cell (tenancy spec, Cells); "" from a KyIdentity without them.
+	HomeRegion string
 }
 
 // ApplyOrgs writes one mirror poll (tenancy spec D6) and its next cursor in one transaction. A
@@ -167,14 +173,15 @@ func (s *SQLStore) ApplyOrgs(ctx context.Context, staff OrgID, orgs []MirroredOr
 		if o.ID == staff || o.ID == DefaultOrg {
 			continue
 		}
-		serving := `SELECT ` + orgActive("?")
+		serving := `SELECT ` + s.orgActive("?")
 		var before, after bool
 		if err := tx.QueryRowContext(ctx, s.rebind(serving), o.ID).Scan(&before); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, revision, enabled, quotas_json, seen_at, pool_since) VALUES (?, ?, ?, ?, ?, ?, `+s.dbNow()+`)
-ON CONFLICT (id) DO UPDATE SET status = excluded.status, revision = excluded.revision, enabled = excluded.enabled, quotas_json = excluded.quotas_json, seen_at = excluded.seen_at
-WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o.Status, o.Revision, o.Enabled, o.Quotas, now.Unix()); err != nil {
+		// home_region follows KyIdentity: an org moved to another cell stops serving here (C5).
+		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO orgs (id, status, revision, enabled, quotas_json, seen_at, pool_since, home_region) VALUES (?, ?, ?, ?, ?, ?, `+s.dbNow()+`, ?)
+ON CONFLICT (id) DO UPDATE SET status = excluded.status, revision = excluded.revision, enabled = excluded.enabled, quotas_json = excluded.quotas_json, seen_at = excluded.seen_at, home_region = excluded.home_region
+WHERE orgs.revision <= excluded.revision AND orgs.status <> 'deleted'`), o.ID, o.Status, o.Revision, o.Enabled, o.Quotas, now.Unix(), o.HomeRegion); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0) ON CONFLICT (org_id) DO NOTHING`), o.ID); err != nil {
@@ -218,14 +225,37 @@ const OrgFresh = 15 * time.Minute
 func (s *SQLStore) orgServes(col string) string {
 	return "EXISTS (SELECT 1 FROM orgs WHERE orgs.id = " + col + " AND orgs.status = 'active' AND orgs.enabled AND (orgs.seen_at >= " +
 		s.dbNow() + " - " + strconv.Itoa(int(OrgFresh.Seconds())) + " OR orgs.id = '" + string(DefaultOrg) +
-		"' OR orgs.id = (SELECT value FROM server_settings WHERE key = '" + StaffOrgSetting + "')))"
+		"' OR orgs.id = (SELECT value FROM server_settings WHERE key = '" + StaffOrgSetting + "'))" + s.inCell() + ")"
 }
 
 // orgActive is orgServes without the age bound: whether KyIdentity's last answer serves. ApplyOrgs
-// compares it before and after a write, so an org already stale that turns suspended still loses
-// its sessions.
-func orgActive(col string) string {
-	return "EXISTS (SELECT 1 FROM orgs WHERE orgs.id = " + col + " AND orgs.status = 'active' AND orgs.enabled)"
+// compares it before and after a write, so an org already stale that turns suspended, or that
+// moves to another cell, still loses its sessions.
+func (s *SQLStore) orgActive(col string) string {
+	return "EXISTS (SELECT 1 FROM orgs WHERE orgs.id = " + col + " AND orgs.status = 'active' AND orgs.enabled" + s.inCell() + ")"
+}
+
+// inCell is a SQL condition on the orgs row in scope (tenancy spec, Cells, C5): with cells set,
+// only the staff org and orgs whose home_region is one of them serve here, so two deployments
+// never both accept one org. The cells are validated slugs, never input.
+func (s *SQLStore) inCell() string {
+	if len(s.cells) == 0 {
+		return ""
+	}
+	return " AND (orgs.home_region IN ('" + strings.Join(s.cells, "', '") + "') OR orgs.id = (SELECT value FROM server_settings WHERE key = '" + StaffOrgSetting + "'))"
+}
+
+// cellSlug is KyIdentity's home region slug (C1), ^[a-z][a-z0-9-]{1,31}$.
+var cellSlug = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
+
+func (s *SQLStore) ServeCells(cells []string) error {
+	for _, c := range cells {
+		if !cellSlug.MatchString(c) {
+			return fmt.Errorf("cell %q is not a home region slug", c)
+		}
+	}
+	s.cells = slices.Clone(cells)
+	return nil
 }
 
 // dbNow is the database's clock in Unix seconds, so no replica's clock decides an org's age.

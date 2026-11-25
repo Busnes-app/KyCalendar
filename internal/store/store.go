@@ -99,6 +99,9 @@ type Store interface {
 	OrgExportable(ctx context.Context, id OrgID) (bool, error)
 	// ServingOrgs lists the orgs that are active and enabled now.
 	ServingOrgs(ctx context.Context) ([]OrgID, error)
+	// ServeCells limits every org but the staff org to these home regions (tenancy spec,
+	// Cells). Call once, before serving; nil (single-tenant) checks none.
+	ServeCells(cells []string) error
 	// ListMirroredOrgs is the org mirror for staff (GET /api/admin/orgs), by ID.
 	ListMirroredOrgs(ctx context.Context) ([]MirroredOrgView, error)
 	// ApplyOrgs writes one /api/suite/orgs poll and the cursor after it (orgs.go).

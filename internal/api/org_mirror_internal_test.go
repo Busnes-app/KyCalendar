@@ -458,3 +458,24 @@ func TestAMalformedErasedAnswerDeletesNothing(t *testing.T) {
 		}
 	}
 }
+
+// Cells (tenancy spec, C5): the poll mirrors each org's home_region, and with cells set only
+// an org of a served cell serves; the staff org always does.
+func TestOrgPollMirrorsTheCell(t *testing.T) {
+	s, idp := multiTenantSignIn(t, "org-staff", map[string]string{"org-staff": "active"})
+	list := &orgList{orgs: `{"id":"org-here","status":"active","revision":1,"enabled":true,"quotas":{},"home_region":"us-east-2"},
+{"id":"org-there","status":"active","revision":2,"enabled":true,"quotas":{},"home_region":"us-east-1"}`}
+	idp.suite = list.serve
+	if err := s.store.ServeCells([]string{"us-east-2"}); err != nil {
+		t.Fatal(err)
+	}
+	s.SyncOrgs(context.Background())
+	for org, want := range map[store.OrgID]bool{"org-here": true, "org-there": false, "org-staff": true} {
+		if got := serves(t, s, org); got != want {
+			t.Errorf("%s serves %t, want %t", org, got, want)
+		}
+	}
+	if code := loginWithOrg(t, s, idp, "alice", "org-there"); code != http.StatusForbidden {
+		t.Fatalf("sign-in of another cell's org: %d", code)
+	}
+}
