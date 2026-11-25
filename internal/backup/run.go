@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Busnes-app/ky-primitives/recoveryclient"
 	"github.com/Busnes-app/kycalendar/internal/config"
@@ -45,11 +46,40 @@ func Run(ctx context.Context, cfg *config.Config, rc recoveryclient.RunConfig, s
 	if err := SyncRecoveryKey(ctx, cfg, st); err != nil {
 		return recoveryclient.Result{}, err
 	}
+	// Multi-tenant mode keeps no backup copy on a disk (tenancy spec D15): the lib writes one
+	// into scratch, which goes to the bucket and is removed with the scratch when Run returns.
+	ten, err := st.Tenancy(ctx)
+	if err != nil {
+		return recoveryclient.Result{}, err
+	}
+	if ten.Multi {
+		if !cfg.ObjectStorage.Configured() {
+			return recoveryclient.Result{}, errNoObjectStorage
+		}
+		dir, release, err := NewScratch(cfg.Database.DataDir)
+		if err != nil {
+			return recoveryclient.Result{}, err
+		}
+		defer release()
+		rc.BackupDir, rc.Keep = dir, 1
+	}
 	settings := Settings(context.WithoutCancel(ctx), st.Settings())
 	prev, prevErr := settings.Get(lastAttemptKey)
 	res, err := recoveryclient.Run(ctx, rc, settings, func() (recoveryclient.Payload, error) {
 		return Collect(ctx, cfg, st, rc.AppVersion)
 	}, client)
+	if ten.Multi && res.LocalPath != "" {
+		// As for a local copy: a failed copy fails the run only when nothing was deposited.
+		key, copyErr := objectCopy(ctx, cfg.ObjectStorage, res.LocalPath, cfg.Backup.Keep, time.Now())
+		res.LocalPath = key
+		if copyErr != nil {
+			copyErr = fmt.Errorf("object copy: %w", copyErr)
+			res.LocalError = recoveryclient.AuditSafe(copyErr.Error())
+			if key == "" && res.Receipt == nil {
+				err = errors.Join(err, copyErr)
+			}
+		}
+	}
 	// ErrInProgress stamped nothing: the stamp belongs to the run that holds the lock.
 	if err == nil || ctx.Err() == nil || res.Receipt != nil || errors.Is(err, recoveryclient.ErrInProgress) {
 		return res, err

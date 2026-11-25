@@ -19,6 +19,10 @@
   - Migration 41 records early pool-refresh signals with half-grant/shrinking writes and member
     erasure. The elected worker reports marked usage every five seconds and sizes demand from
     recent growth; storage admission and hosted startup remain gated as before.
+  - In multi-tenant mode a backup run puts its sealed copy in an S3-compatible bucket
+    (`KYCALENDAR_S3_*`, through ky-primitives' shared S3 client) instead of a directory, keeps
+    `KYCALENDAR_BACKUP_KEEP` copies there and leaves nothing under `KY_DATA_DIR`. Single-tenant
+    backups are unchanged.
   - **Upgrade impact:** the migration adds a column and its checks to the calendar object
     table, which on PostgreSQL validates every row once. Allow for it on a large install.
 

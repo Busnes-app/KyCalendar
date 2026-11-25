@@ -63,6 +63,7 @@ The server refuses a non-empty `KY_BACKUP_DIR`, `KY_BACKUP_KEEP`, `KY_BACKUP_DEP
 | `KYCALENDAR_BACKUP_KEEP` | `7` | Local copies to retain; below 1 refuses startup. |
 | `KYCALENDAR_BACKUP_DEPOSIT_INTERVAL` | `24h` | Default schedule only. The admin screen's setting wins; `0` is off; 15 minutes to 366 days otherwise. |
 | `KYCALENDAR_BACKUP_ALLOW_PRIVATE_RECOVERY` | `false` | Admit a KyRecovery on an RFC1918 or CGNAT address behind your own TLS proxy. Loopback, link-local and other reserved ranges stay refused; HTTPS stays required. Logged at startup and on the pairing audit row. |
+| `KYCALENDAR_S3_ENDPOINT`, `_BUCKET`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY_FILE` | unset | Multi-tenant installs only (tenancy spec D15): the S3-compatible bucket that takes the local copies instead of a directory, as `platform/backups/<unix-ns>-<copy name>`. The endpoint is `https://host[:port]`; the secret key is read from the file. Set all but the region together, or none. Pruning keeps `KYCALENDAR_BACKUP_KEEP` copies and erases every version of the older ones; other keys in the bucket are untouched. A single-tenant install ignores them. |
 | `KYCALENDAR_DNS` | unset | Only in `docker-compose.lan-dns.yml`: the container's resolver, for names that exist only on your LAN. |
 
 Reach a KyRecovery that only your LAN's DNS knows:

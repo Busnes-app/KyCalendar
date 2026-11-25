@@ -43,6 +43,7 @@ live in `recoveryclient` and in the settings rows it reads and writes through th
   plaintext `kyrecovery_token`; the filter drops every key with the `kyrecovery_token`
   prefix, so a rename in the lib cannot leak. An admin sees the paired `kyrecovery_url`,
   never the credential.
+- Multi-tenant copies (`objects.go`, tenancy spec D15): when the store records multi-tenant mode, `Run` refuses without `cfg.ObjectStorage`, points the lib's `BackupDir` at a `NewScratch` directory with keep 1, PUTs the copy to `ObjectPrefix` (`platform/backups/<20-digit unix ns>-<lib copy name>`, so key order is write order) through `ky-primitives/s3`, then erases every version of this service's copies beyond `KYCALENDAR_BACKUP_KEEP` (`DeleteAllVersions`, never a plain DELETE that leaves a marker); it never prunes the key just written or a key it did not write. The scratch goes when `Run` returns, so nothing the run made survives under the data directory. `Result.LocalPath` is the object key; a failed copy sets `LocalError` and fails the run only when nothing was deposited, as the lib does for a local copy. `TestMultiTenantRun*` pin it; `TestMultiTenantRunAgainstVersionedS3` runs on CI's seaweedfs fixture (`KY_TEST_S3_*`).
 - `Run` (`run.go`) is the only caller of `recoveryclient.Run` in the server, scheduler and
   CLI. Cancelling its context (shutdown, or a lost `backup-run` lock) aborts the snapshot and
   the upload; the lib's seal and local-copy write are not cancellable mid-call; settings writes use

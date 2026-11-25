@@ -509,3 +509,54 @@ func TestRateLimitExemptNetworksAreValidatedAtStartup(t *testing.T) {
 		}
 	}
 }
+
+// KYCALENDAR_S3_* (tenancy spec D15): all four or none, a secret from a file, an https
+// endpoint; a partial or invalid store fails startup rather than falling back to a disk.
+func TestObjectStorageConfig(t *testing.T) {
+	dir := t.TempDir()
+	secret := filepath.Join(dir, "s3")
+	if err := os.WriteFile(secret, []byte("s3-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	full := map[string]string{"ENDPOINT": "https://s3.example:9000", "BUCKET": "cal", "ACCESS_KEY": "ak", "SECRET_KEY_FILE": secret}
+	with := func(k, v string) map[string]string {
+		m := map[string]string{}
+		for a, b := range full {
+			m[a] = b
+		}
+		m[k] = v
+		return m
+	}
+	for name, c := range map[string]struct {
+		env map[string]string
+		ok  bool
+	}{
+		"none":           {map[string]string{}, true},
+		"all":            {full, true},
+		"no bucket":      {with("BUCKET", ""), false},
+		"no access key":  {with("ACCESS_KEY", ""), false},
+		"no secret file": {with("SECRET_KEY_FILE", ""), false},
+		"missing file":   {with("SECRET_KEY_FILE", filepath.Join(dir, "none")), false},
+		"region only":    {map[string]string{"REGION": "us-east-2"}, false},
+		"http":           {with("ENDPOINT", "http://s3.example"), false},
+		"a path":         {with("ENDPOINT", "https://s3.example/x?y"), false},
+		"bucket slash":   {with("BUCKET", "a/b"), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("KY_DATA_DIR", t.TempDir())
+			for _, k := range []string{"ENDPOINT", "BUCKET", "REGION", "ACCESS_KEY", "SECRET_KEY_FILE"} {
+				t.Setenv("KYCALENDAR_S3_"+k, c.env[k])
+			}
+			cfg, err := config.LoadFromEnv()
+			if (err == nil) != c.ok {
+				t.Fatalf("err %v, want ok=%v", err, c.ok)
+			}
+			if err != nil && strings.Contains(err.Error(), "s3-secret") {
+				t.Fatal("the error carries the secret")
+			}
+			if c.ok && len(c.env) > 0 && (cfg.ObjectStorage.SecretKey != "s3-secret" || !cfg.ObjectStorage.Configured()) {
+				t.Fatalf("object storage %+v", cfg.ObjectStorage.Configured())
+			}
+		})
+	}
+}
