@@ -1,0 +1,3 @@
+# postgres-17-to-18.sh (vendored, byte-identical to the kit) sources the postgres image's
+# docker-entrypoint.sh, which is not in this repository.
+disable=SC1091

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The bundled `postgres` service is now PostgreSQL 18, pinned by digest. An install that ran 17
+  moves its data on the next `docker compose up` by dump and restore, keeping the 17 volume for
+  rollback; it needs about twice the data's size free ([PostgreSQL 17 to 18](docs/RUNNING.md#postgresql-17-to-18)).
 - Groundwork for a future multi-tenant (hosted) mode, with no change to how a self-hosted install
   behaves ([design](docs/superpowers/specs/2026-11-20-tenancy-design.md)).
   - Migration 37 places every existing account, group, calendar, event and audit row in one

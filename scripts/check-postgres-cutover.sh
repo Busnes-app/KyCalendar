@@ -13,15 +13,13 @@
 #   7. with COMPOSE_PROFILES=postgres in .env, a plain `docker compose down` stops PostgreSQL too
 #      and a plain `docker compose up -d` brings both back, serving the same data.
 # A test override changes only what a throwaway run needs: the image under test, unique
-# names, a random loopback port, named volumes, a digest-pinned PostgreSQL 17 on an
-# --internal network, empty push relay variables and no CAPTCHA. Everything this run made is
-# removed on exit.
+# names, a random loopback port, named volumes, an --internal network for the shipped PostgreSQL
+# 18, empty push relay variables and no CAPTCHA. Everything this run made is removed on exit.
 #
 # Usage: scripts/check-postgres-cutover.sh [image]   (default kycalendar:ci)
 set -euo pipefail
 
 image=${1:-kycalendar:ci}
-pg_image=postgres:17@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
 run_id=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
@@ -35,6 +33,8 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
+# The compose file mounts ./scripts/postgres-17-to-18.sh from the project directory.
+mkdir "$work/scripts" && cp "$here/postgres-17-to-18.sh" "$work/scripts/"
 
 fail() {
   echo "cutover check failed: $*" >&2
@@ -58,7 +58,6 @@ services:
       - backups:/app/backups
     networks: [default, db]
   postgres:
-    image: $pg_image
     container_name: $name-pg
     ports: !reset []
     networks: [db]

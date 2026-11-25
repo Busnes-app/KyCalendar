@@ -168,7 +168,7 @@ jobs:
         profile: [normal, fips]
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18.7-alpine3.24@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
@@ -394,10 +394,15 @@ jobs:
           # docker-compose.yml's healthcheck command, inside the image it runs in
           docker exec ky_ci wget -q -O /dev/null http://127.0.0.1:8080/healthz
 
-      # The documented SQLite -> PostgreSQL cutover, with this image and a pinned PostgreSQL 17
+      # The documented SQLite -> PostgreSQL cutover, with this image and the shipped PostgreSQL 18
       # on an internal network; it removes everything it made.
       - name: SQLite to PostgreSQL cutover
         run: scripts/check-postgres-cutover.sh kycalendar:ci
+
+      # PostgreSQL 17 data from the previous postgres service moves to 18 on the next
+      # `docker compose up`; rollback, rerun, a bad dump and a fresh install are checked too.
+      - name: PostgreSQL 17 to 18 upgrade
+        run: scripts/test-postgres-17-to-18.sh
 
       # Hand the exact image the checks above ran against to the publish job,
       # so what gets pushed is what was tested, never a second build.

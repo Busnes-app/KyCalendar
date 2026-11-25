@@ -128,12 +128,19 @@ services:
       - ./data:/app/data
       - ./backups:/app/backups
 
-  # Optional PostgreSQL service for enterprise heavy DB mode
+  # Optional PostgreSQL service for enterprise heavy DB mode. PostgreSQL 18; an install that ran
+  # 17 moves its data on the next up, and the 17 volume is kept (docs/RUNNING.md, "PostgreSQL 17
+  # to 18"). The restore wrapper then runs the image's own entrypoint.
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18.7-alpine3.24@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
     container_name: ky_postgres
     restart: unless-stopped
     profiles: ["postgres"]
+    depends_on:
+      postgres-17-dump:
+        condition: service_completed_successfully
+    entrypoint: ["bash", "/ky/postgres-17-to-18.sh", "restore"]
+    command: ["postgres"]
     environment:
       POSTGRES_USER: postgres
       # Set in .env; the image refuses to start without it.
@@ -142,7 +149,27 @@ services:
     ports:
       - "127.0.0.1:5432:5432" # host-local only; the app reaches postgres:5432 on the compose network
     volumes:
+      - postgres:/var/lib/postgresql
+      - ./scripts/postgres-17-to-18.sh:/ky/postgres-17-to-18.sh:ro
+
+  # One-shot: dumps PostgreSQL 17's pgdata volume into the postgres volume once, then exits. It
+  # only reads the 17 data; with nothing to move, or once moved, it exits at once.
+  postgres-17-dump:
+    image: postgres:17.12-alpine3.24@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+    profiles: ["postgres"]
+    restart: "no"
+    network_mode: none
+    entrypoint: ["bash", "/ky/postgres-17-to-18.sh", "dump"]
+    environment:
+      POSTGRES_USER: postgres
+      OLD: /var/lib/postgresql/data
+      NEW: /pg18
+    volumes:
       - pgdata:/var/lib/postgresql/data
+      - postgres:/pg18
+      - ./scripts/postgres-17-to-18.sh:/ky/postgres-17-to-18.sh:ro
 
 volumes:
+  # PostgreSQL 17's data, kept for rollback; removing it is your call (docs/RUNNING.md).
   pgdata:
+  postgres:
