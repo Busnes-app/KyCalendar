@@ -1,0 +1,32 @@
+name: Suite end-to-end
+
+# The cross-app multi-tenant run (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md).
+# Manual and nightly only, never a required check (E3): it builds every app pinned in
+# e2e/suite/apps.lock into local images and pushes nothing.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: suite-e2e
+  cancel-in-progress: false
+
+jobs:
+  suite:
+    name: Suite end-to-end (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - run: e2e/suite/run.sh

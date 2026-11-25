@@ -36,3 +36,5 @@ grep -qx '//go:build kye2e' internal/config/gate_kye2e.go ||
 # The test build opens the gate, and only under a .test issuer (the untagged suite checks the
 # release build refuses).
 go test -count=1 -tags "$tag" -run '^TestE2EBuild' ./internal/config/
+# The harness compiles (it runs only from suite-e2e.yml or e2e/suite/run.sh).
+go -C e2e/suite vet -tags "$tag" ./...
