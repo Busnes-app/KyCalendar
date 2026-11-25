@@ -11,7 +11,7 @@ set -euo pipefail
 P17=postgres:17.12-alpine3.24@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
 P18=postgres:18.7-alpine3.24@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
 # sha256 of the kit's postgres-17-to-18.sh: the vendored copy must stay byte-identical.
-kit=a800e026af73d9304aa970c2c3919caecd4c52eb8d9b702f3447e632bdc21214
+kit=2992644109716cd34297fbcb76eba8907f4a5e3031a12c05aade010e5ea2b571
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
 name=kycal-pg1718-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
@@ -68,8 +68,11 @@ ready() {
   done
   return 1
 }
-# Password login over TCP, as the app connects.
-q() { docker exec "$name-pg" sh -c 'PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -U postgres -d ky_server -XAtc "$1"' sh "$1"; }
+# Password login from another container on the compose network, as the app connects (inside the
+# server container the image trusts 127.0.0.1, so a login there proves no password).
+client() { docker run --rm --network "${name}_default" --env-file "$work/.env" "$@"; }
+# shellcheck disable=SC2016 # expanded inside the client container
+q() { client "$P18" sh -c 'PGPASSWORD=$KY_POSTGRES_PASSWORD psql -h postgres -U postgres -d ky_server -XAtc "$1"' sh "$1"; }
 in_vol() { docker run --rm --network none -v "${name}_postgres:/v" "$P18" sh -c "$1"; }
 
 echo "1. PostgreSQL 17 data from the previous compose definition"
@@ -84,16 +87,17 @@ insert into t(s, j) select 'row' || g, jsonb_build_object('g', g) from generate_
 create table c(x text collate "C" primary key);
 insert into c values ('a'), ('B'), ('é');
 SQL
-old down >/dev/null 2>&1
 
-echo "2. the next docker compose up moves it to 18"
+echo "2. the next docker compose up, with 17 still running, moves it to 18"
 new up -d postgres >/dev/null 2>&1 || fail "docker compose up on the new file failed"
 new logs postgres-17-dump 2>&1 | grep -q 'dumped' || fail "the one-shot did not dump"
 ready || fail "18 never became ready after the move"
 [ "$(q 'show server_version_num' | cut -c1-2)" = 18 ] || fail "not PostgreSQL 18"
 [ "$(q "select count(*) || ',' || sum((j->>'g')::int) from t")" = "50000,1250025000" ] || fail "rows"
-[ "$(docker exec "$name-pg" sh -c 'PGPASSWORD=readerpass psql -h 127.0.0.1 -U reader -d cdb -XAtc "select string_agg(x, \$\$,\$\$ order by x) from c"')" = "B,a,é" ] ||
+[ "$(client -e PGPASSWORD=readerpass "$P18" psql -h postgres -U reader -d cdb -XAtc 'select string_agg(x, $$,$$ order by x) from c')" = "B,a,é" ] ||
   fail "the reader role, its password or the C collation"
+client -e PGPASSWORD=wrongpass "$P18" psql -h postgres -U reader -d cdb -XAtc 'select 1' >/dev/null 2>&1 &&
+  fail "a wrong password was accepted"
 [ "$(q 'show data_directory')" = /var/lib/postgresql/18/docker ] || fail "18 data directory"
 
 echo "3. rollback: the previous definition starts 17 on the untouched pgdata volume"
