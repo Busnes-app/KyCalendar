@@ -1,6 +1,6 @@
 # Cross-app multi-tenant end-to-end test, design
 
-Date: 2026-11-24. Status: design merged (#219). KyCalendar's `kye2e` gate is built; the harness is not, and no refusal is
+Date: 2026-11-24. Status: design merged (#219). KyCalendar's `kye2e` gate and the harness scaffold (`e2e/suite/`, smoke run only) are built, and no refusal is
 lifted by it. It designs the last gate of the tenancy spec's step 6
 (`2026-11-20-tenancy-design.md`, Phased build plan, step 6): "An end-to-end run with KyIdentity in
 multi-tenant mode, KyPost and KyMessages: two orgs, an invitation within one delivered directly and
@@ -67,8 +67,10 @@ One run, one Docker network, nothing published to the host except the driver's p
 | CoreDNS | 1 | — | The `e2e.test` zone: A, MX, SPF and DKIM records |
 | Driver | 1 | — | `go test -tags kye2e ./...` in `e2e/suite`, with a `-timeout` |
 
-Memory budget: 5 GB across the containers. The first run measures the real figures and records
-them here.
+Memory budget: 5 GB across the containers; the driver refuses a service without `mem_limit` and an
+equal `memswap_limit`, or a total over 5 GiB, before anything starts. Limits today: PostgreSQL
+1 GiB, each KyCalendar 512 MiB, the release refusal run 256 MiB. Measured at the end of the first
+smoke run (Major, 2026-11-25): PostgreSQL 49 MiB, KyCalendar X replicas 8 and 76 MiB, Y 72 MiB.
 
 ## Mechanism: lifting a refusal only in a test build
 
@@ -177,7 +179,7 @@ replayed. Nothing after S7 uses B except the restore of K.
 | KyPost | The `kye2e` gate, including the `BootstrapAdmin` change | Not built |
 | KyMessages | The `kye2e` gate with the `KY_ATTACHMENTS_S3_*` requirement (`internal/config/config.go:278-279`) | Not built. Its tenancy build PRs #35, #38–#42 and #44–#51 are merged. Whether they cover every row of its spec's §12 is unverified, and the spec still lists "hosted qualification" as gated. |
 | KyRecovery | A synthetic ceremony that a harness can run without a person | Unverified |
-| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Not built. It can start once KyIdentity PR 4 lands, by running S1–S3 first. |
+| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25 with the smoke run (KyCalendar only: no other app has a merged gate). S1–S3 start once KyIdentity PR 4 lands. |
 
 Order: the four gate PRs are independent and small, and each can merge with its release check while
 nothing yet builds with the tag. KyIdentity PR 4 unblocks S1, S2, S3, S5, S6 and S7 (S7 for

@@ -1,0 +1,79 @@
+# The suite end-to-end topology (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md,
+# Topology). The driver (e2e/suite/smoke_test.go) sets every ${...}; nothing is published to the
+# host. dockerd starts these outside any kslot scope, so each has its own memory limit, and the
+# driver refuses a service without one or a total over 5 GiB. KyIdentity, KyPost, KyMessages,
+# S3, CoreDNS and KyRecovery join with the scenarios that need them.
+name: ${E2E_PROJECT:?}
+
+x-kycalendar: &kycalendar
+  image: ${KYCALENDAR_IMAGE:?}
+  mem_limit: 512m
+  memswap_limit: 512m
+  restart: "no"
+  depends_on:
+    postgres: { condition: service_healthy }
+  secrets: [s3_secret]
+  environment: &kycalendar-env
+    KYCALENDAR_TENANCY: multi
+    KY_ENV: production
+    KY_DB_DRIVER: postgres
+    KY_SESSION_SECRET: ${E2E_SESSION_SECRET:?}
+    KY_ENCRYPTION_KEY: ${E2E_ENCRYPTION_KEY:?}
+    KY_ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:?}
+    KYCALENDAR_SCHEDULING: "true"
+    KY_KYSIGNON_ISSUER: https://id.e2e.test
+    KYCALENDAR_S3_ENDPOINT: https://s3.e2e.test
+    KYCALENDAR_S3_BUCKET: kycalendar
+    KYCALENDAR_S3_ACCESS_KEY: e2e
+    KYCALENDAR_S3_SECRET_KEY_FILE: /run/secrets/s3_secret
+    KYCALENDAR_STAFF_ORG_ID: org-e2e-staff
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+    interval: 2s
+    retries: 60
+
+services:
+  postgres:
+    image: postgres:17@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+    mem_limit: 1g
+    memswap_limit: 1g
+    shm_size: 256m
+    environment:
+      POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:?}
+    volumes:
+      - ./initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
+      interval: 1s
+      retries: 60
+
+  # Cell e2e-1: two replicas on one database (D2).
+  kycalendar-x1: &kycalendar-x
+    <<: *kycalendar
+    environment:
+      <<: *kycalendar-env
+      KY_APP_URL: https://cal-x.e2e.test
+      KY_DB_DSN: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kycal_x?sslmode=disable
+      KY_CELLS: e2e-1
+  kycalendar-x2: *kycalendar-x
+
+  # Cell e2e-2 on its own database.
+  kycalendar-y:
+    <<: *kycalendar
+    environment:
+      <<: *kycalendar-env
+      KY_APP_URL: https://cal-y.e2e.test
+      KY_DB_DSN: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kycal_y?sslmode=disable
+      KY_CELLS: e2e-2
+
+  # The release image at the same commit, with X's configuration: it must refuse to start.
+  kycalendar-release:
+    <<: *kycalendar-x
+    image: ${KYCALENDAR_RELEASE_IMAGE:?}
+    mem_limit: 256m
+    memswap_limit: 256m
+    profiles: [release]
+
+secrets:
+  s3_secret:
+    environment: E2E_S3_SECRET

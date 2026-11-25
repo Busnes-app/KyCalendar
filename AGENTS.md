@@ -227,6 +227,8 @@ When the user requests a durable behavior change, record it here or in the relev
 
 - `docs/AGENTS.md` — mdBook manual, chapter ownership and documentation checks.
 
+- `e2e/suite/AGENTS.md` — the cross-app multi-tenant end-to-end harness: its own Go module, `apps.lock`, `kye2e` images, compose topology and driver.
+
 - `KyDrive-server/` — general drive backend, NAS/container packaging, Euro-Office integration and local acceptance evidence.
 
 - `ky-kubernetes/` — Ky stack migration from admin02 to K80/K81, isolated networking, persistent storage and HTTPS routing.
