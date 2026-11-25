@@ -411,6 +411,9 @@ Every later `up` sees the move is done and skips both steps; a fresh install jus
   gigabytes. The app restarts until PostgreSQL accepts connections, as after a reboot.
 - **A failed restore** never leaves an empty database: PostgreSQL 18 stops without a cluster and
   the next start tries again. `docker compose logs postgres-17-dump postgres` says why.
+- **`postmaster.pid exists`:** the one-shot refuses while anything else still runs 17 on
+  `pgdata` (Compose stops the old `postgres` container first; a `docker compose run` or another
+  project may not). Run `docker compose stop postgres`, then `up` again.
 - **Roll back:** stop everything, restore the previous `docker-compose.yml` (the release you ran
   before), and `docker compose up -d`. 17 starts on the untouched `pgdata` volume; anything
   written on 18 since stays only in the `postgres` volume.
