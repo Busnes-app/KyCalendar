@@ -155,6 +155,9 @@ func tree(t *testing.T, dir string) []string {
 	return out
 }
 
+// testCell is the storage cell multiInstance records.
+const testCell = "us-east-2"
+
 // multiInstance is a recorded multi-tenant install with a pinned recovery key, no KyRecovery
 // pairing and objects as its object storage.
 func multiInstance(t *testing.T, objects config.ObjectStorageConfig) (*config.Config, store.Store, recoveryclient.RunConfig) {
@@ -166,8 +169,10 @@ func multiInstance(t *testing.T, objects config.ObjectStorageConfig) (*config.Co
 		cfg, st = cfgs[0], sts[0]
 	}
 	ctx := context.Background()
-	if err := st.Settings().SetSetting(ctx, store.TenancySetting, "multi"); err != nil {
-		t.Fatal(err)
+	for k, v := range map[string]string{store.TenancySetting: "multi", store.StorageCellSetting: testCell} {
+		if err := st.Settings().SetSetting(ctx, k, v); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := backup.PinRecoveryKey(ctx, cfg, st, newKey(t, 2, 3)); err != nil {
 		t.Fatal(err)
@@ -188,7 +193,10 @@ func TestMultiTenantRunCopiesToObjectStorage(t *testing.T) {
 	cfg, st, rc := multiInstance(t, objects)
 	ctx := context.Background()
 	// An operator's own object beside the copies is never pruned.
-	f.versions["platform/backups/README"] = []fakeVersion{{id: "op", data: []byte("hands off")}}
+	f.versions[backup.ObjectPrefix(testCell)+"README"] = []fakeVersion{{id: "op", data: []byte("hands off")}}
+	// Nor is another cell's copy in the same bucket, however old (tenancy spec, Cells).
+	other := backup.ObjectPrefix("us-east-1") + "00000000000000000001-kycalendar.cap-kycalendar-1.kycap"
+	f.versions[other] = []fakeVersion{{id: "cell", data: []byte("other cell")}}
 	before := tree(t, cfg.Database.DataDir)
 	var last recoveryclient.Result
 	for range 4 {
@@ -196,7 +204,7 @@ func TestMultiTenantRunCopiesToObjectStorage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(res.LocalPath, backup.ObjectPrefix) || res.LocalError != "" {
+		if !strings.HasPrefix(res.LocalPath, backup.ObjectPrefix(testCell)) || res.LocalError != "" {
 			t.Fatalf("result names %q (error %q), not an object key", res.LocalPath, res.LocalError)
 		}
 		last = res
@@ -204,9 +212,12 @@ func TestMultiTenantRunCopiesToObjectStorage(t *testing.T) {
 	if after := tree(t, cfg.Database.DataDir); !slices.Equal(before, after) {
 		t.Fatalf("KY_DATA_DIR changed across the runs:\nbefore %v\nafter  %v", before, after)
 	}
-	got, versions := f.copies(backup.ObjectPrefix)
-	if len(got) != 3 || versions != 3 || got["platform/backups/README"] == nil {
+	got, versions := f.copies(backup.ObjectPrefix(testCell))
+	if len(got) != 3 || versions != 3 || got[backup.ObjectPrefix(testCell)+"README"] == nil {
 		t.Fatalf("bucket holds %d keys in %d versions, want the operator's README and 2 copies, one version each: %v", len(got), versions, slices.Sorted(maps.Keys(got)))
+	}
+	if all, _ := f.copies(""); all[other] == nil {
+		t.Fatal("the run pruned another cell's copy")
 	}
 	m, err := capsule.ReadUnverifiedManifest(got[last.LocalPath])
 	if err != nil || m.CapsuleID != last.Manifest.CapsuleID {
@@ -224,8 +235,17 @@ func TestMultiTenantRunNeedsWorkingObjectStorage(t *testing.T) {
 		t.Fatalf("a run with no object storage: %v", err)
 	}
 	f, objects := newFakeS3(t)
-	f.failPut = true
 	cfg.ObjectStorage = objects
+	if err := st.Settings().DeleteSetting(ctx, store.StorageCellSetting); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backup.Run(ctx, cfg, rc, st, &storingDepositor{}); err == nil || !strings.Contains(err.Error(), "storage cell") {
+		t.Fatalf("a run with no storage cell: %v", err)
+	}
+	if err := st.Settings().SetSetting(ctx, store.StorageCellSetting, testCell); err != nil {
+		t.Fatal(err)
+	}
+	f.failPut = true
 	res, err := backup.Run(ctx, cfg, rc, st, &storingDepositor{})
 	if err == nil || res.LocalPath != "" || !strings.Contains(res.LocalError, "object copy") {
 		t.Fatalf("a failed upload: err=%v path=%q local_error=%q", err, res.LocalPath, res.LocalError)

@@ -817,3 +817,58 @@ func TestCellsDecideWhichOrgsServe(t *testing.T) {
 		}
 	})
 }
+
+// D1 at a server start: a fresh database records multi-tenant mode, its staff org (written
+// active and enabled) and its storage cell; a start naming another staff org, cells without
+// the storage cell, or single-tenant mode is refused; a single-tenant database with accounts
+// never turns multi-tenant.
+func TestRecordTenancy(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		cells := []string{"us-east-2", "us-east-3"}
+		if err := s.RecordTenancy(ctx, false, "", nil); err != nil {
+			t.Fatalf("single on a fresh database: %v", err)
+		}
+		if err := s.RecordTenancy(ctx, true, "org-staff", cells); err != nil {
+			t.Fatal(err)
+		}
+		ten, err := s.Tenancy(ctx)
+		if err != nil || !ten.Multi || ten.Staff != "org-staff" || ten.Cell != "us-east-2" {
+			t.Fatalf("recorded %+v %v", ten, err)
+		}
+		if ok, err := s.OrgServes(ctx, "org-staff"); err != nil || !ok {
+			t.Fatalf("staff org serves: %t %v", ok, err)
+		}
+		// Only configuration writes the staff org: a start makes it active and enabled again.
+		if _, err := s.db.ExecContext(ctx, `UPDATE orgs SET status = 'suspended', enabled = FALSE WHERE id = 'org-staff'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.RecordTenancy(ctx, true, "org-staff", []string{"us-east-3", "us-east-2", "us-east-9"}); err != nil {
+			t.Fatalf("the same settings, cells reordered and added: %v", err)
+		}
+		if ok, err := s.OrgServes(ctx, "org-staff"); err != nil || !ok {
+			t.Fatalf("staff org serves after a start: %t %v", ok, err)
+		}
+		for name, err := range map[string]error{
+			"another staff org":       s.RecordTenancy(ctx, true, "org-other", cells),
+			"without the stored cell": s.RecordTenancy(ctx, true, "org-staff", []string{"us-east-3"}),
+			"single":                  s.RecordTenancy(ctx, false, "", nil),
+		} {
+			if !errors.Is(err, ErrTenancyChanged) {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+	})
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		if err := s.Users().CreateUser(ctx, &User{ID: "u1", Username: "admin", Role: "admin", Status: "active", SSOProvider: "local"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.RecordTenancy(ctx, true, "org-staff", []string{"us-east-2"}); !errors.Is(err, ErrTenancyChanged) {
+			t.Fatalf("a single-tenant install with accounts turned multi: %v", err)
+		}
+		if ten, _ := s.Tenancy(ctx); ten.Multi {
+			t.Fatal("the refused start changed the mode")
+		}
+	})
+}

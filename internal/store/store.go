@@ -99,6 +99,10 @@ type Store interface {
 	OrgExportable(ctx context.Context, id OrgID) (bool, error)
 	// ServingOrgs lists the orgs that are active and enabled now.
 	ServingOrgs(ctx context.Context) ([]OrgID, error)
+	// RecordTenancy records a multi-tenant first start's mode, staff org and storage cell, and
+	// refuses a start that names others (tenancy spec D1, Cells). The caller holds the bootstrap
+	// lock. See orgs.go.
+	RecordTenancy(ctx context.Context, multi bool, staff OrgID, cells []string) error
 	// ServeCells limits every org but the staff org to these home regions (tenancy spec,
 	// Cells). Call once, before serving; nil (single-tenant) checks none.
 	ServeCells(cells []string) error

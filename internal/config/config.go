@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,9 +35,83 @@ type Config struct {
 	Backup       BackupConfig    `json:"backup"`
 	Captcha      CaptchaConfig   `json:"captcha"`
 	Calendar     CalendarConfig  `json:"calendar"`
+	// Tenancy is KYCALENDAR_TENANCY and what multi-tenant mode adds (tenancy spec D1, D7, Cells).
+	Tenancy TenancyConfig `json:"-"`
 	// ObjectStorage is the S3 bucket a multi-tenant install keeps its backup copies in
 	// (tenancy spec D15). Empty Endpoint: none configured.
 	ObjectStorage ObjectStorageConfig `json:"-"`
+}
+
+// TenancyConfig is the install's mode. Multi-tenant only: StaffOrg is KYCALENDAR_STAFF_ORG_ID
+// (D7) and Cells is KY_CELLS, the home regions this deployment serves (Cells, C5).
+type TenancyConfig struct {
+	Multi    bool
+	StaffOrg string
+	Cells    []string
+}
+
+// multiTenantStartup is the last gate (tenancy spec, Phased build plan, step 6): every
+// requirement below is checked, and a complete multi-tenant configuration is still refused
+// until the end-to-end run with KyIdentity, KyPost and KyMessages passes. Lifting it is this
+// line and the spec's status; tests start multi-tenant servers from a built Config instead.
+var multiTenantStartup = false
+
+// ErrMultiTenantGated is a complete multi-tenant configuration refused by that gate.
+var ErrMultiTenantGated = errors.New("KYCALENDAR_TENANCY=multi: every requirement is met, but multi-tenant startup stays refused until the tenancy spec's last gate (the end-to-end run with KyIdentity, KyPost and KyMessages) passes")
+
+// MaxCells is KyIdentity's cap on an app's region map (Cells, "Limits").
+const MaxCells = 32
+
+var (
+	cellSlug  = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`) // KyIdentity's home region slug (C1)
+	orgIDLike = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+)
+
+// tenancy reads KYCALENDAR_TENANCY and refuses a multi-tenant start that lacks what it needs
+// (tenancy spec D1, D2, D7, D15, Cells), naming the setting. Single-tenant refuses the
+// multi-tenant settings, so a stray one never looks like it took effect.
+func tenancy(postgres bool, objects ObjectStorageConfig) (TenancyConfig, error) {
+	staff, rawCells := getEnv("KYCALENDAR_STAFF_ORG_ID", ""), getEnv("KY_CELLS", "")
+	switch mode := getEnv("KYCALENDAR_TENANCY", "single"); mode {
+	case "single":
+		if staff != "" || rawCells != "" {
+			return TenancyConfig{}, errors.New("KYCALENDAR_STAFF_ORG_ID and KY_CELLS apply to KYCALENDAR_TENANCY=multi only")
+		}
+		return TenancyConfig{}, nil
+	case "multi":
+	default:
+		return TenancyConfig{}, fmt.Errorf("KYCALENDAR_TENANCY: single or multi, got %q", mode)
+	}
+	switch {
+	case !postgres:
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: requires PostgreSQL (KY_DB_DRIVER=postgres)")
+	case getEnv("KY_KYSIGNON_ISSUER", "") == "":
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: KY_KYSIGNON_ISSUER is required; sign-in is KyIdentity's, fixed by the environment")
+	case !getEnvBool("KY_SSO_AUTO_PROVISION", true):
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: KY_SSO_AUTO_PROVISION=false is refused; a first sign-in creates the account")
+	case getEnv("KY_ENCRYPTION_KEY", "") == "":
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: KY_ENCRYPTION_KEY is required; no key file in KY_DATA_DIR is read or written")
+	case getEnv("KYCALENDAR_BACKUP_DIR", "") != "":
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: KYCALENDAR_BACKUP_DIR is refused; backup copies go to object storage (KYCALENDAR_S3_*)")
+	case !objects.Configured():
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: object storage is required; set KYCALENDAR_S3_*")
+	case !orgIDLike.MatchString(staff) || strings.EqualFold(staff, "00000000-0000-0000-0000-000000000001"):
+		return TenancyConfig{}, errors.New("KYCALENDAR_TENANCY=multi: KYCALENDAR_STAFF_ORG_ID is required: the KyIdentity org ID of the staff org, not the default org")
+	}
+	var cells []string
+	for _, c := range strings.Split(rawCells, ",") {
+		if c = strings.TrimSpace(c); c == "" {
+			continue
+		}
+		if !cellSlug.MatchString(c) || slices.Contains(cells, c) {
+			return TenancyConfig{}, fmt.Errorf("KY_CELLS: %q is not a KyIdentity home region slug, or is listed twice", c)
+		}
+		cells = append(cells, c)
+	}
+	if len(cells) == 0 || len(cells) > MaxCells {
+		return TenancyConfig{}, fmt.Errorf("KYCALENDAR_TENANCY=multi: KY_CELLS is required: 1 to %d home regions this deployment serves, comma-separated", MaxCells)
+	}
+	return TenancyConfig{Multi: true, StaffOrg: staff, Cells: cells}, nil
 }
 
 // ObjectStorageConfig is KYCALENDAR_S3_*: an S3-compatible HTTPS endpoint, its bucket and
@@ -237,11 +313,6 @@ func LoadFromEnv() (*Config, error) {
 			return nil, fmt.Errorf("%s was renamed to KYCALENDAR_%s", old, strings.TrimPrefix(old, "KY_"))
 		}
 	}
-	// Multi-tenant mode is designed but not built (docs/superpowers/specs/2026-11-20-tenancy-design.md):
-	// asking for it must fail, not run an install that looks isolated and is not.
-	if mode := getEnv("KYCALENDAR_TENANCY", ""); mode != "" && mode != "single" {
-		return nil, fmt.Errorf("KYCALENDAR_TENANCY: only single is available in this build, got %q", mode)
-	}
 	port := getEnvInt("KY_PORT", getEnvInt("PORT", 8080))
 	// Loopback unless told otherwise; the image sets 0.0.0.0, where a container must listen.
 	host := getEnv("KY_HOST", "127.0.0.1")
@@ -263,6 +334,18 @@ func LoadFromEnv() (*Config, error) {
 	postgres := driver == "postgres"
 	if err := postgresGuards(postgres); err != nil {
 		return nil, err
+	}
+	objects, err := objectStorage()
+	if err != nil {
+		return nil, err
+	}
+	// Before any key file is read or made: multi-tenant mode keeps nothing in KY_DATA_DIR (D15).
+	ten, err := tenancy(postgres, objects)
+	if err != nil {
+		return nil, err
+	}
+	if ten.Multi && !multiTenantStartup {
+		return nil, ErrMultiTenantGated
 	}
 
 	sessionSecret := getEnv("KY_SESSION_SECRET", "")
@@ -383,11 +466,6 @@ func LoadFromEnv() (*Config, error) {
 		return nil, fmt.Errorf("KY_RATE_LIMIT_EXEMPT_NETWORKS: %w", err)
 	}
 
-	objects, err := objectStorage()
-	if err != nil {
-		return nil, err
-	}
-
 	// SCIM is on only with a token the operator chose and gave the IdP.
 	scimToken := getEnv("KY_SCIM_TOKEN", "")
 	scimOn := getEnv("KY_SCIM_ENABLED", "") == "" || getEnvBool("KY_SCIM_ENABLED", true)
@@ -453,6 +531,7 @@ func LoadFromEnv() (*Config, error) {
 		},
 		Calendar:      calCfg,
 		ObjectStorage: objects,
+		Tenancy:       ten,
 	}
 
 	return cfg, nil

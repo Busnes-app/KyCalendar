@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -46,22 +47,105 @@ func (s *SQLStore) ensureOrgs(ctx context.Context) error {
 // may be administrators.
 const StaffOrgSetting = "tenancy_staff_org"
 
+// StorageCellSetting records, at a multi-tenant install's first start, the cell that scopes its
+// object storage keys (tenancy spec, Cells): one of KY_CELLS, fixed so that adding or reordering
+// cells never moves its backups.
+const StorageCellSetting = "tenancy_storage_cell"
+
 // Tenancy is an install's mode. Anything but a recorded "single" is multi-tenant, so a lost
 // row fails closed; ensureOrgs writes it back at the next open.
 type Tenancy struct {
 	Multi bool
-	Staff OrgID // multi-tenant only; empty means no account is an administrator
+	Staff OrgID  // multi-tenant only; empty means no account is an administrator
+	Cell  string // multi-tenant only: StorageCellSetting, empty until recorded
+}
+
+// ErrTenancyChanged is a start whose tenancy settings differ from the ones recorded at the
+// install's first start (tenancy spec D1).
+var ErrTenancyChanged = errors.New("tenancy settings differ from the ones this database recorded at its first start")
+
+// RecordTenancy is D1 at a server start: in one transaction it reads the mode ensureOrgs keeps,
+// and in multi-tenant mode records it with the staff org and the storage cell (the first of
+// cells) where absent, then refuses another mode, staff org, or cells without the recorded
+// storage cell. A database recorded single may turn multi only while it has no account: every
+// single-tenant install has its first admin from its first start. The staff org's mirror row is
+// written active and enabled, as only configuration ever writes it.
+func (s *SQLStore) RecordTenancy(ctx context.Context, multi bool, staff OrgID, cells []string) error {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	get := func(key string) (string, error) {
+		var v string
+		err := tx.QueryRowContext(ctx, s.rebind(`SELECT COALESCE((SELECT value FROM server_settings WHERE key = ?), '')`), key).Scan(&v)
+		return v, err
+	}
+	set := func(key, value string, replace bool) error {
+		q := `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING`
+		if replace {
+			q = `INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+		}
+		_, err := tx.ExecContext(ctx, s.rebind(q), key, value, time.Now().UTC())
+		return err
+	}
+	mode, err := get(TenancySetting)
+	if err != nil {
+		return err
+	}
+	if !multi {
+		if mode != "single" {
+			return fmt.Errorf("%w: it is multi-tenant (KYCALENDAR_TENANCY=multi)", ErrTenancyChanged)
+		}
+		return nil
+	}
+	if mode == "single" {
+		var users int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&users); err != nil {
+			return err
+		}
+		if users > 0 {
+			return fmt.Errorf("%w: it is a single-tenant install with accounts; KYCALENDAR_TENANCY cannot change", ErrTenancyChanged)
+		}
+	}
+	if err := set(TenancySetting, "multi", true); err != nil {
+		return err
+	}
+	for key, want := range map[string]string{StaffOrgSetting: string(staff), StorageCellSetting: cells[0]} {
+		if err := set(key, want, false); err != nil {
+			return err
+		}
+	}
+	if got, err := get(StaffOrgSetting); err != nil {
+		return err
+	} else if got != string(staff) {
+		return fmt.Errorf("%w: KYCALENDAR_STAFF_ORG_ID differs from the staff org recorded at the first start", ErrTenancyChanged)
+	}
+	if got, err := get(StorageCellSetting); err != nil {
+		return err
+	} else if !slices.Contains(cells, got) {
+		return fmt.Errorf("%w: KY_CELLS must still list %s, the cell this install's object storage keys are under", ErrTenancyChanged, got)
+	}
+	for _, q := range []string{
+		`INSERT INTO orgs (id, status, enabled) VALUES (?, 'active', TRUE) ON CONFLICT (id) DO UPDATE SET status = 'active', enabled = TRUE`,
+		`INSERT INTO org_usage (org_id, bytes) VALUES (?, 0) ON CONFLICT (org_id) DO NOTHING`,
+	} {
+		if _, err := tx.ExecContext(ctx, s.rebind(q), staff); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *SQLStore) Tenancy(ctx context.Context) (Tenancy, error) {
-	v, err := s.Settings().GetSettings(ctx, TenancySetting, StaffOrgSetting)
+	v, err := s.Settings().GetSettings(ctx, TenancySetting, StaffOrgSetting, StorageCellSetting)
 	if err != nil {
 		return Tenancy{}, err
 	}
 	if v[TenancySetting] == "single" {
 		return Tenancy{}, nil
 	}
-	return Tenancy{Multi: true, Staff: OrgID(v[StaffOrgSetting])}, nil
+	return Tenancy{Multi: true, Staff: OrgID(v[StaffOrgSetting]), Cell: v[StorageCellSetting]}, nil
 }
 
 func (s *SQLStore) OrgServes(ctx context.Context, id OrgID) (bool, error) {

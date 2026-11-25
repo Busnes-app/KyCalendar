@@ -38,7 +38,7 @@ func TestBootstrapAdminFailsWhenUsersCannotBeCounted(t *testing.T) {
 	t.Setenv("KY_ADMIN_PASSWORD", "")
 	st := openBootstrapStore(t)
 	dir := t.TempDir()
-	if err := bootstrapAdmin(context.Background(), countFails{st}, dir); err == nil {
+	if err := bootstrapAdmin(context.Background(), countFails{st}, dir, ""); err == nil {
 		t.Fatal("a failed count was read as an empty database")
 	}
 	if _, err := st.Users().GetUserByUsername(context.Background(), "admin"); err == nil {
@@ -62,7 +62,7 @@ func TestBootstrapAdminWritesThePasswordToAFileNotTheLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := openBootstrapStore(t)
-	if err := bootstrapAdmin(ctx, st, dir); err != nil {
+	if err := bootstrapAdmin(ctx, st, dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -86,7 +86,7 @@ func TestBootstrapAdminWritesThePasswordToAFileNotTheLog(t *testing.T) {
 	}
 
 	// Users exist now: a restart leaves the account and the file alone.
-	if err := bootstrapAdmin(ctx, st, dir); err != nil {
+	if err := bootstrapAdmin(ctx, st, dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := st.Users().CountUsers(ctx); n != 1 {

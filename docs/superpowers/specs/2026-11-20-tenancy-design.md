@@ -1,6 +1,9 @@
 # Tenancy: single-tenant and multi-tenant (SaaS), KyCalendar design
 
-Date: 2026-11-20. Status: implementation in progress; hosted startup remains refused until step 6.
+Date: 2026-11-20. Status: implementation in progress. Step 6's startup requirements, D1 recording,
+the staff bootstrap, cells and backup copies to object storage are built (2026-11-24); hosted startup
+stays refused at its last gate (`multiTenantStartup`, `internal/config/config.go`) until the
+end-to-end run with KyIdentity, KyPost and KyMessages passes.
 As-built audit against `origin/main` at `03ee886` (2026-11-23): schema and isolation (1–2), identity
 and peers (3), lifecycle/quota/export/scheduling/groups/freshness (4a–g, 4j), restore erasure
 reconciliation, staff routes (5), and 4i's handover/revocation are merged through `d44eca3`.
@@ -893,7 +896,7 @@ home region with a finer slug; every org lives in one. KyCalendar's part of C1�
   (`store.ServeCells`). Only the staff org, which comes from configuration, is exempt. An org of
   another cell is answered exactly as an org that does not serve. `TestAnOrgOfAnotherCellIsRefusedEverywhere`
   checks each credential type; `TestCellsDecideWhichOrgsServe` checks the mirror and the move.
-- **Object storage prefix** (with startup, step 6). The first multi-tenant start records the first of `KY_CELLS` as the
+- **Object storage prefix.** The first multi-tenant start records the first of `KY_CELLS` as the
   install's storage cell (`tenancy_storage_cell`); later starts refuse a `KY_CELLS` without it.
   Every object key is under `cells/<storage cell>/` (backup copies: `cells/<cell>/platform/backups/`),
   so deployments sharing a bucket never list or prune each other's keys, and adding or reordering
@@ -1020,6 +1023,24 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
    once across both, not twice. An end-to-end run with KyIdentity in multi-tenant mode, KyPost and
    KyMessages: two orgs, an invitation within one delivered directly and one across them by mail, and
    suspension and deletion of one.
+   - **As built (2026-11-24).** `config.LoadFromEnv` checks every requirement and names the setting
+     (`TestMultiTenantStartupRequirements`): PostgreSQL, `KY_KYSIGNON_ISSUER`, no
+     `KY_SSO_AUTO_PROVISION=false`, `KY_ENCRYPTION_KEY` (no key file is read or made), no
+     `KYCALENDAR_BACKUP_DIR`, `KYCALENDAR_S3_*`, `KYCALENDAR_STAFF_ORG_ID` (not the default org) and
+     `KY_CELLS` (Cells). The mode, staff org and cells join the replica fingerprint. A complete
+     configuration then meets the last gate, `ErrMultiTenantGated`: lifting it is one line once the
+     end-to-end run passes. At a start, under the bootstrap lock, `store.RecordTenancy` records the
+     mode, the staff org and the storage cell, writes the staff org `active` and `enabled`, and
+     refuses another mode, staff org or a `KY_CELLS` without the storage cell; a single-tenant
+     database turns multi-tenant only while it has no account. On an empty database the
+     bootstrap administrator is the staff org's, from `KY_ADMIN_PASSWORD` (required: no password
+     file), and `init-admin` writes into the staff org too. Tests (PostgreSQL):
+     `TestFreshMultiTenantInstallSignsTheBootstrapAdminIn`, `TestMultiTenantStartRefusals`,
+     `TestTwoMultiTenantReplicasShareOneDatabase` (session shared, a polled suspension refuses
+     both, the sign-in limit admitted once across both; the DAV-failure and invite windows are the
+     replica-shared ones of `TestLimitsAreSharedAcrossReplicas` and
+     `TestInviteLimitIsOneWindowAcrossReplicas`), and on both drivers `TestRecordTenancy`. The
+     end-to-end run is not built.
 
 ## Residual risks
 
