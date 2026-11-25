@@ -1,6 +1,6 @@
 # Cross-app multi-tenant end-to-end test, design
 
-Date: 2026-11-24. Status: proposed design, docs only. Nothing here is built, and no refusal is
+Date: 2026-11-24. Status: design merged (#219). KyCalendar's `kye2e` gate is built; the harness is not, and no refusal is
 lifted by it. It designs the last gate of the tenancy spec's step 6
 (`2026-11-20-tenancy-design.md`, Phased build plan, step 6): "An end-to-end run with KyIdentity in
 multi-tenant mode, KyPost and KyMessages: two orgs, an invitation within one delivered directly and
@@ -171,7 +171,7 @@ replayed. Nothing after S7 uses B except the restore of K.
 | KyIdentity | **PR 4, platform provisioning API**: org create, members, mailbox address, suspend, resume, delete (KyIdentity tenancy spec, Phased build plan, step 4) | Not built: no `platform/v1/orgs` route on `master`. Orgs exist only through test constructors (`internal/store/orgstore.go:73-105`). |
 | KyIdentity | **`org_apps` written by the platform API** (step 6, Entitlements), so `/api/suite/orgs` lists the orgs with apps enabled | Not built: only `EnableOrgAppForTest` (`internal/store/orgstore.go:96-105`) writes it. |
 | KyIdentity | The `kye2e` gate (Mechanism) | Not built |
-| KyCalendar | The `kye2e` gate, and open question 12 (handover slug collisions), which the tenancy spec keeps as a hosted acceptance gate | Not built; question 12 is open |
+| KyCalendar | The `kye2e` gate, and open question 12 (handover slug collisions), which the tenancy spec keeps as a hosted acceptance gate | Gate built 2026-11-25 (`internal/config/gate_*.go`, `scripts/check-test-build-tag.sh`, `scripts/check-release-image.sh`); release builds still refuse multi. Question 12 is open |
 | KyPost | **PR 7, hosted mail** (allocation from the mailbox address, M's masked changes, per-org limits). It waits on MH1–MH7, RX 1–5 and MH9 (KyPost tenancy spec, amendments of 2026-11-22). | RX 1–5 built (receiving tier spec status). MH1, MH2 and MH3 built. MH4 and MH6 partly built, with the rest in open PRs #725 and #726. MH5 built (#722). MH7 not built. MH9 (cells) not built: no `KYPOST_REGION` or `KY_CELLS` in code. |
 | KyPost | An answer to KyCalendar's open question 6: does KyPost mark mail between two hosted mailboxes `dkim_aligned`? | Unverified. S4 is the test that answers it. |
 | KyPost | The `kye2e` gate, including the `BootstrapAdmin` change | Not built |

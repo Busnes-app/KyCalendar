@@ -52,12 +52,23 @@ type TenancyConfig struct {
 
 // multiTenantStartup is the last gate (tenancy spec, Phased build plan, step 6): every
 // requirement below is checked, and a complete multi-tenant configuration is still refused
-// until the end-to-end run with KyIdentity, KyPost and KyMessages passes. Lifting it is this
-// line and the spec's status; tests start multi-tenant servers from a built Config instead.
-var multiTenantStartup = false
+// until the end-to-end run with KyIdentity, KyPost and KyMessages passes. Only the build-tagged
+// constant (gate_release.go) opens it; a bool, so -ldflags -X cannot. Lifting it for release is
+// that constant and the spec's status.
+var multiTenantStartup = multiTenantBuild
 
 // ErrMultiTenantGated is a complete multi-tenant configuration refused by that gate.
 var ErrMultiTenantGated = errors.New("KYCALENDAR_TENANCY=multi: every requirement is met, but multi-tenant startup stays refused until the tenancy spec's last gate (the end-to-end run with KyIdentity, KyPost and KyMessages) passes")
+
+// testIssuer refuses an issuer outside the reserved .test domain (RFC 2606), so a test build
+// deployed by mistake cannot take tokens from a real issuer.
+func testIssuer(issuer string) error {
+	u, err := url.Parse(issuer)
+	if err != nil || u.Scheme != "https" || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".test") {
+		return fmt.Errorf("KY_KYSIGNON_ISSUER: this end-to-end test build serves only an https issuer under .test, got %q", issuer)
+	}
+	return nil
+}
 
 // MaxCells is KyIdentity's cap on an app's region map (Cells, "Limits").
 const MaxCells = 32
@@ -346,6 +357,11 @@ func LoadFromEnv() (*Config, error) {
 	}
 	if ten.Multi && !multiTenantStartup {
 		return nil, ErrMultiTenantGated
+	}
+	if multiTenantBuild {
+		if err := testIssuer(getEnv("KY_KYSIGNON_ISSUER", "")); err != nil {
+			return nil, err
+		}
 	}
 
 	sessionSecret := getEnv("KY_SESSION_SECRET", "")
