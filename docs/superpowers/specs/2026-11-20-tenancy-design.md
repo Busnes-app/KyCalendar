@@ -1040,7 +1040,9 @@ refused at startup until PR 6. Until then multi-tenant code runs only in tests.
      both, the sign-in limit admitted once across both; the DAV-failure and invite windows are the
      replica-shared ones of `TestLimitsAreSharedAcrossReplicas` and
      `TestInviteLimitIsOneWindowAcrossReplicas`), and on both drivers `TestRecordTenancy`. The
-     end-to-end run is not built.
+     end-to-end run is not built. Its design, with the test-only build tag that lifts each app's
+     startup refusal and what blocks running it, is
+     [`2026-11-24-multi-tenant-e2e-design.md`](2026-11-24-multi-tenant-e2e-design.md).
 
 ## Residual risks
 
