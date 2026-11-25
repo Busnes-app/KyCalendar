@@ -423,14 +423,17 @@ Every later `up` sees the move is done and skips both steps; a fresh install jus
   `docker compose up -d` again (nothing is deleted either way):
   - **Move 17 again** (keeps what 17 wrote; what was written on 18 before the rollback stays
     only in the renamed cluster): `docker compose down`, then
-    `docker compose run --rm --no-deps --entrypoint sh postgres-17-dump -c 'mv /pg18/18 /pg18/18.replaced && mv /pg18/upgrade-from-17 /pg18/upgrade-from-17.replaced'`.
+    `docker compose run --rm --no-deps --entrypoint sh postgres-17-dump -c 's=.replaced-$(date +%Y%m%d%H%M%S); mv /pg18/18 /pg18/18$s && if [ -e /pg18/upgrade-from-17 ]; then mv /pg18/upgrade-from-17 /pg18/upgrade-from-17$s; fi'`
+    (renames `18/`, and `upgrade-from-17/` if you have not removed it, with a dated suffix).
   - **Keep 18 as it is** (what 17 wrote since stays only in `pgdata`):
-    `docker compose run --rm --no-deps --entrypoint rm postgres-17-dump /pg18/upgrade-from-17/source-checkpoint`.
+    `docker compose run --rm --no-deps --entrypoint rm postgres-17-dump /pg18/18/moved-from-17.checkpoint`.
 - **Clean up, when you are satisfied** (your choice; nothing removes these for you):
-  `docker compose exec postgres rm -r /var/lib/postgresql/upgrade-from-17` removes the dump, and
-  `docker volume rm <project>_pgdata` (see `docker volume ls`) removes the 17 data and with it the
+  `docker compose exec postgres rm -r /var/lib/postgresql/upgrade-from-17` removes the dump. It is
+  safe: 18 keeps starting, and a later rollback is still caught on the way back, because the
+  marker lives at `18/moved-from-17.checkpoint`. Removing the 17 data is a separate step:
+  `docker volume rm <project>_pgdata` (see `docker volume ls`) removes it and with it the
   rollback. Keep the `postgres-17-dump` service: once the move is done it exits at once.
 
 `scripts/test-postgres-17-to-18.sh` proves this in CI through `docker-compose.yml`: real 17
 data from the previous service definition, the move, rollback, the refusal after 17 ran again
-and both ways on, rerun, a bad dump and a fresh install. `scripts/postgres-17-to-18.sh` is the shared Ky upgrade kit, byte-identical across repos.
+and both ways on, rerun, the dump clean-up (with a rollback after it), a bad dump and a fresh install. `scripts/postgres-17-to-18.sh` is the shared Ky upgrade kit, byte-identical across repos.

@@ -12,7 +12,7 @@ set -euo pipefail
 P17=postgres:17.12-alpine3.24@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
 P18=postgres:18.7-alpine3.24@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
 # sha256 of the kit's postgres-17-to-18.sh: the vendored copy must stay byte-identical.
-kit=65632931413f9ddca0bce3ad5a13cd7db70860156c402c8d40c027f3c16abf15
+kit=195ae8684e34dd515158a88b1f76b918cf6e3f3c854ce83fe4fb190a5178cf06
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
 name=kycal-pg1718-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
@@ -75,6 +75,16 @@ client() { docker run --rm --network "${name}_default" --env-file "$work/.env" "
 # shellcheck disable=SC2016 # expanded inside the client container
 q() { client "$P18" sh -c 'PGPASSWORD=$KY_POSTGRES_PASSWORD psql -h postgres -U postgres -d ky_server -XAtc "$1"' sh "$1"; }
 in_vol() { docker run --rm --network none -v "${name}_postgres:/v" "$P18" sh -c "$1"; }
+# docs/RUNNING.md's "move 17 again" command, verbatim.
+# shellcheck disable=SC2016 # expanded inside the container
+move_again() { new run --rm --no-deps --entrypoint sh postgres-17-dump -c 's=.replaced-$(date +%Y%m%d%H%M%S); mv /pg18/18 /pg18/18$s && if [ -e /pg18/upgrade-from-17 ]; then mv /pg18/upgrade-from-17 /pg18/upgrade-from-17$s; fi'; }
+# Roll back: 17 starts on pgdata and takes a write that 18 lacks.
+rollback_write() {
+  old up -d postgres >/dev/null 2>&1 || fail "17 did not start again"
+  ready || fail "17 no longer starts on its data"
+  docker exec "$name-pg" psql -U postgres -d ky_server -XAtqc "insert into t(s) values ('$1')" || fail "writing on 17 after the rollback failed"
+  old down >/dev/null 2>&1
+}
 
 echo "1. PostgreSQL 17 data from the previous compose definition"
 old up -d postgres >/dev/null 2>&1 || fail "the 17 service did not start"
@@ -106,9 +116,8 @@ new down >/dev/null 2>&1
 old up -d postgres >/dev/null 2>&1 || fail "17 did not start again"
 ready || fail "17 no longer starts on its data"
 [ "$(docker exec "$name-pg" psql -U postgres -d ky_server -XAtc 'select count(*) from t')" = 50000 ] || fail "17 data changed"
-docker exec "$name-pg" psql -U postgres -d ky_server -XAtqc "insert into t(s) values ('written on 17 after the move')" ||
-  fail "writing on 17 after the rollback failed"
 old down >/dev/null 2>&1
+rollback_write 'written on 17 after the move'
 
 echo "3b. back to 18 after the rollback: 18 does not start, and the one-shot says why"
 new up -d postgres >/dev/null 2>&1 && fail "docker compose up started 18 after 17 ran since the move"
@@ -117,13 +126,12 @@ new logs postgres-17-dump 2>&1 | grep -q 'has run on' || fail "the one-shot did 
 new down >/dev/null 2>&1
 
 echo "3c. move again, with docs/RUNNING.md's command: rename 18/ and upgrade-from-17/, then up"
-new run --rm --no-deps --entrypoint sh postgres-17-dump -c 'mv /pg18/18 /pg18/18.replaced && mv /pg18/upgrade-from-17 /pg18/upgrade-from-17.replaced' ||
-  fail "the documented move-again command failed"
+move_again || fail "the documented move-again command failed"
 new up -d postgres >/dev/null 2>&1 || fail "docker compose up failed on the move again"
 new logs postgres-17-dump 2>&1 | grep -q 'dumped' || fail "the move again did not dump"
 ready || fail "18 never became ready after the move again"
 [ "$(q 'select count(*) from t')" = 50001 ] || fail "the move again lost the row written on 17"
-in_vol 'test -s /v/18.replaced/docker/PG_VERSION' || fail "the replaced 18 cluster is gone"
+in_vol 'test -s /v/18.replaced-*/docker/PG_VERSION && test -s /v/upgrade-from-17.replaced-*/dump.sql' || fail "the replaced 18 cluster is gone"
 new down >/dev/null 2>&1
 
 echo "4. a rerun is a no-op"
@@ -134,13 +142,13 @@ docker logs "$name-pg" 2>&1 | grep -q 'restored' && fail "the rerun restored aga
 [ "$(q 'select count(*) from t')" = 50001 ] || fail "rows after the rerun"
 new down >/dev/null 2>&1
 
-echo "4b. keep 18 after a rollback, with docs/RUNNING.md's command: delete source-checkpoint, then up"
+echo "4b. keep 18 after a rollback, with docs/RUNNING.md's command: delete 18/moved-from-17.checkpoint, then up"
 old up -d postgres >/dev/null 2>&1 || fail "17 did not start for the keep-18 check"
 ready || fail "17 never became ready for the keep-18 check"
 old down >/dev/null 2>&1
 new up -d postgres >/dev/null 2>&1 && fail "docker compose up started 18 after 17 ran (keep-18 check)"
 new down >/dev/null 2>&1
-new run --rm --no-deps --entrypoint rm postgres-17-dump /pg18/upgrade-from-17/source-checkpoint ||
+new run --rm --no-deps --entrypoint rm postgres-17-dump /pg18/18/moved-from-17.checkpoint ||
   fail "the documented keep-18 command failed"
 for _ in 1 2; do
   new up -d postgres >/dev/null 2>&1 || fail "keeping 18 was not accepted"
@@ -151,16 +159,27 @@ for _ in 1 2; do
 done
 
 echo "4c. the documented clean-up of the dump, keeping 17's volume: 18 still starts"
-in_vol 'cp -a /v/upgrade-from-17 /v/upgrade-from-17.test'
 new up -d postgres >/dev/null 2>&1 || fail "docker compose up failed before the clean-up"
 ready || fail "18 not ready before the clean-up"
 new exec -T postgres rm -r /var/lib/postgresql/upgrade-from-17 || fail "the documented clean-up failed"
 new down >/dev/null 2>&1
-new up -d postgres >/dev/null 2>&1 || fail "18 does not start after the documented clean-up"
-ready || fail "18 never became ready after the clean-up"
-[ "$(q 'select count(*) from t')" = 50001 ] || fail "rows after the clean-up"
+for _ in 1 2; do
+  new up -d postgres >/dev/null 2>&1 || fail "18 does not start after the documented clean-up"
+  ready || fail "18 never became ready after the clean-up"
+  [ "$(q 'select count(*) from t')" = 50001 ] || fail "rows after the clean-up"
+  new down >/dev/null 2>&1
+done
+
+echo "4d. after the clean-up, a rollback that writes on 17 is still refused; moving again takes the write"
+rollback_write 'written on 17 after the clean-up'
+new up -d postgres >/dev/null 2>&1 && fail "docker compose up started 18 after 17 ran since the clean-up"
+new logs postgres-17-dump 2>&1 | grep -q 'has run on' || fail "the one-shot did not say 17 ran since the clean-up"
 new down >/dev/null 2>&1
-in_vol 'rm -r /v/upgrade-from-17 && mv /v/upgrade-from-17.test /v/upgrade-from-17'
+move_again || fail "the documented move-again command failed without upgrade-from-17"
+new up -d postgres >/dev/null 2>&1 || fail "docker compose up failed on the move after the clean-up"
+ready || fail "18 never became ready after the move after the clean-up"
+[ "$(q 'select count(*) from t')" = 50002 ] || fail "the move after the clean-up lost the row written on 17"
+new down >/dev/null 2>&1
 
 echo "5. a dump that fails to restore never yields a cluster, on any number of starts"
 in_vol 'mv /v/18/docker /v/18/docker.saved && echo "THIS IS NOT SQL;" >> /v/upgrade-from-17/dump.sql'
@@ -178,4 +197,4 @@ ready || fail "a fresh 18 never became ready"
 docker logs "$name-pg" 2>&1 | grep -q 'restored' && fail "the fresh install restored something"
 [ "$(q 'show data_directory')" = /var/lib/postgresql/18/docker ] || fail "fresh data directory"
 
-echo "postgres 17 to 18 check passed through docker compose: moved, rolled back, refused 18 after 17 ran, moved again, kept 18, reran, cleaned up, refused a bad dump, fresh install"
+echo "postgres 17 to 18 check passed through docker compose: moved, rolled back, refused 18 after 17 ran, moved again, kept 18, reran, cleaned up, refused 18 after a rollback past the clean-up, refused a bad dump, fresh install"
