@@ -389,3 +389,39 @@ these steps through `docker-compose.yml` with the built image in CI, including
 - **Roll back:** stop the app, remove `KY_DB_DRIVER` and `KY_DB_DSN` from `.env`, start. The SQLite
   file was never written, so it is as you stopped it; anything written on PostgreSQL since stays
   there.
+
+### PostgreSQL 17 to 18
+
+The bundled `postgres` service runs PostgreSQL 18. PostgreSQL 18 cannot open a 17 data
+directory, so an install that ran the 17 service moves its data on the next
+`docker compose up` (with `COMPOSE_PROFILES=postgres`, or `--profile postgres`), by itself:
+
+1. `postgres-17-dump`, a one-shot on the 17 image with no network, starts 17 on the old
+   `pgdata` volume and writes `pg_dumpall` into the new `postgres` volume at
+   `upgrade-from-17/dump.sql`. It only reads the 17 data; it never deletes or reinitialises it.
+2. `postgres` (18) restores that dump into a new cluster at `18/docker` in the `postgres`
+   volume, then starts normally. Roles and passwords come across, so `KY_DB_DSN` is unchanged.
+
+Every later `up` sees the move is done and skips both steps; a fresh install just initialises 18.
+
+- **Disk:** about twice the 17 data, free on the volume's filesystem (the dump plus the new
+  cluster). With less, the one-shot stops with the space it needs and writes nothing; free space
+  and run `up` again.
+- **Time:** dump and restore scale with the data: seconds for a typical install, longer for
+  gigabytes. The app restarts until PostgreSQL accepts connections, as after a reboot.
+- **A failed restore** never leaves an empty database: PostgreSQL 18 stops without a cluster and
+  the next start tries again. `docker compose logs postgres-17-dump postgres` says why.
+- **`postmaster.pid exists`:** the one-shot refuses while anything else still runs 17 on
+  `pgdata` (Compose stops the old `postgres` container first; a `docker compose run` or another
+  project may not). Run `docker compose stop postgres`, then `up` again.
+- **Roll back:** stop everything, restore the previous `docker-compose.yml` (the release you ran
+  before), and `docker compose up -d`. 17 starts on the untouched `pgdata` volume; anything
+  written on 18 since stays only in the `postgres` volume.
+- **Clean up, when you are satisfied** (your choice; nothing removes these for you):
+  `docker compose exec postgres rm -r /var/lib/postgresql/upgrade-from-17` removes the dump, and
+  `docker volume rm <project>_pgdata` (see `docker volume ls`) removes the 17 data and with it the
+  rollback. Keep the `postgres-17-dump` service: once the move is done it exits at once.
+
+`scripts/test-postgres-17-to-18.sh` proves this in CI through `docker-compose.yml`: real 17
+data from the previous service definition, the move, rollback, rerun, a bad dump and a fresh
+install. `scripts/postgres-17-to-18.sh` is the shared Ky upgrade kit, byte-identical across repos.

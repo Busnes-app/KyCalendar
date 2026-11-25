@@ -67,6 +67,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    # A PostgreSQL major is a data migration (scripts/postgres-17-to-18.sh), never a bump; the
+    # 17 image in docker-compose.yml is the one-shot that reads the old data.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(ci)"
 
@@ -76,5 +81,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 3
+    # A PostgreSQL major is a data migration (scripts/postgres-17-to-18.sh), never a bump; the
+    # 17 image in docker-compose.yml is the one-shot that reads the old data.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
