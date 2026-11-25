@@ -417,11 +417,20 @@ Every later `up` sees the move is done and skips both steps; a fresh install jus
 - **Roll back:** stop everything, restore the previous `docker-compose.yml` (the release you ran
   before), and `docker compose up -d`. 17 starts on the untouched `pgdata` volume; anything
   written on 18 since stays only in the `postgres` volume.
+- **Back to 18 after a rollback:** once 17 has run again, the next `up` with this file refuses:
+  `postgres-17-dump` exits with `PostgreSQL 17 has run on ... since it was moved to 18` and
+  PostgreSQL 18 does not start, because 18 lacks what 17 wrote since. Choose one, then
+  `docker compose up -d` again (nothing is deleted either way):
+  - **Move 17 again** (keeps what 17 wrote; what was written on 18 before the rollback stays
+    only in the renamed cluster): `docker compose down`, then
+    `docker compose run --rm --no-deps --entrypoint sh postgres-17-dump -c 'mv /pg18/18 /pg18/18.replaced && mv /pg18/upgrade-from-17 /pg18/upgrade-from-17.replaced'`.
+  - **Keep 18 as it is** (what 17 wrote since stays only in `pgdata`):
+    `docker compose run --rm --no-deps --entrypoint rm postgres-17-dump /pg18/upgrade-from-17/source-checkpoint`.
 - **Clean up, when you are satisfied** (your choice; nothing removes these for you):
   `docker compose exec postgres rm -r /var/lib/postgresql/upgrade-from-17` removes the dump, and
   `docker volume rm <project>_pgdata` (see `docker volume ls`) removes the 17 data and with it the
   rollback. Keep the `postgres-17-dump` service: once the move is done it exits at once.
 
 `scripts/test-postgres-17-to-18.sh` proves this in CI through `docker-compose.yml`: real 17
-data from the previous service definition, the move, rollback, rerun, a bad dump and a fresh
-install. `scripts/postgres-17-to-18.sh` is the shared Ky upgrade kit, byte-identical across repos.
+data from the previous service definition, the move, rollback, the refusal after 17 ran again
+and both ways on, rerun, a bad dump and a fresh install. `scripts/postgres-17-to-18.sh` is the shared Ky upgrade kit, byte-identical across repos.
