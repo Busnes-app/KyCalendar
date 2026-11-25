@@ -56,6 +56,9 @@ func Run(ctx context.Context, cfg *config.Config, rc recoveryclient.RunConfig, s
 		if !cfg.ObjectStorage.Configured() {
 			return recoveryclient.Result{}, errNoObjectStorage
 		}
+		if ten.Cell == "" {
+			return recoveryclient.Result{}, errNoStorageCell
+		}
 		dir, release, err := NewScratch(cfg.Database.DataDir)
 		if err != nil {
 			return recoveryclient.Result{}, err
@@ -70,7 +73,7 @@ func Run(ctx context.Context, cfg *config.Config, rc recoveryclient.RunConfig, s
 	}, client)
 	if ten.Multi && res.LocalPath != "" {
 		// As for a local copy: a failed copy fails the run only when nothing was deposited.
-		key, copyErr := objectCopy(ctx, cfg.ObjectStorage, res.LocalPath, cfg.Backup.Keep, time.Now())
+		key, copyErr := objectCopy(ctx, cfg.ObjectStorage, ObjectPrefix(ten.Cell), res.LocalPath, cfg.Backup.Keep, time.Now())
 		res.LocalPath = key
 		if copyErr != nil {
 			copyErr = fmt.Errorf("object copy: %w", copyErr)

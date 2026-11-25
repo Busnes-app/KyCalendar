@@ -173,8 +173,12 @@ func runServer() {
 // on PostgreSQL, the replica configuration check, both under the bootstrap lock migrations
 // hold too; removal of plaintext snapshots a killed process left; the recovery key.
 func prepareStart(ctx context.Context, cfg *config.Config, st store.Store) error {
+	ten := cfg.Tenancy
 	if err := st.Coordination().Serialized(ctx, "bootstrap", func(ctx context.Context) error {
-		if err := bootstrapAdmin(ctx, st, cfg.Database.DataDir); err != nil {
+		if err := st.RecordTenancy(ctx, ten.Multi, store.OrgID(ten.StaffOrg), ten.Cells); err != nil {
+			return err
+		}
+		if err := bootstrapAdmin(ctx, st, cfg.Database.DataDir, store.OrgID(ten.StaffOrg)); err != nil {
 			return fmt.Errorf("bootstrap the admin account: %w", err)
 		}
 		if st.Driver() != "postgres" {
@@ -182,6 +186,10 @@ func prepareStart(ctx context.Context, cfg *config.Config, st store.Store) error
 		}
 		return checkReplicaConfig(ctx, cfg, st.Settings())
 	}); err != nil {
+		return err
+	}
+	// Cells, C5: before anything serves, every org outside this deployment's cells stops.
+	if err := st.ServeCells(ten.Cells); err != nil {
 		return err
 	}
 	if n, err := backup.RemoveStaleSnapshots(cfg.Database.DataDir); err != nil {
@@ -554,6 +562,15 @@ func runInitAdmin(args []string) {
 		Status:             "active",
 		SSOProvider:        "local",
 		MustChangePassword: true,
+	}
+	// A multi-tenant install's local accounts are the staff org's break-glass admins (D8).
+	if ten, err := st.Tenancy(ctx); err != nil {
+		log.Fatalf("DB error: %v", err)
+	} else if ten.Multi {
+		if ten.Staff == "" {
+			log.Fatal("Error: no staff org is recorded; start the server once with KYCALENDAR_STAFF_ORG_ID")
+		}
+		user.OrgID = ten.Staff
 	}
 
 	if err := st.Users().CreateUser(ctx, user); err != nil {

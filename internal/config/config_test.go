@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -476,20 +478,114 @@ func TestSchedulingMode(t *testing.T) {
 	}
 }
 
-func TestTenancyOnlySingle(t *testing.T) {
-	t.Setenv("KY_DATA_DIR", t.TempDir())
-	for _, v := range []string{"", "single"} {
-		t.Setenv("KYCALENDAR_TENANCY", v)
-		if _, err := config.LoadFromEnv(); err != nil {
-			t.Errorf("KYCALENDAR_TENANCY=%q: %v", v, err)
-		}
+// multiEnv is a complete multi-tenant environment (tenancy spec step 6).
+func multiEnv(t *testing.T) map[string]string {
+	t.Helper()
+	secret := filepath.Join(t.TempDir(), "s3")
+	if err := os.WriteFile(secret, []byte("s3-secret"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	for _, v := range []string{"multi", "Single", "x"} {
-		t.Setenv("KYCALENDAR_TENANCY", v)
-		if _, err := config.LoadFromEnv(); err == nil || !strings.Contains(err.Error(), "KYCALENDAR_TENANCY") {
-			t.Errorf("KYCALENDAR_TENANCY=%q: %v, want a refusal naming the setting", v, err)
-		}
+	return map[string]string{
+		"KYCALENDAR_TENANCY": "multi", "KY_DB_DRIVER": "postgres", "KY_DB_DSN": "postgres://cal:pw@db/cal",
+		"KY_SESSION_SECRET": strings.Repeat("s", 32), "KYCALENDAR_SCHEDULING": "true",
+		"KY_ENCRYPTION_KEY": strings.Repeat("ab", 32), "KY_KYSIGNON_ISSUER": "https://id.example",
+		"KYCALENDAR_S3_ENDPOINT": "https://s3.example", "KYCALENDAR_S3_BUCKET": "cal", "KYCALENDAR_S3_ACCESS_KEY": "ak",
+		"KYCALENDAR_S3_SECRET_KEY_FILE": secret, "KYCALENDAR_STAFF_ORG_ID": "org-staff", "KY_CELLS": "us-east-2, us-east-3",
 	}
+}
+
+// KYCALENDAR_TENANCY=multi needs everything the tenancy spec lists (D1, D2, D7, D15, Cells),
+// and each missing piece refuses naming the setting, before any key file in KY_DATA_DIR is read
+// or made. A complete configuration still meets the last gate (ErrMultiTenantGated); past it,
+// it loads. Single-tenant refuses the multi-tenant settings.
+func TestMultiTenantStartupRequirements(t *testing.T) {
+	load := func(t *testing.T, env map[string]string, seed ...string) (*config.Config, error, []os.DirEntry) {
+		t.Helper()
+		dir := t.TempDir()
+		for _, name := range seed {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("ab", 32)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("KY_DATA_DIR", dir)
+		for k := range multiEnv(t) {
+			t.Setenv(k, "")
+		}
+		for k, v := range env {
+			t.Setenv(k, v)
+		}
+		cfg, err := config.LoadFromEnv()
+		files, _ := os.ReadDir(dir)
+		return cfg, err, files
+	}
+	if _, err, files := load(t, multiEnv(t)); !errors.Is(err, config.ErrMultiTenantGated) || len(files) != 0 {
+		t.Fatalf("a complete multi-tenant configuration passed the last gate: %v, %d files", err, len(files))
+	}
+	t.Cleanup(config.OpenMultiTenantGateForTest())
+	cfg, err, files := load(t, multiEnv(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Tenancy.Multi || cfg.Tenancy.StaffOrg != "org-staff" || fmt.Sprint(cfg.Tenancy.Cells) != "[us-east-2 us-east-3]" || len(files) != 0 {
+		t.Fatalf("tenancy %+v, %d files in KY_DATA_DIR", cfg.Tenancy, len(files))
+	}
+	for name, c := range map[string]struct{ key, value, names string }{
+		"SQLite":                 {"KY_DB_DRIVER", "sqlite", "PostgreSQL"},
+		"no issuer":              {"KY_KYSIGNON_ISSUER", "", "KY_KYSIGNON_ISSUER"},
+		"no auto-provisioning":   {"KY_SSO_AUTO_PROVISION", "false", "KY_SSO_AUTO_PROVISION"},
+		"no encryption key":      {"KY_ENCRYPTION_KEY", "", "no key file in KY_DATA_DIR is read"},
+		"a backup directory":     {"KYCALENDAR_BACKUP_DIR", "/backups", "KYCALENDAR_BACKUP_DIR"},
+		"no object storage":      {"KYCALENDAR_S3_ENDPOINT", "", "object storage is required"},
+		"no staff org":           {"KYCALENDAR_STAFF_ORG_ID", "", "KYCALENDAR_STAFF_ORG_ID"},
+		"the default org":        {"KYCALENDAR_STAFF_ORG_ID", "00000000-0000-0000-0000-000000000001", "KYCALENDAR_STAFF_ORG_ID"},
+		"no cells":               {"KY_CELLS", "", "KY_CELLS"},
+		"a cell that is no slug": {"KY_CELLS", "us-east-2,US East", "KY_CELLS"},
+		"a cell twice":           {"KY_CELLS", "us-east-2,us-east-2", "KY_CELLS"},
+		"33 cells":               {"KY_CELLS", cells(33), "KY_CELLS"},
+		"another mode":           {"KYCALENDAR_TENANCY", "Multi", "KYCALENDAR_TENANCY"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := multiEnv(t)
+			env[c.key] = c.value
+			var seed []string
+			switch c.key {
+			case "KY_DB_DRIVER":
+				delete(env, "KY_DB_DSN")
+			case "KYCALENDAR_S3_ENDPOINT": // none of the store, not a partial one
+				for _, k := range []string{"BUCKET", "ACCESS_KEY", "SECRET_KEY_FILE"} {
+					delete(env, "KYCALENDAR_S3_"+k)
+				}
+			case "KY_ENCRYPTION_KEY": // an encryption.key there must not stand in (D15)
+				seed = []string{"encryption.key"}
+			}
+			_, err, files := load(t, env, seed...)
+			if err == nil || !strings.Contains(err.Error(), c.names) {
+				t.Fatalf("err %v, want a refusal naming %s", err, c.names)
+			}
+			if len(files) != len(seed) {
+				t.Fatalf("a refused start left %d files in KY_DATA_DIR", len(files))
+			}
+		})
+	}
+	for _, key := range []string{"KYCALENDAR_STAFF_ORG_ID", "KY_CELLS"} {
+		t.Run("single with "+key, func(t *testing.T) {
+			if _, err, _ := load(t, map[string]string{key: multiEnv(t)[key]}); err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("err %v", err)
+			}
+		})
+	}
+	if cfg, err, _ := load(t, map[string]string{"KYCALENDAR_TENANCY": "single"}); err != nil || cfg.Tenancy.Multi {
+		t.Fatalf("single: %v", err)
+	}
+}
+
+// cells lists n distinct cell slugs.
+func cells(n int) string {
+	var out []string
+	for i := range n {
+		out = append(out, fmt.Sprintf("us-east-%d", i+1))
+	}
+	return strings.Join(out, ",")
 }
 
 func TestRateLimitExemptNetworksAreValidatedAtStartup(t *testing.T) {

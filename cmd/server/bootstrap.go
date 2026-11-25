@@ -18,11 +18,15 @@ import (
 // initialAdminPasswordFile holds the generated bootstrap password, never the log.
 const initialAdminPasswordFile = "initial-admin-password"
 
+// errNoAdminPassword is a multi-tenant first start with no KY_ADMIN_PASSWORD (tenancy spec D15).
+var errNoAdminPassword = errors.New("KY_ADMIN_PASSWORD is required on an empty multi-tenant database; no password file is written in KY_DATA_DIR")
+
 // bootstrapAdmin creates the "admin" account on an empty database. Its password is
 // KY_ADMIN_PASSWORD, or one generated into <dataDir>/initial-admin-password (0600). A file
 // left by a start that died before the account was written is reused, so a retry never
-// strands a password nobody can read.
-func bootstrapAdmin(ctx context.Context, st store.Store, dataDir string) error {
+// strands a password nobody can read. A multi-tenant install (staff set) writes no file: the
+// account is the staff org's break-glass administrator (D8) and needs KY_ADMIN_PASSWORD.
+func bootstrapAdmin(ctx context.Context, st store.Store, dataDir string, staff store.OrgID) error {
 	count, err := st.Users().CountUsers(ctx)
 	if err != nil {
 		return fmt.Errorf("count users: %w", err)
@@ -31,6 +35,9 @@ func bootstrapAdmin(ctx context.Context, st store.Store, dataDir string) error {
 		return nil
 	}
 	adminPass := os.Getenv("KY_ADMIN_PASSWORD")
+	if adminPass == "" && staff != "" {
+		return errNoAdminPassword
+	}
 	if adminPass == "" {
 		path := filepath.Join(dataDir, initialAdminPasswordFile)
 		if adminPass, err = initialAdminPassword(dataDir, path); err != nil {
@@ -51,6 +58,7 @@ func bootstrapAdmin(ctx context.Context, st store.Store, dataDir string) error {
 		Status:             "active",
 		SSOProvider:        "local",
 		MustChangePassword: true,
+		OrgID:              staff,
 	})
 }
 

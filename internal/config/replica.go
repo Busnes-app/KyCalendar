@@ -120,6 +120,14 @@ var replicaFields = map[string]replicaField{
 	"Calendar.KyMessagesSecret":       {"KYCALENDAR_KYMESSAGES_SECRET_FILE", func(c *Config) string { return digest(c.Calendar.KyMessagesSecret) }},
 	"Calendar.KyMessagesAllowPrivate": {"KYCALENDAR_KYMESSAGES_ALLOW_PRIVATE", func(c *Config) string { return strconv.FormatBool(c.Calendar.KyMessagesAllowPrivate) }},
 
+	"Tenancy.Multi":    {"KYCALENDAR_TENANCY", func(c *Config) string { return strconv.FormatBool(c.Tenancy.Multi) }},
+	"Tenancy.StaffOrg": {"KYCALENDAR_STAFF_ORG_ID", func(c *Config) string { return c.Tenancy.StaffOrg }},
+	// Cells compare as a set: another order is the same setting.
+	"Tenancy.Cells": {"KY_CELLS", func(c *Config) string {
+		b, _ := json.Marshal(slices.Sorted(slices.Values(c.Tenancy.Cells)))
+		return string(b)
+	}},
+
 	"ObjectStorage.Endpoint":  {"KYCALENDAR_S3_ENDPOINT", func(c *Config) string { return c.ObjectStorage.Endpoint }},
 	"ObjectStorage.Bucket":    {"KYCALENDAR_S3_BUCKET", func(c *Config) string { return c.ObjectStorage.Bucket }},
 	"ObjectStorage.Region":    {"KYCALENDAR_S3_REGION", func(c *Config) string { return c.ObjectStorage.Region }},

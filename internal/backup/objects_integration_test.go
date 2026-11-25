@@ -39,7 +39,7 @@ func TestMultiTenantRunAgainstVersionedS3(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	t.Cleanup(func() { _ = client.DeletePrefix(context.Background(), backup.ObjectPrefix) })
+	t.Cleanup(func() { _ = client.DeletePrefix(context.Background(), backup.ObjectPrefix(testCell)) })
 	cfg, st, rc := multiInstance(t, objects)
 	before := tree(t, cfg.Database.DataDir)
 	var keys []string
@@ -50,7 +50,7 @@ func TestMultiTenantRunAgainstVersionedS3(t *testing.T) {
 		}
 		keys = append(keys, res.LocalPath)
 	}
-	page, err := client.ListObjectVersions(ctx, backup.ObjectPrefix, s3.VersionCursor{})
+	page, err := client.ListObjectVersions(ctx, backup.ObjectPrefix(testCell), s3.VersionCursor{})
 	if err != nil {
 		t.Fatal(err)
 	}

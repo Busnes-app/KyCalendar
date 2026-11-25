@@ -8,8 +8,11 @@
     default organisation.
   - It adds database guards so a row can never name a missing organisation or change
     organisation.
-  - `KYCALENDAR_TENANCY` accepts only `single` (or unset): any other value refuses to start,
-    because multi-tenant mode is not built yet.
+  - `KYCALENDAR_TENANCY=multi` now checks everything multi-tenant mode needs and names each
+    missing setting (PostgreSQL, `KY_KYSIGNON_ISSUER`, `KY_ENCRYPTION_KEY`, `KYCALENDAR_S3_*`,
+    `KYCALENDAR_STAFF_ORG_ID`, `KY_CELLS`), then still refuses to start until the hosted
+    end-to-end acceptance passes. `KYCALENDAR_STAFF_ORG_ID` and `KY_CELLS` are refused on a
+    single-tenant install.
   - Erasure groundwork hands restored shared personal calendars to an eligible member of the
     same organisation, preserving content and sync state. Audit or slug conflicts keep the data
     for retry with the erased account deactivated; hosted startup remains gated.
@@ -24,7 +27,8 @@
     `KYCALENDAR_BACKUP_KEEP` copies there and leaves nothing under `KY_DATA_DIR`. Single-tenant
     backups are unchanged.
   - Migration 42 mirrors each organisation's cell (KyIdentity's `home_region`). A deployment
-    with cells serves only organisations of its own cells, on every way in.
+    with cells serves only organisations of its own cells, on every way in; multi-tenant backup
+    copies live under `cells/<cell>/` in the bucket.
   - **Upgrade impact:** the migration adds a column and its checks to the calendar object
     table, which on PostgreSQL validates every row once. Allow for it on a large install.
 
