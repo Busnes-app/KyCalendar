@@ -15,11 +15,6 @@ import (
 	"time"
 )
 
-// kyidentityBeforeStep6 is the pinned KyIdentity commit whose platform API cannot yet enable an
-// app for an org (its tenancy build step 6, org_apps). While apps.lock pins it, the app checks
-// of S1-S3 skip; pinning any other commit without step 6 fails the run instead.
-const kyidentityBeforeStep6 = "87c485ddf5cdc8e8e0ea43f7803c577fb558db13"
-
 const (
 	calX     = "https://cal-x.e2e.test"
 	calY     = "https://cal-y.e2e.test"
@@ -36,6 +31,7 @@ type org struct {
 type person struct {
 	name, org, email, password, userID string
 	holder                             bool
+	browser                            *browser
 }
 
 func (p *person) mailbox() string { return p.name + "@" + suiteMail }
@@ -84,6 +80,7 @@ func TestScenarios(t *testing.T) {
 		b.must(200, "GET", issuer+"/api/auth/csrf", nil, nil)
 		b.must(200, "POST", issuer+"/api/auth/activate", map[string]string{"token": sink.activation(p.email), "password": p.password}, nil)
 		b.signIn(p.email, p.password)
+		p.browser = b
 	}
 	for _, key := range []string{"A", "B", "C"} {
 		members := portal.must(200, "GET", "/orgs/"+orgs[key].id+"/members", nil)
@@ -93,28 +90,20 @@ func TestScenarios(t *testing.T) {
 	}
 
 	// Before any app is enabled for them, KyIdentity lets no member into an app.
-	if r := s.appSignIn(calX, people["a1"]); r.signedIn || r.idpError != "access_denied" {
+	if _, r := people["a1"].signInToApp(t, calX); r.signedIn || r.idpError != "access_denied" {
 		t.Errorf("a1 at X before app enablement: %+v", r)
 	}
 
-	step6 := enableApps(t, s, billing, orgs)
-	need := func(t *testing.T) {
-		if !step6 {
-			t.Skip("needs KyIdentity step 6: its platform API refuses `apps` (400 invalid_request) at the pinned commit")
-		}
+	enableApps(billing, orgs)
+	// KyMessages polls every five minutes and has no poll at sign-in; its start is a full sync.
+	if out, err := s.compose("restart", "kymessages"); err != nil {
+		t.Fatalf("restart kymessages: %v\n%s", err, out)
 	}
-	if step6 {
-		// KyMessages polls every five minutes and has no poll at sign-in; its start is a full sync.
-		if out, err := s.compose("restart", "kymessages"); err != nil {
-			t.Fatalf("restart kymessages: %v\n%s", err, out)
-		}
-		if out, err := s.compose("up", "-d", "--wait", "kymessages"); err != nil {
-			t.Fatalf("kymessages: %v\n%s", err, out)
-		}
+	if out, err := s.compose("up", "-d", "--wait", "kymessages"); err != nil {
+		t.Fatalf("kymessages: %v\n%s", err, out)
 	}
 
 	t.Run("S1 two orgs", func(t *testing.T) {
-		need(t)
 		for _, c := range []struct {
 			app  string
 			who  []string
@@ -124,19 +113,19 @@ func TestScenarios(t *testing.T) {
 			{messages, []string{"a1", "a2", "b1", "c1"}, true},
 		} {
 			for _, name := range c.who {
-				if r := s.appSignIn(c.app, people[name]); !r.signedIn {
+				if _, r := people[name].signInToApp(t, c.app); !r.signedIn {
 					t.Errorf("%s at %s (org %s): not signed in: %+v", name, c.app, people[name].org, r)
 				}
 			}
 		}
+		notRun(t, "KyCalendar OIDC callbacks on a different replica: X uses cookie affinity for its process-local nonce key")
 		notRun(t, "each app's first storage report reaching KyIdentity: no API shows an org's reported usage")
 	})
 
 	t.Run("S2 cells", func(t *testing.T) {
-		need(t)
 		// Refused as an org the deployment does not serve: KyCalendar's org gate answer.
 		for _, c := range []struct{ app, who string }{{calX, "c1"}, {calY, "a1"}, {calY, "b1"}} {
-			r := s.appSignIn(c.app, people[c.who])
+			_, r := people[c.who].signInToApp(t, c.app)
 			if r.signedIn || r.status != http.StatusForbidden || !strings.Contains(r.body, `"org_not_active"`) {
 				t.Errorf("%s at %s: want 403 org_not_active, got %+v", c.who, c.app, r)
 			}
@@ -146,8 +135,7 @@ func TestScenarios(t *testing.T) {
 	})
 
 	t.Run("S3 invitation within one org, delivered directly", func(t *testing.T) {
-		need(t)
-		a1b, a2b := s.signedIn(calX, people["a1"]), s.signedIn(calX, people["a2"])
+		a1b, a2b := people["a1"].signedIn(t, calX), people["a2"].signedIn(t, calX)
 		a1, a2 := a1b.me(calX), a2b.me(calX)
 		var pw struct {
 			Password string `json:"password"`
@@ -190,26 +178,14 @@ func TestScenarios(t *testing.T) {
 	})
 }
 
-// enableApps enables kycalendar and kymessages for every org, the spec's way: PATCH with
-// `apps`. It reports false only while the pinned KyIdentity predates step 6.
-func enableApps(t *testing.T, s *suite, billing platform, orgs map[string]*org) bool {
-	t.Helper()
+// enableApps enables both apps for every org through the platform API.
+func enableApps(billing platform, orgs map[string]*org) {
 	for _, o := range orgs {
-		code, ans := billing.call("PATCH", "/orgs/"+o.id, map[string]any{"revision": o.revision + 1, "apps": map[string]any{
+		billing.must(http.StatusOK, "PATCH", "/orgs/"+o.id, map[string]any{"revision": o.revision + 1, "apps": map[string]any{
 			"kycalendar": map[string]any{"enabled": true, "quotas": map[string]any{}},
 			"kymessages": map[string]any{"enabled": true, "quotas": map[string]any{}}}})
-		if code == http.StatusBadRequest && ans["error"] == "invalid_request" {
-			if pin := s.pins["kyidentity"].sha; pin != kyidentityBeforeStep6 {
-				t.Fatalf("KyIdentity %s still refuses `apps` on PATCH /platform/v1/orgs: step 6 is not in this pin, or its API differs from the spec", pin)
-			}
-			return false
-		}
-		if code != http.StatusOK {
-			t.Fatalf("enable apps for %s: %d %v", o.name, code, ans)
-		}
 		o.revision++
 	}
-	return true
 }
 
 // notRun records a check this run cannot make, so a reader sees it was not proven.
@@ -252,10 +228,11 @@ type signIn struct {
 	body     string
 }
 
-// appSignIn signs p in at app through KyIdentity in a fresh browser, as a person would.
-func (s *suite) appSignIn(app string, p *person) signIn {
-	b := s.browser()
-	return b.appSignIn(app, p)
+// signInToApp uses the IdP session established during activation and password sign-in.
+func (p *person) signInToApp(t *testing.T, app string) (*browser, signIn) {
+	b := *p.browser
+	b.t = t
+	return &b, b.appSignIn(app, p)
 }
 
 func (b *browser) appSignIn(app string, p *person) signIn {
@@ -294,11 +271,11 @@ func (b *browser) appSignIn(app string, p *person) signIn {
 }
 
 // signedIn is a browser p has signed in to app, or the test stops.
-func (s *suite) signedIn(app string, p *person) *browser {
-	s.t.Helper()
-	b := s.browser()
-	if r := b.appSignIn(app, p); !r.signedIn {
-		s.t.Fatalf("%s at %s: %+v", p.name, app, r)
+func (p *person) signedIn(t *testing.T, app string) *browser {
+	t.Helper()
+	b, result := p.signInToApp(t, app)
+	if !result.signedIn {
+		t.Fatalf("%s at %s: %+v", p.name, app, result)
 	}
 	return b
 }

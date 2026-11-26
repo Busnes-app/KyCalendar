@@ -19,9 +19,10 @@ repository as a copy.
   nothing else: `front` (Caddy), which serves `id`, `cal-x`, `cal-y` and `messages.e2e.test` over
   TLS from a CA the driver makes per run (apps trust it through `SSL_CERT_FILE`); KyIdentity's
   platform API; and the `mail` sink's API (Mailpit, STARTTLS, alias `smtp.e2e.test`). Compose mounts secrets root-owned
-  and world-readable, so services that want private key files copy them at start.
-- `smoke_test.go` (`//go:build kye2e`): `start` brings one install up (images, `recordMulti`,
-  the bootstrap administrator's forced password change, the `kycalendar` and `kymessages` OIDC
+  and world-readable, so services that want private key files copy them at start. Caddy keeps a
+  browser on one X replica for OIDC because the pinned KyCalendar signs nonces with a process-local key.
+- `smoke_test.go` (`//go:build kye2e`): `start` brings one install up (images, KyIdentity's
+  fresh PostgreSQL initialization, the bootstrap administrator's forced password change, the `kycalendar` and `kymessages` OIDC
   clients and `kycalendar`'s region map `e2e-1` → X, `e2e-2` → Y). `TestSmoke`, one row per app in
   `targets`: each pinned `kye2e` image starts in multi mode against the `.test` issuer
   (KyCalendar X as two replicas on one database in cell `e2e-1`, Y in `e2e-2`; KyIdentity;
@@ -33,20 +34,16 @@ repository as a copy.
   suite mail domain set over the admin API, two platform tokens from KyIdentity's CLI (billing
   `orgs:*`, portal `members:*`), orgs A, B (`e2e-1`) and C (`e2e-2`) with holders a1, b1, c1 and
   member a2, each with a mailbox address on `mail.e2e.test`; activation from the mailed link and
-  password sign-in (E8); a1 refused at X with `access_denied` before any app is enabled.
-  App enablement is the spec's `PATCH /platform/v1/orgs/{id}` with `apps`. While apps.lock pins
-  `kyidentityBeforeStep6` and KyIdentity refuses it, the app checks of S1-S3 skip ("needs
-  KyIdentity step 6"); any other pin that refuses it fails the run. Checks the run cannot make
-  are logged `NOT RUN:`. KyPost rows are not run (open question 4).
-- `recordMulti`: a KyIdentity defect workaround, the only SQL the harness writes. KyIdentity's
-  schema records `tenancy_mode` `single` on every new database and nothing records `multi`, so
-  it refuses every multi start. The driver runs KyIdentity's migrations through its CLI, then
-  sets that one row. It fails once KyIdentity records the mode itself; then delete it.
+  password sign-in (E8), with one cookie jar per person reused for their app sign-ins. The test
+  clients permit all active users of an entitled org. a1 is refused at X with `access_denied`
+  before any app is enabled.
+  The scenario enables both apps with `PATCH /platform/v1/orgs/{id}` and exercises the app checks
+  of S1–S3. Checks the run cannot make are logged `NOT RUN:`. KyPost rows are not run (open question 4).
 
 ## Local Contracts
 - Nothing here creates, suspends or deletes an org, or enables an app, by any path but
   KyIdentity's platform API (E5).
-- Secrets are random per run, set by the driver; none is committed.
+- The driver generates secrets per run. Compose sets `PUSH_RELAY_URL` and `APNS_RELAY_URL` to empty for each test app.
 - Runs only from `run.sh`: on Major `E2E_BUILDER=<memory-capped buildx builder> kslot e2e/suite/run.sh`,
   and in `.github/workflows/suite-e2e.yml` (manual and nightly, never a required check).
 
