@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/Busnes-app/ky-primitives/password"
@@ -15,12 +16,20 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
+const testPassword = "SuperSecretPass123!"
+
+// testPasswordHash is testPassword at Argon2id's floor cost, made once: loginAs only needs a
+// session, and each derivation at the default cost takes about 0.2 s under -race. Tests of
+// passwords themselves hash with password.Hash.
+var testPasswordHash = sync.OnceValues(func() (string, error) {
+	return password.HashWith(testPassword, password.Params{Memory: 8 * 1024, Time: 1, Threads: 1})
+})
+
 // loginAs creates a user with the given role and returns its session cookie.
 func loginAs(t *testing.T, srv *api.Server, st store.Store, username, role string) *http.Cookie {
 	t.Helper()
 
-	const testPassword = "SuperSecretPass123!"
-	hash, err := password.Hash(testPassword)
+	hash, err := testPasswordHash()
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
