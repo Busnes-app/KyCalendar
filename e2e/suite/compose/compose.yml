@@ -15,6 +15,8 @@ x-kycalendar: &kycalendar
   secrets: [s3_secret, e2e_ca]
   environment: &kycalendar-env
     KYCALENDAR_TENANCY: multi
+    PUSH_RELAY_URL: ""
+    APNS_RELAY_URL: ""
     KY_ENV: production
     KY_DB_DRIVER: postgres
     KY_SESSION_SECRET: ${E2E_SESSION_SECRET:?}
@@ -90,6 +92,8 @@ services:
     entrypoint: ["sh", "-c", "install -m 600 /run/secrets/kyidentity_rsa /run/secrets/kyidentity_vapid /data/ && exec kyidentity \"$$@\"", "--"]
     environment:
       KYIDENTITY_TENANCY: multi
+      PUSH_RELAY_URL: ""
+      APNS_RELAY_URL: ""
       KYIDENTITY_REPLICATED: "true"
       KYIDENTITY_ISSUER_URL: https://id.e2e.test
       KYIDENTITY_DATABASE_URL: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kyidentity?sslmode=disable
@@ -162,6 +166,8 @@ services:
     entrypoint: ["sh", "-c", "install -m 600 /run/secrets/kymessages_seal /app/data/ && exec /app/kymessages \"$$@\"", "--"]
     environment:
       KY_TENANCY_MODE: multi
+      PUSH_RELAY_URL: ""
+      APNS_RELAY_URL: ""
       KY_CELLS: e2e-1,e2e-2
       KY_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
       KY_DB_DRIVER: postgres
@@ -208,7 +214,10 @@ configs:
       }
       https://cal-x.e2e.test {
         import cert
-        reverse_proxy kycalendar-x1:8080 kycalendar-x2:8080
+        reverse_proxy kycalendar-x1:8080 kycalendar-x2:8080 {
+          # The pinned KyCalendar signs OIDC nonce cookies with a process-local key.
+          lb_policy cookie kye2e_replica
+        }
       }
       https://cal-y.e2e.test {
         import cert

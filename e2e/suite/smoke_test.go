@@ -146,7 +146,6 @@ func start(t *testing.T) *suite {
 		}
 	})
 
-	recordMulti(t, s.compose)
 	// KyMessages will not serve before its first sync with KyIdentity, which needs a client.
 	if out, err := s.compose("up", "-d", "--wait", "--wait-timeout", "180", "kyidentity", "front", "mail"); err != nil {
 		t.Fatalf("kye2e KyIdentity did not start in multi mode: %v\n%s", err, out)
@@ -205,7 +204,26 @@ func registerClient(b *browser, adminPass, id string, redirects ...string) strin
 	if err := json.Unmarshal(raw, &ans); code != 200 || err != nil || ans.Secret == "" {
 		b.t.Fatalf("client %s: %d and no secret", id, code) // the body holds the secret: never logged
 	}
-	return ans.Secret
+	// App entitlement and app access are separate. Once an org enables the app,
+	// every active member of that org should have access in this scenario.
+	var registry struct {
+		Records []struct {
+			ID, ClientID string
+			Revision     int
+		}
+	}
+	if err := json.Unmarshal(b.must(200, "GET", issuer+"/api/admin/app-registry", nil, nil), &registry); err != nil {
+		b.t.Fatal(err)
+	}
+	for _, record := range registry.Records {
+		if record.ClientID == id {
+			b.admin(adminPass, 200, "PUT", issuer+"/api/admin/app-registry/"+record.ID+"/access-policy",
+				map[string]any{"mode": "all_active_users", "enabled": true, "revision": record.Revision})
+			return ans.Secret
+		}
+	}
+	b.t.Fatalf("no app registry record for %s", id)
+	return ""
 }
 
 // tlsFiles makes the run's CA and one certificate for the .test names front and the mail sink serve.
@@ -240,35 +258,6 @@ func tlsFiles(t *testing.T) (ca, cert, key string) {
 	}
 	enc := func(typ string, b []byte) string { return string(pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: b})) }
 	return enc("CERTIFICATE", caDER), enc("CERTIFICATE", leafDER), enc("PRIVATE KEY", keyDER)
-}
-
-// recordMulti works around a KyIdentity defect: its schema records tenancy_mode 'single' on
-// every new database and nothing records 'multi', so a multi-tenant start always refuses
-// ("this database was created single-tenant"). It runs KyIdentity's own migrations through
-// its CLI, then sets the one row. It fails once KyIdentity records the mode itself.
-func recordMulti(t *testing.T, compose func(...string) (string, error)) {
-	t.Helper()
-	if out, err := compose("up", "-d", "--wait", "postgres"); err != nil {
-		t.Fatalf("postgres: %v\n%s", err, out)
-	}
-	if out, err := compose("run", "--rm", "--no-deps", "kyidentity", "platform-token", "list"); err != nil {
-		t.Fatalf("kyidentity migrations: %v\n%s", err, out)
-	}
-	psql := func(sql string) string {
-		out, err := compose("exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "kyidentity", "-tAc", sql)
-		if err != nil {
-			t.Fatalf("psql: %v\n%s", err, out)
-		}
-		return strings.TrimSpace(out)
-	}
-	switch mode := psql("SELECT value FROM system_settings WHERE key='tenancy_mode'"); mode {
-	case "single":
-		psql("UPDATE system_settings SET value='multi' WHERE key='tenancy_mode'")
-	case "multi":
-		t.Fatal("KyIdentity now records tenancy_mode multi itself: delete recordMulti")
-	default:
-		t.Fatalf("kyidentity tenancy_mode %q", mode)
-	}
 }
 
 // lock reads apps.lock: <app> <repository> <full SHA> per line.

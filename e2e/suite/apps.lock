@@ -2,5 +2,5 @@
 # Pin only a commit that carries the app's merged kye2e gate. Not pinned yet, so not in the
 # smoke run: kypost (no kye2e gate on its default branch).
 kycalendar https://github.com/Busnes-app/KyCalendar.git 27ae9e12aa31a63e1b360cc3889b118bc147fb50
-kyidentity https://github.com/Busnes-app/KyIdentity-server.git 87c485ddf5cdc8e8e0ea43f7803c577fb558db13
+kyidentity https://github.com/Busnes-app/KyIdentity-server.git 6d03fd6befa2624c3e5c51446208339e4240b978
 kymessages https://github.com/Busnes-app/KyMessages-Native.git 92025764d005197d831236eb251594049c34d896
