@@ -1,7 +1,7 @@
 # Cross-app multi-tenant end-to-end test, design
 
-Date: 2026-11-24. Status: design merged (#219). KyCalendar's `kye2e` gate and the harness scaffold (`e2e/suite/`, smoke run only) are built, and no refusal is
-lifted by it. It designs the last gate of the tenancy spec's step 6
+Date: 2026-11-24. Status: design merged (#219). The `kye2e` gates of KyCalendar, KyIdentity and KyMessages are merged and pinned, and the
+harness (`e2e/suite/`) runs a smoke check of all three. No release refusal is lifted by it. It designs the last gate of the tenancy spec's step 6
 (`2026-11-20-tenancy-design.md`, Phased build plan, step 6): "An end-to-end run with KyIdentity in
 multi-tenant mode, KyPost and KyMessages: two orgs, an invitation within one delivered directly and
 one across them by mail, and suspension and deletion of one."
@@ -48,11 +48,13 @@ Code references are to `origin/<default>` as fetched on 2026-11-24:
 | E5 | How orgs are created, suspended and deleted | Through KyIdentity's platform provisioning API (its PR 4), called by the harness with a platform token | That is the production path. Seeding KyIdentity's database with SQL would skip its triggers, revisions and outbox, so the run would prove nothing about provisioning. KyIdentity's own test constructors panic outside a test binary (`internal/store/orgstore.go:80-83`, `testing.Testing()`). |
 | E6 | Mail between hosted mailboxes | Real SMTP through KyPost's outbound path and its MX host, with an in-harness DNS zone (`e2e.test`) holding MX, SPF and DKIM records | KyCalendar takes an inbound invitation only when KyPost marks it `dkim_aligned` (tenancy spec, Sharing, invitations and free/busy; open question 6). Delivering mail inside KyPost without SMTP would not test that. |
 | E7 | Restore | KyCalendar's own `restore` from the bucket copy, with a KyRecovery-server under a synthetic ceremony whose test shares the harness holds | `docs/RESTORE.md:161` allows shares on stdin "only for a rehearsal with synthetic test shares". The run uses its own ceremony, never real cards. |
-| E8 | Member sign-in in the driver | The driver signs members in through KyIdentity's real OIDC flow over HTTP. | Unverified: whether KyIdentity lets a customer member sign in without a passkey in multi-tenant mode. If it does not, the driver carries a software WebAuthn authenticator. Settle this when KyIdentity's PR 4 lands. |
+| E8 | Member sign-in in the driver | The driver signs members in through KyIdentity's real OIDC flow over HTTP. | Settled 2026-11-25 (KyIdentity tenancy spec, build step 4): a customer member signs in with a password unless staff require a second factor, so no software passkey is needed. |
 
 ## Topology
 
-One run, one Docker network, nothing published to the host except the driver's port:
+One run, one Docker network, nothing published to the host except a loopback port the driver uses to reach
+KyIdentity (and, with the scenarios, the mail sink); `front` serves the `.test` names over TLS from a
+per-run CA:
 
 | Service | Instances | Cells | Notes |
 |---|---|---|---|
@@ -69,7 +71,10 @@ One run, one Docker network, nothing published to the host except the driver's p
 
 Memory budget: 5 GB across the containers; the driver refuses a service without `mem_limit` and an
 equal `memswap_limit`, or a total over 5 GiB, before anything starts. Limits today: PostgreSQL
-1 GiB, each KyCalendar 512 MiB, the release refusal run 256 MiB. Measured at the end of the first
+1 GiB, each KyCalendar 512 MiB, KyIdentity 512 MiB, KyMessages 512 MiB, the KyCalendar release
+refusal run 256 MiB, the other two 128 MiB each, and `front` 64 MiB: 4,160 MiB. Measured at the
+end of the three-app smoke run (Major, 2026-11-25): PostgreSQL 101 MiB, KyCalendar 8, 72 and
+72 MiB, KyIdentity 150 MiB, KyMessages 75 MiB, `front` 11 MiB. Measured at the end of the first
 smoke run (Major, 2026-11-25): PostgreSQL 49 MiB, KyCalendar X replicas 8 and 76 MiB, Y 72 MiB.
 
 ## Mechanism: lifting a refusal only in a test build
@@ -168,18 +173,18 @@ replayed. Nothing after S7 uses B except the restore of K.
 
 ## What blocks running it
 
-| App | Must land first | Status on 2026-11-24 |
+| App | Must land first | Status (updated 2026-11-25) |
 |---|---|---|
-| KyIdentity | **PR 4, platform provisioning API**: org create, members, mailbox address, suspend, resume, delete (KyIdentity tenancy spec, Phased build plan, step 4) | Not built: no `platform/v1/orgs` route on `master`. Orgs exist only through test constructors (`internal/store/orgstore.go:73-105`). |
+| KyIdentity | **PR 4, platform provisioning API**: org create, members, mailbox address, suspend, resume, delete (KyIdentity tenancy spec, Phased build plan, step 4) | Merged (#298, #299). |
 | KyIdentity | **`org_apps` written by the platform API** (step 6, Entitlements), so `/api/suite/orgs` lists the orgs with apps enabled | Not built: only `EnableOrgAppForTest` (`internal/store/orgstore.go:96-105`) writes it. |
-| KyIdentity | The `kye2e` gate (Mechanism) | Not built |
+| KyIdentity | The `kye2e` gate (Mechanism) | Merged (#297), pinned. A fresh database records `tenancy_mode` `single` (`internal/store/tenancy.go:64-65`) and nothing records `multi`, so a multi start always refuses; the harness's `recordMulti` sets that row until KyIdentity does |
 | KyCalendar | The `kye2e` gate, and open question 12 (handover slug collisions), which the tenancy spec keeps as a hosted acceptance gate | Gate built 2026-11-25 (`internal/config/gate_*.go`, `scripts/check-test-build-tag.sh`, `scripts/check-release-image.sh`); release builds still refuse multi. Question 12 is open |
 | KyPost | **PR 7, hosted mail** (allocation from the mailbox address, M's masked changes, per-org limits). It waits on MH1–MH7, RX 1–5 and MH9 (KyPost tenancy spec, amendments of 2026-11-22). | RX 1–5 built (receiving tier spec status). MH1, MH2 and MH3 built. MH4 and MH6 partly built, with the rest in open PRs #725 and #726. MH5 built (#722). MH7 not built. MH9 (cells) not built: no `KYPOST_REGION` or `KY_CELLS` in code. |
 | KyPost | An answer to KyCalendar's open question 6: does KyPost mark mail between two hosted mailboxes `dkim_aligned`? | Unverified. S4 is the test that answers it. |
 | KyPost | The `kye2e` gate, including the `BootstrapAdmin` change | Not built |
-| KyMessages | The `kye2e` gate with the `KY_ATTACHMENTS_S3_*` requirement (`internal/config/config.go:278-279`) | Not built. Its tenancy build PRs #35, #38–#42 and #44–#51 are merged. Whether they cover every row of its spec's §12 is unverified, and the spec still lists "hosted qualification" as gated. |
+| KyMessages | The `kye2e` gate with the `KY_ATTACHMENTS_S3_*` requirement (`internal/config/config.go:278-279`) | Merged (#52), pinned. Its tenancy build PRs #35, #38–#42 and #44–#51 are merged. Whether they cover every row of its spec's §12 is unverified, and the spec still lists "hosted qualification" as gated. |
 | KyRecovery | A synthetic ceremony that a harness can run without a person | Unverified |
-| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25 with the smoke run (KyCalendar only: no other app has a merged gate). S1–S3 start once KyIdentity PR 4 lands. |
+| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25. The smoke run covers KyCalendar, KyIdentity and KyMessages; KyPost joins when its gate merges. |
 
 Order: the four gate PRs are independent and small, and each can merge with its release check while
 nothing yet builds with the tag. KyIdentity PR 4 unblocks S1, S2, S3, S5, S6 and S7 (S7 for

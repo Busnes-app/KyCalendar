@@ -1,4 +1,6 @@
 # The commits the suite end-to-end run builds, one per line: <app> <repository> <full SHA>.
 # Pin only a commit that carries the app's merged kye2e gate. Not pinned yet, so not in the
-# smoke run: kyidentity, kypost, kymessages (no kye2e gate on their default branch).
+# smoke run: kypost (no kye2e gate on its default branch).
 kycalendar https://github.com/Busnes-app/KyCalendar.git 27ae9e12aa31a63e1b360cc3889b118bc147fb50
+kyidentity https://github.com/Busnes-app/KyIdentity-server.git 87c485ddf5cdc8e8e0ea43f7803c577fb558db13
+kymessages https://github.com/Busnes-app/KyMessages-Native.git 92025764d005197d831236eb251594049c34d896
