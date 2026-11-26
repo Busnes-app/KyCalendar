@@ -72,7 +72,8 @@ per-run CA:
 Memory budget: 5 GB across the containers; the driver refuses a service without `mem_limit` and an
 equal `memswap_limit`, or a total over 5 GiB, before anything starts. Limits today: PostgreSQL
 1 GiB, each KyCalendar 512 MiB, KyIdentity 512 MiB, KyMessages 512 MiB, the KyCalendar release
-refusal run 256 MiB, the other two 128 MiB each, and `front` 64 MiB: 4,160 MiB. Measured at the
+refusal run 256 MiB, the other two 128 MiB each, `front` 64 MiB and the mail sink 64 MiB:
+4,224 MiB. Measured at the
 end of the three-app smoke run (Major, 2026-11-25): PostgreSQL 101 MiB, KyCalendar 8, 72 and
 72 MiB, KyIdentity 150 MiB, KyMessages 75 MiB, `front` 11 MiB. Measured at the end of the first
 smoke run (Major, 2026-11-25): PostgreSQL 49 MiB, KyCalendar X replicas 8 and 76 MiB, Y 72 MiB.
@@ -183,8 +184,9 @@ replayed. Nothing after S7 uses B except the restore of K.
 | KyPost | An answer to KyCalendar's open question 6: does KyPost mark mail between two hosted mailboxes `dkim_aligned`? | Unverified. S4 is the test that answers it. |
 | KyPost | The `kye2e` gate, including the `BootstrapAdmin` change | Not built |
 | KyMessages | The `kye2e` gate with the `KY_ATTACHMENTS_S3_*` requirement (`internal/config/config.go:278-279`) | Merged (#52), pinned. Its tenancy build PRs #35, #38–#42 and #44–#51 are merged. Whether they cover every row of its spec's §12 is unverified, and the spec still lists "hosted qualification" as gated. |
+| KyCalendar, KyMessages | The meeting PUT contract: KyCalendar sends the organizer as `sub`, KyMessages reads `organizer_sub`, so the organizer is not added to the room. Its secret is KyMessages' `KY_MEETING_SYNC_SECRET` (or `KY_KYIDENTITY_HMAC_SECRET`), not KyCalendar's pair secret | Found 2026-11-25 while writing S3, unfixed; S3's meeting check is not run |
 | KyRecovery | A synthetic ceremony that a harness can run without a person | Unverified |
-| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25. The smoke run covers KyCalendar, KyIdentity and KyMessages; KyPost joins when its gate merges. |
+| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25. The smoke run covers KyCalendar, KyIdentity and KyMessages; KyPost joins when its gate merges. `TestScenarios` (2026-11-25) provisions S1 through the platform API and signs every member in at KyIdentity; the app checks of S1–S3 skip until KyIdentity step 6 is pinned, and checks the run cannot make are logged `NOT RUN:`. |
 
 Order: the four gate PRs are independent and small, and each can merge with its release check while
 nothing yet builds with the tag. KyIdentity PR 4 unblocks S1, S2, S3, S5, S6 and S7 (S7 for

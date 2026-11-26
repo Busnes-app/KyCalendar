@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,22 +67,51 @@ var targets = []target{
 // The first check: each pinned kye2e image starts in multi mode against the .test issuer, the
 // release image at the same commit refuses, and the test image refuses any other issuer.
 func TestSmoke(t *testing.T) {
-	pins := lock(t)
+	s := start(t)
+	for _, a := range targets {
+		for _, svc := range a.services {
+			if a.ready == "" {
+				continue // healthy is all it reports (compose up --wait)
+			}
+			if out, err := s.compose("exec", "-T", svc, "wget", "-q", "-O", "-", a.ready); err != nil || !strings.Contains(out, `"ready"`) {
+				t.Errorf("%s not ready: %v %s", svc, err, out)
+			}
+		}
+		refuses(t, s.compose, a.refusal, "run", "--rm", "--no-deps", a.release)
+		refuses(t, s.compose, a.refuseIs, "run", "--rm", "--no-deps", "-e", a.issuer+"=https://id.example", a.services[0])
+	}
+}
+
+// suite is one running install: every pinned kye2e image in multi mode, KyIdentity's bootstrap
+// administrator signed in, and each app's OIDC client registered.
+type suite struct {
+	t         *testing.T
+	pins      map[string]app
+	compose   func(...string) (string, error)
+	web       *http.Transport // reaches every *.e2e.test name through front, trusting the run's CA
+	adminPass string
+	staff     *browser
+}
+
+// start builds the pinned images and brings the install up. The stack is removed when t ends.
+func start(t *testing.T) *suite {
+	s := &suite{t: t, pins: lock(t)}
 	ca, cert, key := tlsFiles(t)
 	adminPass := "Aa1!" + random(12)
-	env := append(os.Environ(), "E2E_CA="+ca, "E2E_TLS_CERT="+cert, "E2E_TLS_KEY="+key, "E2E_PROJECT="+fmt.Sprintf("kye2e-%d", os.Getpid()), "E2E_STAFF_ORG_ID="+staffOrgID,
+	env := append(os.Environ(), "E2E_CA="+ca, "E2E_TLS_CERT="+cert, "E2E_TLS_KEY="+key,
+		"E2E_PROJECT="+fmt.Sprintf("kye2e-%d-%s", os.Getpid(), strings.ToLower(t.Name())), "E2E_STAFF_ORG_ID="+staffOrgID,
 		"E2E_SESSION_SECRET="+random(32), "E2E_ENCRYPTION_KEY="+random(32), "E2E_ADMIN_PASSWORD="+adminPass,
 		"E2E_POSTGRES_PASSWORD="+random(16), "E2E_S3_SECRET="+random(16), "E2E_KYIDENTITY_SECRET_KEY="+random(32),
 		"E2E_KYIDENTITY_RSA="+rsaKey(t), "E2E_KYIDENTITY_VAPID="+vapidKey(t), "E2E_KYMESSAGES_SEAL="+random(32))
 	for _, a := range targets {
-		pin, ok := pins[a.name]
+		pin, ok := s.pins[a.name]
 		if !ok {
 			t.Fatalf("apps.lock pins no %s", a.name)
 		}
 		up := strings.ToUpper(a.name)
 		env = append(env, up+"_IMAGE=kye2e/"+a.name+":"+pin.sha, up+"_RELEASE_IMAGE=kye2e-release/"+a.name+":"+pin.sha)
 	}
-	compose := func(args ...string) (string, error) {
+	s.compose = func(args ...string) (string, error) {
 		// A one-off container that serves instead of refusing never exits on its own.
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 		defer cancel()
@@ -90,9 +120,9 @@ func TestSmoke(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
-	checkMemory(t, compose)
+	checkMemory(t, s.compose)
 	for _, a := range targets {
-		pin := pins[a.name]
+		pin := s.pins[a.name]
 		img, rel := "kye2e/"+a.name+":"+pin.sha, "kye2e-release/"+a.name+":"+pin.sha
 		build(t, img, "-f", "images/"+a.name+".Dockerfile", "--build-arg", "REPO="+pin.repo, "--build-arg", "SHA="+pin.sha, "images")
 		build(t, rel, pin.repo+"#"+pin.sha) // the app's own Dockerfile: its release build
@@ -102,47 +132,43 @@ func TestSmoke(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		if t.Failed() {
-			out, _ := compose("logs", "--no-color")
+			out, _ := s.compose("logs", "--no-color")
 			t.Log(out)
 		}
 		// The memory figures the spec's budget records.
-		if ids, err := compose("ps", "-q"); err == nil && strings.TrimSpace(ids) != "" {
+		if ids, err := s.compose("ps", "-q"); err == nil && strings.TrimSpace(ids) != "" {
 			args := append([]string{"stats", "--no-stream", "--format", "{{.Name}} {{.MemUsage}}"}, strings.Fields(ids)...)
 			out, _ := exec.Command("docker", args...).CombinedOutput()
 			t.Logf("memory:\n%s", out)
 		}
-		if out, err := compose("down", "-v", "--remove-orphans"); err != nil {
+		if out, err := s.compose("down", "-v", "--remove-orphans"); err != nil {
 			t.Errorf("compose down: %v\n%s", err, out)
 		}
 	})
 
-	recordMulti(t, compose)
+	recordMulti(t, s.compose)
 	// KyMessages will not serve before its first sync with KyIdentity, which needs a client.
-	if out, err := compose("up", "-d", "--wait", "--wait-timeout", "180", "kyidentity", "front"); err != nil {
+	if out, err := s.compose("up", "-d", "--wait", "--wait-timeout", "180", "kyidentity", "front", "mail"); err != nil {
 		t.Fatalf("kye2e KyIdentity did not start in multi mode: %v\n%s", err, out)
 	}
-	staff := newBrowser(t, "http://"+hostPort(t, compose, "kyidentity", "5867"))
-	adminPass = firstAdminSignIn(staff, adminPass)
-	env = append(env, "E2E_KYMESSAGES_CLIENT_SECRET="+registerClient(staff, adminPass, "kymessages", "https://messages.e2e.test/api/sso/kyidentity/callback"))
+	s.web = frontTransport(t, ca, hostPort(t, s.compose, "front", "443"))
+	s.staff = s.browser()
+	s.adminPass = firstAdminSignIn(s.staff, adminPass)
+	env = append(env,
+		"E2E_KYMESSAGES_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kymessages", "https://messages.e2e.test/api/sso/kyidentity/callback"),
+		"E2E_KYCALENDAR_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kycalendar",
+			"https://cal-x.e2e.test/api/sso/kysignon/callback", "https://cal-y.e2e.test/api/sso/kysignon/callback"))
+	// One client, two deployments: KyIdentity sends each org's members to its cell's origin.
+	s.staff.admin(s.adminPass, 200, "PUT", issuer+"/api/admin/clients/kycalendar/regions",
+		map[string]any{"regions": map[string]string{"e2e-1": "https://cal-x.e2e.test", "e2e-2": "https://cal-y.e2e.test"}})
 	var services []string
 	for _, a := range targets {
 		services = append(services, a.services...)
 	}
-	if out, err := compose(append([]string{"up", "-d", "--wait", "--wait-timeout", "180"}, services...)...); err != nil {
+	if out, err := s.compose(append([]string{"up", "-d", "--wait", "--wait-timeout", "180"}, services...)...); err != nil {
 		t.Fatalf("a kye2e image did not start in multi mode: %v\n%s", err, out)
 	}
-	for _, a := range targets {
-		for _, svc := range a.services {
-			if a.ready == "" {
-				continue // healthy is all it reports (compose up --wait)
-			}
-			if out, err := compose("exec", "-T", svc, "wget", "-q", "-O", "-", a.ready); err != nil || !strings.Contains(out, `"ready"`) {
-				t.Errorf("%s not ready: %v %s", svc, err, out)
-			}
-		}
-		refuses(t, compose, a.refusal, "run", "--rm", "--no-deps", a.release)
-		refuses(t, compose, a.refuseIs, "run", "--rm", "--no-deps", "-e", a.issuer+"=https://id.example", a.services[0])
-	}
+	return s
 }
 
 // hostPort is the loopback address compose published for a service's port.
@@ -162,17 +188,17 @@ func firstAdminSignIn(b *browser, pass string) string {
 	b.t.Helper()
 	b.signIn("admin", pass)
 	next := "Aa1!" + random(12)
-	b.admin(pass, 200, "POST", "/api/user/password", map[string]string{"newPassword": next})
+	b.admin(pass, 200, "POST", issuer+"/api/user/password", map[string]string{"newPassword": next})
 	b.signIn("admin", next)
 	return next
 }
 
 // registerClient registers a confidential OIDC client and returns its secret, shown once.
-func registerClient(b *browser, adminPass, id, redirect string) string {
+func registerClient(b *browser, adminPass, id string, redirects ...string) string {
 	b.t.Helper()
 	const path = "/api/admin/clients"
-	code, raw := b.do("POST", path, map[string]any{"clientId": id, "clientName": id, "clientType": "confidential",
-		"redirectUris": []string{redirect}}, b.stepUp(adminPass, "POST", path))
+	code, raw := b.do("POST", issuer+path, map[string]any{"clientId": id, "clientName": id, "clientType": "confidential",
+		"redirectUris": redirects}, b.stepUp(adminPass, "POST", path))
 	var ans struct {
 		Secret string `json:"clientSecret"`
 	}
@@ -182,7 +208,7 @@ func registerClient(b *browser, adminPass, id, redirect string) string {
 	return ans.Secret
 }
 
-// tlsFiles makes the run's CA and one certificate for the .test names the front serves.
+// tlsFiles makes the run's CA and one certificate for the .test names front and the mail sink serve.
 func tlsFiles(t *testing.T) (ca, cert, key string) {
 	t.Helper()
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -202,7 +228,7 @@ func tlsFiles(t *testing.T) (ca, cert, key string) {
 		t.Fatal(err)
 	}
 	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "id.e2e.test"},
-		DNSNames: []string{"id.e2e.test"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
+		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "smtp.e2e.test"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, caTmpl, &leafKey.PublicKey, caKey)
 	if err != nil {

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   suite:
-    name: Suite end-to-end (smoke)
+    name: Suite end-to-end (smoke, S1-S3)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

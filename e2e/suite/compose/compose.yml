@@ -12,7 +12,7 @@ x-kycalendar: &kycalendar
   restart: "no"
   depends_on:
     postgres: { condition: service_healthy }
-  secrets: [s3_secret]
+  secrets: [s3_secret, e2e_ca]
   environment: &kycalendar-env
     KYCALENDAR_TENANCY: multi
     KY_ENV: production
@@ -22,6 +22,9 @@ x-kycalendar: &kycalendar
     KY_ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:?}
     KYCALENDAR_SCHEDULING: "true"
     KY_KYSIGNON_ISSUER: https://id.e2e.test
+    KY_KYSIGNON_CLIENT_ID: kycalendar
+    KY_KYSIGNON_SECRET: ${E2E_KYCALENDAR_CLIENT_SECRET:-}
+    SSL_CERT_FILE: /run/secrets/e2e_ca
     KYCALENDAR_S3_ENDPOINT: https://s3.e2e.test
     KYCALENDAR_S3_BUCKET: kycalendar
     KYCALENDAR_S3_ACCESS_KEY: e2e
@@ -83,7 +86,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     # Compose mounts secrets root-owned and world-readable; KyIdentity wants its keys private.
-    secrets: [kyidentity_rsa, kyidentity_vapid]
+    secrets: [kyidentity_rsa, kyidentity_vapid, e2e_ca]
     entrypoint: ["sh", "-c", "install -m 600 /run/secrets/kyidentity_rsa /run/secrets/kyidentity_vapid /data/ && exec kyidentity \"$$@\"", "--"]
     environment:
       KYIDENTITY_TENANCY: multi
@@ -96,8 +99,9 @@ services:
       KYIDENTITY_VAPID_KEY_PATH: /data/kyidentity_vapid
       KYIDENTITY_PLATFORM_LISTEN: 0.0.0.0:5868
       BOOTSTRAP_ADMIN_PASS: ${E2E_ADMIN_PASSWORD:?}
-    # The driver's only way in: a loopback port on the host.
-    ports: ["127.0.0.1::5867"]
+      SSL_CERT_FILE: /run/secrets/e2e_ca # the mail sink's certificate
+    # The platform API is internal; the driver calls it as billing would, on a loopback port.
+    ports: ["127.0.0.1::5868"]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5867/readyz"]
       interval: 2s
@@ -122,9 +126,28 @@ services:
     secrets: [tls_cert, tls_key]
     configs:
       - { source: caddyfile, target: /etc/caddy/Caddyfile }
+    # The driver's browser: every *.e2e.test name through one loopback port.
+    ports: ["127.0.0.1::443"]
     networks:
       default:
-        aliases: [id.e2e.test]
+        aliases: [id.e2e.test, cal-x.e2e.test, cal-y.e2e.test, messages.e2e.test]
+
+  # The mail sink KyIdentity's invitations go to (STARTTLS, the run's certificate). Its API is
+  # how the driver reads activation links and proves that no mail went out.
+  mail:
+    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    mem_limit: 64m
+    memswap_limit: 64m
+    restart: "no"
+    secrets: [tls_cert, tls_key]
+    environment:
+      MP_SMTP_TLS_CERT: /run/secrets/tls_cert
+      MP_SMTP_TLS_KEY: /run/secrets/tls_key
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+    ports: ["127.0.0.1::8025"]
+    networks:
+      default:
+        aliases: [smtp.e2e.test]
 
   # One deployment serving both cells (C2).
   kymessages: &kymessages
@@ -176,9 +199,24 @@ configs:
         admin off
         auto_https disable_redirects
       }
-      https://id.e2e.test {
+      (cert) {
         tls /run/secrets/tls_cert /run/secrets/tls_key
+      }
+      https://id.e2e.test {
+        import cert
         reverse_proxy kyidentity:5867
+      }
+      https://cal-x.e2e.test {
+        import cert
+        reverse_proxy kycalendar-x1:8080 kycalendar-x2:8080
+      }
+      https://cal-y.e2e.test {
+        import cert
+        reverse_proxy kycalendar-y:8080
+      }
+      https://messages.e2e.test {
+        import cert
+        reverse_proxy kymessages:8080
       }
 
 secrets:
