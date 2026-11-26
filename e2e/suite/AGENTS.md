@@ -8,21 +8,33 @@ repository as a copy.
 
 ## Ownership
 - `apps.lock`: `<app> <https://github.com/Busnes-app/<repo>.git> <full SHA>` per line. Pin only a
-  commit whose `kye2e` gate has merged. Not pinned yet: KyIdentity, KyPost, KyMessages (no gate).
+  commit whose `kye2e` gate has merged. Pinned: KyCalendar, KyIdentity, KyMessages. Not pinned
+  yet: KyPost (no gate).
 - `images/<app>.Dockerfile`: builds the pinned commit with `-tags kye2e` into the local image
   `kye2e/<app>:<sha>`. No app's own Dockerfile changes; the release image is the app's own
   Dockerfile at the same commit (`kye2e-release/<app>:<sha>`). Nothing is pushed.
 - `compose/compose.yml`: the topology. Every service sets `mem_limit` and an equal
   `memswap_limit`, together at most 5 GiB (dockerd's containers are outside any `kslot` scope);
-  the driver refuses otherwise. Nothing is published to the host.
-- `smoke_test.go` (`//go:build kye2e`): the driver. Today only `TestSmoke`: each pinned `kye2e`
-  image starts in multi mode against the `.test` issuer (KyCalendar X as two replicas on one
-  database in cell `e2e-1`, Y in `e2e-2`, every `/readyz` ready), the release image at the same
-  commit refuses at the last gate, and the test image refuses a non-`.test` issuer.
+  the driver refuses otherwise. Only KyIdentity's public port is published, on a random
+  loopback port, for the driver. `front` (Caddy) serves the `.test` names over TLS from a CA the
+  driver makes per run; apps trust it through `SSL_CERT_FILE`. Compose mounts secrets root-owned
+  and world-readable, so services that want private key files copy them at start.
+- `smoke_test.go` (`//go:build kye2e`): the driver. Today only `TestSmoke`, one row per app in
+  `targets`: each pinned `kye2e` image starts in multi mode against the `.test` issuer
+  (KyCalendar X as two replicas on one database in cell `e2e-1`, Y in `e2e-2`; KyIdentity;
+  KyMessages serving both cells), the release image at the same commit refuses at the last
+  gate, and the test image refuses a non-`.test` issuer.
+- `kyidentity_test.go`: a browser at KyIdentity (CSRF, password sign-in, step-up). The smoke
+  run signs the bootstrap administrator in, makes the forced password change and registers the
+  `kymessages` client, because KyMessages will not serve before its first tenancy sync.
+- `recordMulti`: a KyIdentity defect workaround, the only SQL the harness writes. KyIdentity's
+  schema records `tenancy_mode` `single` on every new database and nothing records `multi`, so
+  it refuses every multi start. The driver runs KyIdentity's migrations through its CLI, then
+  sets that one row. It fails once KyIdentity records the mode itself; then delete it.
 
 ## Local Contracts
-- Scenarios S1+ wait for KyIdentity's platform API (its PR 4). Nothing here creates, suspends or
-  deletes an org by any other path (E5).
+- Nothing here creates, suspends or deletes an org, or enables an app, by any path but
+  KyIdentity's platform API (E5).
 - Secrets are random per run, set by the driver; none is committed.
 - Runs only from `run.sh`: on Major `E2E_BUILDER=<memory-capped buildx builder> kslot e2e/suite/run.sh`,
   and in `.github/workflows/suite-e2e.yml` (manual and nightly, never a required check).

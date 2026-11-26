@@ -1,8 +1,8 @@
 # The suite end-to-end topology (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md,
 # Topology). The driver (e2e/suite/smoke_test.go) sets every ${...}; nothing is published to the
 # host. dockerd starts these outside any kslot scope, so each has its own memory limit, and the
-# driver refuses a service without one or a total over 5 GiB. KyIdentity, KyPost, KyMessages,
-# S3, CoreDNS and KyRecovery join with the scenarios that need them.
+# driver refuses a service without one or a total over 5 GiB. KyPost, S3, CoreDNS and KyRecovery
+# join with the scenarios that need them.
 name: ${E2E_PROJECT:?}
 
 x-kycalendar: &kycalendar
@@ -26,7 +26,7 @@ x-kycalendar: &kycalendar
     KYCALENDAR_S3_BUCKET: kycalendar
     KYCALENDAR_S3_ACCESS_KEY: e2e
     KYCALENDAR_S3_SECRET_KEY_FILE: /run/secrets/s3_secret
-    KYCALENDAR_STAFF_ORG_ID: org-e2e-staff
+    KYCALENDAR_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
   healthcheck:
     test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
     interval: 2s
@@ -74,6 +74,125 @@ services:
     memswap_limit: 256m
     profiles: [release]
 
+  # The issuer for every cell. Its platform API listens on its own port, inside the network only.
+  kyidentity: &kyidentity
+    image: ${KYIDENTITY_IMAGE:?}
+    mem_limit: 512m
+    memswap_limit: 512m
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    # Compose mounts secrets root-owned and world-readable; KyIdentity wants its keys private.
+    secrets: [kyidentity_rsa, kyidentity_vapid]
+    entrypoint: ["sh", "-c", "install -m 600 /run/secrets/kyidentity_rsa /run/secrets/kyidentity_vapid /data/ && exec kyidentity \"$$@\"", "--"]
+    environment:
+      KYIDENTITY_TENANCY: multi
+      KYIDENTITY_REPLICATED: "true"
+      KYIDENTITY_ISSUER_URL: https://id.e2e.test
+      KYIDENTITY_DATABASE_URL: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kyidentity?sslmode=disable
+      KYIDENTITY_SECRET_KEY: ${E2E_KYIDENTITY_SECRET_KEY:?}
+      KYIDENTITY_ENCRYPTION_KEY: ${E2E_ENCRYPTION_KEY:?}
+      KYIDENTITY_RSA_KEY_PATH: /data/kyidentity_rsa
+      KYIDENTITY_VAPID_KEY_PATH: /data/kyidentity_vapid
+      KYIDENTITY_PLATFORM_LISTEN: 0.0.0.0:5868
+      BOOTSTRAP_ADMIN_PASS: ${E2E_ADMIN_PASSWORD:?}
+    # The driver's only way in: a loopback port on the host.
+    ports: ["127.0.0.1::5867"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5867/readyz"]
+      interval: 2s
+      retries: 60
+
+  kyidentity-release:
+    <<: *kyidentity
+    image: ${KYIDENTITY_RELEASE_IMAGE:?}
+    ports: !reset []
+    mem_limit: 128m
+    memswap_limit: 128m
+    profiles: [release]
+
+  # TLS for the .test names, from the run's own CA (the driver makes both, per run).
+  front:
+    image: caddy:2.11-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    mem_limit: 64m
+    memswap_limit: 64m
+    restart: "no"
+    depends_on:
+      kyidentity: { condition: service_healthy }
+    secrets: [tls_cert, tls_key]
+    configs:
+      - { source: caddyfile, target: /etc/caddy/Caddyfile }
+    networks:
+      default:
+        aliases: [id.e2e.test]
+
+  # One deployment serving both cells (C2).
+  kymessages: &kymessages
+    image: ${KYMESSAGES_IMAGE:?}
+    mem_limit: 512m
+    memswap_limit: 512m
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+      front: { condition: service_started }
+    secrets: [kymessages_seal, e2e_ca]
+    entrypoint: ["sh", "-c", "install -m 600 /run/secrets/kymessages_seal /app/data/ && exec /app/kymessages \"$$@\"", "--"]
+    environment:
+      KY_TENANCY_MODE: multi
+      KY_CELLS: e2e-1,e2e-2
+      KY_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
+      KY_DB_DRIVER: postgres
+      KY_DB_DSN: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kymessages?sslmode=disable
+      KY_SESSION_SECRET: ${E2E_SESSION_SECRET:?}
+      KY_ENCRYPTION_KEY: ${E2E_ENCRYPTION_KEY:?}
+      KY_PUSH_ENABLED: "false"
+      KY_APP_URL: https://messages.e2e.test
+      KY_KYIDENTITY_ISSUER: https://id.e2e.test
+      KY_KYIDENTITY_CLIENT_ID: kymessages
+      KY_KYIDENTITY_SECRET: ${E2E_KYMESSAGES_CLIENT_SECRET:-}
+      SSL_CERT_FILE: /run/secrets/e2e_ca
+      KY_ATTACHMENTS_S3_ENDPOINT: https://s3.e2e.test
+      KY_ATTACHMENTS_S3_REGION: e2e
+      KY_ATTACHMENTS_S3_BUCKET: kymessages
+      KY_ATTACHMENTS_S3_ACCESS_KEY: e2e
+      KY_ATTACHMENTS_S3_SECRET: ${E2E_S3_SECRET:?}
+      KY_ATTACHMENTS_S3_SEAL_KEY_FILE: /app/data/kymessages_seal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/settings"]
+      interval: 2s
+      retries: 60
+
+  kymessages-release:
+    <<: *kymessages
+    image: ${KYMESSAGES_RELEASE_IMAGE:?}
+    mem_limit: 128m
+    memswap_limit: 128m
+    profiles: [release]
+
+configs:
+  caddyfile:
+    content: |
+      {
+        admin off
+        auto_https disable_redirects
+      }
+      https://id.e2e.test {
+        tls /run/secrets/tls_cert /run/secrets/tls_key
+        reverse_proxy kyidentity:5867
+      }
+
 secrets:
+  tls_cert:
+    environment: E2E_TLS_CERT
+  tls_key:
+    environment: E2E_TLS_KEY
+  e2e_ca:
+    environment: E2E_CA
   s3_secret:
     environment: E2E_S3_SECRET
+  kyidentity_rsa:
+    environment: E2E_KYIDENTITY_RSA
+  kyidentity_vapid:
+    environment: E2E_KYIDENTITY_VAPID
+  kymessages_seal:
+    environment: E2E_KYMESSAGES_SEAL
