@@ -48,7 +48,12 @@ repository as a copy.
   clients permit all active users of an entitled org. a1 is refused at X with `access_denied`
   before any app is enabled.
   The scenario enables both apps with `PATCH /platform/v1/orgs/{id}` and exercises the app checks
-  of S1–S3. Checks the run cannot make are logged `NOT RUN:`. KyPost rows are not run (open question 4).
+  of S1–S3. S3's meeting row (contract B, KyMessages #58): KyCalendar and KyMessages are paired
+  explicitly with one per-run secret (`meeting_pair`: `KYCALENDAR_KYMESSAGES_URL`/`_SECRET_FILE`
+  on KyCalendar, `KY_KYCALENDAR_URL`/`_SECRET_FILE` on KyMessages, `KY_MEETING_SYNC_SECRET`
+  unset); a1 makes a meeting with a2 at X, and the KyMessages room holds exactly a1 and a2 and
+  refuses b1. Checks the run cannot make are logged `NOT RUN:`, among them the cross-replica OIDC
+  callback (affinity above). KyPost rows are not run (open question 4).
 
 ## Local Contracts
 - Nothing here creates, suspends or deletes an org, or enables an app, by any path but

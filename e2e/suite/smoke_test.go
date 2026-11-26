@@ -129,7 +129,7 @@ func start(t *testing.T) *suite {
 		"E2E_SESSION_SECRET="+random(32), "E2E_ENCRYPTION_KEY="+random(32), "E2E_ADMIN_PASSWORD="+adminPass,
 		"E2E_POSTGRES_PASSWORD="+random(16), "E2E_S3_SECRET="+random(16), "E2E_KYIDENTITY_SECRET_KEY="+random(32),
 		"E2E_KYIDENTITY_RSA="+rsaKey(t), "E2E_KYIDENTITY_VAPID="+vapidKey(t), "E2E_KYMESSAGES_SEAL="+random(32),
-		"E2E_KYPOST_KEYS="+kypostKeys(t), "E2E_KYPOST_VAPID="+ecKey(t))
+		"E2E_MEETING_PAIR="+random(32), "E2E_KYPOST_KEYS="+kypostKeys(t), "E2E_KYPOST_VAPID="+ecKey(t))
 	for _, a := range targets {
 		pin, ok := s.pins[a.name]
 		if !ok {

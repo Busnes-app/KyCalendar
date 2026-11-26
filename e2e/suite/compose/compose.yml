@@ -1,8 +1,8 @@
 # The suite end-to-end topology (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md,
-# Topology). The driver (e2e/suite/smoke_test.go) sets every ${...}; nothing is published to the
-# host. dockerd starts these outside any kslot scope, so each has its own memory limit, and the
-# driver refuses a service without one or a total over 5 GiB. KyPost, S3, CoreDNS and KyRecovery
-# join with the scenarios that need them.
+# Topology). The driver (e2e/suite/smoke_test.go) sets every ${...}; only the driver's loopback
+# ports are published. dockerd starts these outside any kslot scope, so each has its own memory
+# limit, and the driver refuses a service without one or a total over 5 GiB. S3, CoreDNS and
+# KyRecovery join with the scenarios that need them.
 name: ${E2E_PROJECT:?}
 
 x-kycalendar: &kycalendar
@@ -12,7 +12,7 @@ x-kycalendar: &kycalendar
   restart: "no"
   depends_on:
     postgres: { condition: service_healthy }
-  secrets: [s3_secret, e2e_ca]
+  secrets: [s3_secret, e2e_ca, meeting_pair]
   environment: &kycalendar-env
     KYCALENDAR_TENANCY: multi
     PUSH_RELAY_URL: ""
@@ -32,6 +32,11 @@ x-kycalendar: &kycalendar
     KYCALENDAR_S3_ACCESS_KEY: e2e
     KYCALENDAR_S3_SECRET_KEY_FILE: /run/secrets/s3_secret
     KYCALENDAR_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
+    # Contract B: KyCalendar and KyMessages are paired explicitly with one per-run secret
+    # (KyMessages #58). messages.e2e.test is front's network address, a private one.
+    KYCALENDAR_KYMESSAGES_URL: https://messages.e2e.test
+    KYCALENDAR_KYMESSAGES_SECRET_FILE: /run/secrets/meeting_pair
+    KYCALENDAR_KYMESSAGES_ALLOW_PRIVATE: "true"
   healthcheck:
     test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
     interval: 2s
@@ -166,7 +171,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       front: { condition: service_started }
-    secrets: [kymessages_seal, e2e_ca]
+    secrets: [kymessages_seal, e2e_ca, meeting_pair]
     entrypoint: ["sh", "-c", "install -m 600 /run/secrets/kymessages_seal /app/data/ && exec /app/kymessages \"$$@\"", "--"]
     environment:
       KY_TENANCY_MODE: multi
@@ -183,6 +188,9 @@ services:
       KY_KYIDENTITY_ISSUER: https://id.e2e.test
       KY_KYIDENTITY_CLIENT_ID: kymessages
       KY_KYIDENTITY_SECRET: ${E2E_KYMESSAGES_CLIENT_SECRET:-}
+      # The same pair secret as KyCalendar's (contract B); KY_MEETING_SYNC_SECRET stays unset.
+      KY_KYCALENDAR_URL: https://cal-x.e2e.test
+      KY_KYCALENDAR_SECRET_FILE: /run/secrets/meeting_pair
       SSL_CERT_FILE: /run/secrets/e2e_ca
       KY_ATTACHMENTS_S3_ENDPOINT: https://s3.e2e.test
       KY_ATTACHMENTS_S3_REGION: e2e
@@ -291,6 +299,8 @@ secrets:
     environment: E2E_KYIDENTITY_RSA
   kyidentity_vapid:
     environment: E2E_KYIDENTITY_VAPID
+  meeting_pair:
+    environment: E2E_MEETING_PAIR
   kypost_keys:
     environment: E2E_KYPOST_KEYS
   kypost_vapid:
