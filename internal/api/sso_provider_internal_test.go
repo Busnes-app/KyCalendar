@@ -71,15 +71,15 @@ func startLoginAt(t *testing.T, s *Server, ctx context.Context, path string) *ht
 	return req
 }
 
-// A login started under one provider build fails once if a save swaps the provider before the
-// callback, even to identical settings: the nonce cookie carries the build's ID.
+// A login started under one provider fails once if a save swaps the provider (kind, issuer, or
+// client ID) before the callback: the nonce cookie carries the provider's fingerprint.
 func TestCallbackAfterProviderSwapFailsOnce(t *testing.T) {
 	s, _ := davInternalServer(t)
 	idp := fakeIdP(t)
 	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", idp.Client()))
 	req := startLogin(t, s)
 
-	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc", "", idp.Client()))
+	s.signin.Store(sso.NewProvider(sso.KindOIDC, "Acme", idp.URL, "kc-next", "", idp.Client()))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "start again") {
@@ -91,6 +91,58 @@ func TestCallbackAfterProviderSwapFailsOnce(t *testing.T) {
 	s.ServeHTTP(none, httptest.NewRequest("GET", "/api/sso/kysignon/login", nil))
 	if none.Code != http.StatusNotFound {
 		t.Fatalf("login with no provider: %d, want 404", none.Code)
+	}
+}
+
+// Two independent replicas sharing SessionSecret can start an OIDC login on A and finish the
+// callback on B; a server with a different SessionSecret (or an empty fallback secret) rejects
+// A's nonce cookie with 400.
+func TestOIDCNonceCookieAcrossReplicas(t *testing.T) {
+	idp := newSigningIdP(t)
+	idp.roles = nil
+
+	makeReplica := func(secret string) *Server {
+		t.Helper()
+		t.Setenv("KY_SESSION_SECRET", secret)
+		s, _ := davInternalServer(t)
+		s.config.Security.SessionSecret = secret
+		if _, _, err := s.bindAccounts(context.Background(), kyidentityAt(idp.URL)); err != nil {
+			t.Fatal(err)
+		}
+		s.signin.Store(sso.NewProvider(sso.KindKyIdentity, "KyIdentity", idp.URL, "kc", "", idp.Client()))
+		return s
+	}
+
+	sharedSecret := "shared-session-secret-for-oidc-replicas-32b"
+	a := makeReplica(sharedSecret)
+	b := makeReplica(sharedSecret)
+	c := makeReplica("different-session-secret-for-oidc-replica-32b")
+
+	// Login on A, callback on B (same SessionSecret, independent Provider build) succeeds.
+	reqAB := idp.login(t, a, "alice")
+	wB := httptest.NewRecorder()
+	b.ServeHTTP(wB, reqAB)
+	if wB.Code != http.StatusFound || ssoSession(wB) == nil {
+		t.Fatalf("cross-replica callback with shared secret: %d %s", wB.Code, wB.Body.String())
+	}
+
+	// Login on A, callback on C (different SessionSecret) is rejected with 400.
+	reqAC := idp.login(t, a, "alice")
+	wC := httptest.NewRecorder()
+	c.ServeHTTP(wC, reqAC)
+	if wC.Code != http.StatusBadRequest || !strings.Contains(wC.Body.String(), "Invalid or expired SSO nonce") {
+		t.Fatalf("cross-replica callback with different secret: %d %s", wC.Code, wC.Body.String())
+	}
+
+	// Empty SessionSecret falls back to a per-server random key, so two empty-secret servers do
+	// not accept each other's nonce cookies.
+	e1 := makeReplica("")
+	e2 := makeReplica("")
+	reqE := idp.login(t, e1, "alice")
+	wE := httptest.NewRecorder()
+	e2.ServeHTTP(wE, reqE)
+	if wE.Code != http.StatusBadRequest || !strings.Contains(wE.Body.String(), "Invalid or expired SSO nonce") {
+		t.Fatalf("empty-secret fallback shared across servers: %d %s", wE.Code, wE.Body.String())
 	}
 }
 

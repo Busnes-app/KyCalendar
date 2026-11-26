@@ -12,19 +12,28 @@ import (
 )
 
 // Provider is the live sign-in provider. Saving sign-in settings replaces it whole; ID is new on
-// every build, so a login started under one provider cannot finish under the next.
+// every build for per-process caches, while Fingerprint identifies (kind, issuer, clientID)
+// deterministically across replicas.
 type Provider struct {
 	CredentialFile string // immutable after construction; managed credentials are re-read per flow
 	Kind           string // KindKyIdentity or KindOIDC
 	DisplayName    string
 	ID             string
+	Fingerprint    string
 	Binding        string // Settings.Identity: what the accounts it signs in are stamped with
 	flow           *oauthFlow
 }
 
 // NewProvider builds a provider; a nil client uses the default transport.
 func NewProvider(kind, displayName, issuer, clientID, secret string, client *http.Client) *Provider {
-	return &Provider{Kind: kind, DisplayName: displayName, ID: crypto.RandomHex(8), Binding: kind + " " + issuer, flow: newOAuthFlow(issuer, clientID, secret, client)}
+	return &Provider{
+		Kind:        kind,
+		DisplayName: displayName,
+		ID:          crypto.RandomHex(8),
+		Fingerprint: crypto.SHA256Hex([]byte(kind + "\x00" + issuer + "\x00" + clientID))[:16],
+		Binding:     kind + " " + issuer,
+		flow:        newOAuthFlow(issuer, clientID, secret, client),
+	}
 }
 
 // AuthURL is the authorization request with PKCE S256 and the nonce. fresh asks the provider to

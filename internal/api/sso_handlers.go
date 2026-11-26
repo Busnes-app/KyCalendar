@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -37,12 +38,18 @@ var (
 // not active.
 var errOrgNotServing = &apiError{status: http.StatusForbidden, code: "org_not_active", msg: "Your organisation is not active on this service"}
 
-// nonceCookieKey MACs the nonce cookie, so a browser cannot back-date a step-up's start. It lives
-// as long as the process; so does a provider's ID, which the cookie already has to match.
-var nonceCookieKey = crypto.RandomHex(32)
+// nonceCookieKey derives the HMAC key for ky_nonce_<state> from the shared SessionSecret so
+// OIDC callbacks can land on any replica; an empty SessionSecret falls back to a per-server key.
+func (s *Server) nonceCookieKey() string {
+	if s.config != nil && s.config.Security.SessionSecret != "" {
+		return hex.EncodeToString(crypto.DeriveKey([]byte(s.config.Security.SessionSecret), "kycalendar-oidc-nonce-v1"))
+	}
+	s.nonceFallbackOnce.Do(func() { s.nonceFallback = crypto.RandomHex(32) })
+	return s.nonceFallback
+}
 
-func nonceCookieMAC(state, value string) string {
-	return crypto.ComputeHMACSHA256([]byte(state+"|"+value), nonceCookieKey)
+func (s *Server) nonceCookieMAC(state, value string) string {
+	return crypto.ComputeHMACSHA256([]byte(state+"|"+value), s.nonceCookieKey())
 }
 
 // upsertSSOUser maps a verified login through the provider bound as binding onto a local user,
@@ -226,15 +233,16 @@ func (s *Server) handleKySignOnLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   s.config.Security.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
-	// The nonce cookie carries the provider's ID: a callback after a provider swap fails. A
-	// step-up adds when it started. A MAC over the state and value ends it.
-	value := p.ID + "." + nonce
+	// The nonce cookie carries the provider's fingerprint: a callback after a provider swap fails,
+	// while a callback on another replica with the same provider succeeds. A step-up adds when it
+	// started. A MAC over the state and value ends it.
+	value := p.Fingerprint + "." + nonce
 	if stepUp {
 		value += "." + strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ky_nonce_" + state,
-		Value:    value + "." + nonceCookieMAC(state, value),
+		Value:    value + "." + s.nonceCookieMAC(state, value),
 		Path:     "/api/sso/kysignon/callback",
 		MaxAge:   300,
 		HttpOnly: true,
@@ -265,14 +273,14 @@ func (s *Server) handleKySignOnCallback(w http.ResponseWriter, r *http.Request) 
 	if i := strings.LastIndexByte(value, '.'); i >= 0 {
 		value, mac = value[:i], value[i+1:]
 	}
-	if !crypto.VerifyHMACSHA256([]byte(state+"|"+value), nonceCookieKey, mac) {
+	if !crypto.VerifyHMACSHA256([]byte(state+"|"+value), s.nonceCookieKey(), mac) {
 		s.writeError(w, http.StatusBadRequest, "Invalid or expired SSO nonce")
 		return
 	}
 	p := s.signin.Load()
-	providerID, rest, _ := strings.Cut(value, ".")
+	providerTag, rest, _ := strings.Cut(value, ".")
 	nonce, started, stepUp := strings.Cut(rest, ".")
-	if p == nil || providerID != p.ID || nonce == "" {
+	if p == nil || p.Fingerprint == "" || providerTag != p.Fingerprint || nonce == "" {
 		s.writeError(w, http.StatusBadRequest, "Sign-in settings changed while you were signing in; start again")
 		return
 	}
