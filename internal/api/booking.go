@@ -748,7 +748,12 @@ func (s *Server) handleBookingConfirm(w http.ResponseWriter, r *http.Request) {
 		o.Meeting = &store.MeetingSwitch{Open: true, NewID: newMeetingID()}
 	}
 	from, to := h.checkSpan(slot)
-	err := s.store.Bookings().Confirm(ctx, b.ID, now.Unix(), from, to, h.heldCheck(now, slot), o, crypto.SHA256Hex([]byte(token)), s.objectLimits(), s.sched.Plan(ctx, h.owner, cal))
+	manageHash := crypto.SHA256Hex([]byte(token))
+	plan := s.sched.Plan(ctx, h.owner, cal)
+	err := store.RetryStorageRefresh(ctx, func() error {
+		attempt := *o
+		return s.store.Bookings().Confirm(ctx, b.ID, now.Unix(), from, to, h.heldCheck(now, slot), &attempt, manageHash, s.objectLimits(), plan)
+	})
 	if errors.Is(err, store.ErrBookingState) {
 		if cur, gerr := s.store.Bookings().Get(ctx, b.ID); gerr == nil && cur.Status == store.BookingConfirmed {
 			s.writeJSON(w, http.StatusConflict, map[string]string{"error": "This booking is already confirmed", "code": "already_confirmed"})
@@ -841,7 +846,11 @@ func (s *Server) handleBookingCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
-	if s.bookingWriteFailed(w, s.store.Bookings().Cancel(ctx, b.ID, s.objectLimits(), s.sched.Plan(ctx, h.owner, nil)), b.ID) {
+	plan := s.sched.Plan(ctx, h.owner, nil)
+	err := store.RetryStorageRefresh(ctx, func() error {
+		return s.store.Bookings().Cancel(ctx, b.ID, s.objectLimits(), plan)
+	})
+	if s.bookingWriteFailed(w, err, b.ID) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, s.bookingView(h, b, "cancelled"))
@@ -875,7 +884,11 @@ func (s *Server) handleBookingReschedule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	from, to := h.checkSpan(slot)
-	err = s.store.Bookings().Reschedule(ctx, b.ID, slot.Start.Unix(), slot.End.Unix(), now.Unix(), from, to, h.offeredCheck(now, start), no, o.ETag, s.objectLimits(), s.sched.Plan(ctx, h.owner, cal))
+	plan := s.sched.Plan(ctx, h.owner, cal)
+	err = store.RetryStorageRefresh(ctx, func() error {
+		attempt := *no
+		return s.store.Bookings().Reschedule(ctx, b.ID, slot.Start.Unix(), slot.End.Unix(), now.Unix(), from, to, h.offeredCheck(now, start), &attempt, o.ETag, s.objectLimits(), plan)
+	})
 	if s.bookingWriteFailed(w, err, b.ID) {
 		return
 	}

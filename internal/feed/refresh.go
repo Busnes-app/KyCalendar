@@ -88,7 +88,9 @@ func (r *Refresher) mirror(ctx context.Context, sub *store.Subscription, link st
 	if f.Body == nil {
 		return nil
 	}
-	if err := r.Store.Calendars().ReplaceSubscriptionObjects(ctx, sub.CalendarID, objs, r.Limits); err != nil {
+	if err := store.RetryStorageRefresh(ctx, func() error {
+		return r.Store.Calendars().ReplaceSubscriptionObjects(ctx, sub.CalendarID, objs, r.Limits)
+	}); err != nil {
 		return err
 	}
 	sub.ETag, sub.LastModified = f.ETag, f.LastModified

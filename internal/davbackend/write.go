@@ -48,9 +48,19 @@ func WriteMeeting(ctx context.Context, st store.Store, c *store.Calendar, name s
 	if o.Component == ical.CompToDo && writerID != "" && !ifNoneMatch {
 		prev, _ = st.Calendars().GetObject(ctx, c.ID, name)
 	}
-	if _, err := st.Calendars().PutObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan); err != nil {
+	var saved *store.CalendarObject
+	err = store.RetryStorageRefresh(ctx, func() error {
+		attempt := *o
+		if _, err := st.Calendars().PutObjectPlanned(ctx, &attempt, ifMatch, ifNoneMatch, lim, plan); err != nil {
+			return err
+		}
+		saved = &attempt
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
+	o = saved
 	if o.Component == ical.CompToDo && writerID != "" {
 		logCompletion(ctx, st, writerID, c.ID, o.UID, prev, cal)
 	}
@@ -78,7 +88,9 @@ func logCompletion(ctx context.Context, st store.Store, writerID, calendarID, ui
 // Delete is the one delete path for calendar objects, with plan run inside its transaction and
 // the messages it queues bounded by lim.
 func Delete(ctx context.Context, st store.Store, c *store.Calendar, name, ifMatch string, lim store.OwnerLimits, plan store.Planner) error {
-	return st.Calendars().DeleteObjectPlanned(ctx, c.ID, name, ifMatch, lim, plan)
+	return store.RetryStorageRefresh(ctx, func() error {
+		return st.Calendars().DeleteObjectPlanned(ctx, c.ID, name, ifMatch, lim, plan)
+	})
 }
 
 // Prepare runs every check Write makes before the store: size, CalDAV validity and Inspect.

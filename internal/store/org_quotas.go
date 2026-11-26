@@ -52,6 +52,7 @@ type orgGuard struct {
 	max, before       int64
 	pool              *int64 // nil exempts single/staff/default orgs and the initial bounded grace
 	reported, ceiling int64
+	refreshing        bool // pool_inflight with an unexpired ceiling and no stale sequence
 }
 
 // orgLimits applies the quotas of calendarID's org to a write, under calendar-total:
@@ -60,15 +61,15 @@ type orgGuard struct {
 func (c *calendarStore) orgLimits(ctx context.Context, tx *sql.Tx, calendarID string, lim OwnerLimits) (OwnerLimits, *orgGuard, error) {
 	var org OrgID
 	var raw, mode, staff string
-	var since, seq, expires, used, now int64
+	var since, seq, expires, used, stale, now int64
 	var ceiling sql.NullInt64
 	var inflight bool
 	err := tx.QueryRowContext(ctx, c.q(`SELECT c.org_id, o.quotas_json,
 COALESCE((SELECT value FROM server_settings WHERE key='tenancy_mode'), ''),
 COALESCE((SELECT value FROM server_settings WHERE key='tenancy_staff_org'), ''),
-o.pool_since,o.pool_seq,o.pool_ceiling,o.pool_expires_at,o.pool_inflight,o.pool_report_used,`+c.store.dbNow()+`
+o.pool_since,o.pool_seq,o.pool_ceiling,o.pool_expires_at,o.pool_inflight,o.pool_report_used,o.pool_stale_seq,`+c.store.dbNow()+`
 FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).
-		Scan(&org, &raw, &mode, &staff, &since, &seq, &ceiling, &expires, &inflight, &used, &now)
+		Scan(&org, &raw, &mode, &staff, &since, &seq, &ceiling, &expires, &inflight, &used, &stale, &now)
 	if errors.Is(err, sql.ErrNoRows) {
 		return lim, nil, ErrNotFound
 	} else if err != nil {
@@ -79,12 +80,14 @@ FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).
 		lim.MaxBytes = *q.MaxBytesPerUser
 	}
 	var pool *int64
+	var refreshing bool
 	if mode != "single" && org != DefaultOrg && string(org) != staff {
 		budget := int64(0)
 		if ceiling.Valid && expires > now {
 			budget = ceiling.Int64
 			if inflight {
 				budget = min(budget, used)
+				refreshing = stale == 0
 			}
 			pool = &budget
 		} else if seq != 0 || since <= now-StorageGrantTTL || since > now {
@@ -95,7 +98,7 @@ FROM calendars c JOIN orgs o ON o.id = c.org_id WHERE c.id = ?`), calendarID).
 		return lim, nil, nil
 	}
 	before, err := c.orgUsed(ctx, tx, org)
-	guard := &orgGuard{org: org, before: before, pool: pool, reported: used, ceiling: ceiling.Int64}
+	guard := &orgGuard{org: org, before: before, pool: pool, reported: used, ceiling: ceiling.Int64, refreshing: refreshing}
 	if q.MaxBytes != nil {
 		guard.max = *q.MaxBytes
 	}
@@ -128,8 +131,16 @@ func (g *orgGuard) check(ctx context.Context, c *calendarStore, tx *sql.Tx) erro
 	if err != nil {
 		return err
 	}
-	if after > g.before && (g.max > 0 && after > g.max || g.pool != nil && after > *g.pool) {
-		return ErrQuotaExceeded
+	if after > g.before {
+		if g.max > 0 && after > g.max {
+			return ErrQuotaExceeded
+		}
+		if g.pool != nil && after > *g.pool {
+			if g.refreshing && after <= g.ceiling {
+				return ErrStorageGrantRefreshing
+			}
+			return ErrQuotaExceeded
+		}
 	}
 	// Signal after half the granted headroom is consumed, and promptly release shrunk
 	// usage. The flag commits with the successful write, never with a refused one.

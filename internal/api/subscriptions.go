@@ -124,7 +124,9 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 		s.writeError(w, http.StatusInternalServerError, "Failed to save the subscription")
 		return
 	}
-	if err := s.store.Calendars().ReplaceSubscriptionObjects(ctx, c.ID, objs, s.objectLimits()); err != nil {
+	if err := store.RetryStorageRefresh(ctx, func() error {
+		return s.store.Calendars().ReplaceSubscriptionObjects(ctx, c.ID, objs, s.objectLimits())
+	}); err != nil {
 		_ = s.store.Calendars().DeleteCalendar(ctx, c.ID)
 		if errors.Is(err, store.ErrQuotaExceeded) {
 			s.writeJSON(w, http.StatusInsufficientStorage, map[string]string{"error": "Calendar storage is full", "code": "quota"})
@@ -164,7 +166,9 @@ func (s *Server) handlePatchSubscription(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
-	if err := s.store.Calendars().ReplaceSubscriptionObjects(ctx, c.ID, objs, s.objectLimits()); err != nil {
+	if err := store.RetryStorageRefresh(ctx, func() error {
+		return s.store.Calendars().ReplaceSubscriptionObjects(ctx, c.ID, objs, s.objectLimits())
+	}); err != nil {
 		if errors.Is(err, store.ErrQuotaExceeded) {
 			s.writeJSON(w, http.StatusInsufficientStorage, map[string]string{"error": "Calendar storage is full", "code": "quota"})
 			return
