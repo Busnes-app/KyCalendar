@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -173,9 +174,77 @@ func TestScenarios(t *testing.T) {
 		if n := sink.count(a2.Email) + sink.count(people["a2"].mailbox()); n != 1 { // the activation mail only
 			t.Errorf("%d mails reached a2, want only the activation mail", n)
 		}
-		notRun(t, "the KyMessages meeting link: KyCalendar sends the organizer as `sub` but KyMessages reads `organizer_sub`, and no KyMessages peer link is set")
+		meeting(t, a1b, people, start.Add(2*time.Hour))
 		notRun(t, "KyPost's send log (KyPost is not in the run)")
 	})
+}
+
+// meeting is S3's meeting link (contract B, KyMessages #58): a1 asks KyCalendar X for a video
+// meeting with a2; KyCalendar's meeting worker PUTs it to KyMessages under the explicit pair
+// secret, and the room holds exactly the organizer and the attendee. b1, in another org, cannot
+// open it.
+func meeting(t *testing.T, a1b *browser, people map[string]*person, at time.Time) {
+	t.Helper()
+	var cals []struct {
+		ID   string `json:"id"`
+		Role string `json:"role"`
+	}
+	json.Unmarshal(a1b.must(200, "GET", calX+"/api/calendars", nil, nil), &cals)
+	cal := ""
+	for _, c := range cals {
+		if c.Role == "owner" {
+			cal = c.ID
+			break
+		}
+	}
+	if cal == "" {
+		t.Fatalf("a1 owns no calendar at X: %+v", cals)
+	}
+	a2x := people["a2"].signedIn(t, calX).me(calX)
+	var made struct {
+		UID string `json:"uid"`
+	}
+	json.Unmarshal(a1b.must(201, "POST", calX+"/api/calendars/"+cal+"/events", map[string]any{"title": "S3 meeting",
+		"start": at.Format(time.RFC3339), "end": at.Add(time.Hour).Format(time.RFC3339), "zone": "UTC",
+		"attendees": []string{a2x.Email}, "meeting": true}, nil), &made)
+	// KyCalendar's meetings job runs every 5 s; the link appears once KyMessages answered.
+	q := url.Values{"start": {at.Add(-time.Hour).Format(time.RFC3339)}, "end": {at.Add(2 * time.Hour).Format(time.RFC3339)}, "calendar": {cal}}
+	link := ""
+	for deadline := time.Now().Add(time.Minute); link == "" && time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+		var events []struct {
+			UID        string `json:"uid"`
+			MeetingURL string `json:"meeting_url"`
+		}
+		json.Unmarshal(a1b.must(200, "GET", calX+"/api/events?"+q.Encode(), nil, nil), &events)
+		for _, e := range events {
+			if e.UID == made.UID {
+				link = e.MeetingURL
+			}
+		}
+	}
+	room, ok := strings.CutPrefix(link, messages+"/chat/")
+	if !ok || room == "" || strings.Contains(room, "/") {
+		t.Fatalf("the S3 meeting got no KyMessages room link: %q", link)
+	}
+	a1m, a2m := people["a1"].signedIn(t, messages), people["a2"].signedIn(t, messages)
+	want := map[string]bool{a1m.me(messages).ID: true, a2m.me(messages).ID: true}
+	var got struct {
+		Members []struct {
+			UserID string `json:"user_id"`
+		} `json:"members"`
+	}
+	json.Unmarshal(a2m.must(200, "GET", messages+"/api/v1/rooms/"+room, nil, nil), &got)
+	ids := map[string]bool{}
+	for _, m := range got.Members {
+		ids[m.UserID] = true
+	}
+	if !maps.Equal(ids, want) {
+		t.Errorf("meeting room %s members %v, want a1 and a2 %v", room, ids, want)
+	}
+	t.Logf("meeting room %s: %d members, a1 and a2", room, len(got.Members))
+	if code, _ := people["b1"].signedIn(t, messages).do("GET", messages+"/api/v1/rooms/"+room, nil, nil); code == http.StatusOK {
+		t.Errorf("b1 (org B) opened org A's meeting room %s", room)
+	}
 }
 
 // enableApps enables both apps for every org through the platform API.
