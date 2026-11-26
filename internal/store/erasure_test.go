@@ -177,29 +177,91 @@ func TestErasureKeepsOtherMembersContent(t *testing.T) {
 	})
 }
 
-func TestErasureCollisionRollsBack(t *testing.T) {
+func TestErasureResolvesSlugCollision(t *testing.T) {
 	eachDialect(t, func(t *testing.T, s *SQLStore) {
 		ctx := context.Background()
 		w := erasureWorld(t, s)
-		erasureShare(t, s, w.cal["erased"], "older", "manager")
-		// Both calendars still have slug default. Only owner_id may change under D16.
-		if err := s.Users().DeleteUser(ctx, "usr_erased"); err == nil {
-			t.Fatal("slug collision was silently accepted")
+
+		// Shared "team" calendar on the erased user collides with the successor's own "team" and
+		// "team-2" calendars (verifying deterministic numbering -> "team-3"), "default" collides
+		// with "default" (-> "default-2"), and a 64-byte slug verifies VARCHAR(64) truncation.
+		erasedTeam := &Calendar{ID: "cal_erased_team", OwnerKind: "user", OwnerID: "usr_erased", Slug: "team", Name: "Erased Team"}
+		olderTeam := &Calendar{ID: "cal_older_team", OwnerKind: "user", OwnerID: "usr_older", Slug: "team", Name: "Older Team"}
+		olderTeam2 := &Calendar{ID: "cal_older_team2", OwnerKind: "user", OwnerID: "usr_older", Slug: "team-2", Name: "Older Team 2"}
+		longSlug := strings.Repeat("a", maxCalendarSlugLen)
+		erasedLong := &Calendar{ID: "cal_erased_long", OwnerKind: "user", OwnerID: "usr_erased", Slug: longSlug, Name: "Erased Long"}
+		olderLong := &Calendar{ID: "cal_older_long", OwnerKind: "user", OwnerID: "usr_older", Slug: longSlug, Name: "Older Long"}
+		for _, cal := range []*Calendar{erasedTeam, olderTeam, olderTeam2, erasedLong, olderLong} {
+			if err := s.Calendars().CreateCalendar(ctx, cal, 0); err != nil {
+				t.Fatal(err)
+			}
 		}
-		if _, err := s.Users().GetUserByID(ctx, "usr_erased"); err != nil {
-			t.Fatalf("erasure partly committed: %v", err)
+		if _, err := s.Calendars().PutObject(ctx, &CalendarObject{
+			CalendarID: erasedTeam.ID, Name: "shared.ics", UID: "shared-team", Data: []byte("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"),
+		}, "", false, OwnerLimits{}); err != nil {
+			t.Fatal(err)
 		}
-		cal, err := s.Calendars().GetCalendarByID(ctx, w.cal["erased"])
-		if err != nil || cal.OwnerID != "usr_erased" {
-			t.Fatalf("calendar lost: %+v %v", cal, err)
+		if _, err := s.Calendars().PutObject(ctx, &CalendarObject{
+			CalendarID: olderTeam.ID, Name: "mine.ics", UID: "older-team", Data: []byte("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"),
+		}, "", false, OwnerLimits{}); err != nil {
+			t.Fatal(err)
 		}
+		for _, calID := range []string{w.cal["erased"], erasedTeam.ID, erasedLong.ID} {
+			erasureShare(t, s, calID, "older", "manager")
+		}
+
+		if err := s.Users().DeleteUser(ctx, "usr_erased"); err != nil {
+			t.Fatalf("erasure with colliding slugs failed: %v", err)
+		}
+		if _, err := s.Users().GetUserByID(ctx, "usr_erased"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("erased user still present: %v", err)
+		}
+
+		// Successor's original calendars keep their slugs and content.
+		gotOlderTeam, err := s.Calendars().GetCalendarByID(ctx, olderTeam.ID)
+		if err != nil || gotOlderTeam.OwnerID != "usr_older" || gotOlderTeam.Slug != "team" {
+			t.Fatalf("successor team calendar: %+v %v", gotOlderTeam, err)
+		}
+		if _, err := s.Calendars().GetObject(ctx, olderTeam.ID, "mine.ics"); err != nil {
+			t.Fatalf("successor team object lost: %v", err)
+		}
+
+		// Transferred "team" calendar skips taken "team" and "team-2" and receives "team-3".
+		gotErasedTeam, err := s.Calendars().GetCalendarByID(ctx, erasedTeam.ID)
+		if err != nil || gotErasedTeam.OwnerID != "usr_older" || gotErasedTeam.Slug != "team-3" {
+			t.Fatalf("transferred team calendar: %+v %v", gotErasedTeam, err)
+		}
+		if _, err := s.Calendars().GetObject(ctx, erasedTeam.ID, "shared.ics"); err != nil {
+			t.Fatalf("transferred team object lost: %v", err)
+		}
+
+		// Transferred "default" calendar is renamed to "default-2".
+		gotDefault, err := s.Calendars().GetCalendarByID(ctx, w.cal["erased"])
+		if err != nil || gotDefault.OwnerID != "usr_older" || gotDefault.Slug != "default-2" {
+			t.Fatalf("transferred default calendar: %+v %v", gotDefault, err)
+		}
+
+		// Transferred 64-char slug is truncated cleanly to fit VARCHAR(64).
+		gotLong, err := s.Calendars().GetCalendarByID(ctx, erasedLong.ID)
+		wantLong := strings.Repeat("a", maxCalendarSlugLen-2) + "-2"
+		if err != nil || gotLong.OwnerID != "usr_older" || gotLong.Slug != wantLong || len(gotLong.Slug) > maxCalendarSlugLen {
+			t.Fatalf("transferred 64-char calendar: %+v %v, want slug %q", gotLong, err, wantLong)
+		}
+
+		// Each transferred calendar wrote an org audit record.
 		records, _, err := s.Audit().ListOrgAuditRecords(ctx, "org-a", 0, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
+		transferred := map[string]bool{}
 		for _, r := range records {
-			if r.Action == "calendar.owner_transferred" {
-				t.Fatal("rolled-back transfer was audited")
+			if r.Action == "calendar.owner_transferred" && r.UserID == "usr_older" {
+				transferred[r.Resource] = true
+			}
+		}
+		for _, id := range []string{w.cal["erased"], erasedTeam.ID, erasedLong.ID} {
+			if !transferred[id] {
+				t.Fatalf("missing calendar.owner_transferred audit for %s (got %v)", id, transferred)
 			}
 		}
 	})
