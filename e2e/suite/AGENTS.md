@@ -8,11 +8,13 @@ repository as a copy.
 
 ## Ownership
 - `apps.lock`: `<app> <https://github.com/Busnes-app/<repo>.git> <full SHA>` per line. Pin only a
-  commit whose `kye2e` gate has merged. Pinned: KyCalendar, KyIdentity, KyMessages. Not pinned
-  yet: KyPost (no gate).
+  commit whose `kye2e` gate has merged. Pinned: KyCalendar, KyIdentity, KyMessages, KyPost.
 - `images/<app>.Dockerfile`: builds the pinned commit with `-tags kye2e` into the local image
   `kye2e/<app>:<sha>`. No app's own Dockerfile changes; the release image is the app's own
-  Dockerfile at the same commit (`kye2e-release/<app>:<sha>`). Nothing is pushed.
+  Dockerfile at the same commit (`kye2e-release/<app>:<sha>`). Nothing is pushed. KyPost's
+  release image is built with `INSTALL_OLLAMA=false`, and its kye2e image is that release image
+  with only `kypost-server` replaced by the tagged build (the release image goes in as an OCI
+  layout build context, because a docker-container builder cannot read the daemon's images).
 - `compose/compose.yml`: the topology. Every service sets `mem_limit` and an equal
   `memswap_limit`, together at most 5 GiB (dockerd's containers are outside any `kslot` scope);
   the driver refuses otherwise. Three random loopback ports are published for the driver and
@@ -21,13 +23,21 @@ repository as a copy.
   platform API; and the `mail` sink's API (Mailpit, STARTTLS, alias `smtp.e2e.test`). Compose mounts secrets root-owned
   and world-readable, so services that want private key files copy them at start. Caddy keeps a
   browser on one X replica for OIDC because the pinned KyCalendar signs nonces with a process-local key.
+  PostgreSQL serves TLS from the run's CA with bounded keepalives, because KyPost's table mode
+  requires `sslmode=verify-full`; the other apps connect without TLS as before.
 - `smoke_test.go` (`//go:build kye2e`): `start` brings one install up (images, KyIdentity's
   fresh PostgreSQL initialization, the bootstrap administrator's forced password change, the `kycalendar` and `kymessages` OIDC
   clients and `kycalendar`'s region map `e2e-1` → X, `e2e-2` → Y). `TestSmoke`, one row per app in
   `targets`: each pinned `kye2e` image starts in multi mode against the `.test` issuer
   (KyCalendar X as two replicas on one database in cell `e2e-1`, Y in `e2e-2`; KyIdentity;
   KyMessages serving both cells), the release image at the same commit refuses at the last
-  gate, and the test image refuses a non-`.test` issuer.
+  gate, and the test image refuses a non-`.test` issuer. KyPost cannot serve multi mode yet:
+  multi is table mode, and its volume-free assertion (MH7) refuses while nine stores still live
+  on the host's disk. So `kypost` and `kypost-release` run once each with the same complete
+  settings (cells, provisioned keys, TLS on the listener and to the database, the `.test` issuer
+  in `sso.json`): the release image must give the gate's refusal, and the kye2e image must get
+  past it and every other table-mode check to the volume-free refusal. The row fails when KyPost
+  starts serving; then run it as a service.
 - `kyidentity_test.go`: the driver's browser, one cookie jar per person over https through
   `front`, with each app's CSRF double submit, KyIdentity sign-in and step-up.
 - `scenarios_test.go`: `TestScenarios`, S1-S3 of the design. Runs today: platform mail and the

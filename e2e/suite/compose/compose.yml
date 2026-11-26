@@ -47,6 +47,10 @@ services:
       POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:?}
     volumes:
       - ./initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    # TLS from the run's CA and bounded dead connections: KyPost's table mode requires both
+    # (sslmode=verify-full; its docs/RUNNING.md keepalive values). Other apps still connect without.
+    secrets: [tls_cert, tls_key]
+    entrypoint: ["sh", "-c", "install -o postgres -g postgres -m 600 /run/secrets/tls_cert /run/secrets/tls_key /var/lib/postgresql/ && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/tls_cert -c ssl_key_file=/var/lib/postgresql/tls_key -c tcp_keepalives_idle=10 -c tcp_keepalives_interval=5 -c tcp_keepalives_count=4 -c tcp_user_timeout=30000"]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
       interval: 1s
@@ -198,6 +202,52 @@ services:
     memswap_limit: 128m
     profiles: [release]
 
+  # KyPost runs once, never as a service: multi mode is table mode, which it cannot start yet
+  # (smoke_test.go, targets). Every table-mode requirement it checks first is met here: the
+  # provisioned keys, TLS on its listener and to the database, the .test issuer. The process
+  # is the server itself, so a refusal ends the run at once.
+  kypost: &kypost
+    image: ${KYPOST_IMAGE:?}
+    mem_limit: 384m
+    memswap_limit: 384m
+    restart: "no"
+    profiles: [release]
+    depends_on:
+      postgres: { condition: service_healthy }
+    secrets: [kypost_keys, kypost_vapid, tls_cert, tls_key, e2e_ca]
+    # Secrets arrive root-owned and world-readable; KyPost wants its files private and its own.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        p=/kypost/private c=/kypost/config
+        while read -r name value; do printf %s "$$value" > "$$p/$$name"; done < /run/secrets/kypost_keys
+        cp /run/secrets/kypost_vapid "$$p/notifications-vapid-private.pem"
+        cp /run/secrets/tls_cert "$$p/tls.crt"; cp /run/secrets/tls_key "$$p/tls.key"; cp /run/secrets/e2e_ca "$$p/e2e-ca.pem"
+        printf '{"enabled":true,"issuerUrl":"https://id.e2e.test","clientId":"kypost","autoProvision":true}' > "$$c/sso.json"
+        chown -R 1000:1000 /kypost; chmod 600 "$$p"/* "$$c"/*
+        exec setpriv --reuid=1000 --regid=1000 --init-groups /usr/local/bin/kypost-server --mode server
+      - --
+    environment:
+      KYPOST_TENANCY: multi
+      KYPOST_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
+      KY_CELLS: e2e-1,e2e-2
+      KYPOST_NATIVE_MAIL: "true"
+      KYPOST_DISABLE_AI_SORTING: "true"
+      KYPOST_DATABASE_URL: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kypost?sslmode=verify-full&sslrootcert=/kypost/private/e2e-ca.pem
+      TLS_CERT_FILE: /kypost/private/tls.crt
+      TLS_KEY_FILE: /kypost/private/tls.key
+      PUSH_RELAY_URL: ""
+      APNS_RELAY_URL: ""
+
+  # KyPost's release image at the same commit, with the same settings: it must refuse at the gate.
+  kypost-release:
+    <<: *kypost
+    image: ${KYPOST_RELEASE_IMAGE:?}
+    mem_limit: 128m
+    memswap_limit: 128m
+
 configs:
   caddyfile:
     content: |
@@ -241,5 +291,9 @@ secrets:
     environment: E2E_KYIDENTITY_RSA
   kyidentity_vapid:
     environment: E2E_KYIDENTITY_VAPID
+  kypost_keys:
+    environment: E2E_KYPOST_KEYS
+  kypost_vapid:
+    environment: E2E_KYPOST_VAPID
   kymessages_seal:
     environment: E2E_KYMESSAGES_SEAL

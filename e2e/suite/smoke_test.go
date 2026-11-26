@@ -50,18 +50,34 @@ type target struct {
 	refusal  string   // what the release build says to a complete multi configuration
 	issuer   string   // the issuer variable, and what the kye2e build says to a non-.test one
 	refuseIs string
+	// stops is what the kye2e image says when the app cannot serve multi mode yet even with
+	// the gate open; it then runs once as the one-off service tagged, never as services.
+	stops  string
+	tagged string
+	// releaseArgs are build arguments for the app's own Dockerfile; fromRelease builds the
+	// kye2e image on the release image (the build context named release).
+	releaseArgs []string
+	fromRelease bool
 }
 
 var targets = []target{
 	{"kycalendar", "/app/kycalendar", []string{"kycalendar-x1", "kycalendar-x2", "kycalendar-y"}, "http://127.0.0.1:8080/readyz",
 		"kycalendar-release", "every requirement is met, but multi-tenant startup stays refused",
-		"KY_KYSIGNON_ISSUER", "serves only an https issuer under .test"},
+		"KY_KYSIGNON_ISSUER", "serves only an https issuer under .test", "", "", nil, false},
 	{"kyidentity", "/usr/local/bin/kyidentity", []string{"kyidentity"}, "http://127.0.0.1:5867/readyz",
 		"kyidentity-release", "KYIDENTITY_TENANCY=multi is not available in this release",
-		"KYIDENTITY_ISSUER_URL", "KYIDENTITY_ISSUER_URL must be a host under .test"},
+		"KYIDENTITY_ISSUER_URL", "KYIDENTITY_ISSUER_URL must be a host under .test", "", "", nil, false},
 	{"kymessages", "/app/kymessages", []string{"kymessages"}, "",
 		"kymessages-release", "KY_TENANCY_MODE=multi: multi-tenant mode is unavailable in this release",
-		"KY_KYIDENTITY_ISSUER", "this test build accepts only an https issuer under .test"},
+		"KY_KYIDENTITY_ISSUER", "this test build accepts only an https issuer under .test", "", "", nil, false},
+	// Multi mode is table mode, which KyPost cannot start yet: its volume-free assertion (MH7)
+	// refuses while nine stores still live on the host's disk. The kye2e image must get past
+	// the gate and every other table-mode requirement to that refusal. Its issuer is runtime
+	// configuration (sso.json), read only by a serving process, so it has no startup refusal.
+	{name: "kypost", bin: "/usr/local/bin/kypost-server", release: "kypost-release",
+		refusal: "KYPOST_TENANCY=multi is not available in this release",
+		stops:   "table mode cannot start: these stores are still written to this host's disk", tagged: "kypost",
+		releaseArgs: []string{"--build-arg", "INSTALL_OLLAMA=false"}, fromRelease: true},
 }
 
 // The first check: each pinned kye2e image starts in multi mode against the .test issuer, the
@@ -77,7 +93,17 @@ func TestSmoke(t *testing.T) {
 				t.Errorf("%s not ready: %v %s", svc, err, out)
 			}
 		}
-		refuses(t, s.compose, a.refusal, "run", "--rm", "--no-deps", a.release)
+		rel := refuses(t, s.compose, a.refusal, "run", "--rm", "--no-deps", a.release)
+		if a.stops != "" {
+			// Past the gate: the tagged build must not give the release refusal.
+			out := refuses(t, s.compose, a.stops, "run", "--rm", "--no-deps", a.tagged)
+			if strings.Contains(out, a.refusal) {
+				t.Errorf("%s: the kye2e image gave the release refusal:\n%s", a.tagged, out)
+			}
+			t.Logf("%s, same settings: release %q; kye2e %q", a.name, line(rel, a.refusal), line(out, a.stops))
+			notRun(t, a.name+" serving in multi mode, and its .test issuer rule: it stops at its volume-free assertion first")
+			continue
+		}
 		refuses(t, s.compose, a.refuseIs, "run", "--rm", "--no-deps", "-e", a.issuer+"=https://id.example", a.services[0])
 	}
 }
@@ -102,7 +128,8 @@ func start(t *testing.T) *suite {
 		"E2E_PROJECT="+fmt.Sprintf("kye2e-%d-%s", os.Getpid(), strings.ToLower(t.Name())), "E2E_STAFF_ORG_ID="+staffOrgID,
 		"E2E_SESSION_SECRET="+random(32), "E2E_ENCRYPTION_KEY="+random(32), "E2E_ADMIN_PASSWORD="+adminPass,
 		"E2E_POSTGRES_PASSWORD="+random(16), "E2E_S3_SECRET="+random(16), "E2E_KYIDENTITY_SECRET_KEY="+random(32),
-		"E2E_KYIDENTITY_RSA="+rsaKey(t), "E2E_KYIDENTITY_VAPID="+vapidKey(t), "E2E_KYMESSAGES_SEAL="+random(32))
+		"E2E_KYIDENTITY_RSA="+rsaKey(t), "E2E_KYIDENTITY_VAPID="+vapidKey(t), "E2E_KYMESSAGES_SEAL="+random(32),
+		"E2E_KYPOST_KEYS="+kypostKeys(t), "E2E_KYPOST_VAPID="+ecKey(t))
 	for _, a := range targets {
 		pin, ok := s.pins[a.name]
 		if !ok {
@@ -124,8 +151,16 @@ func start(t *testing.T) *suite {
 	for _, a := range targets {
 		pin := s.pins[a.name]
 		img, rel := "kye2e/"+a.name+":"+pin.sha, "kye2e-release/"+a.name+":"+pin.sha
-		build(t, img, "-f", "images/"+a.name+".Dockerfile", "--build-arg", "REPO="+pin.repo, "--build-arg", "SHA="+pin.sha, "images")
-		build(t, rel, pin.repo+"#"+pin.sha) // the app's own Dockerfile: its release build
+		build(t, rel, append(a.releaseArgs, pin.repo+"#"+pin.sha)...) // the app's own Dockerfile: its release build
+		args := []string{"-f", "images/" + a.name + ".Dockerfile", "--build-arg", "REPO=" + pin.repo, "--build-arg", "SHA=" + pin.sha}
+		if a.fromRelease {
+			// A docker-container builder cannot read the daemon's images, so the release image
+			// goes in as an OCI layout: the same build again, from cache.
+			oci := filepath.Join(t.TempDir(), "release")
+			build(t, "", append(a.releaseArgs, "--output", "type=oci,tar=false,dest="+oci, pin.repo+"#"+pin.sha)...)
+			args = append(args, "--build-context", "release=oci-layout://"+oci)
+		}
+		build(t, img, append(args, "images")...)
 		if !hasTag(t, img, a.bin) || hasTag(t, rel, a.bin) {
 			t.Fatalf("build tags: %s must carry kye2e, %s must not", img, rel)
 		}
@@ -246,7 +281,7 @@ func tlsFiles(t *testing.T) (ca, cert, key string) {
 		t.Fatal(err)
 	}
 	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "id.e2e.test"},
-		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "smtp.e2e.test"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
+		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "smtp.e2e.test", "postgres", "kypost"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, caTmpl, &leafKey.PublicKey, caKey)
 	if err != nil {
@@ -288,9 +323,13 @@ func lock(t *testing.T) map[string]app {
 }
 
 // build makes a local image; E2E_BUILDER names a buildx builder (on Major, one with a memory cap).
+// An empty tag builds to the --output in args instead of loading an image.
 func build(t *testing.T, tag string, args ...string) {
 	t.Helper()
-	cmd := []string{"buildx", "build", "--load", "-t", tag}
+	cmd := []string{"buildx", "build"}
+	if tag != "" {
+		cmd = append(cmd, "--load", "-t", tag)
+	}
 	if b := os.Getenv("E2E_BUILDER"); b != "" {
 		cmd = append(cmd, "--builder", b)
 	}
@@ -360,11 +399,13 @@ func checkMemory(t *testing.T, compose func(...string) (string, error)) {
 }
 
 // refuses runs a one-off container that must exit non-zero saying want.
-func refuses(t *testing.T, compose func(...string) (string, error), want string, args ...string) {
+func refuses(t *testing.T, compose func(...string) (string, error), want string, args ...string) string {
 	t.Helper()
-	if out, err := compose(args...); err == nil || !strings.Contains(out, want) {
+	out, err := compose(args...)
+	if err == nil || !strings.Contains(out, want) {
 		t.Errorf("%v: want a refusal saying %q, got %v\n%s", args, want, err, out)
 	}
+	return out
 }
 
 func random(n int) string {
@@ -389,4 +430,40 @@ func vapidKey(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return base64.RawURLEncoding.EncodeToString(k.Bytes())
+}
+
+// kypostKeys are the keys KyPost's table mode requires provisioned, "<file> <base64>" per
+// line: 32 random bytes each, as an operator makes them.
+func kypostKeys(t *testing.T) string {
+	var b strings.Builder
+	for _, name := range []string{"totp-secret", "pow", "imap-config", "pgp-private-key", "pickup-store", "pairing",
+		"relay-identity", "documents", "scheduled-send", "imap-import", "native-relay", "address-tombstone"} {
+		k := make([]byte, 32)
+		rand.Read(k)
+		fmt.Fprintf(&b, "%s.key %s\n", name, base64.StdEncoding.EncodeToString(k))
+	}
+	return b.String()
+}
+
+// ecKey is a P-256 private key, SEC 1 PEM (KyPost's Web Push key).
+func ecKey(t *testing.T) string {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalECPrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
+}
+
+// line is the first line of out that contains want.
+func line(out, want string) string {
+	for l := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(l, want) {
+			return strings.TrimSpace(l)
+		}
+	}
+	return ""
 }

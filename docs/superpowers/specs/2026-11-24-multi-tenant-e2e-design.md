@@ -72,8 +72,8 @@ per-run CA:
 Memory budget: 5 GB across the containers; the driver refuses a service without `mem_limit` and an
 equal `memswap_limit`, or a total over 5 GiB, before anything starts. Limits today: PostgreSQL
 1 GiB, each KyCalendar 512 MiB, KyIdentity 512 MiB, KyMessages 512 MiB, the KyCalendar release
-refusal run 256 MiB, the other two 128 MiB each, `front` 64 MiB and the mail sink 64 MiB:
-4,224 MiB. Measured at the
+refusal run 256 MiB, the other two 128 MiB each, `front` 64 MiB, the mail sink 64 MiB, and
+KyPost's two one-off runs 384 and 128 MiB: 4,736 MiB. Measured at the
 end of the three-app smoke run (Major, 2026-11-25): PostgreSQL 101 MiB, KyCalendar 8, 72 and
 72 MiB, KyIdentity 150 MiB, KyMessages 75 MiB, `front` 11 MiB. Measured at the end of the first
 smoke run (Major, 2026-11-25): PostgreSQL 49 MiB, KyCalendar X replicas 8 and 76 MiB, Y 72 MiB.
@@ -182,12 +182,12 @@ replayed. Nothing after S7 uses B except the restore of K.
 | KyCalendar | The `kye2e` gate, and open question 12 (handover slug collisions), which the tenancy spec keeps as a hosted acceptance gate | Gate built 2026-11-25 (`internal/config/gate_*.go`, `scripts/check-test-build-tag.sh`, `scripts/check-release-image.sh`); release builds still refuse multi. Question 12 is open |
 | KyPost | **PR 7, hosted mail** (allocation from the mailbox address, M's masked changes, per-org limits). It waits on MH1–MH7, RX 1–5 and MH9 (KyPost tenancy spec, amendments of 2026-11-22). | RX 1–5 built (receiving tier spec status). MH1, MH2 and MH3 built. MH4 and MH6 partly built, with the rest in open PRs #725 and #726. MH5 built (#722). MH7 not built. MH9 (cells) not built: no `KYPOST_REGION` or `KY_CELLS` in code. |
 | KyPost | An answer to KyCalendar's open question 6: does KyPost mark mail between two hosted mailboxes `dkim_aligned`? | Unverified. S4 is the test that answers it. |
-| KyPost | The `kye2e` gate, including the `BootstrapAdmin` change | Merged (KyPost #744). KyPost image, topology and smoke coverage are pending in this harness. |
+| KyPost | The `kye2e` gate, including the `BootstrapAdmin` change | Merged (KyPost #744), pinned at its merge `73a692f`. The kye2e image gets past the gate with a complete multi configuration and stops at KyPost's table-mode volume-free assertion (MH7: nine stores still on the host's disk), so KyPost cannot serve multi mode yet; the release image refuses the same settings at the gate. |
 | KyMessages | The `kye2e` gate with the `KY_ATTACHMENTS_S3_*` requirement (`internal/config/config.go:278-279`) | Merged (#52), pinned. Its tenancy build PRs #35, #38–#42 and #44–#51 are merged. Whether they cover every row of its spec's §12 is unverified, and the spec still lists "hosted qualification" as gated. |
 | KyCalendar | OIDC callbacks routed to a different replica | The pinned build returns `400 Invalid or expired SSO nonce` when the callback reaches a different X replica. The harness uses browser affinity for sign-in and leaves cross-replica callbacks unqualified. |
 | KyCalendar, KyMessages | The meeting PUT contract: KyCalendar sends the organizer as `sub`, KyMessages reads `organizer_sub`, so the organizer is not added to the room. Its secret is KyMessages' `KY_MEETING_SYNC_SECRET` (or `KY_KYIDENTITY_HMAC_SECRET`), not KyCalendar's pair secret | KyMessages #58 implements contract B. The harness still needs that pin and the shared pair secret for the S3 meeting check |
 | KyRecovery | A synthetic ceremony that a harness can run without a person | Unverified |
-| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25. The smoke run covers KyCalendar, KyIdentity and KyMessages; KyPost smoke coverage is pending. `TestScenarios` provisions and enables the S1 organisations through the platform API, then exercises the app checks of S1–S3. It logs checks outside the current topology as `NOT RUN:`. |
+| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25. The smoke run covers KyCalendar, KyIdentity, KyMessages and KyPost (KyPost up to its volume-free assertion; hosted-mail scenarios wait on KyPost PR 7). `TestScenarios` provisions and enables the S1 organisations through the platform API, then exercises the app checks of S1–S3. It logs checks outside the current topology as `NOT RUN:`. |
 
 Order: the four gate PRs are independent and small, and each can merge with its release check while
 nothing yet builds with the tag. KyIdentity PR 4 unblocks S1, S2, S3, S5, S6 and S7 (S7 for
