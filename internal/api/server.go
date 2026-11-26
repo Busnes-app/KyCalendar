@@ -54,6 +54,9 @@ type Server struct {
 	// signinDigest is the digest of the sign-in rows the live provider was built from;
 	// "" after a local save, until FollowSignIn reloads (signin_replica.go).
 	signinDigest atomic.Pointer[string]
+	// nonceFallback holds a per-server random HMAC key when Security.SessionSecret is empty.
+	nonceFallbackOnce sync.Once
+	nonceFallback     string
 	// signinHTTP reaches admin-entered providers: HTTPS only, no redirects, no loopback,
 	// link-local or cloud metadata targets.
 	signinHTTP *http.Client

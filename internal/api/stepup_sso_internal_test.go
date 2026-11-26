@@ -96,7 +96,7 @@ func TestSSOStepUpNeedsAFreshAuthTime(t *testing.T) {
 			parts := strings.Split(c.Value, ".")
 			idp.nonce = parts[1]
 			value := parts[0] + "." + parts[1] + "." + strconv.FormatInt(time.Now().Add(-10*time.Minute).Unix(), 10)
-			c.Value = value + "." + nonceCookieMAC(state, value)
+			c.Value = value + "." + s.nonceCookieMAC(state, value)
 		}
 		stale.AddCookie(c)
 	}
