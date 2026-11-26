@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
+	"time"
 )
 
 // StorageGrantTTL is KyIdentity's maximum grant lifetime, in seconds. Database time is
@@ -15,6 +17,45 @@ const maxStorageReportBytes int64 = 1 << 53
 
 var ErrStorageSequence = errors.New("storage report sequence requires operator recovery")
 var ErrStorageGrant = errors.New("invalid storage grant")
+
+// ErrStorageGrantRefreshing is returned when a write is momentarily blocked by an in-flight
+// storage-pool report snapshot (pool_inflight) even though the org holds an unexpired grant
+// whose ceiling would admit the write. It wraps ErrQuotaExceeded so callers that do not
+// retry still fail closed with 507.
+var ErrStorageGrantRefreshing = fmt.Errorf("storage grant refresh in flight: %w", ErrQuotaExceeded)
+
+// storageRefreshWaits bounds how long live write boundaries wait for an in-flight KyIdentity
+// storage-pool grant refresh to commit (~1.575s total).
+var storageRefreshWaits = []time.Duration{
+	25 * time.Millisecond,
+	50 * time.Millisecond,
+	100 * time.Millisecond,
+	200 * time.Millisecond,
+	400 * time.Millisecond,
+	400 * time.Millisecond,
+	400 * time.Millisecond,
+}
+
+// RetryStorageRefresh runs fn and, if it fails with ErrStorageGrantRefreshing, retries with
+// bounded backoff while respecting ctx. Callers must invoke it outside any DB transaction so
+// ApplyStorageGrant can acquire calendar-total and commit between attempts.
+func RetryStorageRefresh(ctx context.Context, fn func() error) error {
+	err := fn()
+	for _, wait := range storageRefreshWaits {
+		if !errors.Is(err, ErrStorageGrantRefreshing) {
+			return err
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		err = fn()
+	}
+	return err
+}
 
 // StorageReport is an immutable usage snapshot, owned by this product rather than its
 // transport. An ambiguous request is retried with this same sequence, bytes and send time.

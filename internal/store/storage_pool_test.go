@@ -400,3 +400,117 @@ func TestStorageErasureRequestsEarlyRefresh(t *testing.T) {
 		}
 	})
 }
+
+func TestStorageGrantRefreshingError(t *testing.T) {
+	eachDialect(t, func(t *testing.T, s *SQLStore) {
+		ctx := context.Background()
+		w := poolWorld(t, s)
+
+		// First report (no grant ceiling yet): must fail immediately as plain ErrQuotaExceeded, not refreshing.
+		r1, err := s.BeginStorageReport(ctx, "org-a", 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "alice", "first", 100); !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("first report inflight: want plain ErrQuotaExceeded, got %v", err)
+		}
+		if err := s.ApplyStorageGrant(ctx, "org-a", r1.Seq, 1000, StorageGrantTTL); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "alice", "one", 100); err != nil {
+			t.Fatal(err)
+		}
+
+		// Not inflight, write exceeds ceiling: plain ErrQuotaExceeded.
+		if err := w.put(s, "bob", "too-big", 950); !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("over ceiling when not inflight: want plain ErrQuotaExceeded, got %v", err)
+		}
+
+		// Start renewal report: pool_inflight=TRUE with unexpired ceiling 1000 and used 100.
+		r2, err := s.BeginStorageReport(ctx, "org-a", 2000)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Write fits under unexpired ceiling (100+100 <= 1000) and static quotas: ErrStorageGrantRefreshing (which wraps ErrQuotaExceeded).
+		err = w.put(s, "bob", "fits", 100)
+		if !errors.Is(err, ErrStorageGrantRefreshing) || !errors.Is(err, ErrQuotaExceeded) {
+			t.Fatalf("inflight write under ceiling: want ErrStorageGrantRefreshing wrapping ErrQuotaExceeded, got %v", err)
+		}
+
+		// Write exceeds unexpired ceiling (100+950 > 1000): plain ErrQuotaExceeded, NOT refreshing.
+		if err := w.put(s, "bob", "over-ceiling", 950); !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("inflight write over ceiling: want plain ErrQuotaExceeded, got %v", err)
+		}
+
+		// Write fits under ceiling but exceeds per-owner MaxBytes: plain ErrQuotaExceeded, NOT refreshing.
+		_, err = s.Calendars().PutObject(ctx, &CalendarObject{
+			CalendarID: w.cal["bob"], Name: "over-owner.ics", Component: "VEVENT", UID: "over-owner",
+			Data: make([]byte, 100),
+		}, "", true, OwnerLimits{MaxBytes: 50})
+		if !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("inflight write over owner MaxBytes: want plain ErrQuotaExceeded, got %v", err)
+		}
+
+		// Write fits under ceiling but exceeds org static max_bytes: plain ErrQuotaExceeded, NOT refreshing.
+		poolSQL(t, s, `UPDATE orgs SET quotas_json='{"max_bytes":150}' WHERE id='org-a'`)
+		if err := w.put(s, "bob", "over-static", 100); !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("inflight write over static max_bytes: want plain ErrQuotaExceeded, got %v", err)
+		}
+		poolSQL(t, s, `UPDATE orgs SET quotas_json='{}' WHERE id='org-a'`)
+
+		// Expired grant while inflight: plain ErrQuotaExceeded, NOT refreshing.
+		poolSQL(t, s, `UPDATE orgs SET pool_expires_at=`+s.dbNow()+`-1 WHERE id='org-a'`)
+		if err := w.put(s, "bob", "expired", 100); !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("inflight write with expired grant: want plain ErrQuotaExceeded, got %v", err)
+		}
+		poolSQL(t, s, `UPDATE orgs SET pool_expires_at=`+s.dbNow()+`+900 WHERE id='org-a'`)
+
+		// Stale-fenced report while inflight (needs operator recovery): plain ErrQuotaExceeded, NOT refreshing.
+		if err := s.StaleStorageReport(ctx, "org-a", r2.Seq, 99); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.put(s, "bob", "stale", 100); !errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrStorageGrantRefreshing) {
+			t.Fatalf("inflight write with stale sequence: want plain ErrQuotaExceeded, got %v", err)
+		}
+	})
+}
+
+func TestRetryStorageRefresh(t *testing.T) {
+	// Transient refresh succeeds once cleared.
+	calls := 0
+	err := RetryStorageRefresh(context.Background(), func() error {
+		calls++
+		if calls < 3 {
+			return ErrStorageGrantRefreshing
+		}
+		return nil
+	})
+	if err != nil || calls != 3 {
+		t.Fatalf("transient retry: err=%v calls=%d", err, calls)
+	}
+
+	// Plain ErrQuotaExceeded returns immediately without retrying.
+	calls = 0
+	start := time.Now()
+	err = RetryStorageRefresh(context.Background(), func() error {
+		calls++
+		return ErrQuotaExceeded
+	})
+	if !errors.Is(err, ErrQuotaExceeded) || calls != 1 || time.Since(start) > 20*time.Millisecond {
+		t.Fatalf("plain quota error retried: err=%v calls=%d elapsed=%v", err, calls, time.Since(start))
+	}
+
+	// Context cancellation stops waiting promptly.
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	calls = 0
+	start = time.Now()
+	err = RetryStorageRefresh(ctx, func() error {
+		calls++
+		return ErrStorageGrantRefreshing
+	})
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 250*time.Millisecond {
+		t.Fatalf("context cancel: err=%v calls=%d elapsed=%v", err, calls, time.Since(start))
+	}
+}

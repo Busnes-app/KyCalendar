@@ -154,6 +154,7 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 			}
 		}
 	}
+	var bumped bool
 	return func(previous []byte) ([]byte, []*store.OutboxMessage, error) {
 		var oldCal *ical.Calendar
 		if previous != nil {
@@ -164,8 +165,13 @@ func (s *Scheduler) Plan(ctx context.Context, writer *store.User, newCal *ical.C
 		}
 		var data []byte
 		if newCal != nil {
-			if org, ok := itip.Organizer(newCal); ok && org == self && itip.BumpSequence(oldCal, newCal) {
-				data, _ = encodeCal(newCal) // nil when go-ical will not encode it: stored as sent
+			if org, ok := itip.Organizer(newCal); ok && org == self {
+				if itip.BumpSequence(oldCal, newCal) {
+					bumped = true
+				}
+				if bumped {
+					data, _ = encodeCal(newCal) // nil when go-ical will not encode it: stored as sent
+				}
 			}
 		}
 		msgs, err := itip.Outgoing(self, oldCal, newCal, s.now())
@@ -415,8 +421,11 @@ func (s *Scheduler) putDelivery(ctx context.Context, c *store.Calendar, name str
 		return errPermanent{"invalid_object"}
 	}
 	o.DeliveryID, o.DeliveryRecipient = deliveryID, recipientID
-	_, err = s.Store.Calendars().PutObject(ctx, o, ifMatch, create, s.Limits)
-	return err
+	return store.RetryStorageRefresh(ctx, func() error {
+		attempt := *o
+		_, err := s.Store.Calendars().PutObject(ctx, &attempt, ifMatch, create, s.Limits)
+		return err
+	})
 }
 
 // deliverToAttendee writes the organizer's REQUEST or CANCEL into an internal attendee's
@@ -518,7 +527,17 @@ func (s *Scheduler) deliverInternalCancellation(ctx context.Context, u *store.Us
 			}
 		}
 	}
-	return s.Store.Calendars().ApplyInternalCancellation(ctx, deliveryID, u.ID, changes, s.Limits)
+	return store.RetryStorageRefresh(ctx, func() error {
+		attempt := make([]store.CancellationChange, len(changes))
+		for i, ch := range changes {
+			attempt[i] = ch
+			if ch.Next != nil {
+				cp := *ch.Next
+				attempt[i].Next = &cp
+			}
+		}
+		return s.Store.Calendars().ApplyInternalCancellation(ctx, deliveryID, u.ID, attempt, s.Limits)
+	})
 }
 
 // inviteCalendar is where a new invitation lands: the user's default calendar, or their first
