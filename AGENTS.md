@@ -323,8 +323,7 @@ only the process setting across base/build/LAN-DNS/static-IP combinations.
 - `CALDAV:free-busy-query` answers busy times only (no summary, location, attendees or UIDs) for a calendar the caller can already read; transparent and cancelled instances are free. Cross-person free/busy is scheduling (RFC 6638 outbox) and ships with invitations, behind their flag: advertising `calendar-auto-schedule` makes Thunderbird stop sending its own invitations.
 - `third_party/go-webdav` is Busnes-app/go-webdav (`kycalendar`) byte for byte at `third_party/go-webdav.commit`; change the fork first, then `scripts/check-fork-sync.sh --write`. CI refuses a vendored edit that does not move the pin.
 - `TestCalDAVWireSurface` pins what clients see (OPTIONS headers; PROPFIND of the discovery and scheduling props); regenerate its golden only on purpose (`KY_UPDATE_GOLDEN=1`). `scripts/interop/run.sh` drives a built server with python `caldav` (`KY_INTEROP_FREEBUSY=1` adds free/busy, `KY_INTEROP_SCHEDULING=1` runs with scheduling on).
-- Smoke evidence and the pending real-device checklist: `docs/evidence/2026-10-plan-1-smoke.md`.
-- The scheduling real-device gate (operator checklist and results; `KYCALENDAR_SCHEDULING` goes on for launch only if it passes): `docs/evidence/2026-11-scheduling-device-gate.md`. Until it passes, launch deployments that pair through KyIdentity pin `KYCALENDAR_SCHEDULING=false`, since automatic mode turns scheduling on. The KyPost status screen capture: `docs/evidence/2026-10-kypost-pairing.md`.
+- Launch deployments that pair through KyIdentity can pin `KYCALENDAR_SCHEDULING=false` if they want scheduling kept off while automatic mode would enable it.
 
 - Internal delivered invitations spend the sender's object/byte quota until an authenticated attendee changes their own answer, then that responding attendee's (including a copy in a group calendar). The store atomically exchanges the pending queue reservation for the copy and enforces the charge on every rewrite. Hourly invitation controls retain 1000 new invitees and add 64 MiB of internal REQUEST recipient bodies per sender, including updates; both commit with enqueue (the invite count in `security_windows`, on database time, shared by replicas) and survive restart; 429 says when sending can resume. Existing untracked copies acquire charge metadata on their next REQUEST delivery; no retrospective attribution is inferred from client-editable ICS.
 
@@ -476,7 +475,6 @@ Spec `docs/superpowers/specs/2026-11-15-tasks-design.md` (mapping table, routes,
 - [internal/tasks/AGENTS.md](internal/tasks/AGENTS.md): Pure VTODO reading and in-place editing for the Tasks screens and MCP task tools.
 - [internal/booking/AGENTS.md](internal/booking/AGENTS.md): Booking pages' pure rules: slot grid, busy scans, visitor text, hold and booked objects.
 - [web/AGENTS.md](web/AGENTS.md): React 19 + TypeScript + Vite PWA frontend and KySecurity design system.
-- [docs/ui-calendar-eight/AGENTS.md](docs/ui-calendar-eight/AGENTS.md): Fresh focused Council captures, independent ratings, provenance and visual progression evidence.
 
 `cmd/server` owns startup, shutdown and the scheduled jobs.
 
