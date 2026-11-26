@@ -32,10 +32,11 @@ Owns the application adapters around OAuth/OIDC login, KySignOn HMAC-SHA256 sign
 - Verified claims retain the ID token issuer. An installer-built `Provider` rereads its protected client credential for authorization, exchange and logout verification while keeping the provider ID stable; the flow it makes for the reread secret (`withSecret`) shares the provider's one `discovery`, so no request repeats discovery or the key fetch; unavailable credentials close sign-in. Installer fields report source `installer`; ordinary saved/environment provider behavior remains unchanged.
 
 ## Verification
-- `go test -v ./internal/sso/...` (`TestVerifyLogoutToken` holds one rejection case per logout-token rule)
+- `go test -v ./internal/sso/...` (`TestVerifyLogoutToken` holds one rejection case per logout-token rule; `TestGuardedClientNegotiatesHybridPQTLS` proves `NewGuardedClient` negotiates `X25519MLKEM768` via `pqtls.RequireHybrid`)
 - Repeat with `GODEBUG=fips140=on`; real signed-token casing/key-size regressions
-  retain cache/nonce behavior, and strong-leaf controls prove trusted-root TLS
-  refusal comes from the client. API fixtures use verified local TLS in both modes.
+  retain cache/nonce behavior, strong-leaf controls prove trusted-root TLS
+  refusal comes from the client, and `TestGuardedClientNegotiatesHybridPQTLS`
+  passes in both modes (`scripts/check-pqc-tls.sh`). API fixtures use verified local TLS in both modes.
 
 ## Child DOX Index
 None.
