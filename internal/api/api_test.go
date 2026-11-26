@@ -54,7 +54,7 @@ func setupTestServerWith(t *testing.T, edit func(*config.Config)) (*api.Server, 
 	t.Setenv("KY_SESSION_SECRET", testSessionSecret)
 	cfg, _ := config.LoadFromEnv()
 	cfg.SCIM = config.SCIMConfig{Enabled: true, BearerToken: "test-scim-bearer-token-of-32-chars"}
-	db := testdb.Config(t)
+	db := testdb.Migrated(t)
 	db.DataDir = cfg.Database.DataDir // testdb only picks the backend; keep the temp data dir
 	if db.Driver == "sqlite" {
 		// Backups refuse a database outside <DataDir>/kycalendar.db.

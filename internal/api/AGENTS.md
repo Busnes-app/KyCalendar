@@ -184,6 +184,7 @@ Owns HTTP routing, request parsing, session cookie validation, CORS headers, and
 ## Verification
 - `go test -v ./internal/api/...` (`authz_matrix_test.go` is the route-complete authorization matrix; `authz_test.go` pins the per-role exposure of every privileged route; `backup_test.go` the backup routes; `replicas_test.go`, `overlap_test.go` and the `*_replica_internal_test.go` files the replica behaviour, the PostgreSQL parts under `KY_TEST_POSTGRES_DSN`)
 - `scripts/smoke-test.sh` asserts the same boundaries against a running binary
+- Test cost: the package is serial and runs about 10 minutes under `-race` on CI runners. `setupTestServerWith` and `davInternalServer` take `testdb.Migrated` (a cloned, already migrated PostgreSQL database; `main_test.go` drops the template), and `loginAs` stores one Argon2id hash at the floor cost (`testPasswordHash`); tests of passwords and sign-in hash with `password.Hash`. Keep new setup helpers on both.
 
 ## Child DOX Index
 None.
