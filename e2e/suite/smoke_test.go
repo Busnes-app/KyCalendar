@@ -45,15 +45,11 @@ type target struct {
 	name     string   // apps.lock name; images/<name>.Dockerfile
 	bin      string   // the binary inside both images
 	services []string // compose services that must start in multi mode
-	ready    string   // GET on 127.0.0.1 inside each service whose body names readiness
+	ready    string   // GET on 127.0.0.1 inside each service (or https:// through front) whose body names readiness
 	release  string   // the compose service running the release image
 	refusal  string   // what the release build says to a complete multi configuration
-	issuer   string   // the issuer variable, and what the kye2e build says to a non-.test one
+	issuer   string   // the issuer variable, and what the kye2e build says to a non-.test one (empty if checked at runtime)
 	refuseIs string
-	// stops is what the kye2e image says when the app cannot serve multi mode yet even with
-	// the gate open; it then runs once as the one-off service tagged, never as services.
-	stops  string
-	tagged string
 	// releaseArgs are build arguments for the app's own Dockerfile; fromRelease builds the
 	// kye2e image on the release image (the build context named release).
 	releaseArgs []string
@@ -63,60 +59,70 @@ type target struct {
 var targets = []target{
 	{"kycalendar", "/app/kycalendar", []string{"kycalendar-x1", "kycalendar-x2", "kycalendar-y"}, "http://127.0.0.1:8080/readyz",
 		"kycalendar-release", "every requirement is met, but multi-tenant startup stays refused",
-		"KY_KYSIGNON_ISSUER", "serves only an https issuer under .test", "", "", nil, false},
+		"KY_KYSIGNON_ISSUER", "serves only an https issuer under .test", nil, false},
 	{"kyidentity", "/usr/local/bin/kyidentity", []string{"kyidentity"}, "http://127.0.0.1:5867/readyz",
 		"kyidentity-release", "KYIDENTITY_TENANCY=multi is not available in this release",
-		"KYIDENTITY_ISSUER_URL", "KYIDENTITY_ISSUER_URL must be a host under .test", "", "", nil, false},
+		"KYIDENTITY_ISSUER_URL", "KYIDENTITY_ISSUER_URL must be a host under .test", nil, false},
 	{"kymessages", "/app/kymessages", []string{"kymessages"}, "",
 		"kymessages-release", "KY_TENANCY_MODE=multi: multi-tenant mode is unavailable in this release",
-		"KY_KYIDENTITY_ISSUER", "this test build accepts only an https issuer under .test", "", "", nil, false},
-	// Multi mode is table mode, which KyPost cannot start yet: its volume-free assertion (MH7)
-	// refuses while nine stores still live on the host's disk. The kye2e image must get past
-	// the gate and every other table-mode requirement to that refusal. Its issuer is runtime
-	// configuration (sso.json), read only by a serving process, so it has no startup refusal.
-	{name: "kypost", bin: "/usr/local/bin/kypost-server", release: "kypost-release",
-		refusal: "KYPOST_TENANCY=multi is not available in this release",
-		stops:   "table mode cannot start: these stores are still written to this host's disk", tagged: "kypost",
-		releaseArgs: []string{"--build-arg", "INSTALL_OLLAMA=false"}, fromRelease: true},
+		"KY_KYIDENTITY_ISSUER", "this test build accepts only an https issuer under .test", nil, false},
+	// KyPost reads its OIDC issuer from kypost_volumes.documents (sso.json) at runtime, so its
+	// non-.test issuer refusal is exercised against the running server in TestSmoke.
+	{"kypost", "/usr/local/bin/kypost-server", []string{"kypost"}, "https://post.e2e.test/readyz",
+		"kypost-release", "KYPOST_TENANCY=multi is not available in this release",
+		"", "", []string{"--build-arg", "INSTALL_OLLAMA=false"}, true},
 }
 
 // The first check: each pinned kye2e image starts in multi mode against the .test issuer, the
 // release image at the same commit refuses, and the test image refuses any other issuer.
 func TestSmoke(t *testing.T) {
 	s := start(t)
+	probe := s.browser()
 	for _, a := range targets {
 		for _, svc := range a.services {
 			if a.ready == "" {
 				continue // healthy is all it reports (compose up --wait)
 			}
+			if strings.HasPrefix(a.ready, "https://") {
+				if code, out := probe.do("GET", a.ready, nil, nil); code != http.StatusOK || !strings.Contains(string(out), `"ready"`) {
+					t.Errorf("%s not ready via %s: %d %s", svc, a.ready, code, out)
+				}
+				continue
+			}
 			if out, err := s.compose("exec", "-T", svc, "wget", "-q", "-O", "-", a.ready); err != nil || !strings.Contains(out, `"ready"`) {
 				t.Errorf("%s not ready: %v %s", svc, err, out)
 			}
 		}
-		rel := refuses(t, s.compose, a.refusal, "run", "--rm", "--no-deps", a.release)
-		if a.stops != "" {
-			// Past the gate: the tagged build must not give the release refusal.
-			out := refuses(t, s.compose, a.stops, "run", "--rm", "--no-deps", a.tagged)
-			if strings.Contains(out, a.refusal) {
-				t.Errorf("%s: the kye2e image gave the release refusal:\n%s", a.tagged, out)
-			}
-			t.Logf("%s, same settings: release %q; kye2e %q", a.name, line(rel, a.refusal), line(out, a.stops))
-			notRun(t, a.name+" serving in multi mode, and its .test issuer rule: it stops at its volume-free assertion first")
-			continue
+		refuses(t, s.compose, a.refusal, "run", "--rm", "--no-deps", a.release)
+		if a.issuer != "" {
+			refuses(t, s.compose, a.refuseIs, "run", "--rm", "--no-deps", "-e", a.issuer+"=https://id.example", a.services[0])
 		}
-		refuses(t, s.compose, a.refuseIs, "run", "--rm", "--no-deps", "-e", a.issuer+"=https://id.example", a.services[0])
+	}
+	// KyPost's kye2e build treats any issuer outside https://*.test in sso.json as unconfigured.
+	s.setKyPostSSO("https://id.example")
+	if code, body := probe.do("GET", "https://post.e2e.test/api/auth/sso-config", nil, nil); code != http.StatusOK || !strings.Contains(string(body), `"enabled":false`) {
+		t.Errorf("kypost non-.test issuer sso-config: want 200 enabled:false, got %d %s", code, body)
+	}
+	if code, body := probe.do("GET", "https://post.e2e.test/api/auth/oidc/login", nil, nil); code != http.StatusServiceUnavailable {
+		t.Errorf("kypost non-.test issuer oidc/login: want 503, got %d %s", code, body)
+	}
+	s.setKyPostSSO(issuer)
+	if code, body := probe.do("GET", "https://post.e2e.test/api/auth/sso-config", nil, nil); code != http.StatusOK || !strings.Contains(string(body), `"enabled":true`) {
+		t.Errorf("kypost .test issuer sso-config: want 200 enabled:true, got %d %s", code, body)
 	}
 }
 
 // suite is one running install: every pinned kye2e image in multi mode, KyIdentity's bootstrap
 // administrator signed in, and each app's OIDC client registered.
 type suite struct {
-	t         *testing.T
-	pins      map[string]app
-	compose   func(...string) (string, error)
-	web       *http.Transport // reaches every *.e2e.test name through front, trusting the run's CA
-	adminPass string
-	staff     *browser
+	t              *testing.T
+	pins           map[string]app
+	compose        func(...string) (string, error)
+	web            *http.Transport // reaches every *.e2e.test name through front, trusting the run's CA
+	adminPass      string
+	staff          *browser
+	kypostSecret   string
+	kypostSystemID string
 }
 
 // start builds the pinned images and brings the install up. The stack is removed when t ends.
@@ -188,10 +194,14 @@ func start(t *testing.T) *suite {
 	s.web = frontTransport(t, ca, hostPort(t, s.compose, "front", "443"))
 	s.staff = s.browser()
 	s.adminPass = firstAdminSignIn(s.staff, adminPass)
+	s.kypostSecret = registerClient(s.staff, s.adminPass, "kypost", "https://post.e2e.test/api/auth/oidc/callback")
+	kypostSysID, kypostPairing := registerSystem(s.staff, s.adminPass, "kypost", "https://post.e2e.test/api/sync/webhook")
+	s.kypostSystemID = kypostSysID
 	env = append(env,
 		"E2E_KYMESSAGES_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kymessages", "https://messages.e2e.test/api/sso/kyidentity/callback"),
 		"E2E_KYCALENDAR_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kycalendar",
-			"https://cal-x.e2e.test/api/sso/kysignon/callback", "https://cal-y.e2e.test/api/sso/kysignon/callback"))
+			"https://cal-x.e2e.test/api/sso/kysignon/callback", "https://cal-y.e2e.test/api/sso/kysignon/callback"),
+		"E2E_KYPOST_PAIRING_SECRET="+kypostPairing)
 	// One client, two deployments: KyIdentity sends each org's members to its cell's origin.
 	s.staff.admin(s.adminPass, 200, "PUT", issuer+"/api/admin/clients/kycalendar/regions",
 		map[string]any{"regions": map[string]string{"e2e-1": "https://cal-x.e2e.test", "e2e-2": "https://cal-y.e2e.test"}})
@@ -202,7 +212,86 @@ func start(t *testing.T) *suite {
 	if out, err := s.compose(append([]string{"up", "-d", "--wait", "--wait-timeout", "180"}, services...)...); err != nil {
 		t.Fatalf("a kye2e image did not start in multi mode: %v\n%s", err, out)
 	}
+	s.setKyPostSSO(issuer)
 	return s
+}
+
+// sql runs one statement against Postgres database db and returns its unaligned output.
+func (s *suite) sql(db, query string) string {
+	s.t.Helper()
+	out, err := s.compose("exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-At", "-U", "postgres", "-d", db, "-c", query)
+	if err != nil {
+		s.t.Fatalf("sql(%s): %v\n%s", db, err, out)
+	}
+	return strings.TrimSpace(out)
+}
+
+// setKyPostSSO writes KyPost's table-mode SSO settings document in kypost_volumes.documents.
+func (s *suite) setKyPostSSO(issuerURL string) {
+	s.t.Helper()
+	raw, err := json.Marshal(map[string]any{
+		"enabled": true, "issuerUrl": issuerURL, "clientId": "kypost",
+		"clientSecret": s.kypostSecret, "autoProvision": false, "kySignOn": true,
+	})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	q := `INSERT INTO kypost_volumes.documents (root, path, owner, body, updated_at)
+VALUES ('config', 'sso.json', NULL, convert_to($kye2e$` + string(raw) + `$kye2e$, 'UTF8'), extract(epoch from now())::bigint)
+ON CONFLICT (root, path) DO UPDATE
+SET body = EXCLUDED.body, revision = kypost_volumes.documents.revision + 1, updated_at = EXCLUDED.updated_at;`
+	s.sql("kypost", q)
+}
+
+// registerSystem registers a suite_webhook paired system in KyIdentity and returns its ID and HMAC secret.
+func registerSystem(b *browser, adminPass, name, callbackURL string) (string, string) {
+	b.t.Helper()
+	const path = "/api/admin/systems"
+	code, raw := b.do("POST", issuer+path, map[string]any{
+		"name": name, "systemType": "suite_webhook", "callbackUrl": callbackURL,
+	}, b.stepUp(adminPass, "POST", path))
+	var ans struct {
+		System struct {
+			ID string `json:"id"`
+		} `json:"system"`
+		Token string `json:"bearerToken"`
+	}
+	if err := json.Unmarshal(raw, &ans); code != http.StatusOK || err != nil || ans.System.ID == "" || ans.Token == "" {
+		b.t.Fatalf("paired system %s: %d and no id/token", name, code) // the body holds the secret: never logged
+	}
+	var registry struct {
+		Records []struct {
+			ID, ClientID, SystemID string
+			Revision               int
+		}
+	}
+	if err := json.Unmarshal(b.must(200, "GET", issuer+"/api/admin/app-registry", nil, nil), &registry); err != nil {
+		b.t.Fatal(err)
+	}
+	var sysRec, clientRec struct {
+		id  string
+		rev int
+	}
+	for _, record := range registry.Records {
+		if record.SystemID == ans.System.ID {
+			sysRec.id, sysRec.rev = record.ID, record.Revision
+		}
+		if record.ClientID == name {
+			clientRec.id, clientRec.rev = record.ID, record.Revision
+		}
+	}
+	if sysRec.id == "" {
+		b.t.Fatalf("paired system %s (%s): missing app registry record", name, ans.System.ID)
+	}
+	b.admin(adminPass, 200, "PUT", issuer+"/api/admin/app-registry/"+sysRec.id+"/access-policy",
+		map[string]any{"mode": "all_active_users", "enabled": true, "revision": sysRec.rev})
+	if clientRec.id != "" {
+		// Merge the paired system into the OIDC client's app record so enabling the app on an org
+		// drives both OIDC login and directory webhook provisioning.
+		b.admin(adminPass, 200, "POST", issuer+"/api/admin/app-registry/"+clientRec.id+"/link",
+			map[string]any{"sourceId": sysRec.id, "targetRevision": clientRec.rev, "sourceRevision": sysRec.rev + 1})
+	}
+	return ans.System.ID, ans.Token
 }
 
 // hostPort is the loopback address compose published for a service's port.
@@ -281,7 +370,7 @@ func tlsFiles(t *testing.T) (ca, cert, key string) {
 		t.Fatal(err)
 	}
 	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "id.e2e.test"},
-		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "smtp.e2e.test", "postgres", "kypost"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
+		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "post.e2e.test", "smtp.e2e.test", "postgres", "kypost"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, caTmpl, &leafKey.PublicKey, caKey)
 	if err != nil {
@@ -456,14 +545,4 @@ func ecKey(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
-}
-
-// line is the first line of out that contains want.
-func line(out, want string) string {
-	for l := range strings.SplitSeq(out, "\n") {
-		if strings.Contains(l, want) {
-			return strings.TrimSpace(l)
-		}
-	}
-	return ""
 }

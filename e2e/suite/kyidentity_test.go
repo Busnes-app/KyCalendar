@@ -128,7 +128,20 @@ func (b *browser) stepUp(password, method, path string) map[string]string {
 		Kind  string `json:"kind"`
 		Token string `json:"stepUpToken"`
 	}
-	raw := b.must(200, "POST", issuer+"/api/auth/step-up", map[string]string{"password": password, "method": "", "operation": method + " " + path}, nil)
+	payload := map[string]string{"password": password, "method": "", "operation": method + " " + path}
+	var raw []byte
+	for attempt := 0; attempt < 5; attempt++ {
+		code, body := b.do("POST", issuer+"/api/auth/step-up", payload, nil)
+		if code == http.StatusTooManyRequests {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if code != http.StatusOK {
+			b.t.Fatalf("POST %s/api/auth/step-up: %d, want 200: %s", issuer, code, body)
+		}
+		raw = body
+		break
+	}
 	if err := json.Unmarshal(raw, &ans); err != nil || ans.Kind != "grant" || ans.Token == "" {
 		b.t.Fatalf("step-up for %s %s: %s", method, path, raw)
 	}
