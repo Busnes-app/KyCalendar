@@ -1,6 +1,6 @@
 module github.com/Busnes-app/kycalendar
 
-go 1.27.0
+go 1.27.4
 
 toolchain go1.27.4
 
