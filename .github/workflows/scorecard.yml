@@ -8,6 +8,8 @@ on:
     - cron: '35 18 * * 5'
   push:
     branches: [ "main" ]
+  # A fresh result on demand, to confirm an alert closed.
+  workflow_dispatch:
 
 permissions: read-all
 

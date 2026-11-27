@@ -10,4 +10,8 @@ WORKDIR /src/backend
 RUN CGO_ENABLED=0 go build -trimpath -tags kye2e -o /kypost-server ./cmd/main.go
 
 FROM release
+# release is a BuildKit named build context, not a registry reference: smoke_test.go passes
+# --build-context release=oci-layout://<dir>, built from the full commit SHA apps.lock pins.
+# Scorecard's Pinned-Dependencies cannot see named contexts, so its finding on the line above
+# is a false positive; keep that line where it is so the dismissal stays attached.
 COPY --from=build /kypost-server /usr/local/bin/kypost-server

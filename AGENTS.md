@@ -297,6 +297,16 @@ CI runs them as parallel legs (`sqlite-fips`, `postgres-tests` fips) gated by th
 `python3 docs/check-strong-crypto-compose.py` proves the optional overlay changes
 only the process setting across base/build/LAN-DNS/static-IP combinations.
 
+Code scanning is CodeQL from GitHub's default setup (extended suite, no checked-in workflow):
+pushes to `main`, pull requests opened against `main`, and weekly. It does not analyse a pull
+request whose base is another branch, and the automatic retarget to `main` when that base merges
+starts no analysis, so a stacked pull request can merge with a head nothing scanned — the gap
+Scorecard's SAST check counts. Give a retargeted pull request a `main` catch-up so default setup
+analyses its final head, and confirm with `scripts/check-sast-coverage.sh <pull request>` before
+merging; with no argument it audits the window Scorecard samples. Keep default setup and
+`scorecard.yml` enabled: neither is replaceable by a checked-in CodeQL workflow, which default
+setup refuses to let upload.
+
 #### Plan 1 CalDAV contracts
 
 - DAV path scheme: `/dav/<user-id>/calendars/<slug>/<name>`, discovered from `/.well-known/caldav`; PROPFIND, REPORT and OPTIONS on the bare `/` answer 308 there (308 keeps the method; a 301 may become GET and hit the SPA). Any other user's home is 403.
