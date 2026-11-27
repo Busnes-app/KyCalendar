@@ -32,7 +32,12 @@ if [ "$#" -gt 0 ]; then
 fi
 
 branch=$(gh api "repos/{owner}/{repo}" --jq .default_branch)
-mapfile -t commits < <(gh api "repos/{owner}/{repo}/commits?sha=$branch&per_page=$window" --jq '.[].sha')
+commit_shas=$(gh api "repos/{owner}/{repo}/commits?sha=$branch&per_page=$window" --jq '.[].sha')
+if [[ -z "$commit_shas" ]]; then
+  echo "::error::GitHub returned no commits for $branch" >&2
+  exit 1
+fi
+mapfile -t commits <<< "$commit_shas"
 declare -A names_of
 gaps=()
 merged=0
