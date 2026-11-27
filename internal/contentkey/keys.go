@@ -2,51 +2,46 @@ package contentkey
 
 import (
 	"bytes"
-	"crypto/hpke"
 	"fmt"
 	"strconv"
+
+	"github.com/Busnes-app/ky-primitives/xwing"
 )
 
 // KeyPair is an X-Wing key pair kept as its 32-byte seed: an account's key (E3), whose seed the
 // unlock slots wrap.
 type KeyPair struct {
-	seed [SeedBytes]byte
-	priv hpke.PrivateKey
+	priv xwing.PrivateKey
 }
 
 // NewKeyPair makes a key pair from a fresh random seed.
 func NewKeyPair() (*KeyPair, error) {
-	seed, err := random()
+	priv, err := xwing.Generate()
 	if err != nil {
 		return nil, err
 	}
-	return KeyPairFromSeed(seed[:])
+	return &KeyPair{priv: priv}, nil
 }
 
 // KeyPairFromSeed rebuilds the key pair a seed names.
 func KeyPairFromSeed(seed []byte) (*KeyPair, error) {
-	if len(seed) != SeedBytes {
-		return nil, fmt.Errorf("contentkey: seed must be %d bytes", SeedBytes)
-	}
-	priv, err := kem().NewPrivateKey(seed)
+	priv, err := xwing.FromSeed(seed)
 	if err != nil {
 		return nil, err
 	}
-	k := &KeyPair{priv: priv}
-	copy(k.seed[:], seed)
-	return k, nil
+	return &KeyPair{priv: priv}, nil
 }
 
 // Seed is the 32 bytes the key pair is rebuilt from; it is the secret a slot wraps.
-func (k *KeyPair) Seed() []byte { return bytes.Clone(k.seed[:]) }
+func (k *KeyPair) Seed() []byte { return k.priv.Seed() }
 
 // PublicKey is the serialized X-Wing public key, as account_keys and calendar_keys store it.
-func (k *KeyPair) PublicKey() []byte { return k.priv.PublicKey().Bytes() }
+func (k *KeyPair) PublicKey() []byte { return k.priv.Public().Bytes() }
 
-func parsePublicKey(b []byte) (hpke.PublicKey, error) {
-	pub, err := kem().NewPublicKey(b)
+func parsePublicKey(b []byte) (xwing.PublicKey, error) {
+	pub, err := xwing.ParsePublicKey(b)
 	if err != nil {
-		return nil, fmt.Errorf("contentkey: not an X-Wing public key: %w", err)
+		return xwing.PublicKey{}, fmt.Errorf("contentkey: not an X-Wing public key: %w", err)
 	}
 	return pub, nil
 }

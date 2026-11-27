@@ -27,6 +27,24 @@ length followed by its bytes, concatenated. No two field lists give the same byt
 
 **HPKE sealing** is base mode with one message per context: `enc(1120) ‖ ciphertext`. `enc` is
 the X-Wing encapsulated key (the 1,088-byte ML-KEM-768 ciphertext and a 32-byte X25519 point).
+The implementation uses `github.com/Busnes-app/ky-primitives/xwing` (v0.11.0). Its envelope is
+`version(1) ‖ enc ‖ ciphertext`; the content v1 adapter omits that leading byte on seal and
+restores `xwing.Version` on open. Keys, `info`, AAD and ciphertext are otherwise unchanged.
+The stored content vectors are not regenerated for this adapter.
+
+### Tenant and organization binding
+
+Version 1 binds the database-global calendar and user IDs listed below, not an explicit
+`org_id`. `internal/store` gives users and calendars global primary keys and associates them
+with an org; object UIDs and slot IDs are interpreted under their calendar and user. Before
+calling `contentkey`, CE2's store and request paths must resolve these IDs within the caller's
+authorized org and enforce holder access. This library has no org lookup or authorization.
+
+`TestBindingsRejectOtherOrgIDsWithSameKeys` verifies that replacing those user/calendar IDs
+rejects holder, slot, account, previous-key and worker wraps and both kinds of part, even with
+identical key material. It does not prove store-level tenant isolation: retaining every bound
+ID while changing only a row's org metadata is outside v1's cryptographic binding. Explicit
+org AAD would need a new format version and migration, never changed v1 labels or vectors.
 
 ## Keys
 
