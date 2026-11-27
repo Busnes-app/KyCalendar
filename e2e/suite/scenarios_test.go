@@ -20,6 +20,7 @@ const (
 	calX     = "https://cal-x.e2e.test"
 	calY     = "https://cal-y.e2e.test"
 	messages = "https://messages.e2e.test"
+	post     = "https://post.e2e.test"
 	// suiteMail is the suite mail domain mailbox addresses live on.
 	suiteMail = "mail.e2e.test"
 )
@@ -37,8 +38,8 @@ type person struct {
 
 func (p *person) mailbox() string { return p.name + "@" + suiteMail }
 
-// TestScenarios runs S1-S3 of the e2e design: orgs A and B in cell e2e-1, C in e2e-2, made
-// through KyIdentity's platform API only (E5), then each app's checks.
+// TestScenarios runs S1-S3, S6, and S7 of the e2e design: orgs A and B in cell e2e-1, C in e2e-2,
+// made through KyIdentity's platform API only (E5), then each app's checks.
 func TestScenarios(t *testing.T) {
 	s := start(t)
 	sink := mailSink{t, "http://" + hostPort(t, s.compose, "mail", "8025")}
@@ -96,22 +97,31 @@ func TestScenarios(t *testing.T) {
 	}
 
 	enableApps(billing, orgs)
-	// KyMessages polls every five minutes and has no poll at sign-in; its start is a full sync.
-	if out, err := s.compose("restart", "kymessages"); err != nil {
-		t.Fatalf("restart kymessages: %v\n%s", err, out)
-	}
-	if out, err := s.compose("up", "-d", "--wait", "kymessages"); err != nil {
-		t.Fatalf("kymessages: %v\n%s", err, out)
-	}
+	// KyMessages polls every five minutes and KyPost every minute; restarting both runs their
+	// startup full org sync immediately so S1 can proceed without waiting for a poll tick.
+	s.restartServices("kymessages", "kypost")
+	waitUntil(t, 30*time.Second, "KyPost cached orgs A, B, C", func() bool {
+		q := fmt.Sprintf("SELECT count(*) FROM kypost_tenancy.orgs WHERE id IN ('%s','%s','%s') AND status = 'active'",
+			orgs["A"].id, orgs["B"].id, orgs["C"].id)
+		return s.sql("kypost", q) == "3"
+	})
+	// KyPost creates accounts in multi mode only from signed directory webhooks, never from OIDC
+	// tokens. Trigger a full resync now that KyPost holds orgs A, B, and C.
+	s.staff.must(200, "POST", issuer+"/api/admin/systems/"+s.kypostSystemID+"/resync", nil, nil)
+	waitUntil(t, 45*time.Second, "KyPost provisioned a1, a2, b1, c1 via directory webhook", func() bool {
+		q := fmt.Sprintf("SELECT count(*) FROM kypost_tenancy.user_orgs WHERE org_id IN ('%s','%s','%s')",
+			orgs["A"].id, orgs["B"].id, orgs["C"].id)
+		return s.sql("kypost", q) == "4"
+	})
 
 	t.Run("S1 two orgs", func(t *testing.T) {
 		for _, c := range []struct {
-			app  string
-			who  []string
-			want bool
+			app string
+			who []string
 		}{
-			{calX, []string{"a1", "a2", "b1"}, true}, {calY, []string{"c1"}, true},
-			{messages, []string{"a1", "a2", "b1", "c1"}, true},
+			{calX, []string{"a1", "a2", "b1"}}, {calY, []string{"c1"}},
+			{messages, []string{"a1", "a2", "b1", "c1"}},
+			{post, []string{"a1", "a2", "b1", "c1"}},
 		} {
 			for _, name := range c.who {
 				if _, r := people[name].signInToApp(t, c.app); !r.signedIn {
@@ -121,6 +131,7 @@ func TestScenarios(t *testing.T) {
 		}
 		notRun(t, "KyCalendar OIDC callbacks on a different replica: X uses cookie affinity for its process-local nonce key")
 		notRun(t, "each app's first storage report reaching KyIdentity: no API shows an org's reported usage")
+		notRun(t, "KyPost native mailbox allocation: requires CoreDNS TXT/MX verification for the suite mail domain")
 	})
 
 	t.Run("S2 cells", func(t *testing.T) {
@@ -131,7 +142,7 @@ func TestScenarios(t *testing.T) {
 				t.Errorf("%s at %s: want 403 org_not_active, got %+v", c.who, c.app, r)
 			}
 		}
-		notRun(t, "KyPost inbound naming another cell's member and the booking page of a slug made on Y (KyPost is not in the run)")
+		notRun(t, "KyPost cell isolation and booking page of a slug made on Y: KyPost runs as one deployment serving both cells (e2e-1,e2e-2) with native mail off")
 		notRun(t, "backup and attachment keys under cells/<cell>/ (S3 and KyRecovery are not in the run)")
 	})
 
@@ -175,7 +186,147 @@ func TestScenarios(t *testing.T) {
 			t.Errorf("%d mails reached a2, want only the activation mail", n)
 		}
 		meeting(t, a1b, people, start.Add(2*time.Hour))
-		notRun(t, "KyPost's send log (KyPost is not in the run)")
+		notRun(t, "KyPost's outbound send log: native mail/SMTP outbound requires CoreDNS")
+	})
+
+	t.Run("S6 org suspension and resume", func(t *testing.T) {
+		a1Cal, a1Msg, a1Post := people["a1"].signedIn(t, calX), people["a1"].signedIn(t, messages), people["a1"].signedIn(t, post)
+		b1Old := people["b1"].browser
+		b1Cal, b1Msg, b1Post := people["b1"].signedIn(t, calX), people["b1"].signedIn(t, messages), people["b1"].signedIn(t, post)
+		b1Me := b1Cal.me(calX)
+		var b1DAV struct {
+			Password string `json:"password"`
+		}
+		json.Unmarshal(b1Cal.must(201, "POST", calX+"/api/app-passwords", map[string]string{"label": "s6-dav", "scope": "dav"}, nil), &b1DAV)
+		if code := davPropfind(s.web, calX+"/dav/"+b1Me.ID+"/", b1Me.Username, b1DAV.Password); code != http.StatusMultiStatus {
+			t.Fatalf("b1 DAV before suspend: want 207, got %d", code)
+		}
+
+		// Suspend org B through the platform API.
+		orgs["B"].revision++
+		billing.must(200, "POST", "/orgs/"+orgs["B"].id+"/suspend", map[string]any{"reason": "payment", "revision": orgs["B"].revision})
+		// KyMessages polls every five minutes; restart it for an immediate sync while letting
+		// KyCalendar and KyPost pick up the suspension on their live 1-minute pollers.
+		s.restartServices("kymessages")
+		waitUntil(t, 90*time.Second, "KyCalendar X and KyPost observe org B suspended", func() bool {
+			calDown := davPropfind(s.web, calX+"/dav/"+b1Me.ID+"/", b1Me.Username, b1DAV.Password) == http.StatusForbidden
+			code, body := b1Post.do("GET", post+"/api/auth/me", nil, nil)
+			postDown := code != http.StatusOK || strings.Contains(string(body), `"authenticated":false`)
+			return calDown && postDown
+		})
+
+		// Every credential of org B is refused across all four apps.
+		if code, _ := b1Old.do("GET", issuer+"/api/auth/me", nil, nil); code == http.StatusOK {
+			t.Errorf("b1 old KyIdentity session stayed active while org B suspended: %d", code)
+		}
+		freshB1 := s.browser()
+		freshB1.must(200, "GET", issuer+"/api/auth/csrf", nil, nil)
+		if code, body := freshB1.do("POST", issuer+"/api/auth/login", map[string]string{"username": people["b1"].email, "password": people["b1"].password}, nil); code == http.StatusOK {
+			t.Errorf("b1 signed into KyIdentity while org B suspended: %d %s", code, body)
+		}
+		if code, _ := b1Cal.do("GET", calX+"/api/calendars", nil, nil); code != http.StatusUnauthorized && code != http.StatusForbidden {
+			t.Errorf("b1 old KyCalendar session while org B suspended: want 401/403, got %d", code)
+		}
+		if code, body := b1Msg.do("GET", messages+"/api/v1/rooms", nil, nil); code != http.StatusUnauthorized && code != http.StatusForbidden {
+			t.Errorf("b1 old KyMessages session while org B suspended: want 401/403, got %d %s", code, body)
+		}
+		if code, body := b1Post.do("GET", post+"/api/auth/me", nil, nil); code == http.StatusOK && !strings.Contains(string(body), `"authenticated":false`) {
+			t.Errorf("b1 old KyPost session while org B suspended: %d %s", code, body)
+		}
+
+		// Org A stays working across every app.
+		people["a1"].browser.must(200, "GET", issuer+"/api/auth/me", nil, nil)
+		a1Cal.must(200, "GET", calX+"/api/calendars", nil, nil)
+		a1Msg.must(200, "GET", messages+"/api/auth/me", nil, nil)
+		if code, body := a1Post.do("GET", post+"/api/auth/me", nil, nil); code != http.StatusOK || !strings.Contains(string(body), `"authenticated":true`) {
+			t.Errorf("a1 KyPost session affected by org B suspension: %d %s", code, body)
+		}
+
+		// Resume org B through the platform API.
+		orgs["B"].revision++
+		billing.must(200, "POST", "/orgs/"+orgs["B"].id+"/resume", map[string]any{"revision": orgs["B"].revision})
+		s.restartServices("kymessages")
+		waitUntil(t, 90*time.Second, "KyCalendar X and KyPost observe org B resumed", func() bool {
+			calUp := davPropfind(s.web, calX+"/dav/"+b1Me.ID+"/", b1Me.Username, b1DAV.Password) == http.StatusMultiStatus
+			postUp := s.sql("kypost", fmt.Sprintf("SELECT status FROM kypost_tenancy.orgs WHERE id = '%s'", orgs["B"].id)) == "active"
+			return calUp && postUp
+		})
+
+		// Old revoked browser sessions stay dead after resume; DAV app passwords work again.
+		if code, _ := b1Cal.do("GET", calX+"/api/calendars", nil, nil); code != http.StatusUnauthorized {
+			t.Errorf("b1 old KyCalendar session came back after resume: %d", code)
+		}
+		if code, body := b1Post.do("GET", post+"/api/auth/me", nil, nil); code == http.StatusOK && !strings.Contains(string(body), `"authenticated":false`) {
+			t.Errorf("b1 old KyPost session came back after resume: %d %s", code, body)
+		}
+		// Fresh sign-in succeeds across all four apps.
+		people["b1"].browser = s.browser()
+		people["b1"].browser.signIn(people["b1"].email, people["b1"].password)
+		for _, app := range []string{calX, messages, post} {
+			if _, r := people["b1"].signInToApp(t, app); !r.signedIn {
+				t.Errorf("b1 fresh sign-in at %s after resume failed: %+v", app, r)
+			}
+		}
+		notRun(t, "KyCalendar booking page 404 on suspension: booking pages require KyCalendar-KyPost mail pairing")
+		notRun(t, "KyPost IMAP/SMTP app passwords on suspension: native mail is disabled without CoreDNS")
+	})
+
+	t.Run("S7 org deletion and purge", func(t *testing.T) {
+		orgs["B"].revision++
+		sched := billing.must(200, "POST", "/orgs/"+orgs["B"].id+"/schedule-deletion", map[string]any{"grace_days": 7, "revision": orgs["B"].revision})
+		if sched["status"] != "deletion_scheduled" || sched["delete_after"] == nil {
+			t.Fatalf("schedule-deletion org B: %v", sched)
+		}
+		// Documented E2E shortcut (spec S7): advance delete_after into the past on KyIdentity's DB
+		// instead of waiting seven real days before calling DELETE /platform/v1/orgs/{id}.
+		s.sql("kyidentity", fmt.Sprintf("UPDATE orgs SET delete_after = extract(epoch from now())::bigint - 60 WHERE id = '%s'", orgs["B"].id))
+		del := billing.must(200, "DELETE", "/orgs/"+orgs["B"].id, nil)
+		if del["status"] != "deleted" {
+			t.Fatalf("DELETE org B: %v", del)
+		}
+		if got := billing.must(200, "GET", "/orgs/"+orgs["B"].id, nil); got["status"] != "deleted" {
+			t.Errorf("GET deleted org B tombstone: %v", got)
+		}
+		if n := s.sql("kyidentity", fmt.Sprintf("SELECT count(*) FROM users WHERE org_id = '%s'", orgs["B"].id)); n != "0" {
+			t.Errorf("kyidentity still holds %s users for deleted org B", n)
+		}
+
+		// KyMessages polls every five minutes; restart it so SyncTenancy and PurgeDeletedOrgs run.
+		// KyCalendar (orgs + org-purge) and KyPost (StartOrgPoller) purge on their 1-minute ticks.
+		s.restartServices("kymessages")
+		waitUntil(t, 150*time.Second, "KyCalendar X, KyMessages, and KyPost purge org B", func() bool {
+			calPurged := s.sql("kycal_x", fmt.Sprintf("SELECT status || ':' || (purged_at IS NOT NULL)::text FROM orgs WHERE id = '%s'", orgs["B"].id)) == "deleted:true"
+			postPurged := s.sql("kypost", fmt.Sprintf(
+				"SELECT o.status || ':' || EXISTS(SELECT 1 FROM kypost_tenancy.org_purges p WHERE p.org_id = o.id AND p.done_at IS NOT NULL)::text FROM kypost_tenancy.orgs o WHERE o.id = '%s'",
+				orgs["B"].id)) == "deleted:true"
+			msgPurged := s.sql("kymessages", fmt.Sprintf("SELECT status FROM tenants WHERE id = '%s'", orgs["B"].id)) == "deleted" &&
+				s.sql("kymessages", fmt.Sprintf("SELECT count(*) FROM users WHERE org_id = '%s'", orgs["B"].id)) == "0"
+			return calPurged && postPurged && msgPurged
+		})
+
+		if n := s.sql("kycal_x", fmt.Sprintf("SELECT count(*) FROM users WHERE org_id = '%s'", orgs["B"].id)); n != "0" {
+			t.Errorf("kycal_x still holds %s users for deleted org B", n)
+		}
+		if n := s.sql("kypost", fmt.Sprintf("SELECT count(*) FROM kypost_tenancy.user_orgs WHERE org_id = '%s'", orgs["B"].id)); n != "0" {
+			t.Errorf("kypost still holds %s user_orgs for deleted org B", n)
+		}
+		// KyPost intentionally keeps subject_orgs after purge: opaque IDs stop a purged subject joining another org.
+		if n := s.sql("kypost", fmt.Sprintf("SELECT count(*) FROM kypost_tenancy.subject_orgs WHERE org_id = '%s'", orgs["B"].id)); n != "1" {
+			t.Errorf("kypost subject_orgs for deleted org B = %s, want 1 (kept as opaque subject tombstone)", n)
+		}
+
+		// Orgs A and C stay untouched across every app.
+		for _, c := range []struct{ who, app string }{
+			{"a1", calX}, {"a1", messages}, {"a1", post},
+			{"c1", calY}, {"c1", messages}, {"c1", post},
+		} {
+			if _, r := people[c.who].signInToApp(t, c.app); !r.signedIn {
+				t.Errorf("%s at %s broken after org B deletion: %+v", c.who, c.app, r)
+			}
+		}
+		notRun(t, "KyMessages MarkTenantPurged and S3 attachment prefix deletion: S3/SeaweedFS is not in the run")
+		notRun(t, "KyPost address_tombstones for deleted native mailboxes: native mail is disabled without CoreDNS")
+		notRun(t, "KyRecovery backup deletion: KyRecovery is not in the run")
 	})
 }
 
@@ -247,14 +398,53 @@ func meeting(t *testing.T, a1b *browser, people map[string]*person, at time.Time
 	}
 }
 
-// enableApps enables both apps for every org through the platform API.
+// enableApps enables all three apps for every org through the platform API.
 func enableApps(billing platform, orgs map[string]*org) {
 	for _, o := range orgs {
 		billing.must(http.StatusOK, "PATCH", "/orgs/"+o.id, map[string]any{"revision": o.revision + 1, "apps": map[string]any{
 			"kycalendar": map[string]any{"enabled": true, "quotas": map[string]any{}},
-			"kymessages": map[string]any{"enabled": true, "quotas": map[string]any{}}}})
+			"kymessages": map[string]any{"enabled": true, "quotas": map[string]any{}},
+			"kypost":     map[string]any{"enabled": true, "quotas": map[string]any{}}}})
 		o.revision++
 	}
+}
+
+// restartServices restarts compose services and waits for them to pass healthchecks again.
+func (s *suite) restartServices(services ...string) {
+	s.t.Helper()
+	if out, err := s.compose(append([]string{"restart"}, services...)...); err != nil {
+		s.t.Fatalf("restart %v: %v\n%s", services, err, out)
+	}
+	if out, err := s.compose(append([]string{"up", "-d", "--wait", "--wait-timeout", "120"}, services...)...); err != nil {
+		s.t.Fatalf("wait %v: %v\n%s", services, err, out)
+	}
+}
+
+// waitUntil polls fn until it returns true or timeout elapses.
+func waitUntil(t *testing.T, timeout time.Duration, desc string, fn func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+		if fn() {
+			return
+		}
+	}
+	if !fn() {
+		t.Fatalf("timed out after %s waiting for: %s", timeout, desc)
+	}
+}
+
+// davPropfind issues a Depth:0 CalDAV PROPFIND with HTTP Basic auth and returns its status code.
+func davPropfind(tr http.RoundTripper, target, user, pass string) int {
+	req, _ := http.NewRequest("PROPFIND", target, strings.NewReader(`<propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>`))
+	req.SetBasicAuth(user, pass)
+	req.Header.Set("Depth", "0")
+	req.Header.Set("Content-Type", "application/xml; charset=utf-8")
+	res, err := (&http.Client{Transport: tr}).Do(req)
+	if err != nil {
+		return 0
+	}
+	res.Body.Close()
+	return res.StatusCode
 }
 
 // notRun records a check this run cannot make, so a reader sees it was not proven.
@@ -306,7 +496,12 @@ func (p *person) signInToApp(t *testing.T, app string) (*browser, signIn) {
 
 func (b *browser) appSignIn(app string, p *person) signIn {
 	b.t.Helper()
-	start := map[string]string{calX: "/api/sso/kysignon/login", calY: "/api/sso/kysignon/login", messages: "/api/sso/kyidentity/login"}[app]
+	start := map[string]string{
+		calX:     "/api/sso/kysignon/login",
+		calY:     "/api/sso/kysignon/login",
+		messages: "/api/sso/kyidentity/login",
+		post:     "/api/auth/oidc/login",
+	}[app]
 	next, r := app+start, signIn{}
 	for hop := 0; hop < 12; hop++ {
 		res, body := b.send("GET", next, nil, nil)
@@ -327,7 +522,7 @@ func (b *browser) appSignIn(app string, p *person) signIn {
 			continue
 		case loc.Host != "id.e2e.test" && loc.Query().Get("error") != "":
 			r.idpError = loc.Query().Get("error")
-		case loc.Host != "id.e2e.test" && loc.Path == "/":
+		case loc.Host != "id.e2e.test" && (loc.Path == "/" || loc.Path == "/read" || loc.Path == "/settings"):
 			r.status = res.StatusCode
 			hop = 12 // the app's callback sent the browser home
 			continue
