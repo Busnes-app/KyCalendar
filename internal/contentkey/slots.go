@@ -87,7 +87,7 @@ func NewSlot(kek [SeedBytes]byte, kind SlotKind, userID, slotID string) (slot *K
 	if slot, err = NewKeyPair(); err != nil {
 		return nil, nil, err
 	}
-	wrapped, err = sealAES(kek, bind("kycalendar content v1 slot", string(kind), userID, slotID), slot.seed[:])
+	wrapped, err = sealAES(kek, bind("kycalendar content v1 slot", string(kind), userID, slotID), slot.Seed())
 	return slot, wrapped, err
 }
 
@@ -107,7 +107,7 @@ func SealAccountToSlot(slotPublicKey []byte, kind SlotKind, userID, slotID strin
 	if err != nil {
 		return nil, err
 	}
-	return sealTo(pub, "kycalendar content v1 account key", bind(string(kind), userID, slotID, strconv.FormatUint(uint64(version), 10)), account.seed[:])
+	return sealTo(pub, "kycalendar content v1 account key", bind(string(kind), userID, slotID, strconv.FormatUint(uint64(version), 10)), account.Seed())
 }
 
 // OpenAccount opens an account_wrap with the slot's key pair.
@@ -126,7 +126,7 @@ func SealPreviousAccount(currentPublicKey []byte, userID string, old uint32, pre
 	if err != nil {
 		return nil, err
 	}
-	return sealTo(pub, "kycalendar content v1 previous account key", bind(userID, strconv.FormatUint(uint64(old), 10)), previous.seed[:])
+	return sealTo(pub, "kycalendar content v1 previous account key", bind(userID, strconv.FormatUint(uint64(old), 10)), previous.Seed())
 }
 
 // OpenPreviousAccount opens what SealPreviousAccount made, with the current account key.

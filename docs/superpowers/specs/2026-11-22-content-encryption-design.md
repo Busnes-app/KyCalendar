@@ -5,6 +5,12 @@ Date: 2026-11-22. Status: proposed design, docs only. Build step CE1 follows thi
 and CE1b (`internal/skeleton`, the split and merge) is in #195. They change when this spec does.
 Nothing reads or writes the new formats yet.
 
+PQC Wave 1 row 21's shared-helper refactor uses `ky-primitives/xwing` v0.11.0 for CE1a's
+keys and HPKE, preserving content format v1 and its stored vectors. It does not complete
+CE2 or enable content encryption. V1 binds global user/calendar IDs, not `org_id`; the
+[format document](../../CONTENT-ENCRYPTION-FORMAT.md#tenant-and-organization-binding) states
+the required caller-side org checks and the limits of the binding tests.
+
 Owner decisions (fixed, not reopened here):
 
 1. Encrypt event content per account at rest, with no new client apps. Native calendar apps keep
@@ -360,6 +366,11 @@ turns it on.
      every sealed one in place.
 2. **CE2, store and request paths.** Seal on write, merge on read, folding, app-password and MCP
    slots, session slots, E10 refusal, task search over decrypted content.
+   - This is a separate multi-layer milestone, not a small call-site change: migration 38's
+     columns are unused by `internal/store`'s object model and reads/writes, and the schema
+     additions above, credential unlock paths and request-time split/merge still need building.
+     The shared-helper refactor leaves these, org-scoped key/holder lookups and CE2's acceptance
+     tests pending. CE3–CE6 remain separate phases as listed below.
    - Tests: a CalDAV client round trip on an encrypted account returns the bytes it sent.
      `TestInteropFixturesSurviveWebEdits` passes on an encrypted account. A credential
      without a slot gets `403`. The database holds no content property in `data`. A multiget of

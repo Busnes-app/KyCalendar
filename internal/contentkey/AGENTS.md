@@ -11,6 +11,8 @@ the skeleton split and merge are `internal/skeleton`, the tables are migration 3
 calls either until build step CE2.
 
 ## Local Contracts
+- Use `ky-primitives/xwing` for X-Wing keys and HPKE. `suite.go` only adapts its leading
+  version byte to the fixed content v1 framing; keep all KEM and HPKE operations in the library.
 - **Format version 1 is fixed.** The suite is X-Wing (`MLKEM768X25519`), HKDF-SHA256 and
   AES-256-GCM, named by no field. Every `info` string and AAD prefix carries `v1`.
   - A change to any byte format, info string or AAD is a new version: new strings and a new list
@@ -29,6 +31,9 @@ calls either until build step CE2.
   - A previous account key binds its user and version.
 
   A new readable field joins the AAD.
+- **Tenant binding:** v1 binds database-global user/calendar IDs, not `org_id`. Callers must
+  resolve those IDs within the authorized org before using this package. Adding explicit org
+  AAD requires a new format version; see the format document's tenant binding notes.
 - **Keys are versioned (E3, E11).** A rotation adds account and calendar key versions and keeps
   the old ones. A part names and binds its calendar key version, and opens only with it.
 - **Parts bind their sequence number (`parts_version`), never their position.** Removing a
@@ -40,5 +45,6 @@ calls either until build step CE2.
 - **Failures:** every open failure is `ErrOpen`, with nothing about which binding failed.
 
 ## Verification
-`go test ./internal/contentkey` (unit tests and the stored vectors), and the repository's
+`go test ./internal/contentkey` (stored vectors, shared-helper framing and same-key cross-ID
+binding tests), and the repository's
 `make ci`.

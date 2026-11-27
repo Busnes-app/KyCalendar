@@ -8,23 +8,17 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
-	"crypto/hpke"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-)
 
-// The suite is fixed for format version 1 and named by no field: X-Wing (ML-KEM-768 with X25519)
-// with HKDF-SHA256 and AES-256-GCM, as the suite's capsules use. Every info string carries the
-// version, so a ciphertext lifted into another use or version fails to open.
-func kem() hpke.KEM   { return hpke.MLKEM768X25519() }
-func kdf() hpke.KDF   { return hpke.HKDFSHA256() }
-func aead() hpke.AEAD { return hpke.AES256GCM() }
+	"github.com/Busnes-app/ky-primitives/xwing"
+)
 
 const (
 	// SeedBytes is the length of every key seed: an account's, a calendar's or a worker key.
-	SeedBytes = 32
+	SeedBytes = xwing.SeedBytes
 	nonceSize = 12
 )
 
@@ -90,34 +84,23 @@ func gcm(key [SeedBytes]byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 
-// sealTo is enc ‖ HPKE ciphertext to pub, base mode, one message per context.
-func sealTo(pub hpke.PublicKey, info string, aad, plaintext []byte) ([]byte, error) {
-	enc, s, err := hpke.NewSender(pub, kdf(), aead(), []byte(info))
+// sealTo preserves content v1's enc ‖ ciphertext framing. The shared helper owns the
+// fixed X-Wing/HKDF-SHA256/AES-256-GCM suite; only its leading version byte is omitted.
+func sealTo(pub xwing.PublicKey, info string, aad, plaintext []byte) ([]byte, error) {
+	sealed, err := xwing.Seal(pub, []byte(info), aad, plaintext)
 	if err != nil {
 		return nil, err
 	}
-	ct, err := s.Seal(aad, plaintext)
-	if err != nil {
-		return nil, err
-	}
-	return append(enc, ct...), nil
+	return sealed[1:], nil
 }
 
-func openWith(priv hpke.PrivateKey, info string, aad, sealed []byte) ([]byte, error) {
-	n := encSize()
-	if len(sealed) < n {
-		return nil, ErrOpen
-	}
-	r, err := hpke.NewRecipient(sealed[:n], priv, kdf(), aead(), []byte(info))
-	if err != nil {
-		return nil, ErrOpen
-	}
-	out, err := r.Open(aad, sealed[n:])
+func openWith(priv xwing.PrivateKey, info string, aad, sealed []byte) ([]byte, error) {
+	// Restore the helper's framing in a new buffer, leaving the caller's bytes untouched.
+	framed := make([]byte, 1, 1+len(sealed))
+	framed[0] = xwing.Version
+	out, err := xwing.Open(priv, []byte(info), aad, append(framed, sealed...))
 	if err != nil {
 		return nil, ErrOpen
 	}
 	return out, nil
 }
-
-// encSize is the X-Wing encapsulated key's length: ML-KEM-768 ciphertext plus an X25519 point.
-func encSize() int { return 1088 + 32 }
