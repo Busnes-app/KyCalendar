@@ -2,8 +2,6 @@ module github.com/Busnes-app/kycalendar
 
 go 1.27.4
 
-toolchain go1.27.4
-
 require (
 	github.com/Busnes-app/ky-primitives v0.12.0
 	github.com/coreos/go-oidc/v3 v3.21.0
