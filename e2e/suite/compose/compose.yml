@@ -112,7 +112,8 @@ services:
       KYIDENTITY_VAPID_KEY_PATH: /data/kyidentity_vapid
       KYIDENTITY_PLATFORM_LISTEN: 0.0.0.0:5868
       BOOTSTRAP_ADMIN_PASS: ${E2E_ADMIN_PASSWORD:?}
-      SSL_CERT_FILE: /run/secrets/e2e_ca # the mail sink's certificate
+      KYIDENTITY_ALLOW_PRIVATE_CALLBACKS: "true"
+      SSL_CERT_FILE: /run/secrets/e2e_ca # the mail sink's and post.e2e.test's certificate
     # The platform API is internal; the driver calls it as billing would, on a loopback port.
     ports: ["127.0.0.1::5868"]
     healthcheck:
@@ -136,14 +137,14 @@ services:
     restart: "no"
     depends_on:
       kyidentity: { condition: service_healthy }
-    secrets: [tls_cert, tls_key]
+    secrets: [tls_cert, tls_key, e2e_ca]
     configs:
       - { source: caddyfile, target: /etc/caddy/Caddyfile }
     # The driver's browser: every *.e2e.test name through one loopback port.
     ports: ["127.0.0.1::443"]
     networks:
       default:
-        aliases: [id.e2e.test, cal-x.e2e.test, cal-y.e2e.test, messages.e2e.test]
+        aliases: [id.e2e.test, cal-x.e2e.test, cal-y.e2e.test, messages.e2e.test, post.e2e.test]
 
   # The mail sink KyIdentity's invitations go to (STARTTLS, the run's certificate). Its API is
   # how the driver reads activation links and proves that no mail went out.
@@ -210,18 +211,16 @@ services:
     memswap_limit: 128m
     profiles: [release]
 
-  # KyPost runs once, never as a service: multi mode is table mode, which it cannot start yet
-  # (smoke_test.go, targets). Every table-mode requirement it checks first is met here: the
-  # provisioned keys, TLS on its listener and to the database, the .test issuer. The process
-  # is the server itself, so a refusal ends the run at once.
+  # One deployment serving both cells (e2e-1, e2e-2) in table mode; native mail stays off until
+  # CoreDNS provides TXT/MX domain verification. SSO settings live in kypost_volumes.documents.
   kypost: &kypost
     image: ${KYPOST_IMAGE:?}
     mem_limit: 384m
     memswap_limit: 384m
     restart: "no"
-    profiles: [release]
     depends_on:
       postgres: { condition: service_healthy }
+      front: { condition: service_started }
     secrets: [kypost_keys, kypost_vapid, tls_cert, tls_key, e2e_ca]
     # Secrets arrive root-owned and world-readable; KyPost wants its files private and its own.
     entrypoint:
@@ -229,25 +228,31 @@ services:
       - -c
       - |
         set -e
-        p=/kypost/private c=/kypost/config
+        p=/kypost/private
         while read -r name value; do printf %s "$$value" > "$$p/$$name"; done < /run/secrets/kypost_keys
         cp /run/secrets/kypost_vapid "$$p/notifications-vapid-private.pem"
         cp /run/secrets/tls_cert "$$p/tls.crt"; cp /run/secrets/tls_key "$$p/tls.key"; cp /run/secrets/e2e_ca "$$p/e2e-ca.pem"
-        printf '{"enabled":true,"issuerUrl":"https://id.e2e.test","clientId":"kypost","autoProvision":true}' > "$$c/sso.json"
-        chown -R 1000:1000 /kypost; chmod 600 "$$p"/* "$$c"/*
+        chown -R 1000:1000 /kypost; chmod 600 "$$p"/*
         exec setpriv --reuid=1000 --regid=1000 --init-groups /usr/local/bin/kypost-server --mode server
       - --
     environment:
       KYPOST_TENANCY: multi
       KYPOST_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
       KY_CELLS: e2e-1,e2e-2
-      KYPOST_NATIVE_MAIL: "true"
+      KYPOST_NATIVE_MAIL: "false"
       KYPOST_DISABLE_AI_SORTING: "true"
       KYPOST_DATABASE_URL: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kypost?sslmode=verify-full&sslrootcert=/kypost/private/e2e-ca.pem
+      SERVER_BASE_URL: https://post.e2e.test
       TLS_CERT_FILE: /kypost/private/tls.crt
       TLS_KEY_FILE: /kypost/private/tls.key
+      SSL_CERT_FILE: /kypost/private/e2e-ca.pem
+      PAIRING_SECRET: ${E2E_KYPOST_PAIRING_SECRET:-}
       PUSH_RELAY_URL: ""
       APNS_RELAY_URL: ""
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--cacert", "/kypost/private/e2e-ca.pem", "https://kypost:5866/readyz"]
+      interval: 2s
+      retries: 60
 
   # KyPost's release image at the same commit, with the same settings: it must refuse at the gate.
   kypost-release:
@@ -255,6 +260,7 @@ services:
     image: ${KYPOST_RELEASE_IMAGE:?}
     mem_limit: 128m
     memswap_limit: 128m
+    profiles: [release]
 
 configs:
   caddyfile:
@@ -284,6 +290,14 @@ configs:
       https://messages.e2e.test {
         import cert
         reverse_proxy kymessages:8080
+      }
+      https://post.e2e.test {
+        import cert
+        reverse_proxy https://kypost:5866 {
+          transport http {
+            tls_trusted_ca_certs /run/secrets/e2e_ca
+          }
+        }
       }
 
 secrets:
