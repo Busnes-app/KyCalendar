@@ -33,8 +33,8 @@ repository as a copy.
   (native receiving/SMTP waits on CoreDNS), `PAIRING_SECRET` bound to KyIdentity's
   `suite_webhook` secret, and `sso.json` stored in `kypost_volumes.documents`. `s3` is SeaweedFS
   (the image KyCalendar CI pins) behind `https://s3.e2e.test`; the driver creates the versioned
-  `kynotes` bucket before KyNotes starts. KyNotes runs live in `multi` mode in cell `e2e-1`
-  (`KYNOTES_REGION`: it serves one cell) on PostgreSQL and that bucket, its SSO client and
+  `kynotes` bucket before KyNotes starts. KyNotes runs live in `multi` mode serving cell `e2e-1`
+  (`KY_CELLS`) on PostgreSQL and that bucket, its SSO client and
   directory poll fixed by the environment, native archives off.
 - `smoke_test.go`: `start` brings one install up (images, KyIdentity's
   fresh PostgreSQL initialization, the bootstrap administrator's forced password change, the

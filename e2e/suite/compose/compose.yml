@@ -273,7 +273,7 @@ services:
       - { source: s3_identities, target: /etc/s3.json }
     command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/s3.json"]
 
-  # One deployment in cell e2e-1 (KYNOTES_REGION: KyNotes serves one cell), PostgreSQL and
+  # One deployment serving cell e2e-1, PostgreSQL and
   # object storage only. The SSO client and directory poll are fixed by the environment.
   kynotes: &kynotes
     image: ${KYNOTES_IMAGE:?}
@@ -292,8 +292,7 @@ services:
       BOOTSTRAP_EVERYDAY_USER: ""
       BOOTSTRAP_EVERYDAY_PASS: ""
       KYNOTES_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
-      # Alias of KY_CELLS from KyNotes-server #213; switch to KY_CELLS once KyNotes master has it.
-      KYNOTES_REGION: e2e-1
+      KY_CELLS: e2e-1
       KYNOTES_DB_DSN: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kynotes?sslmode=disable
       KYNOTES_SECRETS_PAIRING_SECRET: ${E2E_KYNOTES_PAIRING_SECRET:?}
       KYNOTES_SECRETS_SERVER_SALT_KEY: ${E2E_KYNOTES_SALT_KEY:?}
