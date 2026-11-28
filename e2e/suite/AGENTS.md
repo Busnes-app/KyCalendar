@@ -13,10 +13,10 @@ repository as a copy.
   `kye2e/<app>:<sha>`. No app's own Dockerfile changes; the release image is the app's own
   Dockerfile at the same commit (`kye2e-release/<app>:<sha>`). Nothing is pushed. KyPost's
   release image is built with `INSTALL_OLLAMA=false`, and its kye2e image is that release image
-  with only `kypost-server` replaced by the tagged build (the release image goes in as an OCI
-  layout build context, because a docker-container builder cannot read the daemon's images).
-  `FROM release` names that context, not a registry image; Scorecard's Pinned-Dependencies cannot
-  see named contexts and reads the line as unpinned, a dismissed false positive.
+  with only `kypost-server` replaced by the tagged build. A docker-container builder uses the
+  local OCI layout because it cannot read the daemon's images. The harness reads the layout's
+  image digest from Buildx metadata and uses it in both `FROM release@sha256:${RELEASE_SHA256}`
+  and the named context. Scorecard recognizes the digest in the `FROM` reference.
 - `compose/compose.yml`: the topology. Every service sets `mem_limit` and an equal
   `memswap_limit`, together at most 5 GiB (dockerd's containers are outside any `kslot` scope);
   the driver refuses otherwise. Three random loopback ports are published for the driver and
