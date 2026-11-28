@@ -644,7 +644,7 @@ func (s *Server) searchTasks(ctx context.Context, lists []*store.Calendar, all [
 		return nil, err
 	}
 	for _, t := range all {
-		if sealed[t.cal.ID] && store.MatchFold(strings.Join(append([]string{t.task.Title, t.task.Notes}, t.task.Tags...), "\n"), words) {
+		if sealed[t.cal.ID] && s.store.Tasks().MatchTask(strings.Join(append([]string{t.task.Title, t.task.Notes}, t.task.Tags...), "\n"), words) {
 			out[t.cal.ID+"/"+t.task.UID] = true
 		}
 	}

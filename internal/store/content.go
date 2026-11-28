@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -372,6 +371,8 @@ type ContentStore interface {
 	LegacyRows(ctx context.Context) (int, error)
 	// SetUpAccounts counts accounts with an account key.
 	SetUpAccounts(ctx context.Context) (int, error)
+	// PurgeFreed clears what deleted or replaced plaintext left in the database's files.
+	PurgeFreed(ctx context.Context) error
 }
 
 func (c contentStore) SetUpAccounts(ctx context.Context) (int, error) {
@@ -762,7 +763,19 @@ func (s *SQLStore) keyCalendarTx(ctx context.Context, tx *sql.Tx, calendarID str
 		}
 		return err
 	}
+	// FTS5 secure-delete (migration 44) takes the terms out of the index's segments too.
 	_, err = tx.ExecContext(ctx, s.rebind(`DELETE FROM task_search WHERE calendar_id = ?`), calendarID)
+	return err
+}
+
+// PurgeFreed truncates SQLite's WAL, whose older frames still hold the plaintext that keying
+// deleted and the sweep replaced. PostgreSQL: nothing (dead tuples, see the design's Residual
+// risks).
+func (c contentStore) PurgeFreed(ctx context.Context) error {
+	if c.s.driver == "postgres" {
+		return nil
+	}
+	_, err := c.s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
 	return err
 }
 
@@ -1024,18 +1037,6 @@ func (s *SQLStore) rewrapSeeds(ctx context.Context, tx *sql.Tx, userID string, k
 		}
 	}
 	return nil
-}
-
-// MatchFold reports whether body holds every word, compared as task search compares them
-// (case and accents folded). Encrypted accounts' tasks are searched this way, never indexed.
-func MatchFold(body string, words []string) bool {
-	b := fold(body)
-	for _, w := range words {
-		if !strings.Contains(b, fold(w)) {
-			return false
-		}
-	}
-	return true
 }
 
 // RefuseLocked is ErrLocked when the request could not open any of objs (E10).

@@ -616,6 +616,10 @@ CREATE TABLE sso_logouts (
 	{Version: 42, Name: "org_home_region", SQLite: `ALTER TABLE orgs ADD COLUMN home_region TEXT NOT NULL DEFAULT '';`, Postgres: `ALTER TABLE orgs ADD COLUMN home_region TEXT NOT NULL DEFAULT '';`},
 	// Content encryption CE2 (docs/superpowers/specs/2026-11-22-content-encryption-design.md, Schema).
 	{Version: 43, Name: "content_encryption_ce2", SQLite: contentEncryptionCE2("BLOB", false), Postgres: contentEncryptionCE2("BYTEA", true)},
+	// FTS5 deletes remove terms from the index's segments instead of leaving them until a merge,
+	// and the rebuild drops what earlier deletes left (CE2: keying deletes an account's rows).
+	{Version: 44, Name: "task_search_secure_delete", SQLite: `INSERT INTO task_search(task_search, rank) VALUES ('secure-delete', 1);
+INSERT INTO task_search(task_search) VALUES ('rebuild');`, Postgres: `SELECT 1;`},
 }
 
 // storagePool is the product-side shared state of KyIdentity's reserved-byte grant.

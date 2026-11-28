@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,6 +15,8 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/apppass"
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/contentkey"
+	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -209,5 +213,86 @@ func TestContentSetupNeedsRecentSignIn(t *testing.T) {
 	}
 	if n, err := st.Content().SetUpAccounts(context.Background()); err != nil || n != 0 {
 		t.Fatalf("a stale session created %d account keys (%v)", n, err)
+	}
+}
+
+// slotStore lets a test act just before a new credential's slot is written.
+type slotStore struct {
+	store.Store
+	before func() error
+}
+
+func (s slotStore) Content() store.ContentStore { return slotContent{s.Store.Content(), s.before} }
+
+type slotContent struct {
+	store.ContentStore
+	before func() error
+}
+
+func (c slotContent) AddSlot(ctx context.Context, account *contentkey.KeyPair, cred store.Credential) error {
+	if err := c.before(); err != nil {
+		return err
+	}
+	return c.ContentStore.AddSlot(ctx, account, cred)
+}
+
+// An app password is only handed out with a slot that opens the account: a rotation between
+// opening the account and adding the slot is retried with the new key, and a slot that cannot
+// be written revokes the credential and fails the request.
+func TestNewAppPasswordAlwaysUnlocks(t *testing.T) {
+	srv, st, cfg := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
+	alice := loginAs(t, srv, st, "alice", "user")
+	phone := seedAppPassword(t, st, "usr_alice")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	path := "/dav/usr_alice/calendars/default/"
+	rawDAV(t, ts, "PROPFIND", "/dav/usr_alice/calendars/", "alice", phone, "", map[string]string{"Depth": "1"})
+	w := do(t, srv, "POST", "/api/encryption/recovery-code", alice)
+	code := between(w.Body.String(), `"recovery_code":"`, `"`)
+	if w := doJSON(t, srv, "POST", "/api/encryption/setup", alice, map[string]string{"passphrase": "correct horse battery", "recovery_code": code}); w.Code != http.StatusNoContent {
+		t.Fatalf("setup: %d %s", w.Code, w.Body.String())
+	}
+	if r := rawDAV(t, ts, "PUT", path+"evt-s.ics", "alice", phone, evSecret, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("PUT %d %s", r.StatusCode, readAll(r))
+	}
+	labels := func() []string {
+		list, err := st.AppPasswords().ListByUser(context.Background(), "usr_alice")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, p := range list {
+			out = append(out, p.Label)
+		}
+		return out
+	}
+
+	// The transition ends (the rotation) after the request opened the account key.
+	rotated := false
+	api.SetStoreForTest(srv, slotStore{st, func() error {
+		if !rotated {
+			rotated = true
+			return st.Content().EndTransition(context.Background(), "usr_alice", crypto.DeriveKey(cfg.Security.EncryptionKey, "kycalendar:content-transition"))
+		}
+		return nil
+	}})
+	w = doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "laptop", "scope": "dav"})
+	var created struct{ Password string }
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	if w.Code != http.StatusCreated || !rotated {
+		t.Fatalf("app password across a rotation: %d %s (rotated %v)", w.Code, w.Body.String(), rotated)
+	}
+	if body := readAll(rawDAV(t, ts, "GET", path+"evt-s.ics", "alice", created.Password, "", nil)); body != evSecret {
+		t.Fatalf("the new app password does not unlock after the rotation: %q", body)
+	}
+
+	// The slot write fails: no credential is handed out, and none is left behind.
+	api.SetStoreForTest(srv, slotStore{st, func() error { return errors.New("disk full") }})
+	w = doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "tablet", "scope": "dav"})
+	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), `"password":`) {
+		t.Fatalf("a failed slot write: %d %s", w.Code, w.Body.String())
+	}
+	if l := labels(); slices.Contains(l, "tablet") {
+		t.Fatalf("the credential without a slot was kept: %v", l)
 	}
 }

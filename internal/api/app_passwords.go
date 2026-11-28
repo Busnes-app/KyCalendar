@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -115,7 +116,12 @@ func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
 		return
 	}
-	s.slotForAppPassword(r, user, p, token)
+	if err := s.slotForAppPassword(r, user, p, token); err != nil {
+		log.Printf("[CONTENT] app password slot not created, credential revoked: %v", err)
+		_ = s.store.AppPasswords().Delete(r.Context(), user.ID, id)
+		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
+		return
+	}
 	_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: user.ID, Action: "app_password.create", Resource: "app_password:" + id, Details: "scope=" + p.Scope, IPAddress: s.requestIP(r)})
 	v := viewOfAppPassword(p)
 	s.writeJSON(w, http.StatusCreated, map[string]any{"id": id, "label": label, "scope": p.Scope, "password": token, "created_at": p.CreatedAt, "revoke_after": v.RevokeAfter})

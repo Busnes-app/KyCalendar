@@ -77,27 +77,35 @@ func (s *Server) unlockSession(r *http.Request) *http.Request {
 
 // slotForAppPassword gives a new app password or MCP token its own slot, opened through the
 // creating session's slot. A session that has not unlocked cannot: the credential then reaches
-// encrypted calendars only through the transition, and is refused after it (E10).
-func (s *Server) slotForAppPassword(r *http.Request, user *store.User, p *store.AppPassword, token string) {
+// encrypted calendars only through the transition, and is refused after it (E10). A slot that
+// cannot be stored is an error, so the caller revokes a credential that would not unlock.
+func (s *Server) slotForAppPassword(r *http.Request, user *store.User, p *store.AppPassword, token string) error {
 	if !s.contentOn() {
-		return
+		return nil
 	}
 	cred, ok := sessionCredential(r, sessionOf(r.Context()))
 	if !ok {
-		return
-	}
-	account, err := store.UnlockOf(s.store.Content().WithUnlock(r.Context(), cred)).Account(r.Context())
-	if err != nil {
-		return
+		return nil
 	}
 	_, secret, _ := apppass.Parse(token)
 	kind := contentkey.SlotAppPassword
 	if store.IsMCPScope(p.Scope) {
 		kind = contentkey.SlotMCP
 	}
-	if err := s.store.Content().AddSlot(r.Context(), account, store.Credential{UserID: user.ID, Kind: kind, SlotID: p.ID, Secret: []byte(secret)}); err != nil {
-		log.Printf("[CONTENT] app password slot not created: %v", err)
+	var err error
+	for try := 0; try < 2; try++ { // a rotation between opening and adding: open the new key once
+		account, openErr := store.UnlockOf(s.store.Content().WithUnlock(r.Context(), cred)).Account(r.Context())
+		if openErr != nil {
+			if try == 0 {
+				return nil // not unlocked, or not set up
+			}
+			return openErr
+		}
+		if err = s.store.Content().AddSlot(r.Context(), account, store.Credential{UserID: user.ID, Kind: kind, SlotID: p.ID, Secret: []byte(secret)}); !errors.Is(err, store.ErrLocked) {
+			break
+		}
 	}
+	return err
 }
 
 // handleContentStatus reports whether the account is set up and whether this session unlocked.
@@ -320,5 +328,8 @@ func (s *Server) SweepContent(ctx context.Context) {
 	}
 	if total > 0 {
 		log.Printf("[CONTENT] sweep sealed %d legacy rows", total)
+		if err := s.store.Content().PurgeFreed(ctx); err != nil {
+			log.Printf("[CONTENT] purge after sweep: %v", err)
+		}
 	}
 }

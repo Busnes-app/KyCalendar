@@ -99,8 +99,9 @@ Every place that reads `calendar_objects.data` or another content column, from t
   it, seals the whole body under the calendar's AES key as a new base, and drops older parts (E2, E4).
 - Task search (`internal/api/tasks.go:619-632`). The plaintext `task_search` table
   (`migrations.go:966-974`) keeps serving unencrypted accounts. An encrypted account's rows are
-  deleted at setup and never written again; its search decrypts the account's tasks per request. Fine for
-  thousands of tasks; measured in CE2.
+  deleted at setup and never written again; its search decrypts the account's tasks per request,
+  matching words as the index does (`MatchTask`: word prefixes on SQLite, substrings on
+  PostgreSQL), so results do not change with encryption. Fine for thousands of tasks; measured in CE2.
 
 **Background or anonymous: skeleton only, or seal without reading.**
 
@@ -504,6 +505,17 @@ turns it on.
 - **Lost secrets lose content.** No escrow (owner decision 5). The setup flow makes the recovery
   code hard to skip, but users still lose it.
 - **Weak passphrases** can be attacked offline from a stolen database (E8).
+- **Plaintext left in the database's own storage.** SQLite: freed pages are zeroed
+  (`secure_delete`), FTS5 deletes take terms out of the index (`secure-delete`, migration 44,
+  which also rebuilt the index once to drop earlier deletes' remnants), and the sweep truncates
+  the WAL, so after setup and the sweep neither the file nor a `VACUUM INTO` snapshot holds the
+  account's task text. PostgreSQL: the rows keying deletes and the sweep replaces stay as dead
+  tuples until VACUUM reuses their space, and in the WAL and its archive, so a physical copy
+  (a disk image, a base backup, a replica's files) can hold them. A `pg_dump` and the backup
+  capsule's snapshot copy live rows only. No request can force VACUUM to clear them, and
+  VACUUM does not zero the space, so this is not fixed: an operator who needs it runs
+  `VACUUM FULL task_search, calendar_objects` after the sweep and expires older base backups
+  and WAL archives. Backups taken before setup hold the plaintext in every case.
 - **The transition, the outbox and booking holds** are readable with the deployment key for
   their windows. For the transition, a copy from the 14 days keeps opening what was stored before
   its rotation, and in a shared calendar what was stored before its last holder's rotation, for
