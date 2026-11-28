@@ -348,7 +348,7 @@ type ContentStore interface {
 	// an account that has not run setup.
 	Status(ctx context.Context, userID, sessionSlot string) (ContentStatus, error)
 	// Setup creates userID's account key and its passphrase, recovery, transition and session
-	// slots in one transaction, then keys the calendars every holder can open (E12).
+	// slots, and keys the calendars every holder can open (E12), in one transaction.
 	Setup(ctx context.Context, userID string, s Setup) error
 	// Unlock opens the account with a passphrase or recovery code and gives session its own
 	// slot (Web flows, Unlock).
@@ -370,8 +370,6 @@ type ContentStore interface {
 	SweepOnce(ctx context.Context, after SweepCursor, limit int) (int, SweepCursor, bool, error)
 	// LegacyRows counts plaintext rows left in keyed calendars.
 	LegacyRows(ctx context.Context) (int, error)
-	// Keyed reports whether a calendar has a key.
-	Keyed(ctx context.Context, calendarID string) (bool, error)
 	// SetUpAccounts counts accounts with an account key.
 	SetUpAccounts(ctx context.Context) (int, error)
 }
@@ -533,7 +531,9 @@ func (c contentStore) Setup(ctx context.Context, userID string, in Setup) error 
 		}
 		rows = append(rows, r)
 	}
-	tx, err := c.s.lockedTx(ctx, "content:"+userID)
+	// No lock up front: the insert's unique key refuses a second setup, and keyCalendarTx takes
+	// the holders' locks, this account's among them, in its own order.
+	tx, err := c.s.beginTx(ctx)
 	if err != nil {
 		return err
 	}
@@ -552,10 +552,17 @@ func (c contentStore) Setup(ctx context.Context, userID string, in Setup) error 
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	// Keyed in the same transaction: a setup that fails leaves nothing behind, so a retry works.
+	ids, err := c.s.unkeyedCalendars(ctx, tx, userID)
+	if err != nil {
 		return err
 	}
-	return c.EnsureCalendarKeys(ctx, userID, account)
+	for _, id := range ids {
+		if err := c.s.keyCalendarTx(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // openAccount opens cred's account key (E6). An app password or MCP token without its own slot
@@ -670,24 +677,8 @@ UNION SELECT m.user_id FROM calendars c JOIN calendar_grants g ON g.calendar_id 
 }
 
 func (c contentStore) EnsureCalendarKeys(ctx context.Context, userID string, account *contentkey.KeyPair) error {
-	rows, err := c.s.db.QueryContext(ctx, c.s.rebind(`SELECT c.id FROM calendars c WHERE c.owner_kind = 'user' AND c.owner_id = ?
- AND NOT EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = c.id)
-UNION SELECT g.calendar_id FROM calendar_grants g JOIN group_members m ON m.group_id = g.group_id JOIN calendars c ON c.id = g.calendar_id
- WHERE m.user_id = ? AND c.owner_kind = 'group' AND NOT EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = g.calendar_id)`), userID, userID)
+	ids, err := c.s.unkeyedCalendars(ctx, c.s.db, userID)
 	if err != nil {
-		return err
-	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return err
 	}
 	for _, id := range ids {
@@ -696,6 +687,27 @@ UNION SELECT g.calendar_id FROM calendar_grants g JOIN group_members m ON m.grou
 		}
 	}
 	return nil
+}
+
+// unkeyedCalendars are the calendars userID can reach that have no key yet.
+func (s *SQLStore) unkeyedCalendars(ctx context.Context, q queryer, userID string) ([]string, error) {
+	rows, err := q.QueryContext(ctx, s.rebind(`SELECT c.id FROM calendars c WHERE c.owner_kind = 'user' AND c.owner_id = ?
+ AND NOT EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = c.id)
+UNION SELECT g.calendar_id FROM calendar_grants g JOIN group_members m ON m.group_id = g.group_id JOIN calendars c ON c.id = g.calendar_id
+ WHERE m.user_id = ? AND c.owner_kind = 'group' AND NOT EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = g.calendar_id)`), userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // keyCalendar gives calendarID its first key once every holder has an account key (E12),
@@ -752,12 +764,6 @@ func (s *SQLStore) keyCalendarTx(ctx context.Context, tx *sql.Tx, calendarID str
 	}
 	_, err = tx.ExecContext(ctx, s.rebind(`DELETE FROM task_search WHERE calendar_id = ?`), calendarID)
 	return err
-}
-
-// Keyed reports whether calendarID has a key: its tasks are then never indexed in plaintext.
-func (c contentStore) Keyed(ctx context.Context, calendarID string) (bool, error) {
-	_, _, keyed, err := c.s.currentCalendarKey(ctx, c.s.db, calendarID)
-	return keyed, err
 }
 
 // wrapVersion stores calendar key version k, wrapped to every holder's current account key. With

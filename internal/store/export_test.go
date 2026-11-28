@@ -80,3 +80,11 @@ func SetSweepReadHookForTest(f func()) func() {
 	sweepReadHook = f
 	return func() { sweepReadHook = old }
 }
+
+// WaitingOnLockForTest reports whether some transaction is waiting for key's advisory lock.
+func WaitingOnLockForTest(st Store, key string) (bool, error) {
+	var waiting bool
+	err := st.(*SQLStore).db.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+AND objsubid = 1 AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 0))`, key).Scan(&waiting)
+	return waiting, err
+}

@@ -628,26 +628,16 @@ func (s *Server) searchTasks(ctx context.Context, lists []*store.Calendar, all [
 		docs[t.cal.ID] = append(docs[t.cal.ID], store.TaskDoc{UID: t.task.UID, ETag: t.obj.ETag, Body: body})
 	}
 	sealed := map[string]bool{} // an encrypted list's tasks are matched here, never indexed (CE2)
-	for _, c := range lists {
-		keyed, err := s.store.Content().Keyed(ctx, c.ID)
-		if err != nil {
-			return nil, err
-		}
-		sealed[c.ID] = keyed
-	}
 	words := strings.Fields(q)
 	ids := make([]string, 0, len(lists))
 	for _, c := range lists {
-		if sealed[c.ID] {
-			if err := s.store.Tasks().IndexTasks(ctx, c.ID, nil); err != nil { // drop rows made before it was keyed
-				return nil, err
-			}
-			continue
-		}
-		if err := s.store.Tasks().IndexTasks(ctx, c.ID, docs[c.ID]); err != nil {
+		keyed, err := s.store.Tasks().IndexTasks(ctx, c.ID, docs[c.ID])
+		if err != nil {
 			return nil, err
 		}
-		ids = append(ids, c.ID)
+		if sealed[c.ID] = keyed; !keyed {
+			ids = append(ids, c.ID)
+		}
 	}
 	out, err := s.store.Tasks().SearchTasks(ctx, ids, words)
 	if err != nil {

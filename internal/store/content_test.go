@@ -593,7 +593,7 @@ func TestKeyingPurgesTaskSearchRows(t *testing.T) {
 	st := newTestStore(t)
 	f := newContentFixture(t, st, "usr_ts", false)
 	ctx := context.Background()
-	if err := st.Tasks().IndexTasks(ctx, f.cal.ID, []store.TaskDoc{{UID: "t1", ETag: "e", Body: "Secret board meeting"}}); err != nil {
+	if _, err := st.Tasks().IndexTasks(ctx, f.cal.ID, []store.TaskDoc{{UID: "t1", ETag: "e", Body: "Secret board meeting"}}); err != nil {
 		t.Fatal(err)
 	}
 	_, code, _ := contentkey.NewRecoveryCode()
@@ -603,8 +603,115 @@ func TestKeyingPurgesTaskSearchRows(t *testing.T) {
 	if n := countRows(t, st, `SELECT COUNT(*) FROM task_search`); n != 0 {
 		t.Fatalf("%d plaintext search rows survived keying", n)
 	}
-	if keyed, err := st.Content().Keyed(ctx, f.cal.ID); err != nil || !keyed {
-		t.Fatalf("Keyed = %v %v", keyed, err)
+	if keyed, err := st.Tasks().IndexTasks(ctx, f.cal.ID, []store.TaskDoc{{UID: "t1", ETag: "e", Body: "Secret board meeting"}}); err != nil || !keyed {
+		t.Fatalf("IndexTasks on a keyed calendar = %v %v", keyed, err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM task_search`); n != 0 {
+		t.Fatal("a keyed calendar was indexed")
+	}
+}
+
+// A task search that read its list before keying cannot index it after: IndexTasks checks for
+// a key under the calendar-key lock keying holds, so no plaintext row outlives keying.
+func TestTaskIndexingCannotFollowKeying(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	doc := []store.TaskDoc{{UID: "t1", ETag: "e", Body: "Secret board meeting"}}
+
+	// The search loaded its tasks, then setup keyed and purged the list, then the search indexes.
+	f := newContentFixture(t, st, "usr_ix", true)
+	if keyed, err := st.Tasks().IndexTasks(ctx, f.cal.ID, doc); err != nil || !keyed {
+		t.Fatalf("IndexTasks after keying = %v %v", keyed, err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM task_search`); n != 0 {
+		t.Fatalf("%d plaintext search rows written after keying", n)
+	}
+
+	// The search checks while keying's transaction is still open: it must wait for its commit.
+	g := newContentFixture(t, st, "usr_iy", false)
+	commit, err := store.HoldLockForTest(st, "calendar-key:"+g.cal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		keyed bool
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		keyed, err := st.Tasks().IndexTasks(ctx, g.cal.ID, doc)
+		done <- result{keyed, err}
+	}()
+	var early *result
+	if st.Driver() == "postgres" { // SQLite's one connection already makes it wait
+		for deadline := time.Now().Add(10 * time.Second); early == nil; {
+			if waiting, err := store.WaitingOnLockForTest(st, "calendar-key:"+g.cal.ID); err != nil {
+				t.Fatal(err)
+			} else if waiting {
+				break
+			}
+			select {
+			case r := <-done:
+				early = &r
+			case <-time.After(5 * time.Millisecond):
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("IndexTasks neither finished nor waited for the lock")
+			}
+		}
+	}
+	if err := commit(`INSERT INTO calendar_keys (calendar_id, version, public_key) VALUES (?, 1, ?)`, g.cal.ID, []byte("pk")); err != nil {
+		t.Fatal(err)
+	}
+	r := early
+	if r == nil {
+		got := <-done
+		r = &got
+	}
+	if r.err != nil || !r.keyed {
+		t.Fatalf("IndexTasks during keying = %v %v", r.keyed, r.err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM task_search`); n != 0 {
+		t.Fatalf("%d plaintext search rows written during keying", n)
+	}
+}
+
+// A setup that fails while keying calendars leaves nothing behind, and the retry completes it.
+func TestSetupFailingWhileKeyingRollsBack(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_sf", false)
+	ctx := context.Background()
+	db, _ := store.DBForTest(st)
+	fail, undo := `CREATE TRIGGER fail_keying BEFORE INSERT ON calendar_keys BEGIN SELECT RAISE(ABORT, 'keying failed'); END`, `DROP TRIGGER fail_keying`
+	if st.Driver() == "postgres" {
+		fail = `CREATE FUNCTION fail_keying() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'keying failed'; END $$;
+CREATE TRIGGER fail_keying BEFORE INSERT ON calendar_keys FOR EACH ROW EXECUTE FUNCTION fail_keying()`
+		undo = `DROP TRIGGER fail_keying ON calendar_keys; DROP FUNCTION fail_keying()`
+	}
+	if _, err := db.Exec(fail); err != nil {
+		t.Fatal(err)
+	}
+	setup := func() error {
+		_, code, _ := contentkey.NewRecoveryCode()
+		return st.Content().Setup(ctx, f.user, store.Setup{Passphrase: "correct horse battery", Recovery: code, Session: f.session, Transition: transitionKey, Now: time.Now()})
+	}
+	if err := setup(); err == nil {
+		t.Fatal("setup succeeded while keying failed")
+	}
+	if st2, err := st.Content().Status(ctx, f.user, f.session.SlotID); err != nil || st2.SetUp || st2.Unlocked {
+		t.Fatalf("a failed setup left the account set up: %+v %v", st2, err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM key_slots`); n != 0 {
+		t.Fatalf("a failed setup left %d slots", n)
+	}
+	if _, err := db.Exec(undo); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup(); err != nil {
+		t.Fatalf("retry after a failed setup: %v", err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM calendar_keys WHERE calendar_id = '`+f.cal.ID+`'`); n != 1 {
+		t.Fatalf("the retry left the calendar with %d keys", n)
 	}
 }
 

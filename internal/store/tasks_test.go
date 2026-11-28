@@ -89,7 +89,7 @@ func TestTaskSearchIndex(t *testing.T) {
 	st, c := taskStore(t)
 	ts := st.Tasks()
 	docs := []store.TaskDoc{{UID: "a", ETag: "1", Body: "Compress the hero images"}, {UID: "b", ETag: "1", Body: "Café receipts 50%_off"}}
-	if err := ts.IndexTasks(ctx, c.ID, docs); err != nil {
+	if _, err := ts.IndexTasks(ctx, c.ID, docs); err != nil {
 		t.Fatal(err)
 	}
 	for words, want := range map[string]string{"hero": "a", "comp ima": "a", "cafe": "b", "50%_": "b"} {
@@ -105,7 +105,7 @@ func TestTaskSearchIndex(t *testing.T) {
 		t.Fatalf("a quote matched: %v", got)
 	}
 	// A changed ETag replaces the row; a missing doc deletes it.
-	if err := ts.IndexTasks(ctx, c.ID, []store.TaskDoc{{UID: "a", ETag: "2", Body: "Resize banners"}}); err != nil {
+	if _, err := ts.IndexTasks(ctx, c.ID, []store.TaskDoc{{UID: "a", ETag: "2", Body: "Resize banners"}}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := ts.SearchTasks(ctx, []string{c.ID}, []string{"hero"}); len(got) != 0 {
