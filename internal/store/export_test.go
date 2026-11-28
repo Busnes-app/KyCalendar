@@ -66,3 +66,17 @@ func DBForTest(st Store) (*sql.DB, func(string) string) {
 	s := st.(*SQLStore)
 	return s.db, s.rebind
 }
+
+// SetSweepHookForTest runs f after each row a sweep batch seals; an error aborts the batch.
+func SetSweepHookForTest(f func(sealed int) error) func() {
+	old := sweepHook
+	sweepHook = f
+	return func() { sweepHook = old }
+}
+
+// SetSweepReadHookForTest runs f between a sweep batch's read and its transaction.
+func SetSweepReadHookForTest(f func()) func() {
+	old := sweepReadHook
+	sweepReadHook = f
+	return func() { sweepReadHook = old }
+}

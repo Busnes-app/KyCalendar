@@ -151,6 +151,18 @@ func (w *WorkerKey) Seal(p Part, calendarID string, version uint32, uid string, 
 	return p, err
 }
 
+// Open opens a part w sealed, so the run that wrote it can verify it before it replaces the
+// plaintext (the sweep, E12). It is the same AES-GCM open a holder does through the wrap.
+func (w *WorkerKey) Open(p Part, calendarID, uid string) ([]byte, error) {
+	if err := p.check(); err != nil {
+		return nil, err
+	}
+	if p.WorkerKey != w.ID {
+		return nil, ErrOpen
+	}
+	return openAES(w.key, p.aad(calendarID, uid), p.Sealed)
+}
+
 // partsMagic starts an encoded part list, naming format version 1.
 var partsMagic = []byte("KCP1")
 

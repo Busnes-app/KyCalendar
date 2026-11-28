@@ -375,6 +375,7 @@ func scheduledJobs(cfg *config.Config, st store.Store, srv *api.Server, client r
 		}},
 		{Name: "orgs", Every: api.OrgsInterval, AtStart: true, Run: srv.SyncOrgs},
 		{Name: "content-rotation", Every: 10 * time.Minute, AtStart: true, Run: srv.RotateContentTransitions},
+		{Name: "content-sweep", Every: 2 * time.Minute, AtStart: true, Run: srv.SweepContent},
 		{Name: "org-purge", Every: api.OrgsInterval, Run: srv.PurgeDeletedOrgs},
 		{Name: "storage-refresh", Every: 5 * time.Second, Run: srv.SyncStorageRefresh},
 		{Name: "suite-groups", Every: api.SuiteGroupsInterval, AtStart: true, Run: srv.SyncSuiteGroups},

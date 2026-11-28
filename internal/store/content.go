@@ -366,6 +366,10 @@ type ContentStore interface {
 	EndTransition(ctx context.Context, userID string, transition []byte) error
 	// PruneSlots drops the slots of credentials that no longer exist.
 	PruneSlots(ctx context.Context) error
+	// SweepOnce seals one batch of legacy rows in keyed calendars (content_sweep.go).
+	SweepOnce(ctx context.Context, after SweepCursor, limit int) (int, SweepCursor, bool, error)
+	// LegacyRows counts plaintext rows left in keyed calendars.
+	LegacyRows(ctx context.Context) (int, error)
 	// Keyed reports whether a calendar has a key.
 	Keyed(ctx context.Context, calendarID string) (bool, error)
 	// SetUpAccounts counts accounts with an account key.
