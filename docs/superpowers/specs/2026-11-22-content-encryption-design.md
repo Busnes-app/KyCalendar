@@ -375,11 +375,31 @@ Choices made where the spec left them open, each the narrowest that keeps its pr
   it are wrapped only to keys sealed to user slots.
 - **No passkey PRF yet**: the passphrase (E8) is the web unlock; the recovery code unlocks too.
 
-**The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. **ETags change (owner decision, 28 Nov 2026, option B; this supersedes the earlier text that kept them).** A legacy ETag is the SHA-256 of the plaintext, so a database or backup reader could confirm a guess about a predictable event. In the same transaction that seals a row, the sweep sets its ETag to the SHA-256 of the skeleton and the sealed parts and logs a sync change (the calendar's sequence, which is the CTag and sync token, advances), so each CalDAV client refetches every swept object once and gets the same bytes. Counted usage does not change. Rows of accounts that never ran setup are not touched (option A, the spec default). Subscribed calendars are not swept either: a feed refresh rewrites their rows in plaintext until feeds are sealed (CE3), and sealing them first would leave a stale base beside the refresh. Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
+**The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. **ETags change (owner decision, 28 Nov 2026, option B; this supersedes the earlier text that kept them).** A legacy ETag is the SHA-256 of the plaintext, so a database or backup reader could confirm a guess about a predictable event. In the same transaction that seals a row, the sweep sets its ETag to the SHA-256 of the skeleton and the sealed parts and logs a sync change (the calendar's sequence, which is the CTag and sync token, advances), so each CalDAV client refetches every swept object once and gets the same bytes. Counted usage does not change. Rows of accounts that never ran setup are not touched (option A, the spec default). Subscribed calendars are swept too since feeds are sealed (CE3, below); a swept feed row takes the feed ETag a refresh would give it. Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
 
-Left for later PRs: folding and patches (CE3), outbox, booking-hold
-and feed sealing (CE3), pending shares (CE5), passkeys, password slots, reset, admin pages,
-`export-org`/`open-export`, and the 2,000-object multiget timing.
+Left for later PRs: folding and patches (CE3), outbox and booking-hold sealing (CE3), pending
+shares (CE5), passkeys, password slots, reset, admin pages, `export-org`/`open-export`, and the
+2,000-object multiget timing.
+
+## As built (CE3, feeds)
+
+- **Feed refresh** (`ReplaceSubscriptionObjects`): in a calendar with a key, each added or
+  changed object is a base sealed to the calendar's public key under a fresh one-object worker
+  key, as every other worker base (CE2 as built); the parts it replaces and their worker keys go.
+  Without a key, rows are stored as before, byte for byte.
+- **Change check:** a keyed calendar's feed row has as its ETag
+  `HMAC-SHA256(feed key, calendar ID, 0, name, 0, fetched bytes)`, the feed key being
+  `DeriveKey(KY_ENCRYPTION_KEY, "kycalendar:feed-change")`. This is the spec's HMAC change check
+  kept in the existing `etag` column instead of beside it: it changes exactly when the fetched
+  object does, so an unchanged feed rewrites nothing and clients refetch nothing, and unlike the
+  sealed-write ETag (`SHA-256(data, sealed)`) it does not change on every reseal. A row is
+  unchanged only in the format the calendar has now, so a legacy row in a keyed calendar, or
+  plaintext left beside parts, is written again at the next refresh. A keyed calendar's refresh
+  without the feed key is refused. Someone holding `encryption.key` can confirm a guessed feed
+  object (Residual risks, keyed fingerprints); binding the calendar and name means two
+  subscriptions to one feed do not share ETags.
+- **The sweep** seals subscribed calendars' legacy rows with that same ETag, so a feed that
+  answers `304 Not Modified` for weeks is sealed anyway and the next refresh changes nothing.
 
 ## Phased build plan
 

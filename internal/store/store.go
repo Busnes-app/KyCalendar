@@ -451,6 +451,8 @@ type CalendarStore interface {
 	// RecordSubscriptionCheck stores the outcome of one fetch: validators, times, failures, error.
 	RecordSubscriptionCheck(ctx context.Context, sub *Subscription) error
 	// ReplaceSubscriptionObjects makes objs the calendar's whole content in one transaction, with
-	// one change row per object added, changed or removed. lim applies as in PutObject.
-	ReplaceSubscriptionObjects(ctx context.Context, calendarID string, objs []*CalendarObject, lim OwnerLimits) error
+	// one change row per object added, changed or removed. lim applies as in PutObject. In a
+	// calendar with a key each object is sealed, and its ETag is an HMAC under feedKey
+	// (FeedKey), which such a calendar requires.
+	ReplaceSubscriptionObjects(ctx context.Context, calendarID string, objs []*CalendarObject, lim OwnerLimits, feedKey []byte) error
 }

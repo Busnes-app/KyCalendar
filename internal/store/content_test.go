@@ -19,6 +19,8 @@ import (
 
 var transitionKey = crypto.DeriveKey([]byte("0123456789abcdef0123456789abcdef"), "kycalendar:content-transition")
 
+var feedKey = crypto.DeriveKey([]byte("0123456789abcdef0123456789abcdef"), "kycalendar:feed-change")
+
 const sealedEvent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\nBEGIN:VEVENT\r\nUID:ev1\r\nDTSTAMP:20261127T000000Z\r\nDTSTART:20261201T090000Z\r\nDTEND:20261201T100000Z\r\nSUMMARY:Secret board meeting\r\nDESCRIPTION:Merger with Acme\r\nLOCATION:Room 42\r\nX-VENDOR-NOTE:private\r\nATTENDEE;CN=Ana;PARTSTAT=NEEDS-ACTION:mailto:ana@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
 
 // plaintextMarkers are content values a sealed row's data must never hold.

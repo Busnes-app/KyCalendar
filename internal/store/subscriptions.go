@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -135,12 +136,11 @@ refreshed_at = ?, checked_at = ?, next_check_at = ?, failures = ?, error = ? WHE
 	return nil
 }
 
-func (c *calendarStore) ReplaceSubscriptionObjects(ctx context.Context, calendarID string, objs []*CalendarObject, lim OwnerLimits) error {
+func (c *calendarStore) ReplaceSubscriptionObjects(ctx context.Context, calendarID string, objs []*CalendarObject, lim OwnerLimits, feedKey []byte) error {
 	now := time.Now().UTC()
 	var newBytes int64
 	for _, o := range objs {
-		sum := sha256.Sum256(o.Data)
-		o.CalendarID, o.ETag, o.ModifiedAt = calendarID, hex.EncodeToString(sum[:]), now
+		o.CalendarID, o.ModifiedAt = calendarID, now
 		newBytes += int64(len(o.Data))
 	}
 
@@ -198,18 +198,38 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 		}
 	}
 
-	current := map[string]string{} // name -> etag
-	rows, err := tx.QueryContext(ctx, c.q(`SELECT name, etag FROM calendar_objects WHERE calendar_id = ?`), calendarID)
+	// A calendar with a key takes each fetched object as a base sealed to its public key, and an
+	// ETag that is an HMAC under the deployment's feed key, never the plaintext's digest (Readers,
+	// feed refresh). Without a key the rows stay as today.
+	version, pub, keyed, err := c.store.currentCalendarKey(ctx, tx, calendarID)
+	if err != nil {
+		return err
+	}
+	if keyed && len(feedKey) == 0 {
+		return errors.New("store: a subscribed calendar with a key needs the feed key")
+	}
+	for _, o := range objs {
+		o.ETag = subscriptionETag(keyed, feedKey, o)
+	}
+
+	type row struct {
+		etag    string
+		sealed  []byte
+		version int64
+	}
+	current := map[string]row{}
+	rows, err := tx.QueryContext(ctx, c.q(`SELECT name, etag, sealed, parts_version FROM calendar_objects WHERE calendar_id = ?`), calendarID)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var name, etag string
-		if err := rows.Scan(&name, &etag); err != nil {
+		var name string
+		var r row
+		if err := rows.Scan(&name, &r.etag, &r.sealed, &r.version); err != nil {
 			rows.Close()
 			return err
 		}
-		current[name] = etag
+		current[name] = r
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -217,18 +237,31 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 	}
 
 	for _, o := range objs {
-		etag, exists := current[o.Name]
+		cur, exists := current[o.Name]
 		delete(current, o.Name)
-		if exists && etag == o.ETag {
+		// A row is unchanged only in the format the calendar has now: a legacy row in a keyed
+		// calendar, or a sealed one beside a plaintext refresh, is written again.
+		if exists && cur.etag == o.ETag && (cur.sealed != nil) == keyed {
 			continue
 		}
 		if err := c.bump(ctx, tx, calendarID, o.Name, false); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
+		w := sealedWrite{data: o.Data, version: cur.version}
+		if keyed {
+			if w, err = c.workerBase(ctx, tx, o, w, version, pub); err != nil {
+				return err
+			}
+		}
+		if err := c.dropWorkerKeys(ctx, tx, calendarID, cur.sealed); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, sealed, parts_version, plain_size, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
-first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at`),
-			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, "", "", "", o.CalendarID)
+first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at,
+sealed = excluded.sealed, parts_version = excluded.parts_version, plain_size = excluded.plain_size`),
+			o.CalendarID, o.Name, o.Component, o.UID, o.ETag, w.data, o.FirstStart, o.LastEnd, o.ModifiedAt, "", "", "",
+			w.sealed, w.version, w.plainSize, o.CalendarID)
 		if err != nil {
 			return err
 		}
@@ -240,9 +273,31 @@ first_start = excluded.first_start, last_end = excluded.last_end, modified_at = 
 		if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM calendar_objects WHERE calendar_id = ? AND name = ?`), calendarID, name); err != nil {
 			return err
 		}
+		if err := c.dropWorkerKeys(ctx, tx, calendarID, current[name].sealed); err != nil {
+			return err
+		}
 	}
 	if err := guard.check(ctx, c, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// subscriptionETag is a feed object's ETag: the SHA-256 of its bytes, as before, in a calendar
+// without a key; in a keyed one an HMAC of the calendar, name and bytes under the deployment's
+// feed key, so it stays the same across refreshes of an unchanged object (no refetch) and a
+// database reader cannot confirm a guess with it (Residual risks, keyed fingerprints).
+func subscriptionETag(keyed bool, feedKey []byte, o *CalendarObject) string {
+	if !keyed {
+		sum := sha256.Sum256(o.Data)
+		return hex.EncodeToString(sum[:])
+	}
+	return feedETag(feedKey, o.CalendarID, o.Name, o.Data)
+}
+
+func feedETag(feedKey []byte, calendarID, name string, data []byte) string {
+	m := hmac.New(sha256.New, feedKey)
+	m.Write([]byte(calendarID + "\x00" + name + "\x00"))
+	m.Write(data)
+	return hex.EncodeToString(m.Sum(nil))
 }

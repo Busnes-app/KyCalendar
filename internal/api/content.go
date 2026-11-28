@@ -17,6 +17,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/auth"
 	"github.com/Busnes-app/kycalendar/internal/contentkey"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/feed"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -316,7 +317,7 @@ func (s *Server) SweepContent(ctx context.Context) {
 	var at store.SweepCursor
 	total := 0
 	for time.Now().Before(deadline) && ctx.Err() == nil {
-		n, next, done, err := s.store.Content().SweepOnce(ctx, at, store.SweepBatch)
+		n, next, done, err := s.store.Content().SweepOnce(ctx, at, store.SweepBatch, feed.ChangeKey(s.config.Security.EncryptionKey))
 		if err != nil {
 			log.Printf("[CONTENT] sweep stopped after %d rows: %v", total, err)
 			return
