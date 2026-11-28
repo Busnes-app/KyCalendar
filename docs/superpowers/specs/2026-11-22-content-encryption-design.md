@@ -372,7 +372,9 @@ Choices made where the spec left them open, each the narrowest that keeps its pr
   it are wrapped only to keys sealed to user slots.
 - **No passkey PRF yet**: the passphrase (E8) is the web unlock; the recovery code unlocks too.
 
-Left for later PRs: the sweep of legacy rows (CE6), folding and patches (CE3), outbox, booking-hold
+**The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. ETags and counted usage do not change, so clients refetch nothing. Rows of accounts that never ran setup are not touched (option A, the spec default). Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
+
+Left for later PRs: folding and patches (CE3), outbox, booking-hold
 and feed sealing (CE3), pending shares (CE5), passkeys, password slots, reset, admin pages,
 `export-org`/`open-export`, and the 2,000-object multiget timing.
 

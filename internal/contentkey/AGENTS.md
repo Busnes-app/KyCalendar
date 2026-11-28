@@ -42,6 +42,7 @@ calls either until build step CE2.
   - Chosen secrets (`passphrase`, `password`) go only through `PassphraseKEK`, whose bounds
     refuse cheap or memory-exhausting stored parameters.
   - High-entropy secrets go through `SecretKEK` and need at least 128 bits.
+- `WorkerKey.Open` lets the run that sealed a part verify it before plaintext is replaced (the sweep). It is the same AES-GCM open and adds no format.
 - **Failures:** every open failure is `ErrOpen`, with nothing about which binding failed.
 
 ## Verification

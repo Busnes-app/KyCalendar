@@ -296,3 +296,29 @@ func (s *Server) RotateContentTransitions(ctx context.Context) {
 		log.Printf("[CONTENT] transition rotation stopped after %d accounts: %v", n, err)
 	}
 }
+
+// SweepContent is the elected job that seals legacy rows of keyed calendars (E12, CE6), a
+// batch per transaction, for at most a minute per run; the next run starts over and finds
+// only what is left.
+func (s *Server) SweepContent(ctx context.Context) {
+	if !s.contentOn() {
+		return
+	}
+	deadline := time.Now().Add(time.Minute)
+	var at store.SweepCursor
+	total := 0
+	for time.Now().Before(deadline) && ctx.Err() == nil {
+		n, next, done, err := s.store.Content().SweepOnce(ctx, at, store.SweepBatch)
+		if err != nil {
+			log.Printf("[CONTENT] sweep stopped after %d rows: %v", total, err)
+			return
+		}
+		total, at = total+n, next
+		if done {
+			break
+		}
+	}
+	if total > 0 {
+		log.Printf("[CONTENT] sweep sealed %d legacy rows", total)
+	}
+}
