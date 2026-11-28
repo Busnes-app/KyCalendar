@@ -101,3 +101,18 @@ func SetBetweenAccountAndSlotForTest(f func()) func() {
 	betweenAccountAndSlot = f
 	return func() { betweenAccountAndSlot = old }
 }
+
+// SetFoldHookForTest runs f between a fold's read and its write, and returns the restore func.
+func SetFoldHookForTest(f func()) func() {
+	old := foldHook
+	foldHook = f
+	return func() { foldHook = old }
+}
+
+// SetBeforeObjectWriteForTest runs f inside an object write between its read and its write, and
+// returns the restore func.
+func SetBeforeObjectWriteForTest(f func()) func() {
+	old := beforeObjectWrite
+	beforeObjectWrite = f
+	return func() { beforeObjectWrite = old }
+}

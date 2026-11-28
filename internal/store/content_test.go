@@ -29,6 +29,8 @@ type contentFixture struct {
 	user    string
 	cal     *store.Calendar
 	session store.Credential
+	plan    store.Planner     // workerPut's planner, if any
+	lim     store.OwnerLimits // workerPut's limits
 }
 
 func secret(t *testing.T, s string) []byte {

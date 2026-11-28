@@ -25,6 +25,11 @@ type OutboxMessage struct {
 	NextAttempt      time.Time
 	LastError        string
 	CreatedAt        time.Time
+	// WorkerPatch is "" for a message carrying its sender's whole content. A write by someone
+	// without the key over a sealed object plans from its skeleton: then it is that write's
+	// content patch as JSON skeleton.Ops ("[]" for none), and a recipient's existing copy takes
+	// only the readable change and that patch (content encryption E4, E5).
+	WorkerPatch string
 }
 
 // pendingOutboxBytes is a scalar subquery: the bytes of every pending message. Every instance-cap
@@ -118,8 +123,8 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 
 	for _, m := range fresh {
 		if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO scheduling_outbox
- (id,dedupe_key,sender_id,method,recipient,body,status,attempts,next_attempt_at,last_error,created_at,org_id)
- VALUES (?,?,?,?,?,?,'pending',0,?,'',?,`+userOrg+`) ON CONFLICT (dedupe_key) DO NOTHING`), m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now, m.SenderID); err != nil {
+ (id,dedupe_key,sender_id,method,recipient,body,status,attempts,next_attempt_at,last_error,created_at,worker_patch,org_id)
+ VALUES (?,?,?,?,?,?,'pending',0,?,'',?,?,`+userOrg+`) ON CONFLICT (dedupe_key) DO NOTHING`), m.ID, m.DedupeKey, m.SenderID, m.Method, m.Recipient, m.Body, now, now, nullString(m.WorkerPatch), m.SenderID); err != nil {
 			return err
 		}
 	}
@@ -128,7 +133,7 @@ func (c *calendarStore) queue(ctx context.Context, tx *sql.Tx, rows []*OutboxMes
 }
 
 func (c *calendarStore) DueOutbox(ctx context.Context, now time.Time, limit int) ([]*OutboxMessage, error) {
-	rows, err := c.store.db.QueryContext(ctx, c.q(`SELECT id, dedupe_key, sender_id, method, recipient, body, status, attempts, next_attempt_at, last_error, created_at
+	rows, err := c.store.db.QueryContext(ctx, c.q(`SELECT id, dedupe_key, sender_id, method, recipient, body, status, attempts, next_attempt_at, last_error, created_at, COALESCE(worker_patch, '')
 FROM scheduling_outbox WHERE status = 'pending' AND next_attempt_at <= ? AND `+c.store.orgServes("scheduling_outbox.org_id")+` ORDER BY created_at, id LIMIT ?`), now.UTC(), limit)
 	if err != nil {
 		return nil, err
@@ -138,7 +143,7 @@ FROM scheduling_outbox WHERE status = 'pending' AND next_attempt_at <= ? AND `+c
 	for rows.Next() {
 		var m OutboxMessage
 		if err := rows.Scan(&m.ID, &m.DedupeKey, &m.SenderID, &m.Method, &m.Recipient, &m.Body, &m.Status,
-			&m.Attempts, &m.NextAttempt, &m.LastError, &m.CreatedAt); err != nil {
+			&m.Attempts, &m.NextAttempt, &m.LastError, &m.CreatedAt, &m.WorkerPatch); err != nil {
 			return nil, err
 		}
 		out = append(out, &m)
@@ -224,3 +229,6 @@ WHERE LOWER(email) = LOWER(?) AND email <> '' AND role = 'user' AND status = 'ac
 	}
 	return u.GetUserByID(ctx, ids[0])
 }
+
+// nullString is s, or NULL for "".
+func nullString(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }

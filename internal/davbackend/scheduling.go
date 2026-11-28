@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kypost"
 	"github.com/Busnes-app/kycalendar/internal/resource"
+	"github.com/Busnes-app/kycalendar/internal/skeleton"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -302,7 +304,7 @@ func (s *Scheduler) deliver(ctx context.Context, m *store.OutboxMessage) error {
 			_, _, _, err := s.find(ctx, recipient, uid, org)
 			fresh = errors.Is(err, store.ErrNotFound)
 		}
-		if err := s.deliverToAttendee(ctx, recipient, to, org, uid, method, msg, m.ID); err != nil || !fresh {
+		if err := s.deliverToAttendee(withPlannedPatch(ctx, m.WorkerPatch), recipient, to, org, uid, method, msg, m.ID); err != nil || !fresh {
 			return err
 		}
 		s.autoTentative(ctx, recipient, uid, msg) // best effort: the invitation is delivered either way
@@ -421,11 +423,79 @@ func (s *Scheduler) putDelivery(ctx context.Context, c *store.Calendar, name str
 		return errPermanent{"invalid_object"}
 	}
 	o.DeliveryID, o.DeliveryRecipient = deliveryID, recipientID
-	return store.RetryStorageRefresh(ctx, func() error {
+	err = store.RetryStorageRefresh(ctx, func() error {
 		attempt := *o
 		_, err := s.Store.Calendars().PutObject(ctx, &attempt, ifMatch, create, s.Limits)
 		return err
 	})
+	if errors.Is(err, store.ErrTooLarge) {
+		return errPermanent{"too_large"} // its merged copy would pass the limit, as a plaintext one would
+	}
+	return err
+}
+
+type plannedPatchKey struct{}
+
+// withPlannedPatch carries an outbox row's worker_patch to the delivery that writes it.
+func withPlannedPatch(ctx context.Context, patch string) context.Context {
+	return context.WithValue(ctx, plannedPatchKey{}, patch)
+}
+
+// plannedPatch is the outbox row's worker patch in ctx; ok is false for a message carrying its
+// sender's whole content.
+func plannedPatch(ctx context.Context) (ops []skeleton.Op, ok bool) {
+	patch, _ := ctx.Value(plannedPatchKey{}).(string)
+	if patch == "" {
+		return nil, false
+	}
+	_ = json.Unmarshal([]byte(patch), &ops)
+	return ops, true
+}
+
+// keepPlainContent is next for a plaintext copy o when the message was planned from a skeleton:
+// it carries no content, so the copy keeps its own, with the message's readable change and patch
+// on top, as a sealed copy does in the store (copyContent).
+func keepPlainContent(ctx context.Context, o *store.CalendarObject, next *ical.Calendar) (*ical.Calendar, error) {
+	ops, planned := plannedPatch(ctx)
+	if !planned || o.Sealed != nil {
+		return next, nil
+	}
+	raw, err := encodeCal(next)
+	if err != nil {
+		return nil, err
+	}
+	skel, err := skeleton.Split(raw)
+	if err != nil {
+		return nil, err
+	}
+	layers := []skeleton.Layer{{Base: true, Seq: 1, Plaintext: o.Data}}
+	if len(ops) > 0 {
+		patch, err := skeleton.EncodePatch(ops)
+		if err != nil {
+			return nil, err
+		}
+		layers = append(layers, skeleton.Layer{Seq: 2, Plaintext: patch})
+	}
+	merged, err := skeleton.Merge(skel, layers)
+	if err != nil {
+		return nil, err
+	}
+	return ical.NewDecoder(bytes.NewReader(merged)).Decode()
+}
+
+// copyContent is what a delivery over an attendee's existing copy changes in its content when
+// the copy is sealed (content encryption E4): the organizer's whole content as a base that keeps
+// the copy's own alarms, or, for a message planned from a skeleton (a write by someone without
+// the key), only that write's patch. A copy without parts is written as before.
+func copyContent(ctx context.Context, whole bool) context.Context {
+	ops, planned := plannedPatch(ctx)
+	switch {
+	case !planned && whole:
+		return store.WithWorkerContent(ctx, &store.WorkerContent{Base: true, KeepAlarms: true})
+	case planned && len(ops) > 0:
+		return store.WithWorkerContent(ctx, &store.WorkerContent{Patch: ops})
+	}
+	return ctx
 }
 
 // deliverToAttendee writes the organizer's REQUEST or CANCEL into an internal attendee's

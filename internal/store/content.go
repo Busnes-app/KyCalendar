@@ -14,9 +14,13 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/emersion/go-ical"
+
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/contentkey"
 	"github.com/Busnes-app/kycalendar/internal/skeleton"
 	"github.com/Busnes-app/kycalendar/internal/store/migrations"
@@ -166,30 +170,104 @@ func objectETag(data, sealed []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// ErrTooLarge is a write whose merged plaintext would pass calendar.MaxObjectSize: a worker's
+// new base measured with the alarms it keeps (E4). It is refused as the same plaintext is.
+var ErrTooLarge = errors.New("store: calendar object too large")
+
+// ErrWorkerPatch is a patch a writer without the key may not make (E5): anything but a set of
+// LOCATION or the room link. It is refused before anything is sealed.
+var ErrWorkerPatch = errors.New("store: a worker may patch only LOCATION and the room link")
+
+// maxWorkerPatches caps the patches written after an object's newest base (E4).
+const maxWorkerPatches = 16
+
+// WorkerContent is what a writer without the calendar's key changes in an existing sealed
+// object's content (E4, E5), attached with WithWorkerContent. Without it, such a write changes
+// readable properties only.
+type WorkerContent struct {
+	// Base: the written object's content replaces the stored content, as an organizer's update
+	// replaces an attendee's copy. KeepAlarms keeps the alarms of the newest unmarked base.
+	Base, KeepAlarms bool
+	// Patch: operations on properties the writer never reads (skeleton.WorkerOp only).
+	Patch []skeleton.Op
+}
+
+type workerContentKey struct{}
+
+// WithWorkerContent attaches wc to the next object write in ctx.
+func WithWorkerContent(ctx context.Context, wc *WorkerContent) context.Context {
+	return context.WithValue(ctx, workerContentKey{}, wc)
+}
+
+func workerContentOf(ctx context.Context) *WorkerContent {
+	wc, _ := ctx.Value(workerContentKey{}).(*WorkerContent)
+	return wc
+}
+
 // sealedWrite is how a write stores its object: the bytes of data and the sealed columns.
 type sealedWrite struct {
 	data, sealed []byte
 	version      int64
 	plainSize    sql.NullInt64
+	sizes        skeleton.Sizes // content_sizes (E4)
+	alarms       int64          // alarm_bytes (E4)
+	// skeletonOnly: a writer without the key over a sealed object, so messages it plans carry
+	// only readable properties and patch (scheduling_outbox.worker_patch).
+	skeletonOnly bool
+	patch        []skeleton.Op
+	dropKeys     []string     // worker keys to delete once this write is chosen
+	dropped      string       // why a worker's content part was dropped: audited
+	fallback     *sealedWrite // the same write without its patch, for a quota that refuses it
+}
+
+// counted is the size the write counts against quotas: the merged plaintext (E4).
+func (w sealedWrite) counted() int64 {
+	if w.plainSize.Valid {
+		return w.plainSize.Int64
+	}
+	return int64(len(w.data))
+}
+
+func (w sealedWrite) sizesJSON() string {
+	if len(w.sizes) == 0 {
+		return "{}"
+	}
+	b, _ := json.Marshal(w.sizes)
+	return string(b)
+}
+
+// measured is w with raw's sizes and alarms, the plaintext in hand (E4).
+func (w sealedWrite) measured(raw []byte) sealedWrite {
+	w.sizes, w.alarms, _ = skeleton.Measure(raw)
+	return w
+}
+
+// prevObject is the stored row a write replaces.
+type prevObject struct {
+	uid          string
+	data, sealed []byte
+	size         sql.NullInt64
+	sizes        skeleton.Sizes
+	alarms       int64
 }
 
 // sealForWrite decides what o's write stores (E2, E4, E10). An unlocked holder seals the whole
-// body as one new base. Any other writer to a sealed row changes readable properties only: its
-// object's skeleton replaces data and the parts stay, so it can never put content in data or
-// drop content it could not read. A worker's new object in a calendar with a key stays legacy
-// until CE3 seals it to the calendar's public key; the sweep seals it later.
+// body as one new base. Any other writer to a sealed row changes readable properties only
+// (its object's skeleton replaces data and the parts stay, so it can never put content in data
+// or drop content it could not read), unless it brings WorkerContent: a new base, or a patch. A
+// worker's new object in a calendar with a key is a base sealed to the calendar's public key.
 func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *CalendarObject) (sealedWrite, error) {
 	w := sealedWrite{data: o.Data}
-	var prevData, prevSealed []byte
-	var prevSize sql.NullInt64
-	var prevUID string
-	err := tx.QueryRowContext(ctx, c.q(`SELECT uid, data, sealed, parts_version, plain_size FROM calendar_objects WHERE calendar_id = ? AND name = ?`),
-		o.CalendarID, o.Name).Scan(&prevUID, &prevData, &prevSealed, &w.version, &prevSize)
+	var prev prevObject
+	var sizes string
+	err := tx.QueryRowContext(ctx, c.q(`SELECT uid, data, sealed, parts_version, plain_size, content_sizes, alarm_bytes FROM calendar_objects WHERE calendar_id = ? AND name = ?`),
+		o.CalendarID, o.Name).Scan(&prev.uid, &prev.data, &prev.sealed, &w.version, &prev.size, &sizes, &prev.alarms)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return w, err
 	}
+	_ = json.Unmarshal([]byte(sizes), &prev.sizes)
 	if o.UID == "" {
-		o.UID = prevUID // an in-place rewrite keeps the object's UID
+		o.UID = prev.uid // an in-place rewrite keeps the object's UID
 	}
 	if err := c.store.keyCalendarTx(ctx, tx, o.CalendarID); err != nil {
 		return w, err
@@ -219,23 +297,27 @@ func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *Calenda
 			return w, err
 		}
 		w.data, w.plainSize = skel, sql.NullInt64{Int64: int64(len(o.Data)), Valid: true}
-		return w, c.dropWorkerKeys(ctx, tx, o.CalendarID, prevSealed)
+		return w.measured(o.Data), c.dropWorkerKeys(ctx, tx, o.CalendarID, prev.sealed)
 	}
-	if prevSealed != nil && o.UID != prevUID && keyed {
+	if prev.sealed != nil && o.UID != prev.uid && keyed {
 		// A new object under the old name: the old parts are bound to the old UID.
-		if err := c.dropWorkerKeys(ctx, tx, o.CalendarID, prevSealed); err != nil {
+		if err := c.dropWorkerKeys(ctx, tx, o.CalendarID, prev.sealed); err != nil {
 			return w, err
 		}
 		return c.workerBase(ctx, tx, o, w, version, pub)
 	}
-	if prevSealed != nil {
-		skel, err := skeleton.Split(o.Data)
-		if err != nil {
-			return w, err
+	if prev.sealed != nil {
+		readable, err := readableOnly(o, w, prev)
+		if err != nil || !keyed {
+			return readable, err
 		}
-		w.data, w.sealed = skel, prevSealed
-		w.plainSize = sql.NullInt64{Int64: prevSize.Int64 + int64(len(skel)) - int64(len(prevData)), Valid: true}
-		return w, nil
+		switch wc := workerContentOf(ctx); {
+		case wc != nil && wc.Base:
+			return c.workerSupersede(ctx, tx, o, w, prev, wc.KeepAlarms, version, pub)
+		case wc != nil && len(wc.Patch) > 0:
+			return c.workerPatch(ctx, tx, o, readable, prev, wc.Patch, version, pub)
+		}
+		return readable, nil
 	}
 	if keyed && unlockOf(ctx) == nil {
 		return c.workerBase(ctx, tx, o, w, version, pub)
@@ -243,30 +325,55 @@ func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *Calenda
 	return w, nil
 }
 
-// workerBase seals a worker's whole new object to the calendar's public key (E4): a fresh
-// worker key, wrapped to the current calendar key version, used for this one object and ended
-// at once, so it opens nothing else. A delivered invitation, an inbound iMIP message, a booking
-// or a feed object in a calendar with a key is never stored in plaintext.
+// readableOnly is a keyless write over a sealed row that changes readable properties alone: its
+// skeleton replaces data and the parts stay. plain_size moves with the skeleton and with the
+// content of each override the writer added or dropped (E2, E4).
+func readableOnly(o *CalendarObject, w sealedWrite, prev prevObject) (sealedWrite, error) {
+	skel, err := skeleton.Split(o.Data)
+	if err != nil {
+		return w, err
+	}
+	size := prev.size.Int64 + int64(len(skel)) - int64(len(prev.data))
+	overrides, err := skeleton.OverrideContent(prev.data, skel, prev.sizes)
+	if err != nil {
+		return w, err
+	}
+	size += overrides
+	w.data, w.sealed, w.skeletonOnly = skel, prev.sealed, true
+	w.plainSize = sql.NullInt64{Int64: size, Valid: true}
+	w.sizes, w.alarms = prev.sizes, prev.alarms
+	return w, nil
+}
+
+// sealWorker seals plaintext as part p of o under a fresh worker key wrapped to the calendar's
+// current key version, used for this one part and ended at once, so it opens nothing else (E4).
+func (c *calendarStore) sealWorker(ctx context.Context, tx *sql.Tx, o *CalendarObject, p contentkey.Part, plaintext []byte, version uint32, pub []byte) (contentkey.Part, error) {
+	wk, err := contentkey.NewWorkerKey()
+	if err != nil {
+		return p, err
+	}
+	wrapped, err := wk.WrapFor(o.CalendarID, version, pub)
+	if err != nil {
+		return p, err
+	}
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at, key_version) VALUES (?, ?, ?, ?, ?, ?)`),
+		wk.ID, o.CalendarID, wrapped, now, now, version); err != nil {
+		return p, err
+	}
+	return wk.Seal(p, o.CalendarID, version, o.UID, plaintext)
+}
+
+// workerBase seals a worker's whole new object to the calendar's public key (E4). A delivered
+// invitation, an inbound iMIP message, a booking or a feed object in a calendar with a key is
+// never stored in plaintext.
 func (c *calendarStore) workerBase(ctx context.Context, tx *sql.Tx, o *CalendarObject, w sealedWrite, version uint32, pub []byte) (sealedWrite, error) {
 	skel, err := skeleton.Split(o.Data)
 	if err != nil {
 		return w, err
 	}
-	wk, err := contentkey.NewWorkerKey()
-	if err != nil {
-		return w, err
-	}
-	wrapped, err := wk.WrapFor(o.CalendarID, version, pub)
-	if err != nil {
-		return w, err
-	}
-	now := time.Now().UTC()
-	if _, err := tx.ExecContext(ctx, c.q(`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at, key_version) VALUES (?, ?, ?, ?, ?, ?)`),
-		wk.ID, o.CalendarID, wrapped, now, now, version); err != nil {
-		return w, err
-	}
 	w.version++
-	part, err := wk.Seal(contentkey.Part{Kind: contentkey.PartBase, Seq: uint64(w.version)}, o.CalendarID, version, o.UID, o.Data)
+	part, err := c.sealWorker(ctx, tx, o, contentkey.Part{Kind: contentkey.PartBase, Seq: uint64(w.version)}, o.Data, version, pub)
 	if err != nil {
 		return w, err
 	}
@@ -274,6 +381,148 @@ func (c *calendarStore) workerBase(ctx context.Context, tx *sql.Tx, o *CalendarO
 		return w, err
 	}
 	w.data, w.plainSize = skel, sql.NullInt64{Int64: int64(len(o.Data)), Valid: true}
+	return w.measured(o.Data), nil
+}
+
+// workerSupersede writes a worker's new base over a sealed object (E4): an unmarked base
+// replaces every part; a keep-alarms base (an organizer's update to an attendee's copy) keeps
+// only the newest unmarked base, whose alarms it shows. Its plain_size counts its own content
+// and the kept alarms, as today's plaintext copy holds them; past calendar.MaxObjectSize the
+// write is refused (ErrTooLarge), never stored as a bare skeleton.
+func (c *calendarStore) workerSupersede(ctx context.Context, tx *sql.Tx, o *CalendarObject, w sealedWrite, prev prevObject, keepAlarms bool, version uint32, pub []byte) (sealedWrite, error) {
+	parts, err := contentkey.DecodeParts(prev.sealed)
+	if err != nil {
+		return w, err
+	}
+	var kept []contentkey.Part
+	if keepAlarms {
+		for _, p := range parts {
+			if p.Kind == contentkey.PartBase && !p.KeepAlarms && (len(kept) == 0 || p.Seq > kept[0].Seq) {
+				kept = []contentkey.Part{p}
+			}
+		}
+	}
+	for _, p := range parts {
+		if p.WorkerKey != "" && (len(kept) == 0 || p.Seq != kept[0].Seq) {
+			w.dropKeys = append(w.dropKeys, p.WorkerKey)
+		}
+	}
+	skel, err := skeleton.Split(o.Data)
+	if err != nil {
+		return w, err
+	}
+	w = w.measured(o.Data)
+	size := int64(len(o.Data))
+	if len(kept) > 0 {
+		size += prev.alarms - w.alarms // its own alarms are skeletons; the kept base's are counted
+		w.alarms = prev.alarms
+	}
+	if size > calendar.MaxObjectSize {
+		return w, ErrTooLarge
+	}
+	w.version++
+	part, err := c.sealWorker(ctx, tx, o, contentkey.Part{Kind: contentkey.PartBase, KeepAlarms: len(kept) > 0, Seq: uint64(w.version)}, o.Data, version, pub)
+	if err != nil {
+		return w, err
+	}
+	if w.sealed, err = contentkey.EncodeParts(append(kept, part)); err != nil {
+		return w, err
+	}
+	w.data, w.plainSize = skel, sql.NullInt64{Int64: size, Valid: true}
+	return w, nil
+}
+
+// workerPatch appends ops as a patch to a sealed object (E4, E5) on top of readable, the same
+// write's readable change. A patch with an earlier patch's label replaces it. Past 16 patches
+// since the newest base, or past calendar.MaxObjectSize, the patch is dropped (readable stays)
+// and audited; fallback drops it when the quota refuses it.
+func (c *calendarStore) workerPatch(ctx context.Context, tx *sql.Tx, o *CalendarObject, readable sealedWrite, prev prevObject, ops []skeleton.Op, version uint32, pub []byte) (sealedWrite, error) {
+	for _, op := range ops {
+		if !skeleton.WorkerOp(op) {
+			return readable, ErrWorkerPatch
+		}
+	}
+	plaintext, err := skeleton.EncodePatch(ops)
+	if err != nil {
+		return readable, err
+	}
+	parts, err := contentkey.DecodeParts(prev.sealed)
+	if err != nil {
+		return readable, err
+	}
+	label := skeleton.Label(ops)
+	var newest uint64
+	for _, p := range parts {
+		if p.Kind == contentkey.PartBase && p.Seq > newest {
+			newest = p.Seq
+		}
+	}
+	w := readable
+	w.patch = ops // only the write that stores the patch carries it to the outbox
+	var kept []contentkey.Part
+	patches := 0
+	for _, p := range parts {
+		if p.Kind == contentkey.PartPatch && p.Label == label {
+			w.dropKeys = append(w.dropKeys, p.WorkerKey) // superseded: a later link or location
+			continue
+		}
+		if p.Kind == contentkey.PartPatch && p.Seq > newest {
+			patches++
+		}
+		kept = append(kept, p)
+	}
+	drop := func(reason string) (sealedWrite, error) {
+		readable.dropped = reason
+		return readable, nil
+	}
+	if patches >= maxWorkerPatches {
+		return drop("cap")
+	}
+	events, err := skeleton.Count(readable.data, ical.CompEvent)
+	if err != nil {
+		return readable, err
+	}
+	sizes := skeleton.Sizes{}
+	for k, v := range prev.sizes {
+		sizes[k] = v
+	}
+	size := readable.plainSize.Int64
+	for _, op := range ops {
+		key := skeleton.ConferenceLabel
+		if op.Op != "conference" {
+			key = skeleton.LocationLabel(strings.ToUpper(op.Component), op.RecurrenceID)
+		}
+		old, ok := sizes[key]
+		if !ok && op.Op != "conference" && op.RecurrenceID != "" {
+			old = sizes[skeleton.LocationLabel(strings.ToUpper(op.Component), "")] // an override shows its master's
+		}
+		add := skeleton.Adds(op, events)
+		size += add - old
+		sizes[key] = add
+		if op.Op != "conference" && op.RecurrenceID != "" { // the override's content, should it be dropped
+			comp := strings.ToUpper(op.Component)
+			ov := skeleton.OverrideLabel(comp, op.RecurrenceID)
+			if _, ok := sizes[ov]; !ok {
+				sizes[ov] = sizes[skeleton.InheritLabel(comp)]
+			}
+			sizes[ov] += add - old
+		}
+	}
+	if size > calendar.MaxObjectSize {
+		return drop("size")
+	}
+	w.version++
+	part, err := c.sealWorker(ctx, tx, o, contentkey.Part{Kind: contentkey.PartPatch, Label: label, Seq: uint64(w.version)}, plaintext, version, pub)
+	if err != nil {
+		return readable, err
+	}
+	if w.sealed, err = contentkey.EncodeParts(append(kept, part)); err != nil {
+		return readable, err
+	}
+	w.plainSize, w.sizes = sql.NullInt64{Int64: size, Valid: true}, sizes
+	fb := readable
+	fb.dropped, fb.dropKeys = "quota", []string{part.WorkerKey}
+	w.fallback = &fb
 	return w, nil
 }
 
@@ -287,28 +536,59 @@ func (c *calendarStore) dropWorkerKeys(ctx context.Context, tx *sql.Tx, calendar
 	if err != nil {
 		return nil // unreadable parts name nothing we could match
 	}
+	var ids []string
 	for _, p := range parts {
-		if p.WorkerKey == "" {
+		ids = append(ids, p.WorkerKey)
+	}
+	return c.deleteWorkerKeys(ctx, tx, calendarID, ids)
+}
+
+func (c *calendarStore) deleteWorkerKeys(ctx context.Context, tx *sql.Tx, calendarID string, ids []string) error {
+	for _, id := range ids {
+		if id == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM worker_keys WHERE id = ? AND calendar_id = ?`), p.WorkerKey, calendarID); err != nil {
+		if _, err := tx.ExecContext(ctx, c.q(`DELETE FROM worker_keys WHERE id = ? AND calendar_id = ?`), id, calendarID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// stored finishes a chosen write inside tx: the worker keys it replaced go, and a dropped content
+// part is audited with the object only, never the content (E4).
+func (c *calendarStore) stored(ctx context.Context, tx *sql.Tx, calendarID, name string, w sealedWrite) error {
+	if err := c.deleteWorkerKeys(ctx, tx, calendarID, w.dropKeys); err != nil {
+		return err
+	}
+	if w.dropped == "" {
+		return nil
+	}
+	var kind, owner string
+	if err := tx.QueryRowContext(ctx, c.q(`SELECT owner_kind, owner_id FROM calendars WHERE id = ?`), calendarID).Scan(&kind, &owner); err != nil {
+		return err
+	}
+	if kind != "user" {
+		owner = "system"
+	}
+	return c.store.insertAudit(ctx, tx, AuditRecord{UserID: owner, Action: "content_part_dropped", Resource: "object:" + calendarID + "/" + name, Details: "reason=" + w.dropped})
+}
+
 // rewriteData is a worker's in-place rewrite of an object's data, under the rule sealForWrite
 // applies to writers without a key.
 func (c *calendarStore) rewriteData(ctx context.Context, tx *sql.Tx, calendarID, name string, data []byte) error {
 	ctx = context.WithValue(ctx, unlockKey{}, (*Unlock)(nil)) // never the request's key: it may not hold this calendar
+	ctx = WithWorkerContent(ctx, nil)
 	w, err := c.sealForWrite(ctx, tx, &CalendarObject{CalendarID: calendarID, Name: name, Data: data})
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, c.q(`UPDATE calendar_objects SET data = ?, etag = ?, sealed = ?, parts_version = ?, plain_size = ?, modified_at = ? WHERE calendar_id = ? AND name = ?`),
-		w.data, objectETag(w.data, w.sealed), w.sealed, w.version, w.plainSize, time.Now().UTC(), calendarID, name)
-	return err
+	_, err = tx.ExecContext(ctx, c.q(`UPDATE calendar_objects SET data = ?, etag = ?, sealed = ?, parts_version = ?, plain_size = ?, content_sizes = ?, alarm_bytes = ?, modified_at = ? WHERE calendar_id = ? AND name = ?`),
+		w.data, objectETag(w.data, w.sealed), w.sealed, w.version, w.plainSize, w.sizesJSON(), w.alarms, time.Now().UTC(), calendarID, name)
+	if err != nil {
+		return err
+	}
+	return c.stored(ctx, tx, calendarID, name, w)
 }
 
 // openObjects merges each sealed object for the request (E2). A request that cannot open one
@@ -330,10 +610,79 @@ func (c *calendarStore) openObjects(ctx context.Context, list []*CalendarObject)
 		case err != nil:
 			return err
 		default:
+			if o.Sealed != nil {
+				c.fold(ctx, u, o, merged)
+			}
 			o.Data = merged
 		}
 	}
 	return nil
+}
+
+// foldHook, when set by a test, runs between a fold's read of the row and its write.
+var foldHook func()
+
+// fold replaces an object's parts with one base under the calendar's AES key once an unlocked
+// read has merged them (E4), so patches and a second base never pile up on an object someone
+// opens. It is best effort and changes neither the ETag nor what any reader is served. It
+// writes only if the row still holds the parts, skeleton and parts_version it read, so a fold
+// never puts stale content over a write that landed in between; the next read folds that.
+func (c *calendarStore) fold(ctx context.Context, u *Unlock, o *CalendarObject, merged []byte) {
+	parts, err := contentkey.DecodeParts(o.Sealed)
+	if err != nil || len(parts) < 2 {
+		return
+	}
+	version, pub, keyed, err := c.store.currentCalendarKey(ctx, c.store.db, o.CalendarID)
+	if err != nil || !keyed {
+		return
+	}
+	k, err := u.calendarKey(ctx, c.store, c.store.db, o.CalendarID, version)
+	if err != nil || !k.Matches(pub) {
+		return
+	}
+	var pv int64
+	if err := c.store.db.QueryRowContext(ctx, c.q(`SELECT parts_version FROM calendar_objects WHERE calendar_id = ? AND name = ? AND sealed = ? AND data = ?`),
+		o.CalendarID, o.Name, o.Sealed, o.Data).Scan(&pv); err != nil {
+		return
+	}
+	// The newest part's sequence number is pv, so a later write's part (pv+1 on) stays newer.
+	part, err := k.Seal(contentkey.Part{Kind: contentkey.PartBase, Seq: uint64(pv)}, o.UID, merged)
+	if err != nil {
+		return
+	}
+	sealed, err := contentkey.EncodeParts([]contentkey.Part{part})
+	if err != nil {
+		return
+	}
+	w := sealedWrite{}.measured(merged)
+	if foldHook != nil {
+		foldHook()
+	}
+	tx, err := c.store.beginTx(ctx)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	// Writers hold calendar-total from their read of the row to their commit; a fold that ran in
+	// between would delete worker keys the writer's kept parts still name. Busy: skip, fold later.
+	if !c.store.tryLockKey(ctx, tx, "calendar-total") {
+		return
+	}
+	res, err := tx.ExecContext(ctx, c.q(`UPDATE calendar_objects SET sealed = ?, plain_size = ?, content_sizes = ?, alarm_bytes = ?
+WHERE calendar_id = ? AND name = ? AND parts_version = ? AND sealed = ? AND data = ?`),
+		sealed, int64(len(merged)), w.sizesJSON(), w.alarms, o.CalendarID, o.Name, pv, o.Sealed, o.Data)
+	if err != nil {
+		return
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return
+	}
+	if c.dropWorkerKeys(ctx, tx, o.CalendarID, o.Sealed) != nil {
+		return
+	}
+	if tx.Commit() == nil {
+		o.Sealed = sealed
+	}
 }
 
 func (c *calendarStore) openObject(ctx context.Context, u *Unlock, o *CalendarObject) ([]byte, error) {

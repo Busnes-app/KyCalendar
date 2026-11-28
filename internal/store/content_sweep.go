@@ -153,8 +153,9 @@ func (s *SQLStore) sweepRow(ctx context.Context, tx *sql.Tx, version uint32, pub
 	}
 	// The legacy ETag is the plaintext's SHA-256, which lets a database reader confirm a guess,
 	// so the row takes the sealed write's ETag and logs a change: clients refetch it once.
-	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_objects SET data = ?, sealed = ?, parts_version = ?, plain_size = ?, etag = ?
-WHERE calendar_id = ? AND name = ? AND sealed IS NULL AND etag = ?`), skel, sealed, seq, int64(len(r.data)), objectETag(skel, sealed), r.cal, r.name, r.etag)
+	m := sealedWrite{}.measured(r.data)
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_objects SET data = ?, sealed = ?, parts_version = ?, plain_size = ?, content_sizes = ?, alarm_bytes = ?, etag = ?
+WHERE calendar_id = ? AND name = ? AND sealed IS NULL AND etag = ?`), skel, sealed, seq, int64(len(r.data)), m.sizesJSON(), m.alarms, objectETag(skel, sealed), r.cal, r.name, r.etag)
 	if err != nil {
 		return false, err
 	}
