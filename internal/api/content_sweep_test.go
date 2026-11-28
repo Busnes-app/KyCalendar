@@ -105,7 +105,7 @@ func TestSweepKeepsCalDAVByteIdentical(t *testing.T) {
 // TestTaskSearchIsTheSameAfterEncryption: a list's search answers the same queries with the
 // same tasks before setup (the index) and after (decrypted tasks matched per request).
 func TestTaskSearchIsTheSameAfterEncryption(t *testing.T) {
-	srv, st, _ := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
+	srv, st, cfg := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
 	alice := loginAs(t, srv, st, "alice", "user")
 	list := taskList(t, srv, alice)
 	for _, task := range []map[string]any{
@@ -126,7 +126,11 @@ func TestTaskSearchIsTheSameAfterEncryption(t *testing.T) {
 		return out
 	}
 	before := search()
-	if !slices.Equal(before["hero"], []string{"Compress the hero images"}) {
+	hero := []string{"Compress the hero images"} // SQLite matches word prefixes, PostgreSQL substrings
+	if cfg.Database.Driver != "sqlite" {
+		hero = append(hero, "Superhero cape")
+	}
+	if !slices.Equal(before["hero"], hero) {
 		t.Fatalf("fixture: hero found %v", before["hero"])
 	}
 	w := do(t, srv, "POST", "/api/encryption/recovery-code", alice)
