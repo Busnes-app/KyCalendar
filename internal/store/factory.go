@@ -41,8 +41,9 @@ func openSQLite(ctx context.Context, dsn string) (Store, error) {
 	}
 
 	// Each default the DSN does not set itself; foreign keys always, last, so they win: every
-	// ON DELETE CASCADE depends on them.
-	for _, p := range []string{"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(NORMAL)", "foreign_keys(ON)"} {
+	// ON DELETE CASCADE depends on them. secure_delete zeroes freed bytes, so plaintext that sealing
+	// replaced or a purge deleted is not left on free pages (CE2).
+	for _, p := range []string{"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(NORMAL)", "secure_delete(ON)", "foreign_keys(ON)"} {
 		name := p[:strings.Index(p, "(")]
 		if name == "foreign_keys" || !strings.Contains(strings.ToLower(dsn), "_pragma="+name) {
 			delim := "?"

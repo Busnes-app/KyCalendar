@@ -75,6 +75,8 @@ type Store interface {
 	Tasks() TaskStore
 	TaskGoals() TaskGoalStore
 	AppPasswords() AppPasswordStore
+	// Content is content encryption's keys and slots (content.go).
+	Content() ContentStore
 	Audit() AuditStore
 	Settings() SettingsStore
 	Coordination() CoordinationStore

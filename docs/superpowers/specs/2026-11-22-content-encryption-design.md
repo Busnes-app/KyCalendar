@@ -99,8 +99,9 @@ Every place that reads `calendar_objects.data` or another content column, from t
   it, seals the whole body under the calendar's AES key as a new base, and drops older parts (E2, E4).
 - Task search (`internal/api/tasks.go:619-632`). The plaintext `task_search` table
   (`migrations.go:966-974`) keeps serving unencrypted accounts. An encrypted account's rows are
-  deleted at setup and never written again; its search decrypts the account's tasks per request. Fine for
-  thousands of tasks; measured in CE2.
+  deleted at setup and never written again; its search decrypts the account's tasks per request,
+  matching words as the index does (`MatchTask`: word prefixes on SQLite, substrings on
+  PostgreSQL), so results do not change with encryption. Fine for thousands of tasks; measured in CE2.
 
 **Background or anonymous: skeleton only, or seal without reading.**
 
@@ -190,7 +191,9 @@ Every place that reads `calendar_objects.data` or another content column, from t
 **ETags** become the SHA-256 of `data` followed by `sealed`, computed at each write (today the
 body's, `calendars.go:369-370`) and stored in the existing `etag` column. They change whenever a
 write changes either, and the server computes them without a key. Folding (E4) does not count as
-a write, so it leaves the stored ETag as it was.
+a write, so it leaves the stored ETag as it was. No sealed row keeps an ETag derived from its plaintext: every
+sealed write hashes the skeleton and the sealed parts, and the sweep replaces a legacy row's
+ETag the same way (below).
 
 ## Schema
 
@@ -345,6 +348,39 @@ that possible:
   - Reading the database alone gives none of this. Option 1, with device-held keys and holders
     confirming new members, would close it.
 
+## As built (CE2, first PR)
+
+Behind `KYCALENDAR_CONTENT_ENCRYPTION`, default off; startup refuses to run with it off once an
+account has set up. Migration 43 and `internal/store/content.go`, `internal/api/content.go`,
+`web/src/pages/Encryption.tsx`. Built: seal on write and merge on read for every request path
+that reaches the store (CalDAV, web, MCP, imports); E10 refusal with `403` on CalDAV and
+`content_locked` on the web; app-password, MCP, session, passphrase, recovery and transition
+slots; web setup and unlock with the passphrase or the recovery code; the 14-day transition and
+its rotation (elected job every 10 minutes, and "end now"); calendar keys only once every holder
+has an account key (E12); usage counting `plain_size`; task search of encrypted lists by
+decrypting per request.
+
+Choices made where the spec left them open, each the narrowest that keeps its promises:
+
+- **Workers before CE3.** A worker's new object in a keyed calendar, or its rewrite of a legacy
+  row there, is sealed as a base under a fresh worker key used for that one object (not one key
+  per run). A worker writing over a sealed row changes readable properties only: its object's
+  skeleton replaces `data` and the parts stay, so content never reaches `data` and nothing the
+  worker could not read is lost. Until CE3's patches and `keep-alarms` bases, a worker's
+  *content* change to an existing sealed object (an organizer's new title reaching an
+  attendee's copy, a room's `LOCATION`, a KyMessages link) is dropped; readable changes apply.
+- **Rotation** rewraps the account's older calendar seeds to K1 rather than reaching them through
+  `account_previous_keys` (which it still writes). Versions made before the rotation stay
+  exposed to a copy taken during the transition, as E11 already says; versions made at and after
+  it are wrapped only to keys sealed to user slots.
+- **No passkey PRF yet**: the passphrase (E8) is the web unlock; the recovery code unlocks too.
+
+**The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. **ETags change (owner decision, 28 Nov 2026, option B; this supersedes the earlier text that kept them).** A legacy ETag is the SHA-256 of the plaintext, so a database or backup reader could confirm a guess about a predictable event. In the same transaction that seals a row, the sweep sets its ETag to the SHA-256 of the skeleton and the sealed parts and logs a sync change (the calendar's sequence, which is the CTag and sync token, advances), so each CalDAV client refetches every swept object once and gets the same bytes. Counted usage does not change. Rows of accounts that never ran setup are not touched (option A, the spec default). Subscribed calendars are not swept either: a feed refresh rewrites their rows in plaintext until feeds are sealed (CE3), and sealing them first would leave a stale base beside the refresh. Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
+
+Left for later PRs: folding and patches (CE3), outbox, booking-hold
+and feed sealing (CE3), pending shares (CE5), passkeys, password slots, reset, admin pages,
+`export-org`/`open-export`, and the 2,000-object multiget timing.
+
 ## Phased build plan
 
 Every PR ships behind the hidden setting `KYCALENDAR_CONTENT_ENCRYPTION` (default off) until CE6
@@ -471,6 +507,18 @@ turns it on.
 - **Lost secrets lose content.** No escrow (owner decision 5). The setup flow makes the recovery
   code hard to skip, but users still lose it.
 - **Weak passphrases** can be attacked offline from a stolen database (E8).
+- **Plaintext left in the database's own storage.** SQLite: freed pages are zeroed
+  (`secure_delete`), FTS5 deletes take terms out of the index (`secure-delete`, migration 44,
+  which also rebuilt the index once to drop earlier deletes' remnants), and every sweep run truncates
+  the WAL, including a run that sealed nothing because unlocked saves sealed the rows first
+  (a checkpoint a reader blocks is retried at the next run), so after setup and the sweep neither the file nor a `VACUUM INTO` snapshot holds the
+  account's task text. PostgreSQL: the rows keying deletes and the sweep replaces stay as dead
+  tuples until VACUUM reuses their space, and in the WAL and its archive, so a physical copy
+  (a disk image, a base backup, a replica's files) can hold them. A `pg_dump` and the backup
+  capsule's snapshot copy live rows only. No request can force VACUUM to clear them, and
+  VACUUM does not zero the space, so this is not fixed: an operator who needs it runs
+  `VACUUM FULL task_search, calendar_objects` after the sweep and expires older base backups
+  and WAL archives. Backups taken before setup hold the plaintext in every case.
 - **The transition, the outbox and booking holds** are readable with the deployment key for
   their windows. For the transition, a copy from the 14 days keeps opening what was stored before
   its rotation, and in a shared calendar what was stored before its last holder's rotation, for

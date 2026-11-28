@@ -118,7 +118,7 @@ func (s *SQLStore) purgeObjectBatch(ctx context.Context, org OrgID) (int, error)
 		return 0, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, s.rebind(`SELECT calendar_id, name, LENGTH(data) FROM calendar_objects WHERE org_id = ? ORDER BY calendar_id, name LIMIT ?`), org, purgeBatchRows)
+	rows, err := tx.QueryContext(ctx, s.rebind(`SELECT calendar_id, name, `+objBytes+` FROM calendar_objects WHERE org_id = ? ORDER BY calendar_id, name LIMIT ?`), org, purgeBatchRows)
 	if err != nil {
 		return 0, err
 	}

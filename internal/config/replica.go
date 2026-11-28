@@ -112,6 +112,7 @@ var replicaFields = map[string]replicaField{
 	"Calendar.MaxCalendarsPerUser":    {"KY_CALENDAR_MAX_CALENDARS_PER_USER", func(c *Config) string { return strconv.Itoa(c.Calendar.MaxCalendarsPerUser) }},
 	"Calendar.MaxBytesPerUser":        {"KY_CALENDAR_MAX_BYTES_PER_USER", func(c *Config) string { return strconv.FormatInt(c.Calendar.MaxBytesPerUser, 10) }},
 	"Calendar.MaxBytesTotal":          {"KY_CALENDAR_MAX_BYTES_TOTAL", func(c *Config) string { return strconv.FormatInt(c.Calendar.MaxBytesTotal, 10) }},
+	"Calendar.ContentEncryption":      {"KYCALENDAR_CONTENT_ENCRYPTION", func(c *Config) string { return strconv.FormatBool(c.Calendar.ContentEncryption) }},
 	"Calendar.Scheduling":             {"KYCALENDAR_SCHEDULING", func(c *Config) string { return c.Calendar.Scheduling }},
 	"Calendar.KyPostURL":              {"KYCALENDAR_KYPOST_URL", func(c *Config) string { return c.Calendar.KyPostURL }},
 	"Calendar.KyPostSecret":           {"KYCALENDAR_KYPOST_SECRET_FILE", func(c *Config) string { return digest(c.Calendar.KyPostSecret) }},

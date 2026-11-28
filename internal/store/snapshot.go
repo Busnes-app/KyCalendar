@@ -35,7 +35,7 @@ var migrationTables = []string{
 	"kypost_out_of_office", "suite_group_calendars",
 	"task_areas", "task_views", "task_search", "task_completions", "task_goals", "task_prefs",
 	"security_windows", "spent_challenges", "kypost_replay",
-	"account_keys", "key_slots", "calendar_keys", "calendar_key_holders", "pending_key_shares", "worker_keys",
+	"account_keys", "account_previous_keys", "key_slots", "calendar_keys", "calendar_key_holders", "pending_key_shares", "worker_keys",
 }
 
 // notData are tables that exist but are never copied: the migration record (the target is
@@ -402,7 +402,7 @@ func checkUsage(ctx context.Context, q dbConn) error {
 	if err := q.QueryRowContext(ctx, `SELECT bytes FROM calendar_usage WHERE id = 1`).Scan(&usage); err != nil {
 		return fmt.Errorf("%w: calendar_usage: %v", ErrCopyMismatch, err)
 	}
-	if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(LENGTH(data)), 0) FROM calendar_objects`).Scan(&sum); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(`+objBytes+`), 0) FROM calendar_objects`).Scan(&sum); err != nil {
 		return err
 	}
 	if usage != sum {
@@ -410,7 +410,7 @@ func checkUsage(ctx context.Context, q dbConn) error {
 	}
 	var drift int
 	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM org_usage u
- WHERE u.bytes <> COALESCE((SELECT SUM(LENGTH(o.data)) FROM calendar_objects o WHERE o.org_id = u.org_id), 0)`).Scan(&drift); err != nil {
+ WHERE u.bytes <> COALESCE((SELECT SUM(`+oBytes+`) FROM calendar_objects o WHERE o.org_id = u.org_id), 0)`).Scan(&drift); err != nil {
 		return err
 	}
 	if drift != 0 {

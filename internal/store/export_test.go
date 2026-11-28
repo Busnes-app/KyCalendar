@@ -1,6 +1,9 @@
 package store
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // SetBetweenSCIMWritesForTest runs f between UpdateSCIMUser's removal and grant transactions and
 // returns the restore func. Test-only.
@@ -56,4 +59,45 @@ func HoldLockForTest(st Store, key string) (func(stmt string, args ...any) error
 		}
 		return tx.Commit()
 	}, nil
+}
+
+// DBForTest is st's database and its placeholder rebinding. Test-only.
+func DBForTest(st Store) (*sql.DB, func(string) string) {
+	s := st.(*SQLStore)
+	return s.db, s.rebind
+}
+
+// SetSweepHookForTest runs f after each row a sweep batch seals; an error aborts the batch.
+func SetSweepHookForTest(f func(sealed int) error) func() {
+	old := sweepHook
+	sweepHook = f
+	return func() { sweepHook = old }
+}
+
+// SetSweepReadHookForTest runs f between a sweep batch's read and its transaction.
+func SetSweepReadHookForTest(f func()) func() {
+	old := sweepReadHook
+	sweepReadHook = f
+	return func() { sweepReadHook = old }
+}
+
+// WaitingOnLockForTest reports whether some transaction is waiting for key's advisory lock.
+func WaitingOnLockForTest(st Store, key string) (bool, error) {
+	var waiting bool
+	err := st.(*SQLStore).db.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+AND objsubid = 1 AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 0))`, key).Scan(&waiting)
+	return waiting, err
+}
+
+// OpenObjectForTest merges o, an object read earlier, for ctx's credential, as a read does.
+func OpenObjectForTest(ctx context.Context, st Store, o *CalendarObject) error {
+	return st.(*SQLStore).calendars.openObjects(ctx, []*CalendarObject{o})
+}
+
+// SetBetweenAccountAndSlotForTest runs f between openAccount's account and slot reads and
+// returns the restore func.
+func SetBetweenAccountAndSlotForTest(f func()) func() {
+	old := betweenAccountAndSlot
+	betweenAccountAndSlot = f
+	return func() { betweenAccountAndSlot = old }
 }

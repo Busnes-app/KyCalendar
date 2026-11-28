@@ -74,12 +74,14 @@ var fixture = []struct {
 	{`INSERT INTO security_windows (key, hits, expires_at) VALUES ('acct:x', 3, 9999999999999)`, nil},
 	{`INSERT INTO spent_challenges (salt, expires_at) VALUES ('salt', 9999999999999)`, nil},
 	{`INSERT INTO kypost_replay (event_id, expires_at) VALUES ('evt', 9999999999999)`, nil},
-	{`INSERT INTO account_keys (user_id, public_key, created_at, transition_until) VALUES ('u1', ?, ?, ?)`, []any{[]byte{0, 1, 0xfe}, fixtureTime, fixtureTime}},
-	{`INSERT INTO key_slots (user_id, slot_id, kind, wrapped, params, created_at, last_used_at) VALUES ('u1', 'ks1', 'passphrase', ?, '{"time":3}', ?, ?)`, []any{[]byte{9, 0}, fixtureTime, fixtureTime}},
-	{`INSERT INTO calendar_keys (calendar_id, public_key) VALUES ('c1', ?)`, []any{[]byte{7, 7}}},
-	{`INSERT INTO calendar_key_holders (calendar_id, user_id, wrapped_seed, former) VALUES ('c2', 'u2', ?, TRUE)`, []any{[]byte{5}}},
+	{`INSERT INTO account_keys (user_id, public_key, created_at, transition_until, key_version) VALUES ('u1', ?, ?, ?, 2)`, []any{[]byte{0, 1, 0xfe}, fixtureTime, fixtureTime}},
+	{`INSERT INTO account_previous_keys (user_id, key_version, sealed_seed) VALUES ('u1', 1, ?)`, []any{[]byte{8, 1}}},
+	{`INSERT INTO key_slots (user_id, slot_id, kind, wrapped, params, created_at, last_used_at, public_key, account_wrap, account_key_version) VALUES ('u1', 'ks1', 'passphrase', ?, '{"time":3}', ?, ?, ?, ?, 2)`, []any{[]byte{9, 0}, fixtureTime, fixtureTime, []byte{4, 4}, []byte{6, 0, 6}}},
+	{`INSERT INTO calendar_keys (calendar_id, version, public_key, exposed) VALUES ('c1', 1, ?, TRUE)`, []any{[]byte{7, 7}}},
+	{`INSERT INTO calendar_keys (calendar_id, version, public_key) VALUES ('c2', 3, ?)`, []any{[]byte{7, 8}}},
+	{`INSERT INTO calendar_key_holders (calendar_id, version, user_id, wrapped_seed, former) VALUES ('c2', 3, 'u2', ?, TRUE)`, []any{[]byte{5}}},
 	{`INSERT INTO pending_key_shares (calendar_id, user_id, queued_at) VALUES ('c2', 'u1', ?)`, []any{fixtureTime}},
-	{`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at) VALUES ('wk1', 'c1', ?, ?, ?)`, []any{[]byte{3, 0, 3}, fixtureTime, fixtureTime}},
+	{`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at, key_version) VALUES ('wk1', 'c1', ?, ?, ?, 1)`, []any{[]byte{3, 0, 3}, fixtureTime, fixtureTime}},
 }
 
 // fixtureSource writes the fixture into a new SQLite database and returns its path.

@@ -192,6 +192,12 @@ func prepareStart(ctx context.Context, cfg *config.Config, st store.Store) error
 	if err := st.ServeCells(ten.Cells); err != nil {
 		return err
 	}
+	// Turning content encryption off would serve skeletons to encrypted accounts (E10).
+	if n, err := st.Content().SetUpAccounts(ctx); err != nil {
+		return err
+	} else if n > 0 && !cfg.Calendar.ContentEncryption {
+		return fmt.Errorf("KYCALENDAR_CONTENT_ENCRYPTION is off, but %d accounts have set up encryption: it cannot be turned off", n)
+	}
 	if n, err := backup.RemoveStaleSnapshots(cfg.Database.DataDir); err != nil {
 		log.Printf("[BACKUP] leftover snapshot scratch under %s not removed: %v", cfg.Database.DataDir, err)
 	} else if n > 0 {
@@ -368,6 +374,8 @@ func scheduledJobs(cfg *config.Config, st store.Store, srv *api.Server, client r
 			srv.SyncPresence(ctx)
 		}},
 		{Name: "orgs", Every: api.OrgsInterval, AtStart: true, Run: srv.SyncOrgs},
+		{Name: "content-rotation", Every: 10 * time.Minute, AtStart: true, Run: srv.RotateContentTransitions},
+		{Name: "content-sweep", Every: 2 * time.Minute, AtStart: true, Run: srv.SweepContent},
 		{Name: "org-purge", Every: api.OrgsInterval, Run: srv.PurgeDeletedOrgs},
 		{Name: "storage-refresh", Every: 5 * time.Second, Run: srv.SyncStorageRefresh},
 		{Name: "suite-groups", Every: api.SuiteGroupsInterval, AtStart: true, Run: srv.SyncSuiteGroups},
@@ -401,6 +409,9 @@ func prune(ctx context.Context, st store.Store) {
 	// The completion log feeds streaks and insights (12 weeks); search rows of deleted lists go too.
 	if err := st.Tasks().PruneTasks(ctx, time.Now().Add(-400*24*time.Hour)); err != nil {
 		log.Printf("task log prune failed: %v", err)
+	}
+	if err := st.Content().PruneSlots(ctx); err != nil {
+		log.Printf("content key slot prune failed: %v", err)
 	}
 	if err := api.ExpireIdleMCPTokens(ctx, st, time.Now()); err != nil {
 		log.Printf("idle agent token sweep failed: %v", err)

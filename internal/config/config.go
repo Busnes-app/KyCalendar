@@ -176,6 +176,9 @@ type CalendarConfig struct {
 	MaxCalendarsPerUser int   `json:"max_calendars_per_user"`
 	MaxBytesPerUser     int64 `json:"max_bytes_per_user"`
 	MaxBytesTotal       int64 `json:"max_bytes_total"`
+	// ContentEncryption seals event and task content per account (content encryption spec,
+	// CE2). Off by default; it cannot be turned off once an account is set up.
+	ContentEncryption bool `json:"content_encryption"`
 	// Scheduling is server-side scheduling (RFC 6638), implicit iTIP on every write:
 	// SchedulingOn, SchedulingOff, or SchedulingAuto (unset), which is on exactly when a KyPost
 	// link is up at startup. Off, CalDAV behaves exactly as it did before scheduling existed.
@@ -416,6 +419,8 @@ func LoadFromEnv() (*Config, error) {
 		MaxObjectsPerUser:   getEnvInt("KY_CALENDAR_MAX_OBJECTS_PER_USER", 20000),
 		MaxCalendarsPerUser: getEnvInt("KY_CALENDAR_MAX_CALENDARS_PER_USER", 50),
 		KyPostAllowPrivate:  getEnvBool("KYCALENDAR_KYPOST_ALLOW_PRIVATE", false),
+		// Hidden until CE6 turns it on (content encryption spec, Phased build plan).
+		ContentEncryption: getEnvBool("KYCALENDAR_CONTENT_ENCRYPTION", false),
 		// Same rule for KyMessages.
 		KyMessagesAllowPrivate: getEnvBool("KYCALENDAR_KYMESSAGES_ALLOW_PRIVATE", false),
 	}

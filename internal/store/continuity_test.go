@@ -43,7 +43,7 @@ func TestCalendarContinuityAcrossMigration(t *testing.T) {
 	if err := src.Calendars().DeleteObject(ctx, cal.ID, "b.ics", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := src.Tasks().IndexTasks(ctx, cal.ID, []store.TaskDoc{{UID: "t", ETag: "e", Body: "café crème"}}); err != nil {
+	if _, err := src.Tasks().IndexTasks(ctx, cal.ID, []store.TaskDoc{{UID: "t", ETag: "e", Body: "café crème"}}); err != nil {
 		t.Fatal(err)
 	}
 	type view struct {

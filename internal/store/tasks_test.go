@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -89,7 +90,7 @@ func TestTaskSearchIndex(t *testing.T) {
 	st, c := taskStore(t)
 	ts := st.Tasks()
 	docs := []store.TaskDoc{{UID: "a", ETag: "1", Body: "Compress the hero images"}, {UID: "b", ETag: "1", Body: "Café receipts 50%_off"}}
-	if err := ts.IndexTasks(ctx, c.ID, docs); err != nil {
+	if _, err := ts.IndexTasks(ctx, c.ID, docs); err != nil {
 		t.Fatal(err)
 	}
 	for words, want := range map[string]string{"hero": "a", "comp ima": "a", "cafe": "b", "50%_": "b"} {
@@ -105,7 +106,7 @@ func TestTaskSearchIndex(t *testing.T) {
 		t.Fatalf("a quote matched: %v", got)
 	}
 	// A changed ETag replaces the row; a missing doc deletes it.
-	if err := ts.IndexTasks(ctx, c.ID, []store.TaskDoc{{UID: "a", ETag: "2", Body: "Resize banners"}}); err != nil {
+	if _, err := ts.IndexTasks(ctx, c.ID, []store.TaskDoc{{UID: "a", ETag: "2", Body: "Resize banners"}}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := ts.SearchTasks(ctx, []string{c.ID}, []string{"hero"}); len(got) != 0 {
@@ -123,3 +124,35 @@ func TestTaskSearchIndex(t *testing.T) {
 }
 
 func splitWords(s string) []string { return strings.Fields(s) }
+
+// MatchTask, which searches encrypted lists, finds exactly what the index finds for the same
+// tasks: word prefixes on SQLite ("hero" is not in "superhero"), substrings on PostgreSQL.
+func TestMatchTaskAgreesWithTheIndex(t *testing.T) {
+	ctx := context.Background()
+	st, c := taskStore(t)
+	ts := st.Tasks()
+	bodies := []string{"Compress the hero images", "Superhero cape\nnotes", "Café receipts 50%_off", "e-mail Bob", "Straße naïve résumé",
+		"x_y ÆON", "C++ build", "über-cool", "日本語テキスト", "İstanbul ΣΟΦΟΣ", "tag:urgent", "quote \"here\"", "a.b.c 3.14", "ǅungla ẞ 5K ﬁle"}
+	var docs []store.TaskDoc
+	for i, b := range bodies {
+		docs = append(docs, store.TaskDoc{UID: fmt.Sprint(i), ETag: "1", Body: b})
+	}
+	if _, err := ts.IndexTasks(ctx, c.ID, docs); err != nil {
+		t.Fatal(err)
+	}
+	queries := []string{"hero", "superhero", "her", "ero", "comp ima", "images hero", "cafe", "CAFÉ", "50", "50%_", "%_", "e-mail", "mail", "-mail", "e-m",
+		"straße", "stra", "naive", "resume", "x_y", "y", "æon", "aeon", "c++", "c", "über", "uber", "uber-c", "日本", "テキスト", "istanbul", "σοφ", "ςοφ",
+		`"`, `"here"`, "!!!", "tag:urg", "urgent", "a.b", "b.c", "3.1", ".14", "o", "notes cape", "ǆ", "ǅ", "ß", "ẞ", "5k", "ﬁ", "fi"}
+	for _, q := range queries {
+		words := strings.Fields(q)
+		got, err := ts.SearchTasks(ctx, []string{c.ID}, words)
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		for _, d := range docs {
+			if index, match := got[c.ID+"/"+d.UID], ts.MatchTask(d.Body, words); index != match {
+				t.Errorf("%q on %q: index %v, MatchTask %v", q, d.Body, index, match)
+			}
+		}
+	}
+}

@@ -56,6 +56,22 @@ func validName(name string) bool {
 
 var errQuota = webdav.NewHTTPError(http.StatusInsufficientStorage, errors.New("calendar quota reached"))
 
+// errLocked is a credential that cannot unlock an encrypted calendar (content encryption E10):
+// refused, never served a skeleton a client could write back over the content.
+var errLocked = webdav.NewHTTPError(http.StatusForbidden, errors.New("this calendar is encrypted and this app password cannot unlock it: create a new app password in KyCalendar's settings"))
+
+// refuseLocked maps a store read for this request to errLocked when it holds an object the
+// credential could not open.
+func refuseLocked(err error, objs ...*store.CalendarObject) error {
+	if err == nil {
+		err = store.RefuseLocked(objs...)
+	}
+	if errors.Is(err, store.ErrLocked) {
+		return errLocked
+	}
+	return err
+}
+
 // Backend is built per request; User is the authenticated, active, non-admin user and Grants
 // are every grant reaching User through group membership, loaded for this request.
 type Backend struct {
@@ -304,7 +320,7 @@ func (b *Backend) GetCalendarObject(ctx context.Context, p string, req *caldav.C
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, webdav.NewHTTPError(http.StatusNotFound, err)
 	}
-	if err != nil {
+	if err := refuseLocked(err, o); err != nil {
 		return nil, err
 	}
 	co := b.toObject(slug, o)
@@ -333,7 +349,7 @@ func (b *Backend) ListCalendarObjects(ctx context.Context, p string, req *caldav
 		return nil, err
 	}
 	list, err := b.Store.Calendars().ListObjects(ctx, c.ID)
-	if err != nil {
+	if err := refuseLocked(err, list...); err != nil {
 		return nil, err
 	}
 	return b.convert(slug, list), nil
@@ -354,7 +370,7 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, p string, q *caldav.
 	} else {
 		list, err = b.Store.Calendars().ListObjects(ctx, c.ID)
 	}
-	if err != nil {
+	if err := refuseLocked(err, list...); err != nil {
 		return nil, err
 	}
 	out := make([]caldav.CalendarObject, 0, len(list))
@@ -437,6 +453,8 @@ func (b *Backend) PutCalendarObject(ctx context.Context, p string, cal *ical.Cal
 		return nil, errReadOnly
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, err)
+	case errors.Is(err, store.ErrLocked):
+		return nil, errLocked
 	case errors.Is(err, store.ErrUIDConflict):
 		return nil, caldav.NewPreconditionError(caldav.PreconditionNoUIDConflict)
 	case err != nil:
@@ -509,7 +527,7 @@ func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.Sy
 	res := &caldav.SyncResult{SyncToken: calendar.FormatSyncToken(epoch, c.ID, since)}
 	if token == "" {
 		list, err := b.Store.Calendars().ListObjects(ctx, c.ID)
-		if err != nil {
+		if err := refuseLocked(err, list...); err != nil {
 			return nil, err
 		}
 		res.Updated = b.convert(slug, list)
@@ -541,7 +559,7 @@ func (b *Backend) SyncCalendar(ctx context.Context, p, token string) (*caldav.Sy
 			res.Deleted = append(res.Deleted, path)
 			continue
 		}
-		if err != nil {
+		if err := refuseLocked(err, o); err != nil {
 			return nil, err
 		}
 		res.Updated = append(res.Updated, b.toObject(slug, o))

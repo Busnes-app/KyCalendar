@@ -178,9 +178,14 @@ type CalendarObject struct {
 	CalendarID, Name, UID, ETag                               string
 	Component                                                 string // VEVENT or VTODO
 	Data                                                      []byte
-	FirstStart                                                int64
-	LastEnd                                                   *int64
-	ModifiedAt                                                time.Time
+	// Sealed is the row's sealed parts (content encryption E4), nil for a legacy row. A read
+	// for a request that can open them serves the merged object in Data; any other reader gets
+	// the skeleton, and a request that cannot open them also gets Locked (E10).
+	Sealed     []byte
+	Locked     bool
+	FirstStart int64
+	LastEnd    *int64
+	ModifiedAt time.Time
 }
 
 // UserField names a user column a list may filter on.

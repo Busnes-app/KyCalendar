@@ -50,6 +50,7 @@ func init() {
 			"GET /api/tasks/insights", "GET /api/tasks/goals", "POST /api/tasks/goals", "GET /api/tasks/prefs", "PUT /api/tasks/prefs",
 			"GET /api/tasks/views", "POST /api/tasks/views", "GET /api/booking-types", "POST /api/booking-types",
 			"POST /api/subscriptions", "GET /api/presence/me", "PUT /api/presence/me", "GET /api/suite/apps",
+			"GET /api/encryption", "POST /api/encryption/recovery-code", "POST /api/encryption/setup", "POST /api/encryption/unlock", "POST /api/encryption/end-transition",
 			"/api/auth/change-password", "/api/auth/logout", "/api/auth/me", "/api/settings", "/api/settings/theme", "/mcp"},
 		// Addresses, not IDs: D5 counts an address as internal only inside the caller's org (TestMultiTenant*).
 		"address": {"GET /api/freebusy"},

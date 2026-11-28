@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -24,7 +25,7 @@ func (s *Server) requireEveryday(h http.HandlerFunc) http.HandlerFunc {
 			s.writeError(w, http.StatusForbidden, "Administrator accounts cannot use calendars")
 			return
 		}
-		h(w, withSessionUser(r, user, sess))
+		h(w, s.unlockSession(withSessionUser(r, user, sess)))
 	}
 }
 
@@ -115,6 +116,12 @@ func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
 		return
 	}
+	if err := s.slotForAppPassword(r, user, p, token); err != nil {
+		log.Printf("[CONTENT] app password slot not created, credential revoked: %v", err)
+		_ = s.store.AppPasswords().Delete(r.Context(), user.ID, id)
+		s.writeError(w, http.StatusInternalServerError, "Could not create app password")
+		return
+	}
 	_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: user.ID, Action: "app_password.create", Resource: "app_password:" + id, Details: "scope=" + p.Scope, IPAddress: s.requestIP(r)})
 	v := viewOfAppPassword(p)
 	s.writeJSON(w, http.StatusCreated, map[string]any{"id": id, "label": label, "scope": p.Scope, "password": token, "created_at": p.CreatedAt, "revoke_after": v.RevokeAfter})
@@ -167,7 +174,9 @@ func (s *Server) handleSetAppPasswordScope(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleDeleteAppPassword(w http.ResponseWriter, r *http.Request) {
 	user := sessionUser(r.Context())
 	id := r.PathValue("id")
-	if err := s.store.AppPasswords().Delete(r.Context(), user.ID, id); err != nil {
+	if err := s.store.AppPasswords().Delete(r.Context(), user.ID, id); err == nil {
+		_ = s.store.Content().DeleteSlot(r.Context(), user.ID, id) // a leftover opens nothing; RotateDue drops it too
+	} else {
 		if errors.Is(err, store.ErrNotFound) {
 			s.writeError(w, http.StatusNotFound, "App password not found")
 		} else {

@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"slices"
 	"time"
@@ -552,9 +550,7 @@ func (s *resourceStore) Decide(ctx context.Context, id, approverID string, accep
 	if err := c.bump(ctx, tx, b.CalendarID, b.ObjectName, false); err != nil {
 		return err
 	}
-	sum := sha256.Sum256(buf.Bytes())
-	if _, err := tx.ExecContext(ctx, c.q(`UPDATE calendar_objects SET data = ?, etag = ?, modified_at = ? WHERE calendar_id = ? AND name = ?`),
-		buf.Bytes(), hex.EncodeToString(sum[:]), time.Now().UTC(), b.CalendarID, b.ObjectName); err != nil {
+	if err := c.rewriteData(ctx, tx, b.CalendarID, b.ObjectName, buf.Bytes()); err != nil {
 		return err
 	}
 	return tx.Commit()

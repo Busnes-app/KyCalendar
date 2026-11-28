@@ -20,7 +20,7 @@ import (
 func (c *calendarStore) ownerUsage(ctx context.Context, tx *sql.Tx, kind, id, excludeCalendar, excludeName string) (int, int64, error) {
 	var n int
 	var used int64
-	err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*), COALESCE(SUM(LENGTH(o.data)), 0) FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id
+	err := tx.QueryRowContext(ctx, c.q(`SELECT COUNT(*), COALESCE(SUM(`+oBytes+`), 0) FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id
  WHERE (CASE WHEN o.invitation_recipient <> '' THEN 'user' ELSE c.owner_kind END) = ?
  AND (CASE WHEN o.invitation_sender <> '' THEN o.invitation_sender WHEN o.invitation_recipient <> '' THEN o.invitation_recipient ELSE c.owner_id END) = ?
  AND NOT (o.calendar_id = ? AND (? = '' OR o.name = ?))`), kind, id, excludeCalendar, excludeName, excludeName).Scan(&n, &used)

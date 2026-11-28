@@ -353,6 +353,13 @@ func (s *Server) routes() {
 	s.handle("DELETE /api/app-passwords/{id}", s.requireEveryday(s.handleDeleteAppPassword))
 	s.handle("PATCH /api/app-passwords/{id}", s.requireEveryday(s.handleSetAppPasswordScope))
 
+	// Content encryption (CE2): setup, unlock and the transition's early end. 404 while off.
+	s.handle("GET /api/encryption", s.requireEveryday(s.handleContentStatus))
+	s.handle("POST /api/encryption/recovery-code", s.requireEveryday(s.handleContentRecoveryCode))
+	s.handle("POST /api/encryption/setup", s.requireEveryday(s.handleContentSetup))
+	s.handle("POST /api/encryption/unlock", s.requireEveryday(s.handleContentUnlock))
+	s.handle("POST /api/encryption/end-transition", s.requireEveryday(s.handleContentEndTransition))
+
 	// MCP for AI agents: bearer MCP tokens only, personal calendars only, no delete. The skill
 	// that teaches agents the tools is public: it holds no user or instance data.
 	s.handle("/mcp", s.newMCPHandler())
@@ -533,7 +540,7 @@ func sessionUser(ctx context.Context) *store.User {
 func (s *Server) requireSession(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if user, sess := s.authenticate(w, r); user != nil {
-			h(w, withSessionUser(r, user, sess))
+			h(w, s.unlockSession(withSessionUser(r, user, sess)))
 		}
 	}
 }
@@ -549,7 +556,7 @@ func (s *Server) requireAdmin(h http.HandlerFunc) http.HandlerFunc {
 			s.writeError(w, http.StatusForbidden, "Administrator role required")
 			return
 		}
-		h(w, withSessionUser(r, user, sess))
+		h(w, s.unlockSession(withSessionUser(r, user, sess)))
 	}
 }
 

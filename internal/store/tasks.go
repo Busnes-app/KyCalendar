@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -45,11 +46,15 @@ type TaskStore interface {
 	UpdateView(ctx context.Context, userID, id, name, query string) error
 	DeleteView(ctx context.Context, userID, id string) error
 
-	// IndexTasks makes the calendar's search rows equal docs, rewriting only changed ETags.
-	IndexTasks(ctx context.Context, calendarID string, docs []TaskDoc) error
+	// IndexTasks makes the calendar's search rows equal docs, rewriting only changed ETags. A
+	// calendar with a key gets no rows (CE2): it drops them, ignores docs and reports true.
+	IndexTasks(ctx context.Context, calendarID string, docs []TaskDoc) (bool, error)
 	// SearchTasks is the "calendarID/uid" of each indexed task in calendarIDs holding every
-	// word, as a prefix.
+	// word: as a substring on PostgreSQL, as a word prefix on SQLite.
 	SearchTasks(ctx context.Context, calendarIDs, words []string) (map[string]bool, error)
+	// MatchTask reports whether SearchTasks would find body for words. An encrypted list's tasks
+	// are matched this way, never indexed (CE2).
+	MatchTask(body string, words []string) bool
 
 	// KyPostFlags is whether flagged mail makes tasks for the user (default on).
 	KyPostFlags(ctx context.Context, userID string) (bool, error)
@@ -191,59 +196,57 @@ func cmpErr(a, b error) error {
 	return b
 }
 
-func (t *taskStore) IndexTasks(ctx context.Context, calendarID string, docs []TaskDoc) error {
-	rows, err := t.store.db.QueryContext(ctx, t.q(`SELECT uid, etag FROM task_search WHERE calendar_id = ?`), calendarID)
+func (t *taskStore) IndexTasks(ctx context.Context, calendarID string, docs []TaskDoc) (bool, error) {
+	// Under the lock keying takes, so a key made mid-search cannot be followed by plaintext rows.
+	tx, err := t.store.lockedTx(ctx, "calendar-key:"+calendarID)
 	if err != nil {
-		return err
+		return false, err
+	}
+	defer tx.Rollback()
+	if _, _, keyed, err := t.store.currentCalendarKey(ctx, tx, calendarID); err != nil {
+		return false, err
+	} else if keyed {
+		if _, err := tx.ExecContext(ctx, t.q(`DELETE FROM task_search WHERE calendar_id = ?`), calendarID); err != nil {
+			return false, err
+		}
+		return true, tx.Commit()
+	}
+	rows, err := tx.QueryContext(ctx, t.q(`SELECT uid, etag FROM task_search WHERE calendar_id = ?`), calendarID)
+	if err != nil {
+		return false, err
 	}
 	have := map[string]string{}
 	for rows.Next() {
 		var uid, etag string
 		if err := rows.Scan(&uid, &etag); err != nil {
 			rows.Close()
-			return err
+			return false, err
 		}
 		have[uid] = etag
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return err
+		return false, err
 	}
 	want := map[string]TaskDoc{}
 	for _, d := range docs {
 		want[d.UID] = d
 	}
-	var stale []string
-	var fresh []TaskDoc
 	for uid, etag := range have {
 		if d, ok := want[uid]; !ok || d.ETag != etag {
-			stale = append(stale, uid)
+			if _, err := tx.ExecContext(ctx, t.q(`DELETE FROM task_search WHERE calendar_id = ? AND uid = ?`), calendarID, uid); err != nil {
+				return false, err
+			}
 		}
 	}
 	for uid, d := range want {
 		if have[uid] != d.ETag {
-			fresh = append(fresh, d)
+			if _, err := tx.ExecContext(ctx, t.q(`INSERT INTO task_search (calendar_id, uid, etag, body) VALUES (?, ?, ?, ?)`), calendarID, d.UID, d.ETag, fold(d.Body)); err != nil {
+				return false, err
+			}
 		}
 	}
-	if len(stale) == 0 && len(fresh) == 0 {
-		return nil
-	}
-	tx, err := t.store.beginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, uid := range stale {
-		if _, err := tx.ExecContext(ctx, t.q(`DELETE FROM task_search WHERE calendar_id = ? AND uid = ?`), calendarID, uid); err != nil {
-			return err
-		}
-	}
-	for _, d := range fresh {
-		if _, err := tx.ExecContext(ctx, t.q(`INSERT INTO task_search (calendar_id, uid, etag, body) VALUES (?, ?, ?, ?)`), calendarID, d.UID, d.ETag, fold(d.Body)); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return false, tx.Commit()
 }
 
 func (t *taskStore) SearchTasks(ctx context.Context, calendarIDs, words []string) (map[string]bool, error) {
@@ -285,6 +288,46 @@ func (t *taskStore) SearchTasks(ctx context.Context, calendarIDs, words []string
 		out[cal+"/"+uid] = true
 	}
 	return out, rows.Err()
+}
+
+func (t *taskStore) MatchTask(body string, words []string) bool {
+	b := fold(body)
+	for _, w := range words {
+		if t.store.driver == "postgres" {
+			if !strings.Contains(b, fold(w)) {
+				return false
+			}
+		} else if !matchPhrase(ftsTokens(sigma.Replace(b)), ftsTokens(sigma.Replace(fold(w)))) {
+			return false
+		}
+	}
+	return true
+}
+
+// sigma is the one fold FTS5 makes that strings.ToLower does not: final sigma to sigma.
+var sigma = strings.NewReplacer("ς", "σ")
+
+// ftsTokens splits s as FTS5's unicode61 tokenizer does: runs of letters, numbers and
+// private-use characters.
+func ftsTokens(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r) && !unicode.Is(unicode.Co, r)
+	})
+}
+
+// matchPhrase is FTS5's `"phrase"*`: consecutive tokens equal to the phrase's, the last one
+// as a prefix. A phrase with no tokens matches nothing.
+func matchPhrase(body, phrase []string) bool {
+	n := len(phrase)
+	if n == 0 {
+		return false
+	}
+	for i := 0; i+n <= len(body); i++ {
+		if slices.Equal(body[i:i+n-1], phrase[:n-1]) && strings.HasPrefix(body[i+n-1], phrase[n-1]) {
+			return true
+		}
+	}
+	return false
 }
 
 func likeEscape(s string) string {

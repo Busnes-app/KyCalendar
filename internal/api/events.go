@@ -282,7 +282,12 @@ func (s *Server) expandEvents(ctx context.Context, user *store.User, cals []*sto
 		}
 		role := access.Resolve(user, c, grants)
 		objs, err := s.store.Calendars().ListObjectsInRange(ctx, c.ID, ical.CompEvent, start.Unix(), end.Unix())
-		if err != nil {
+		if err == nil {
+			err = store.RefuseLocked(objs...)
+		}
+		if errors.Is(err, store.ErrLocked) {
+			return nil, errContentLocked
+		} else if err != nil {
 			return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load events"}
 		}
 		meetings, err := s.store.Calendars().OpenMeetings(ctx, c.ID)
@@ -565,6 +570,8 @@ func (s *Server) saveEventMeeting(ctx context.Context, writer *store.User, c *st
 		return o, nil
 	case errors.Is(err, store.ErrPreconditionFailed):
 		return nil, errEventChanged
+	case errors.Is(err, store.ErrLocked):
+		return nil, errContentLocked
 	case errors.Is(err, store.ErrReadOnly):
 		return nil, errReadOnlyCalendar
 	case errors.Is(err, davbackend.ErrTooLarge):
@@ -585,6 +592,10 @@ func (s *Server) saveEventMeeting(ctx context.Context, writer *store.User, c *st
 		return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to save the event"}
 	}
 }
+
+// errContentLocked is a session that has not unlocked an encrypted calendar (E10): the web shows
+// the unlock screen.
+var errContentLocked = &apiError{status: http.StatusForbidden, msg: "Unlock encryption to open this calendar", code: "content_locked"}
 
 var errEventChanged = &apiError{status: http.StatusPreconditionFailed, msg: "The event changed elsewhere; reload it", code: "conflict"}
 
@@ -668,6 +679,9 @@ func (s *Server) loadObject(ctx context.Context, c *store.Calendar, uid string) 
 	o, err := s.store.Calendars().GetObjectByUID(ctx, c.ID, uid)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && o.Component != ical.CompEvent) {
 		return nil, nil, &apiError{status: http.StatusNotFound, msg: "No such event"}
+	}
+	if err == nil && o.Locked {
+		return nil, nil, errContentLocked
 	}
 	if err != nil {
 		return nil, nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load the event"}

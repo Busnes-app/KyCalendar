@@ -1,12 +1,19 @@
 package api_test
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Busnes-app/kycalendar/internal/config"
+	"github.com/Busnes-app/kycalendar/internal/contentkey"
+	"github.com/Busnes-app/kycalendar/internal/crypto"
+	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
 // What iOS, DAVx5 and Thunderbird ask for during discovery and sync, scheduling included: with
@@ -24,13 +31,29 @@ var surfaceVolatile = regexp.MustCompile(`(<(?:sync-token|getctag|getetag)[^>]*>
 // TestCalDAVWireSurface pins what a CalDAV client sees, byte for byte after masking tokens and
 // ETags. A change here changes every native client: regenerate only on purpose, with
 // KY_UPDATE_GOLDEN=1, and review the diff.
+// With content encryption on and the account set up, the surface is the same: only the stored
+// representation differs.
 func TestCalDAVWireSurface(t *testing.T) {
-	srv, st, _ := setupTestServer(t)
+	for _, encrypted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("encrypted=%v", encrypted), func(t *testing.T) { calDAVWireSurface(t, encrypted) })
+	}
+}
+
+func calDAVWireSurface(t *testing.T, encrypted bool) {
+	srv, st, cfg := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = encrypted })
 	token := davUser(t, st, "alice", "user")
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	cal := "/dav/usr_alice/calendars/default/"
 	rawDAV(t, ts, "PROPFIND", "/dav/usr_alice/calendars/", "alice", token, "", map[string]string{"Depth": "1"})
+	if encrypted {
+		_, code, _ := contentkey.NewRecoveryCode()
+		sess := store.Credential{UserID: "usr_alice", Kind: contentkey.SlotSession, SlotID: "s", Secret: []byte("a session token of 32 bytes ....")}
+		if err := st.Content().Setup(context.Background(), "usr_alice", store.Setup{Passphrase: "correct horse battery", Recovery: code, Session: sess,
+			Transition: crypto.DeriveKey(cfg.Security.EncryptionKey, "kycalendar:content-transition"), Now: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if r := rawDAV(t, ts, "PUT", cal+"evt-a.ics", "alice", token, evA, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode != 201 {
 		t.Fatalf("PUT %d", r.StatusCode)
 	}
@@ -47,7 +70,7 @@ func TestCalDAVWireSurface(t *testing.T) {
 	}
 
 	const golden = "testdata/dav_surface.golden"
-	if os.Getenv("KY_UPDATE_GOLDEN") == "1" {
+	if os.Getenv("KY_UPDATE_GOLDEN") == "1" && !encrypted {
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -61,5 +84,17 @@ func TestCalDAVWireSurface(t *testing.T) {
 	}
 	if out.String() != string(want) {
 		t.Errorf("CalDAV wire surface changed; got:\n%s", out.String())
+	}
+	if encrypted {
+		if body := readAll(rawDAV(t, ts, "GET", cal+"evt-a.ics", "alice", token, "", nil)); body != evA {
+			t.Fatalf("GET on the encrypted account: %q", body)
+		}
+		cals, err := st.Calendars().ListCalendarsByOwner(context.Background(), "user", "usr_alice")
+		if err != nil || len(cals) != 1 {
+			t.Fatal(err)
+		}
+		if o, err := st.Calendars().GetObject(context.Background(), cals[0].ID, "evt-a.ics"); err != nil || o.Sealed == nil {
+			t.Fatalf("the encrypted account's object is not sealed: %v", err)
+		}
 	}
 }
