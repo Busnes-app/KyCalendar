@@ -1,5 +1,3 @@
-//go:build kye2e
-
 // Package suite drives the cross-app multi-tenant end-to-end run
 // (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md). Run it with ./run.sh.
 package suite
@@ -39,6 +37,9 @@ const (
 )
 
 type app struct{ repo, sha string }
+
+// enable_test.go opts in when the harness is built with kye2e.
+var suiteEnabled bool
 
 // target is one app in the smoke run: how its kye2e image is built and what each build says.
 type target struct {
@@ -127,6 +128,10 @@ type suite struct {
 
 // start builds the pinned images and brings the install up. The stack is removed when t ends.
 func start(t *testing.T) *suite {
+	t.Helper()
+	if !suiteEnabled {
+		t.Skip("run e2e/suite/run.sh to start the suite")
+	}
 	s := &suite{t: t, pins: lock(t)}
 	ca, cert, key := tlsFiles(t)
 	adminPass := "Aa1!" + random(12)
