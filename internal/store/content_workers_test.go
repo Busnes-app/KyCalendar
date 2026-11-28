@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func partsOf(t *testing.T, st store.Store, cal, name string) []contentkey.Part {
 func (f contentFixture) workerPut(t *testing.T, name, body string, wc *store.WorkerContent) error {
 	t.Helper()
 	o := &store.CalendarObject{CalendarID: f.cal.ID, Name: name, Component: "VEVENT", UID: uidOf(body), Data: []byte(body), FirstStart: 1}
-	_, err := f.st.Calendars().PutObject(store.WithWorkerContent(context.Background(), wc), o, "", false, store.OwnerLimits{})
+	_, err := f.st.Calendars().PutObjectPlanned(store.WithWorkerContent(context.Background(), wc), o, "", false, f.lim, f.plan)
 	return err
 }
 
@@ -443,4 +444,84 @@ func fold(line string) string {
 		line, limit = line[limit:], 74
 	}
 	return b.String() + line + "\r\n"
+}
+
+// A patch dropped at the cap or by a quota is not sent to attendees either: the messages a skeleton-planned
+// write queues carry only the patch the organizer's event stored.
+func TestADroppedPatchIsNotQueued(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_dq", true)
+	if _, err := f.put(t, f.unlocked(), "ser.ics", series); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 16 {
+		rid := time.Date(2026, 12, 1+i, 9, 0, 0, 0, time.UTC).Format("20060102T150405Z")
+		if err := f.workerEdit(t, "ser.ics", addOverride(rid), setLocation(rid, fmt.Sprintf("Room %d", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.plan = func([]byte) ([]byte, []*store.OutboxMessage, error) {
+		return nil, []*store.OutboxMessage{{ID: "msg_dq", DedupeKey: "dq", SenderID: f.user, Method: "REQUEST", Recipient: "mailto:ana@example.com", Body: []byte("x")}}, nil
+	}
+	rid := "20261220T090000Z"
+	if err := f.workerEdit(t, "ser.ics", addOverride(rid), setLocation(rid, "Dropped room")); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM audit_records WHERE action = 'content_part_dropped' AND details = 'reason=cap'`); n != 1 {
+		t.Fatalf("%d patches dropped at the cap, want 1", n)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM scheduling_outbox WHERE id = 'msg_dq' AND worker_patch = '[]'`); n != 1 {
+		t.Fatal("the queued message does not carry an empty patch")
+	}
+	// The same for a patch the owner's byte quota refuses after the messages were planned.
+	g := newContentFixture(t, st, "usr_dq2", true)
+	if _, err := g.put(t, g.unlocked(), "mtg.ics", sealedEvent); err != nil {
+		t.Fatal(err)
+	}
+	g.lim = store.OwnerLimits{MaxBytes: *rowOf(t, st, g.cal.ID, "mtg.ics").plainSize + 100}
+	g.plan = func([]byte) ([]byte, []*store.OutboxMessage, error) {
+		return nil, []*store.OutboxMessage{{ID: "msg_dq2", DedupeKey: "dq2", SenderID: g.user, Method: "REQUEST", Recipient: "mailto:ana@example.com", Body: []byte("x")}}, nil
+	}
+	if err := g.workerEdit(t, "mtg.ics", func(*ical.Calendar) {}, setLocation("", strings.Repeat("r", 1500))); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM audit_records WHERE action = 'content_part_dropped' AND details = 'reason=quota'`); n != 1 {
+		t.Fatalf("%d patches dropped for quota, want 1", n)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM scheduling_outbox WHERE id = 'msg_dq2' AND worker_patch = '[]'`); n != 1 {
+		t.Fatal("a quota-dropped patch was queued")
+	}
+}
+
+// PostgreSQL: a fold during a worker's write, after the write read the parts it keeps, would
+// delete worker keys those parts name, and the object could never be opened again. The fold
+// waits for no writer and skips instead (E4).
+func TestFoldNeverRacesAWriteInFlight(t *testing.T) {
+	if os.Getenv("KY_TEST_POSTGRES_DSN") == "" {
+		t.Skip("PostgreSQL only: SQLite's one connection serializes them")
+	}
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_fw", true)
+	if _, err := f.put(t, f.unlocked(), "mtg.ics", sealedEvent); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.workerEdit(t, "mtg.ics", func(*ical.Calendar) {}, setLocation("", "Room 1")); err != nil {
+		t.Fatal(err)
+	}
+	once := false
+	restore := store.SetBeforeObjectWriteForTest(func() {
+		if !once {
+			once = true
+			f.read(t, "mtg.ics") // folds, unless the write in flight stops it
+		}
+	})
+	wc := &store.WorkerContent{Patch: []skeleton.Op{{Op: "conference", URL: "https://messages.example.com/r/1"}}}
+	if err := f.workerEdit(t, "mtg.ics", func(cal *ical.Calendar) { calendar.SetConference(cal, "https://messages.example.com/r/1") }, wc); err != nil {
+		t.Fatal(err)
+	}
+	restore()
+	ev := eventOf(t, f.read(t, "mtg.ics").Data, "")
+	if textOf(ev, ical.PropLocation) != "Room 1" || calendar.Conference(ev) != "https://messages.example.com/r/1" {
+		t.Fatalf("after a fold raced a write: %+v", ev.Props)
+	}
 }

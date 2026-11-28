@@ -319,6 +319,9 @@ func (c *calendarStore) PutObjectPlanned(ctx context.Context, o *CalendarObject,
 	return c.putObjectPlanned(ctx, o, ifMatch, ifNoneMatch, lim, plan, nil)
 }
 
+// beforeObjectWrite, when set by a test, runs in an object write between its reads and its write.
+var beforeObjectWrite func()
+
 func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject, ifMatch string, ifNoneMatch bool, lim OwnerLimits, plan Planner, tx *sql.Tx) (bool, error) {
 	o.ModifiedAt = time.Now().UTC()
 
@@ -387,14 +390,6 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	stored, err := c.sealForWrite(ctx, tx, o)
 	if err != nil {
 		return false, err
-	}
-	if stored.skeletonOnly {
-		// Planned from a skeleton: the recipients' copies take only its readable change and
-		// patch, never its missing content as a new base (scheduling_outbox.worker_patch).
-		patch, _ := json.Marshal(append([]skeleton.Op{}, stored.patch...))
-		for _, m := range rows {
-			m.WorkerPatch = string(patch)
-		}
 	}
 	var other string
 	err = tx.QueryRowContext(ctx, c.q(`SELECT name FROM calendar_objects WHERE calendar_id = ? AND uid = ? AND name <> ?`),
@@ -499,6 +494,18 @@ quota:
 			}
 			goto quota
 		}
+	}
+	if stored.skeletonOnly {
+		// Planned from a skeleton: the recipients' copies take only its readable change and
+		// stored patch (set after quota, which may drop it), never its missing content as a new
+		// base (scheduling_outbox.worker_patch).
+		patch, _ := json.Marshal(append([]skeleton.Op{}, stored.patch...))
+		for _, m := range rows {
+			m.WorkerPatch = string(patch)
+		}
+	}
+	if beforeObjectWrite != nil {
+		beforeObjectWrite()
 	}
 	o.ETag = objectETag(stored.data, stored.sealed)
 

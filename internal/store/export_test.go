@@ -108,3 +108,11 @@ func SetFoldHookForTest(f func()) func() {
 	foldHook = f
 	return func() { foldHook = old }
 }
+
+// SetBeforeObjectWriteForTest runs f inside an object write between its read and its write, and
+// returns the restore func.
+func SetBeforeObjectWriteForTest(f func()) func() {
+	old := beforeObjectWrite
+	beforeObjectWrite = f
+	return func() { beforeObjectWrite = old }
+}

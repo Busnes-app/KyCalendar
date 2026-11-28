@@ -409,11 +409,13 @@ worker write without it stays readable-only, as in CE2.
 - **Fold** on an unlocked read of an object with more than one part: one base under the
   calendar's current AES key, sequence number `parts_version`, written only where `sealed`,
   `data` and `parts_version` are still what the read saw; its worker keys go and the ETag stays.
+  On PostgreSQL the fold also takes `calendar-total` without waiting and skips when a write
+  holds it: a write in flight keeps parts whose worker keys the fold would delete.
   A lone worker base (a delivery, the sweep) is not folded, so a first sync after the sweep
   writes nothing.
 - **Messages planned from a skeleton.** A worker's write over a sealed object (the room link, a
   booking reschedule) plans its messages from the skeleton. Such outbox rows carry the write's
-  patch in `scheduling_outbox.worker_patch` (migration 45; NULL means the body is the sender's
+  stored patch (none when the cap, the size limit or a quota dropped it) in `scheduling_outbox.worker_patch` (migration 45; NULL means the body is the sender's
   whole content). Delivering one to an existing copy applies only its readable change and that
   patch: in the store for a sealed copy, and by merging the copy's own plaintext for a legacy one
   (`keepPlainContent`), so no copy loses its title to a body that never had it. A first delivery

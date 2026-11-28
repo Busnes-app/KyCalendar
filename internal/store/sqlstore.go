@@ -197,6 +197,15 @@ func (s *SQLStore) lockKey(ctx context.Context, tx *sql.Tx, key string) error {
 	return err
 }
 
+// tryLockKey is lockKey without waiting: false if another transaction holds key.
+func (s *SQLStore) tryLockKey(ctx context.Context, tx *sql.Tx, key string) bool {
+	if s.driver != "postgres" {
+		return true
+	}
+	var ok bool
+	return tx.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0))`, key).Scan(&ok) == nil && ok
+}
+
 // lockedTx begins a transaction already holding the advisory locks on keys, in order. Callers
 // holding two take local-admins before user-names.
 func (s *SQLStore) lockedTx(ctx context.Context, keys ...string) (*sql.Tx, error) {

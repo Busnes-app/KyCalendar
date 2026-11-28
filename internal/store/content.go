@@ -315,7 +315,6 @@ func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *Calenda
 		case wc != nil && wc.Base:
 			return c.workerSupersede(ctx, tx, o, w, prev, wc.KeepAlarms, version, pub)
 		case wc != nil && len(wc.Patch) > 0:
-			readable.patch = wc.Patch
 			return c.workerPatch(ctx, tx, o, readable, prev, wc.Patch, version, pub)
 		}
 		return readable, nil
@@ -461,6 +460,7 @@ func (c *calendarStore) workerPatch(ctx context.Context, tx *sql.Tx, o *Calendar
 		}
 	}
 	w := readable
+	w.patch = ops // only the write that stores the patch carries it to the outbox
 	var kept []contentkey.Part
 	patches := 0
 	for _, p := range parts {
@@ -657,6 +657,11 @@ func (c *calendarStore) fold(ctx context.Context, u *Unlock, o *CalendarObject, 
 		return
 	}
 	defer tx.Rollback()
+	// Writers hold calendar-total from their read of the row to their commit; a fold that ran in
+	// between would delete worker keys the writer's kept parts still name. Busy: skip, fold later.
+	if !c.store.tryLockKey(ctx, tx, "calendar-total") {
+		return
+	}
 	res, err := tx.ExecContext(ctx, c.q(`UPDATE calendar_objects SET sealed = ?, plain_size = ?, content_sizes = ?, alarm_bytes = ?
 WHERE calendar_id = ? AND name = ? AND parts_version = ? AND sealed = ? AND data = ?`),
 		sealed, int64(len(merged)), w.sizesJSON(), w.alarms, o.CalendarID, o.Name, pv, o.Sealed, o.Data)
