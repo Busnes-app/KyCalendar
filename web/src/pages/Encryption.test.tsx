@@ -67,4 +67,17 @@ describe("Encryption", () => {
     render(<Encryption />);
     expect(await screen.findByText(/not turned on/i)).toBeTruthy();
   });
+  it("offers a retry when the status cannot be loaded", async () => {
+    let up = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      up
+        ? new Response(JSON.stringify({ enabled: true, set_up: false, unlocked: false }), { status: 200 })
+        : new Response(null, { status: 503 }),
+    );
+    render(<Encryption />);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not load/i);
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByRole("button", { name: /set up encryption/i })).toBeTruthy();
+  });
 });

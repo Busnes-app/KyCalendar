@@ -83,7 +83,14 @@ func UnlockOf(ctx context.Context) *Unlock { return unlockOf(ctx) }
 // Account opens the request's account key. It reads the database, so it must not run inside an
 // open SQLite transaction; calls in one use the key opened before it began.
 func (u *Unlock) Account(ctx context.Context) (*contentkey.KeyPair, error) {
-	u.once.Do(func() { u.account, u.err = u.open(ctx) })
+	u.once.Do(func() {
+		a, err := u.open(ctx)
+		u.mu.Lock()
+		u.account, u.err = a, err
+		u.mu.Unlock()
+	})
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	return u.account, u.err
 }
 
@@ -91,15 +98,32 @@ type rowQuerier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
+// reopen opens the account key again, for a read that failed after a rotation replaced the key
+// this request opened (E11). True when it changed. Outside any transaction only.
+func (u *Unlock) reopen(ctx context.Context) bool {
+	old, err := u.Account(ctx)
+	if err != nil {
+		return false
+	}
+	a, err := u.open(ctx)
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if err != nil || bytes.Equal(a.PublicKey(), old.PublicKey()) {
+		return false
+	}
+	u.account = a
+	return true
+}
+
 // calendarKey opens version of calendarID's key through the request user's holder wrap.
 func (u *Unlock) calendarKey(ctx context.Context, s *SQLStore, q rowQuerier, calendarID string, version uint32) (*contentkey.CalendarKey, error) {
-	if u.account == nil || u.err != nil {
-		return nil, ErrLocked
-	}
 	id := fmt.Sprintf("%s/%d", calendarID, version)
 	u.mu.Lock()
-	k := u.keys[id]
+	k, account, openErr := u.keys[id], u.account, u.err
 	u.mu.Unlock()
+	if account == nil || openErr != nil {
+		return nil, ErrLocked
+	}
 	if k != nil {
 		return k, nil
 	}
@@ -111,7 +135,7 @@ func (u *Unlock) calendarKey(ctx context.Context, s *SQLStore, q rowQuerier, cal
 	} else if err != nil {
 		return nil, err
 	}
-	k, err = contentkey.OpenCalendarSeed(u.account, calendarID, version, u.UserID, wrapped)
+	k, err = contentkey.OpenCalendarSeed(account, calendarID, version, u.UserID, wrapped)
 	if err != nil {
 		return nil, ErrLocked
 	}
@@ -320,6 +344,9 @@ func (c *calendarStore) openObject(ctx context.Context, u *Unlock, o *CalendarOb
 	layers := make([]skeleton.Layer, 0, len(parts))
 	for _, p := range parts {
 		k, err := u.calendarKey(ctx, c.store, c.store.db, o.CalendarID, p.KeyVersion)
+		if errors.Is(err, ErrLocked) && u.reopen(ctx) { // rotated since this request opened it
+			k, err = u.calendarKey(ctx, c.store, c.store.db, o.CalendarID, p.KeyVersion)
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -731,3 +731,25 @@ func TestWorkerReplacingASealedNameWithANewUID(t *testing.T) {
 		t.Fatalf("after a new UID under the same name: locked=%v %v", got.Locked, err)
 	}
 }
+
+// A read that opened the account key before the transition's rotation committed still reads:
+// the holder wraps now open with the new key, so it opens the account again once (E11).
+func TestReadAcrossARotation(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	f := newContentFixture(t, st, "usr_rr", true)
+	if _, err := f.put(t, f.unlocked(), "ev1.ics", sealedEvent); err != nil {
+		t.Fatal(err)
+	}
+	read := f.unlocked()
+	if _, err := store.UnlockOf(read).Account(read); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Content().EndTransition(ctx, f.user, transitionKey); err != nil {
+		t.Fatal(err)
+	}
+	o, err := st.Calendars().GetObject(read, f.cal.ID, "ev1.ics")
+	if err != nil || o.Locked || string(o.Data) != sealedEvent {
+		t.Fatalf("read across the rotation: %v locked=%v", err, o != nil && o.Locked)
+	}
+}

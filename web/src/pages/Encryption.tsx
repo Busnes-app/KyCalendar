@@ -32,11 +32,28 @@ async function errorOf(res: Response | null, fallback: string) {
 export default function Encryption() {
   const [status, setStatus] = useState<EncryptionStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => setStatus(await encryptionStatus()), []);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(async () => {
+    setFailed(false);
+    const s = await encryptionStatus();
+    setStatus(s);
+    setFailed(s === null);
+  }, []);
   useEffect(() => {
     void load();
   }, [load]);
 
+  if (failed)
+    return (
+      <>
+        <p role="alert" className="error">
+          Could not load the encryption status.
+        </p>
+        <button type="button" onClick={() => void load()}>
+          Try again
+        </button>
+      </>
+    );
   if (!status) return <p className="field-hint">Loading…</p>;
   if (!status.enabled) return <p className="field-hint">Encryption is not turned on for this server.</p>;
   return (

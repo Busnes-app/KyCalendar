@@ -45,6 +45,7 @@ func (c contentStore) SweepOnce(ctx context.Context, after SweepCursor, limit in
 	s := c.s
 	rows, err := s.db.QueryContext(ctx, s.rebind(`SELECT o.calendar_id, o.name, o.uid, o.etag, o.data, o.parts_version FROM calendar_objects o
 WHERE o.sealed IS NULL AND EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = o.calendar_id)
+`+notSubscribed+`
  AND (o.calendar_id > ? OR (o.calendar_id = ? AND o.name > ?))
 ORDER BY o.calendar_id, o.name LIMIT ?`), after.Calendar, after.Calendar, after.Name, limit)
 	if err != nil {
@@ -168,11 +169,15 @@ WHERE calendar_id = ? AND name = ? AND sealed IS NULL AND etag = ?`), skel, seal
 	return err == nil, err
 }
 
+// notSubscribed leaves subscribed calendars out: a feed refresh rewrites their rows in
+// plaintext until feeds are sealed (CE3), so sealing them would only leave a stale base.
+const notSubscribed = ` AND NOT EXISTS (SELECT 1 FROM calendar_subscriptions s WHERE s.calendar_id = o.calendar_id)`
+
 // LegacyRows counts rows still in plaintext in calendars that have a key: what the sweep has
 // left, and what the admin page will show.
 func (c contentStore) LegacyRows(ctx context.Context) (int, error) {
 	var n int
 	err := c.s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_objects o WHERE o.sealed IS NULL
- AND EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = o.calendar_id)`).Scan(&n)
+ AND EXISTS (SELECT 1 FROM calendar_keys k WHERE k.calendar_id = o.calendar_id)`+notSubscribed).Scan(&n)
 	return n, err
 }

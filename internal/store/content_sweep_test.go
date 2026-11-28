@@ -272,3 +272,38 @@ func TestSweptNeighboursSurviveARewrite(t *testing.T) {
 		t.Fatalf("%d worker keys for %d swept objects", keys, swept)
 	}
 }
+
+// A subscribed calendar is left to its feed: the sweep does not seal it, so a refresh that
+// rewrites its rows never sits beside a stale sealed base, and reads return the refresh.
+func TestSweepLeavesSubscribedCalendars(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	f := newContentFixture(t, st, "usr_sf", false)
+	cs := st.Calendars()
+	feed := &store.Calendar{ID: "cal_sf_feed", OwnerKind: "user", OwnerID: f.user, Slug: "feed", Name: "Feed"}
+	if err := cs.CreateSubscribedCalendar(ctx, feed, &store.Subscription{URLSealed: "sealed", URLHost: "example.com", NextCheckAt: time.Now()}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	object := func(summary string) []*store.CalendarObject {
+		body := strings.ReplaceAll(sealedEvent, "Secret board meeting", summary)
+		return []*store.CalendarObject{{Name: "ev1.ics", Component: "VEVENT", UID: "ev1", Data: []byte(body), FirstStart: 1}}
+	}
+	if err := cs.ReplaceSubscriptionObjects(ctx, feed.ID, object("Feed one"), store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	setUp(t, f)
+	if n, _ := st.Content().LegacyRows(ctx); n != 0 {
+		t.Fatalf("subscribed rows counted as legacy: %d", n)
+	}
+	sweepAll(t, st)
+	if r := rowOf(t, st, feed.ID, "ev1.ics"); r.sealed != nil {
+		t.Fatal("the sweep sealed a subscribed calendar's row")
+	}
+	if err := cs.ReplaceSubscriptionObjects(ctx, feed.ID, object("Feed two"), store.OwnerLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	o, err := cs.GetObject(f.unlocked(), feed.ID, "ev1.ics")
+	if err != nil || !strings.Contains(string(o.Data), "Feed two") {
+		t.Fatalf("unlocked read after a refresh: %v %q", err, o.Data)
+	}
+}
