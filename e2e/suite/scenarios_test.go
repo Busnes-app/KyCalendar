@@ -156,7 +156,7 @@ func TestScenarios(t *testing.T) {
 			}
 		}
 		notRun(t, "KyPost cell isolation and booking page of a slug made on Y: KyPost runs as one deployment serving both cells (e2e-1,e2e-2) with native mail off")
-		notRun(t, "backup and attachment keys under cells/<cell>/: only KyNotes uses the run's S3, under orgs/<org>/ (no cell prefix yet), and KyRecovery is not in the run")
+		notRun(t, "backup and attachment keys under cells/<cell>/: only KyNotes uses the run's S3, under orgs/<org>/ or, from KyNotes-server #213, cells/<cell>/orgs/<org>/, and KyRecovery is not in the run")
 	})
 
 	t.Run("S3 invitation within one org, delivered directly", func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestScenarios(t *testing.T) {
 			return s.sql("kynotes", fmt.Sprintf("SELECT count(*) FROM org_pool WHERE org_id IN ('%s','%s')", orgs["A"].id, orgs["B"].id)) == "2"
 		})
 		aNotes, bNotes = s.notesWrite(t, a1n, orgs["A"].id, people["a1"].userID), s.notesWrite(t, b1n, orgs["B"].id, people["b1"].userID)
-		if s.s3Files("kynotes", "orgs/"+orgs["B"].id+"/") == 0 {
+		if s.s3OrgFiles("kynotes", orgs["B"].id) == 0 {
 			t.Errorf("no KyNotes object under orgs/%s/ in S3", orgs["B"].id)
 		}
 		// Each credential works for its own org.
@@ -393,7 +393,7 @@ func TestScenarios(t *testing.T) {
 			msgPurged := s.sql("kymessages", fmt.Sprintf("SELECT status FROM tenants WHERE id = '%s'", orgs["B"].id)) == "deleted" &&
 				s.sql("kymessages", fmt.Sprintf("SELECT count(*) FROM users WHERE org_id = '%s'", orgs["B"].id)) == "0"
 			notesStatus, notesRows, notesFiles := s.sql("kynotes", fmt.Sprintf("SELECT status FROM orgs WHERE id = '%s'", orgs["B"].id)),
-				s.notesOrgRows(orgs["B"].id), s.s3Files("kynotes", "orgs/"+orgs["B"].id+"/")
+				s.notesOrgRows(orgs["B"].id), s.s3OrgFiles("kynotes", orgs["B"].id)
 			purge = fmt.Sprintf("kycal_x %t, kypost %t, kymessages %t, kynotes status %s rows %v objects %d",
 				calPurged, postPurged, msgPurged, notesStatus, notesRows, notesFiles)
 			// KyNotes keeps erased_subjects (a restore re-erases from it), and org_usage until
@@ -419,7 +419,7 @@ func TestScenarios(t *testing.T) {
 		if len(left) != 0 {
 			t.Errorf("kynotes rows still naming deleted org B: %v", left)
 		}
-		if n := s.s3Files("kynotes", "orgs/"+orgs["B"].id+"/"); n != 0 {
+		if n := s.s3OrgFiles("kynotes", orgs["B"].id); n != 0 {
 			t.Errorf("%d KyNotes objects left under deleted org B's prefix", n)
 		}
 		if r := s.notesReported(orgs["B"].id); r != "" && r != "0" {
@@ -436,7 +436,7 @@ func TestScenarios(t *testing.T) {
 		} else {
 			a1n.must(200, "GET", notes+"/api/v1/objects/"+aNotes.oid, nil, notesHdr)
 		}
-		if s.s3Files("kynotes", "orgs/"+orgs["A"].id+"/") == 0 {
+		if s.s3OrgFiles("kynotes", orgs["A"].id) == 0 {
 			t.Errorf("org A's KyNotes objects went with org B's purge")
 		}
 

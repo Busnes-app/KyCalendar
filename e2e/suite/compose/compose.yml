@@ -292,6 +292,7 @@ services:
       BOOTSTRAP_EVERYDAY_USER: ""
       BOOTSTRAP_EVERYDAY_PASS: ""
       KYNOTES_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
+      # Alias of KY_CELLS from KyNotes-server #213; switch to KY_CELLS once KyNotes master has it.
       KYNOTES_REGION: e2e-1
       KYNOTES_DB_DSN: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kynotes?sslmode=disable
       KYNOTES_SECRETS_PAIRING_SECRET: ${E2E_KYNOTES_PAIRING_SECRET:?}

@@ -1,0 +1,16 @@
+cells
+└──e2e-1
+    └──orgs
+        ├──A
+        │   └──x
+        │       └──n3
+        └──B
+            ├──n4
+            └──n5
+orgs
+├──A
+│   └──n1
+└──B
+    └──sub
+        └──n2
+10 directories, 5 files

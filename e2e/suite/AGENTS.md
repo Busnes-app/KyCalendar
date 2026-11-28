@@ -53,6 +53,8 @@ repository as a copy.
   sealed and page share links and a paired device through KyNotes' API. KyNotes encrypts in the
   client, so the driver stores the notebook's key envelope with SQL, as KyNotes' own tests do
   (`keyForTest`); a documented shortcut, like S7's. `notesOrgRows` reads every `org_id` column.
+- `tree_test.go`: unit test (no Docker) of `orgPrefixes`, the `fs.tree` parser behind
+  `s3OrgFiles`, on a listing captured from the pinned SeaweedFS (`testdata/`).
 - `scenarios_test.go`: `TestScenarios`, covering S1–S3, S6, and S7 of the design across all
   five apps. Runs today: platform mail and the suite mail domain set over the admin API, two
   platform tokens from KyIdentity's CLI (billing `orgs:*`, portal `members:*`), orgs A, B
@@ -74,7 +76,7 @@ repository as a copy.
     404, a1's keep working; after resume the links serve again, while the session and the SSO-derived
     device stay ended. S7: KyNotes purges B: after its purge fence is moved past the late-PUT
     window, no `org_id` column names B but `erased_subjects` (b1's subject, kept so a restore
-    re-erases), no object is left under `orgs/<B>/`, KyIdentity holds no usage for B from KyNotes,
+    re-erases), no object key holds `orgs/<B>/` (bare or after `cells/<cell>/`), KyIdentity holds no usage for B from KyNotes,
     b1's account is gone, B's credentials are refused, and A's notebook and objects are intact.
   - **S6 (org suspension & resume)**: suspends org B via the platform API (`PATCH /v1/orgs/{id}`
     `{"status":"suspended"}`), verifies KyIdentity refuses b1 (`org_suspended`), KyCalendar X
@@ -104,7 +106,7 @@ repository as a copy.
 
 ## Verification
 - `e2e/suite/run.sh` (Docker with compose and buildx; fetches the pinned commits from GitHub).
-- `scripts/check-test-build-tag.sh` checks untagged package discovery and vets the tagged module on every pull request.
+- `scripts/check-test-build-tag.sh` checks untagged package discovery and vets the tagged module and runs its untagged unit tests on every pull request.
 
 ## Child DOX Index
 None.
