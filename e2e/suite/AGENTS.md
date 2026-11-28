@@ -53,6 +53,8 @@ repository as a copy.
   sealed and page share links and a paired device through KyNotes' API. KyNotes encrypts in the
   client, so the driver stores the notebook's key envelope with SQL, as KyNotes' own tests do
   (`keyForTest`); a documented shortcut, like S7's. `notesOrgRows` reads every `org_id` column.
+- `tree_test.go`: unit test (no Docker) of `orgPrefixes`, the `fs.tree` parser behind
+  `s3OrgFiles`, on a listing captured from the pinned SeaweedFS (`testdata/`).
 - `scenarios_test.go`: `TestScenarios`, covering S1–S3, S6, and S7 of the design across all
   five apps. Runs today: platform mail and the suite mail domain set over the admin API, two
   platform tokens from KyIdentity's CLI (billing `orgs:*`, portal `members:*`), orgs A, B
@@ -104,7 +106,7 @@ repository as a copy.
 
 ## Verification
 - `e2e/suite/run.sh` (Docker with compose and buildx; fetches the pinned commits from GitHub).
-- `scripts/check-test-build-tag.sh` checks untagged package discovery and vets the tagged module on every pull request.
+- `scripts/check-test-build-tag.sh` checks untagged package discovery and vets the tagged module and runs its untagged unit tests on every pull request.
 
 ## Child DOX Index
 None.

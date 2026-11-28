@@ -261,9 +261,20 @@ func (s *suite) s3OrgFiles(bucket, org string) int {
 	if err != nil || !treeFiles.MatchString(out) {
 		s.t.Fatalf("list s3 %s: %v\n%s", bucket, err, out)
 	}
-	// fs.tree draws each level as 4 runes of indent, then "├──" or "└──" and the name.
-	n, path := 0, []string{}
-	for _, line := range strings.Split(out, "\n") {
+	n := 0
+	for _, prefix := range orgPrefixes(out, org) {
+		n += s.s3Files(bucket, prefix)
+	}
+	return n
+}
+
+// orgPrefixes returns the bucket-relative prefix of every .../orgs/<org>/ directory in an
+// fs.tree listing of the bucket root. fs.tree prints top-level entries bare (not the root
+// itself), then 4 runes of indent per level, "├──" or "└──" and the name
+// (testdata/fs-tree-seaweedfs-4.52.txt).
+func orgPrefixes(tree, org string) []string {
+	var prefixes, path []string
+	for _, line := range strings.Split(tree, "\n") {
 		depth, name := 0, line
 		if i := strings.Index(line, "──"); i > 0 {
 			depth, name = utf8.RuneCountInString(line[:i])/4+1, line[i+len("──"):]
@@ -272,10 +283,10 @@ func (s *suite) s3OrgFiles(bucket, org string) int {
 		}
 		path = append(path[:min(depth, len(path))], name)
 		if depth > 0 && name == org && path[depth-1] == "orgs" {
-			n += s.s3Files(bucket, strings.Join(path, "/")+"/")
+			prefixes = append(prefixes, strings.Join(path, "/")+"/")
 		}
 	}
-	return n
+	return prefixes
 }
 
 // sql runs one statement against Postgres database db and returns its unaligned output.
