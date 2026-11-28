@@ -414,3 +414,31 @@ func TestReadAcrossAReplacedBase(t *testing.T) {
 		}
 	}
 }
+
+// A feed subscribed after setup is keyed by its first refresh: the first import and every
+// refresh after it are sealed, never stored in plaintext beside an account key.
+func TestFeedSubscribedAfterSetupIsSealed(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	f := newContentFixture(t, st, "usr_sf2", true)
+	cs := st.Calendars()
+	feed := &store.Calendar{ID: "cal_sf2_feed", OwnerKind: "user", OwnerID: f.user, Slug: "feed", Name: "Feed"}
+	if err := cs.CreateSubscribedCalendar(ctx, feed, &store.Subscription{URLSealed: "sealed", URLHost: "example.com", NextCheckAt: time.Now()}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range []string{"Secret board meeting", "Merger with Acme agenda"} {
+		data := []byte(strings.ReplaceAll(sealedEvent, "Secret board meeting", summary))
+		if err := cs.ReplaceSubscriptionObjects(ctx, feed.ID, []*store.CalendarObject{{Name: "ev1.ics", Component: "VEVENT", UID: "ev1", Data: data, FirstStart: 1}}, store.OwnerLimits{}, feedKey); err != nil {
+			t.Fatal(err)
+		}
+		r := rowOf(t, st, feed.ID, "ev1.ics")
+		if r.sealed == nil {
+			t.Fatalf("%q: a feed subscribed after setup is stored in plaintext", summary)
+		}
+		noPlaintext(t, r.data)
+		o, err := cs.GetObject(f.unlocked(), feed.ID, "ev1.ics")
+		if err != nil || o.Locked || !bytes.Equal(o.Data, data) {
+			t.Fatalf("unlocked read: %v %q", err, o.Data)
+		}
+	}
+}

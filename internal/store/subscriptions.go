@@ -200,7 +200,11 @@ FROM calendars c WHERE c.id = ?`), calendarID).Scan(&ownerKind, &ownerID, &subsc
 
 	// A calendar with a key takes each fetched object as a base sealed to its public key, and an
 	// ETag that is an HMAC under the deployment's feed key, never the plaintext's digest (Readers,
-	// feed refresh). Without a key the rows stay as today.
+	// feed refresh). Without a key the rows stay as today. A feed subscribed after setup is
+	// keyed here first, as every other write is (sealForWrite).
+	if err := c.store.keyCalendarTx(ctx, tx, calendarID); err != nil {
+		return err
+	}
 	version, pub, keyed, err := c.store.currentCalendarKey(ctx, tx, calendarID)
 	if err != nil {
 		return err
