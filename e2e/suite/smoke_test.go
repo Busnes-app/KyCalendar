@@ -1,5 +1,3 @@
-//go:build kye2e
-
 // Package suite drives the cross-app multi-tenant end-to-end run
 // (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md). Run it with ./run.sh.
 package suite
@@ -40,6 +38,9 @@ const (
 
 type app struct{ repo, sha string }
 
+// enable_test.go opts in when the harness is built with kye2e.
+var suiteEnabled bool
+
 // target is one app in the smoke run: how its kye2e image is built and what each build says.
 type target struct {
 	name     string   // apps.lock name; images/<name>.Dockerfile
@@ -51,7 +52,7 @@ type target struct {
 	issuer   string   // the issuer variable, and what the kye2e build says to a non-.test one (empty if checked at runtime)
 	refuseIs string
 	// releaseArgs are build arguments for the app's own Dockerfile; fromRelease builds the
-	// kye2e image on the release image (the build context named release).
+	// kye2e image on a digest-pinned context from the local release image.
 	releaseArgs []string
 	fromRelease bool
 }
@@ -127,6 +128,10 @@ type suite struct {
 
 // start builds the pinned images and brings the install up. The stack is removed when t ends.
 func start(t *testing.T) *suite {
+	t.Helper()
+	if !suiteEnabled {
+		t.Skip("run e2e/suite/run.sh to start the suite")
+	}
 	s := &suite{t: t, pins: lock(t)}
 	ca, cert, key := tlsFiles(t)
 	adminPass := "Aa1!" + random(12)
@@ -160,11 +165,7 @@ func start(t *testing.T) *suite {
 		build(t, rel, append(a.releaseArgs, pin.repo+"#"+pin.sha)...) // the app's own Dockerfile: its release build
 		args := []string{"-f", "images/" + a.name + ".Dockerfile", "--build-arg", "REPO=" + pin.repo, "--build-arg", "SHA=" + pin.sha}
 		if a.fromRelease {
-			// A docker-container builder cannot read the daemon's images, so the release image
-			// goes in as an OCI layout: the same build again, from cache.
-			oci := filepath.Join(t.TempDir(), "release")
-			build(t, "", append(a.releaseArgs, "--output", "type=oci,tar=false,dest="+oci, pin.repo+"#"+pin.sha)...)
-			args = append(args, "--build-context", "release=oci-layout://"+oci)
+			args = append(args, releaseContext(t, a, pin)...)
 		}
 		build(t, img, append(args, "images")...)
 		if !hasTag(t, img, a.bin) || hasTag(t, rel, a.bin) {
@@ -409,6 +410,31 @@ func lock(t *testing.T) map[string]app {
 		t.Fatal(err)
 	}
 	return apps
+}
+
+// releaseContext exports the cached release image as an OCI layout for docker-container builders,
+// which cannot read the daemon's images. Both references use the exported image digest.
+func releaseContext(t *testing.T, a target, pin app) []string {
+	t.Helper()
+	dir := t.TempDir()
+	oci, metadata := filepath.Join(dir, "release"), filepath.Join(dir, "metadata.json")
+	build(t, "", append(a.releaseArgs, "--output", "type=oci,tar=false,dest="+oci, "--metadata-file", metadata, pin.repo+"#"+pin.sha)...)
+	var export struct {
+		Digest string `json:"containerimage.digest"`
+	}
+	raw, err := os.ReadFile(metadata)
+	if err != nil {
+		t.Fatalf("read %s release build metadata: %v", a.name, err)
+	}
+	if err := json.Unmarshal(raw, &export); err != nil {
+		t.Fatalf("decode %s release build metadata: %v", a.name, err)
+	}
+	sha, ok := strings.CutPrefix(export.Digest, "sha256:")
+	if !ok || len(sha) != 64 {
+		t.Fatalf("%s release build metadata has no SHA-256 image digest", a.name)
+	}
+	return []string{"--build-arg", "RELEASE_SHA256=" + sha,
+		"--build-context", "release@" + export.Digest + "=oci-layout://" + oci + "@" + export.Digest}
 }
 
 // build makes a local image; E2E_BUILDER names a buildx builder (on Major, one with a memory cap).

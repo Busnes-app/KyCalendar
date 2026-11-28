@@ -1,5 +1,3 @@
-//go:build kye2e
-
 package suite
 
 import (

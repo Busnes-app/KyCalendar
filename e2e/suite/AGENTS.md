@@ -13,10 +13,10 @@ repository as a copy.
   `kye2e/<app>:<sha>`. No app's own Dockerfile changes; the release image is the app's own
   Dockerfile at the same commit (`kye2e-release/<app>:<sha>`). Nothing is pushed. KyPost's
   release image is built with `INSTALL_OLLAMA=false`, and its kye2e image is that release image
-  with only `kypost-server` replaced by the tagged build (the release image goes in as an OCI
-  layout build context, because a docker-container builder cannot read the daemon's images).
-  `FROM release` names that context, not a registry image; Scorecard's Pinned-Dependencies cannot
-  see named contexts and reads the line as unpinned, a dismissed false positive.
+  with only `kypost-server` replaced by the tagged build. A docker-container builder uses the
+  local OCI layout because it cannot read the daemon's images. The harness reads the layout's
+  image digest from Buildx metadata and uses it in both `FROM release@sha256:${RELEASE_SHA256}`
+  and the named context. Scorecard recognizes the digest in the `FROM` reference.
 - `compose/compose.yml`: the topology. Every service sets `mem_limit` and an equal
   `memswap_limit`, together at most 5 GiB (dockerd's containers are outside any `kslot` scope);
   the driver refuses otherwise. Three random loopback ports are published for the driver and
@@ -31,7 +31,7 @@ repository as a copy.
   table-backed `multi` mode serving both cells (`e2e-1,e2e-2`) with `KYPOST_NATIVE_MAIL=false`
   (native receiving/SMTP waits on CoreDNS), `PAIRING_SECRET` bound to KyIdentity's
   `suite_webhook` secret, and `sso.json` stored in `kypost_volumes.documents`.
-- `smoke_test.go` (`//go:build kye2e`): `start` brings one install up (images, KyIdentity's
+- `smoke_test.go`: `start` brings one install up (images, KyIdentity's
   fresh PostgreSQL initialization, the bootstrap administrator's forced password change, the
   `kycalendar`, `kymessages`, and `kypost` OIDC clients, `kycalendar`'s region map `e2e-1` → X,
   `e2e-2` → Y, and the `kypost` `suite_webhook` paired system linked to the `kypost` app
@@ -76,12 +76,14 @@ repository as a copy.
   KyIdentity's platform API (E5), except S7's `orgs.delete_after` timestamp fast-forward to avoid
   waiting out the real deletion grace window.
 - The driver generates secrets per run. Compose sets `PUSH_RELAY_URL` and `APNS_RELAY_URL` to empty for each test app.
+- Keep test files discoverable by default so CodeQL finds the Go package. `enable_test.go`
+  opts in with `kye2e`. Every Docker-backed test calls `start`, which skips before setup by default.
 - Runs only from `run.sh`: on Major `E2E_BUILDER=<memory-capped buildx builder> kslot e2e/suite/run.sh`,
   and in `.github/workflows/suite-e2e.yml` (manual and nightly, never a required check).
 
 ## Verification
 - `e2e/suite/run.sh` (Docker with compose and buildx; fetches the pinned commits from GitHub).
-- `scripts/check-test-build-tag.sh` vets the module with the tag on every pull request.
+- `scripts/check-test-build-tag.sh` checks untagged package discovery and vets the tagged module on every pull request.
 
 ## Child DOX Index
 None.
