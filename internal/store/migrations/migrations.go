@@ -620,6 +620,9 @@ CREATE TABLE sso_logouts (
 	// and the rebuild drops what earlier deletes left (CE2: keying deletes an account's rows).
 	{Version: 44, Name: "task_search_secure_delete", SQLite: `INSERT INTO task_search(task_search, rank) VALUES ('secure-delete', 1);
 INSERT INTO task_search(task_search) VALUES ('rebuild');`, Postgres: `SELECT 1;`},
+	// CE3: a message planned from a sealed object's skeleton carries the writer's content patch,
+	// so a recipient's copy keeps its content (NULL: the body is the sender's whole content).
+	{Version: 45, Name: "outbox_worker_patch", SQLite: `ALTER TABLE scheduling_outbox ADD COLUMN worker_patch TEXT;`, Postgres: `ALTER TABLE scheduling_outbox ADD COLUMN worker_patch TEXT;`},
 }
 
 // storagePool is the product-side shared state of KyIdentity's reserved-byte grant.

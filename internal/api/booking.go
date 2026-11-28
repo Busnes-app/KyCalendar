@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Busnes-app/kycalendar/internal/booking"
+	"github.com/Busnes-app/kycalendar/internal/calendar"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/itip"
@@ -870,6 +871,15 @@ func (s *Server) handleBookingReschedule(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Failed to load the booking")
 		return
+	}
+	if o.Sealed != nil {
+		// The event is sealed and this anonymous request holds no key, so cal has no content.
+		// The booker's update carries the booking type's title, which the page shows anyone,
+		// never nothing; the stored event keeps the host's own (a keyless write changes only
+		// readable properties). The booker copy (content encryption spec, Readers) replaces this.
+		if m, err := calendar.Master(cal); err == nil {
+			m.Props.SetText(ical.PropSummary, h.t.Title)
+		}
 	}
 	now := time.Now()
 	slot := booking.Interval{Start: start, End: start.Add(h.rules.Duration)}

@@ -188,7 +188,11 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 			if err != nil {
 				return err
 			}
-			return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
+			// Only some occurrences change: their readable properties and a planned patch apply.
+			if next, err = keepPlainContent(ctx, o, next); err != nil {
+				return errPermanent{"invalid_object"}
+			}
+			return s.putDelivery(copyContent(ctx, false), c, o.Name, next, o.ETag, false, deliveryID, recipientID)
 		}
 	}
 	copyRequest := itip.AttendeeCopy
@@ -200,7 +204,10 @@ func (s *Scheduler) deliverInto(ctx context.Context, c *store.Calendar, o *store
 		return errPermanent{"invalid_object"}
 	}
 	stamp(next)
-	return s.putDelivery(ctx, c, o.Name, next, o.ETag, false, deliveryID, recipientID)
+	if next, err = keepPlainContent(ctx, o, next); err != nil {
+		return errPermanent{"invalid_object"}
+	}
+	return s.putDelivery(copyContent(ctx, true), c, o.Name, next, o.ETag, false, deliveryID, recipientID)
 }
 
 // cancellationCopy is shared by normal delivery and metadata-authorized sponsorship cleanup.

@@ -366,9 +366,8 @@ Choices made where the spec left them open, each the narrowest that keeps its pr
   row there, is sealed as a base under a fresh worker key used for that one object (not one key
   per run). A worker writing over a sealed row changes readable properties only: its object's
   skeleton replaces `data` and the parts stay, so content never reaches `data` and nothing the
-  worker could not read is lost. Until CE3's patches and `keep-alarms` bases, a worker's
-  *content* change to an existing sealed object (an organizer's new title reaching an
-  attendee's copy, a room's `LOCATION`, a KyMessages link) is dropped; readable changes apply.
+  worker could not read is lost. CE3's patches and `keep-alarms` bases (below) carry the
+  content changes workers make; any other worker write over a sealed row is still readable-only.
 - **Rotation** rewraps the account's older calendar seeds to K1 rather than reaching them through
   `account_previous_keys` (which it still writes). Versions made before the rotation stay
   exposed to a copy taken during the transition, as E11 already says; versions made at and after
@@ -377,9 +376,49 @@ Choices made where the spec left them open, each the narrowest that keeps its pr
 
 **The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. **ETags change (owner decision, 28 Nov 2026, option B; this supersedes the earlier text that kept them).** A legacy ETag is the SHA-256 of the plaintext, so a database or backup reader could confirm a guess about a predictable event. In the same transaction that seals a row, the sweep sets its ETag to the SHA-256 of the skeleton and the sealed parts and logs a sync change (the calendar's sequence, which is the CTag and sync token, advances), so each CalDAV client refetches every swept object once and gets the same bytes. Counted usage does not change. Rows of accounts that never ran setup are not touched (option A, the spec default). Subscribed calendars are not swept either: a feed refresh rewrites their rows in plaintext until feeds are sealed (CE3), and sealing them first would leave a stale base beside the refresh. Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
 
-Left for later PRs: folding and patches (CE3), outbox, booking-hold
-and feed sealing (CE3), pending shares (CE5), passkeys, password slots, reset, admin pages,
-`export-org`/`open-export`, and the 2,000-object multiget timing.
+Left for later PRs: outbox, booking-hold and feed sealing (CE3), pending shares (CE5), passkeys,
+password slots, reset, admin pages, `export-org`/`open-export`, and the 2,000-object multiget
+timing. Folding and patches are built (As built, CE3 worker content changes).
+
+## As built (CE3, worker content changes)
+
+A worker states what it changes in a sealed object's content (`store.WithWorkerContent`); a
+worker write without it stays readable-only, as in CE2.
+
+- **Organizer updates** (`deliverInto`, for the outbox and KyPost alike): a `REQUEST` over an
+  attendee's sealed copy is a `keep-alarms` base sealed under a fresh worker key. It keeps the
+  newest unmarked base (the alarms' source) and drops every other part, so fifty updates leave two
+  bases. `plain_size` is the update minus its own alarm skeletons plus the row's `alarm_bytes`;
+  past `MaxObjectSize` the delivery fails permanently (`too_large`), never stored as a skeleton.
+  A message about some occurrences only stays readable-only for its content (the gap left).
+- **Patches** (E5): workers may write `set LOCATION` (no values removes it, under the same label)
+  and `conference`, nothing else (`ErrWorkerPatch`, refused before sealing). A patch replaces an
+  earlier one with its label; past 16 patches since the newest base, past `MaxObjectSize`, or
+  refused by a quota, the patch is dropped, its readable change stays, and
+  `content_part_dropped` is audited with the object and a reason (`cap`, `size`, `quota`).
+  The KyMessages sync writes its room link as a `conference` patch.
+- **Sizes** (E4): every write with the plaintext in hand records `content_sizes` (per patch
+  label: the bytes the `LOCATION` of each component and the room link add, and per component
+  kind what a master's content adds to an override that inherits it) and `alarm_bytes`, measured
+  as `skeleton.Merge` writes the object. A `LOCATION` patch moves `plain_size` exactly; a room
+  link counts its `CONFERENCE` line exactly and its `Join:` line at its largest escaping and
+  folding, so the count may run a few bytes high until the next fold and never low. A worker's
+  override adds the master's inherited size. Raw client bytes that `Merge` would re-fold (lines
+  over 75 octets) make the merged object differ from `plain_size` by that re-folding until a
+  fold re-measures it.
+- **Fold** on an unlocked read of an object with more than one part: one base under the
+  calendar's current AES key, sequence number `parts_version`, written only where `sealed`,
+  `data` and `parts_version` are still what the read saw; its worker keys go and the ETag stays.
+  A lone worker base (a delivery, the sweep) is not folded, so a first sync after the sweep
+  writes nothing.
+- **Messages planned from a skeleton.** A worker's write over a sealed object (the room link, a
+  booking reschedule) plans its messages from the skeleton. Such outbox rows carry the write's
+  patch in `scheduling_outbox.worker_patch` (migration 45; NULL means the body is the sender's
+  whole content). Delivering one to an existing copy applies only its readable change and that
+  patch: in the store for a sealed copy, and by merging the copy's own plaintext for a legacy one
+  (`keepPlainContent`), so no copy loses its title to a body that never had it. A first delivery
+  of such a message, and its mail to people outside the instance, still carry no title: the
+  booker copy and outbox sealing (E14) are what remains of CE3.
 
 ## Phased build plan
 

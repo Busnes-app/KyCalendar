@@ -574,7 +574,7 @@ func (s *Server) saveEventMeeting(ctx context.Context, writer *store.User, c *st
 		return nil, errContentLocked
 	case errors.Is(err, store.ErrReadOnly):
 		return nil, errReadOnlyCalendar
-	case errors.Is(err, davbackend.ErrTooLarge):
+	case errors.Is(err, davbackend.ErrTooLarge), errors.Is(err, store.ErrTooLarge):
 		return nil, &apiError{status: http.StatusRequestEntityTooLarge, msg: "The event is too large", code: "too_large"}
 	case errors.Is(err, store.ErrNotFound):
 		return nil, &apiError{status: http.StatusNotFound, msg: "No such calendar"}

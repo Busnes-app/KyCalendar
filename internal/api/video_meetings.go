@@ -22,6 +22,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/davbackend"
 	"github.com/Busnes-app/kycalendar/internal/itip"
 	"github.com/Busnes-app/kycalendar/internal/kymessages"
+	"github.com/Busnes-app/kycalendar/internal/skeleton"
 	"github.com/Busnes-app/kycalendar/internal/sso"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -406,6 +407,9 @@ func (s *Server) writeMeetingLink(ctx context.Context, owner *store.User, c *sto
 		return
 	}
 	calendar.SetConference(cal, url)
+	// The sync holds no key: on a sealed event the link is a conference patch, which sets it
+	// without reading the description (content encryption E5).
+	ctx = store.WithWorkerContent(ctx, &store.WorkerContent{Patch: []skeleton.Op{{Op: "conference", URL: url}}})
 	if _, apiErr := s.saveEvent(ctx, owner, c, o.Name, cal, o.ETag, false); apiErr != nil && apiErr != errEventChanged {
 		log.Printf("[KYMESSAGES] meeting %s: writing the link into its event failed: %s", o.Name, apiErr.msg)
 	}

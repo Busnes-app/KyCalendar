@@ -101,3 +101,10 @@ func SetBetweenAccountAndSlotForTest(f func()) func() {
 	betweenAccountAndSlot = f
 	return func() { betweenAccountAndSlot = old }
 }
+
+// SetFoldHookForTest runs f between a fold's read and its write, and returns the restore func.
+func SetFoldHookForTest(f func()) func() {
+	old := foldHook
+	foldHook = f
+	return func() { foldHook = old }
+}

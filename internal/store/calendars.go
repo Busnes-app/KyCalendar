@@ -3,9 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/Busnes-app/kycalendar/internal/skeleton"
 )
 
 type calendarStore struct{ store *SQLStore }
@@ -385,7 +388,14 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	if err != nil {
 		return false, err
 	}
-	o.ETag = objectETag(stored.data, stored.sealed)
+	if stored.skeletonOnly {
+		// Planned from a skeleton: the recipients' copies take only its readable change and
+		// patch, never its missing content as a new base (scheduling_outbox.worker_patch).
+		patch, _ := json.Marshal(append([]skeleton.Op{}, stored.patch...))
+		for _, m := range rows {
+			m.WorkerPatch = string(patch)
+		}
+	}
 	var other string
 	err = tx.QueryRowContext(ctx, c.q(`SELECT name FROM calendar_objects WHERE calendar_id = ? AND uid = ? AND name <> ?`),
 		o.CalendarID, o.UID, o.Name).Scan(&other)
@@ -421,20 +431,6 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 			return false, err
 		}
 	}
-	if limited {
-		var ownerReserve int64
-		if reserve != nil && kind == "user" && id == reserve.sender {
-			ownerReserve = reserved
-		}
-		n, used, err := c.ownerUsage(ctx, tx, kind, id, o.CalendarID, o.Name)
-		if err != nil {
-			return false, err
-		}
-		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (ownerMaxBytes > 0 && used+int64(len(o.Data))+ownerReserve > ownerMaxBytes) {
-			return false, ErrQuotaExceeded
-		}
-	}
-
 	if reserve != nil {
 		senders = append(senders, reserve.sender)
 	}
@@ -449,6 +445,33 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		}
 		if used+reserved > maxBytes {
 			return false, ErrQuotaExceeded
+		}
+	}
+
+	// A worker's content patch the quota refuses is dropped, and its readable change stays (E4):
+	// the checks that count the object run again without it.
+	refuse := func() (bool, error) {
+		if stored.fallback == nil {
+			return false, ErrQuotaExceeded
+		}
+		stored = *stored.fallback
+		return true, nil
+	}
+quota:
+	if limited {
+		var ownerReserve int64
+		if reserve != nil && kind == "user" && id == reserve.sender {
+			ownerReserve = reserved
+		}
+		n, used, err := c.ownerUsage(ctx, tx, kind, id, o.CalendarID, o.Name)
+		if err != nil {
+			return false, err
+		}
+		if (lim.MaxObjects > 0 && n+1 > lim.MaxObjects) || (ownerMaxBytes > 0 && used+stored.counted()+ownerReserve > ownerMaxBytes) {
+			if again, err := refuse(); !again {
+				return false, err
+			}
+			goto quota
 		}
 	}
 
@@ -470,21 +493,28 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		if err != nil {
 			return false, err
 		}
-		if used+int64(len(o.Data))+othersReserved+reserved+sumGrowth(growth) > lim.MaxTotalBytes {
-			return false, ErrQuotaExceeded
+		if used+stored.counted()+othersReserved+reserved+sumGrowth(growth) > lim.MaxTotalBytes {
+			if again, err := refuse(); !again {
+				return false, err
+			}
+			goto quota
 		}
 	}
+	o.ETag = objectETag(stored.data, stored.sealed)
 
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, sealed, parts_version, plain_size, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, sealed, parts_version, plain_size, content_sizes, alarm_bytes, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
 first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at, invitation_sender = excluded.invitation_sender, invitation_attendee = excluded.invitation_attendee, invitation_recipient = excluded.invitation_recipient,
-sealed = excluded.sealed, parts_version = excluded.parts_version, plain_size = excluded.plain_size`),
+sealed = excluded.sealed, parts_version = excluded.parts_version, plain_size = excluded.plain_size, content_sizes = excluded.content_sizes, alarm_bytes = excluded.alarm_bytes`),
 		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, stored.data, o.FirstStart, o.LastEnd, o.ModifiedAt, o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient,
-		stored.sealed, stored.version, stored.plainSize, o.CalendarID)
+		stored.sealed, stored.version, stored.plainSize, stored.sizesJSON(), stored.alarms, o.CalendarID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return false, ErrUIDConflict
 		}
+		return false, err
+	}
+	if err := c.stored(ctx, tx, o.CalendarID, o.Name, stored); err != nil {
 		return false, err
 	}
 	if book != nil {
