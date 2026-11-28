@@ -326,21 +326,19 @@ func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *Calenda
 }
 
 // readableOnly is a keyless write over a sealed row that changes readable properties alone: its
-// skeleton replaces data and the parts stay. plain_size moves with the skeleton, and grows by
-// the master's content for each override the writer added, which inherits it (E2, E4).
+// skeleton replaces data and the parts stay. plain_size moves with the skeleton and with the
+// content of each override the writer added or dropped (E2, E4).
 func readableOnly(o *CalendarObject, w sealedWrite, prev prevObject) (sealedWrite, error) {
 	skel, err := skeleton.Split(o.Data)
 	if err != nil {
 		return w, err
 	}
 	size := prev.size.Int64 + int64(len(skel)) - int64(len(prev.data))
-	added, err := skeleton.AddedOverrides(prev.data, skel)
+	overrides, err := skeleton.OverrideContent(prev.data, skel, prev.sizes)
 	if err != nil {
 		return w, err
 	}
-	for comp, n := range added {
-		size += int64(n) * prev.sizes[skeleton.InheritLabel(comp)]
-	}
+	size += overrides
 	w.data, w.sealed, w.skeletonOnly = skel, prev.sealed, true
 	w.plainSize = sql.NullInt64{Int64: size, Valid: true}
 	w.sizes, w.alarms = prev.sizes, prev.alarms
@@ -501,6 +499,14 @@ func (c *calendarStore) workerPatch(ctx context.Context, tx *sql.Tx, o *Calendar
 		add := skeleton.Adds(op, events)
 		size += add - old
 		sizes[key] = add
+		if op.Op != "conference" && op.RecurrenceID != "" { // the override's content, should it be dropped
+			comp := strings.ToUpper(op.Component)
+			ov := skeleton.OverrideLabel(comp, op.RecurrenceID)
+			if _, ok := sizes[ov]; !ok {
+				sizes[ov] = sizes[skeleton.InheritLabel(comp)]
+			}
+			sizes[ov] += add - old
+		}
 	}
 	if size > calendar.MaxObjectSize {
 		return drop("size")

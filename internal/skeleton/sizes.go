@@ -12,7 +12,8 @@ import (
 // (content encryption E4): for each label a worker patch can carry (LocationLabel,
 // ConferenceLabel), the bytes the content it would replace adds to the merged object, and for
 // each kind of master component (InheritLabel), what its content adds to an override that has
-// none of its own. Every size is measured as Merge writes the object.
+// none of its own, and for each override the base carries, what its own content adds. Every
+// size is measured as Merge writes the object.
 type Sizes map[string]int64
 
 // ConferenceLabel is the label of a conference patch (E5).
@@ -25,6 +26,14 @@ func LocationLabel(component, recurrenceID string) string {
 
 // InheritLabel names the content an override of component inherits from its master.
 func InheritLabel(component string) string { return "inherit " + component }
+
+// OverrideLabel names the content one component shows: the master's is InheritLabel.
+func OverrideLabel(component, recurrenceID string) string {
+	if recurrenceID == "" {
+		return InheritLabel(component)
+	}
+	return "override " + component + " " + recurrenceID
+}
 
 // Measure is raw's Sizes and the bytes of its VALARMs (alarm_bytes, E4).
 func Measure(raw []byte) (Sizes, int64, error) {
@@ -47,9 +56,7 @@ func Measure(raw []byte) (Sizes, int64, error) {
 				alarms += size(a)
 			}
 		}
-		if rid == "" {
-			sizes[InheritLabel(c.Name)] = size(c) - size(strip(c))
-		}
+		sizes[OverrideLabel(c.Name, rid)] = size(c) - size(strip(c))
 	}
 	bare := &ical.Calendar{Component: clone(cal.Component)}
 	calendar.SetConference(bare, "")
@@ -145,27 +152,44 @@ func Count(raw []byte, name string) (int, error) {
 	return n, nil
 }
 
-// AddedOverrides counts, per component name, the overrides (components with a RECURRENCE-ID)
-// next holds and prev does not: a worker made them from the master, so they inherit its
-// content (E2).
-func AddedOverrides(prev, next []byte) (map[string]int, error) {
+// OverrideContent is the content bytes the overrides (components with a RECURRENCE-ID) that next
+// adds bring to the merged object, less those of the overrides it drops (E2). Merge gives an
+// override the base's content for its RECURRENCE-ID, or the master's when the base has none.
+func OverrideContent(prev, next []byte, sizes Sizes) (int64, error) {
 	before, err := decode(prev)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	after, err := decode(next)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	had := map[string]bool{}
-	for _, c := range before.Children {
-		had[c.Name+"/"+recurrenceID(c)] = true
+	overrides := func(cal *ical.Calendar) map[[2]string]bool {
+		m := map[[2]string]bool{}
+		for _, c := range cal.Children {
+			if rid := recurrenceID(c); rid != "" && (c.Name == ical.CompEvent || c.Name == ical.CompToDo) {
+				m[[2]string{c.Name, rid}] = true
+			}
+		}
+		return m
 	}
-	out := map[string]int{}
-	for _, c := range after.Children {
-		if rid := recurrenceID(c); rid != "" && (c.Name == ical.CompEvent || c.Name == ical.CompToDo) && !had[c.Name+"/"+rid] {
-			out[c.Name]++
+	content := func(k [2]string) int64 {
+		if n, ok := sizes[OverrideLabel(k[0], k[1])]; ok {
+			return n
+		}
+		return sizes[InheritLabel(k[0])]
+	}
+	had, has := overrides(before), overrides(after)
+	var n int64
+	for k := range has {
+		if !had[k] {
+			n += content(k)
 		}
 	}
-	return out, nil
+	for k := range had {
+		if !has[k] {
+			n -= content(k)
+		}
+	}
+	return n, nil
 }

@@ -37,7 +37,8 @@ It does no cryptography: `internal/contentkey` seals and opens the plaintexts.
   refuses nesting KyCalendar stores. The writer quotes parameters, folds at 75 octets on character
   boundaries, and its output must read back with go-ical.
 - **Sizes (`sizes.go`, CE3):** `Measure` gives the sizes a keyless writer needs (per patch label
-  and per master's inherited content) and the alarms' bytes, all as the package's writer writes
+  per master's inherited content and per override's own content in the base) and the alarms'
+  bytes; `OverrideContent` is what a skeleton's added and dropped overrides change in it, all as the package's writer writes
   them; `Adds` bounds what a worker op adds (exact for `LOCATION`, never low for a room link).
   `WorkerOp` is the set a worker may patch: `set LOCATION` on `VEVENT`/`VTODO`, and `conference`.
 - **Fast path:** a lone base whose own skeleton equals the stored one is served byte for byte,

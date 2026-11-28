@@ -92,8 +92,11 @@ func textOf(c *ical.Component, name string) string {
 func sizeIsMerged(t *testing.T, f contentFixture, name, when string) {
 	t.Helper()
 	r := rowOf(t, f.st, f.cal.ID, name)
-	if o := f.read(t, name); r.plainSize == nil || *r.plainSize != int64(len(o.Data)) {
-		t.Fatalf("%s: plain_size %v, merged object %d bytes", when, r.plainSize, len(o.Data))
+	if r.plainSize == nil {
+		t.Fatalf("%s: no plain_size", when)
+	}
+	if o := f.read(t, name); *r.plainSize != int64(len(o.Data)) {
+		t.Fatalf("%s: plain_size %d, merged object %d bytes", when, *r.plainSize, len(o.Data))
 	}
 }
 
@@ -523,5 +526,52 @@ func TestFoldNeverRacesAWriteInFlight(t *testing.T) {
 	ev := eventOf(t, f.read(t, "mtg.ics").Data, "")
 	if textOf(ev, ical.PropLocation) != "Room 1" || calendar.Conference(ev) != "https://messages.example.com/r/1" {
 		t.Fatalf("after a fold raced a write: %+v", ev.Props)
+	}
+}
+
+// dropOverride removes the override of rid, as an occurrence-only CANCEL does to a copy.
+func dropOverride(rid string) func(*ical.Calendar) {
+	return func(cal *ical.Calendar) {
+		kept := cal.Children[:0]
+		for _, c := range cal.Children {
+			if p := c.Props.Get(ical.PropRecurrenceID); p == nil || p.Value != rid {
+				kept = append(kept, c)
+			}
+		}
+		cal.Children = kept
+	}
+}
+
+// A worker that drops an override, its own content in the base or the master's it inherited,
+// with a room's location on it, takes that content out of plain_size before any unlocked read
+// folds the object (E4).
+func TestDroppedOverrideLeavesPlainSize(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_do", true)
+	rid := "20261202T090000Z"
+	withOwn := strings.Replace(series, "END:VEVENT\r\n", "END:VEVENT\r\nBEGIN:VEVENT\r\nUID:ser\r\nRECURRENCE-ID:"+rid+"\r\nDTSTAMP:20261127T000000Z\r\nDTSTART:"+rid+"\r\n"+
+		fold("SUMMARY:"+strings.Repeat("y", 8<<10))+"LOCATION:Room 9\r\nORGANIZER:mailto:me@example.com\r\nATTENDEE:mailto:me@example.com\r\nEND:VEVENT\r\n", 1)
+	for _, inherited := range []bool{false, true} {
+		name := fmt.Sprintf("ser-%v.ics", inherited)
+		body := withOwn
+		if inherited {
+			body = series
+		}
+		body = strings.ReplaceAll(body, "UID:ser\r\n", fmt.Sprintf("UID:ser-%v\r\n", inherited))
+		if _, err := f.put(t, f.unlocked(), name, body); err != nil {
+			t.Fatal(err)
+		}
+		if inherited {
+			if err := f.workerEdit(t, name, addOverride(rid), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := f.workerEdit(t, name, func(*ical.Calendar) {}, setLocation(rid, strings.Repeat("z", 1500))); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.workerEdit(t, name, dropOverride(rid), nil); err != nil {
+			t.Fatal(err)
+		}
+		sizeIsMerged(t, f, name, fmt.Sprintf("after dropping the override (inherited %v)", inherited))
 	}
 }
