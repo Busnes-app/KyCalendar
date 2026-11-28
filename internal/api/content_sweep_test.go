@@ -161,3 +161,42 @@ func TestTaskSearchIsTheSameAfterEncryption(t *testing.T) {
 		t.Fatalf("search changed with encryption:\nbefore %v\nafter  %v", before, after)
 	}
 }
+
+// TestEmptySweepStillPurgesTheWAL: an unlocked save seals the last legacy row before the
+// sweep runs, so the sweep seals nothing, and it still truncates the WAL that holds the old
+// plaintext.
+func TestEmptySweepStillPurgesTheWAL(t *testing.T) {
+	srv, st, cfg := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
+	if cfg.Database.Driver != "sqlite" {
+		t.Skip("SQLite's WAL")
+	}
+	alice := loginAs(t, srv, st, "alice", "user")
+	phone := seedAppPassword(t, st, "usr_alice")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	path := "/dav/usr_alice/calendars/default/"
+	rawDAV(t, ts, "PROPFIND", "/dav/usr_alice/calendars/", "alice", phone, "", map[string]string{"Depth": "1"})
+	put := func() {
+		if r := rawDAV(t, ts, "PUT", path+"evt-s.ics", "alice", phone, evSecret, map[string]string{"Content-Type": "text/calendar"}); r.StatusCode >= 300 {
+			t.Fatalf("PUT %d %s", r.StatusCode, readAll(r))
+		}
+	}
+	put()
+	w := do(t, srv, "POST", "/api/encryption/recovery-code", alice)
+	code := between(w.Body.String(), `"recovery_code":"`, `"`)
+	if w := doJSON(t, srv, "POST", "/api/encryption/setup", alice, map[string]string{"passphrase": "correct horse battery", "recovery_code": code}); w.Code != http.StatusNoContent {
+		t.Fatalf("setup: %d %s", w.Code, w.Body.String())
+	}
+	put() // the phone is unlocked through the transition, so this save seals the row
+	if n, _ := st.Content().LegacyRows(context.Background()); n != 0 {
+		t.Fatalf("%d legacy rows left after the unlocked save", n)
+	}
+	wal := filepath.Join(cfg.Database.DataDir, "kycalendar.db-wal")
+	if b, _ := os.ReadFile(wal); !strings.Contains(string(b), "Secret merger call") {
+		t.Fatal("fixture: the WAL does not hold the old plaintext")
+	}
+	srv.SweepContent(context.Background())
+	if b, err := os.ReadFile(wal); err != nil || strings.Contains(string(b), "Secret merger call") {
+		t.Fatalf("the WAL still holds the old plaintext after an empty sweep (%v)", err)
+	}
+}

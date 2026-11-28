@@ -328,8 +328,10 @@ func (s *Server) SweepContent(ctx context.Context) {
 	}
 	if total > 0 {
 		log.Printf("[CONTENT] sweep sealed %d legacy rows", total)
-		if err := s.store.Content().PurgeFreed(ctx); err != nil {
-			log.Printf("[CONTENT] purge after sweep: %v", err)
-		}
+	}
+	// Every run, not only one that sealed rows: an unlocked save may have sealed the last
+	// legacy row, leaving its plaintext in the WAL. A busy checkpoint is retried next run.
+	if err := s.store.Content().PurgeFreed(ctx); err != nil {
+		log.Printf("[CONTENT] purge after sweep: %v", err)
 	}
 }

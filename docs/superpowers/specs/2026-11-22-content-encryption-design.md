@@ -509,8 +509,9 @@ turns it on.
 - **Weak passphrases** can be attacked offline from a stolen database (E8).
 - **Plaintext left in the database's own storage.** SQLite: freed pages are zeroed
   (`secure_delete`), FTS5 deletes take terms out of the index (`secure-delete`, migration 44,
-  which also rebuilt the index once to drop earlier deletes' remnants), and the sweep truncates
-  the WAL, so after setup and the sweep neither the file nor a `VACUUM INTO` snapshot holds the
+  which also rebuilt the index once to drop earlier deletes' remnants), and every sweep run truncates
+  the WAL, including a run that sealed nothing because unlocked saves sealed the rows first
+  (a checkpoint a reader blocks is retried at the next run), so after setup and the sweep neither the file nor a `VACUUM INTO` snapshot holds the
   account's task text. PostgreSQL: the rows keying deletes and the sweep replaces stay as dead
   tuples until VACUUM reuses their space, and in the WAL and its archive, so a physical copy
   (a disk image, a base backup, a replica's files) can hold them. A `pg_dump` and the backup

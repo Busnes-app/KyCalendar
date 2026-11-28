@@ -343,8 +343,8 @@ func (c *calendarStore) openObject(ctx context.Context, u *Unlock, o *CalendarOb
 	}
 	// A write replaced the object after it was read and dropped the worker keys its old parts
 	// named: read the object again, once.
-	err = c.store.db.QueryRowContext(ctx, c.q(`SELECT data, sealed, etag FROM calendar_objects WHERE calendar_id = ? AND name = ?`),
-		o.CalendarID, o.Name).Scan(&o.Data, &o.Sealed, &o.ETag)
+	err = c.store.db.QueryRowContext(ctx, c.q(`SELECT uid, data, sealed, etag FROM calendar_objects WHERE calendar_id = ? AND name = ?`),
+		o.CalendarID, o.Name).Scan(&o.UID, &o.Data, &o.Sealed, &o.ETag)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrLocked // deleted meanwhile
 	} else if err != nil {
@@ -834,8 +834,14 @@ func (c contentStore) PurgeFreed(ctx context.Context) error {
 	if c.s.driver == "postgres" {
 		return nil
 	}
-	_, err := c.s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
-	return err
+	var busy, logFrames, done int
+	if err := c.s.db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &done); err != nil {
+		return err
+	}
+	if busy != 0 {
+		return errors.New("store: WAL checkpoint was blocked by a reader")
+	}
+	return nil
 }
 
 // wrapVersion stores calendar key version k, wrapped to every holder's current account key. With

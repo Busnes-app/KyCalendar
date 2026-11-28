@@ -316,20 +316,23 @@ func TestSweepLeavesSubscribedCalendars(t *testing.T) {
 func TestReadAcrossAReplacedBase(t *testing.T) {
 	st := newTestStore(t)
 	f := newContentFixture(t, st, "usr_rb", false)
-	legacyCorpus(t, f, 1)
+	legacyCorpus(t, f, 2)
 	setUp(t, f)
 	if sweepAll(t, st) == 0 {
 		t.Fatal("nothing swept")
 	}
-	stale, err := st.Calendars().GetObject(context.Background(), f.cal.ID, "ev000.ics")
-	if err != nil || stale.Sealed == nil {
-		t.Fatalf("swept object: %v", err)
-	}
-	edited := strings.ReplaceAll(strings.ReplaceAll(sealedEvent, "UID:ev1", "UID:ev000"), "Room 42", "Room 43")
-	if _, err := f.put(t, f.unlocked(), "ev000.ics", edited); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.OpenObjectForTest(f.unlocked(), st, stale); err != nil || stale.Locked || string(stale.Data) != edited {
-		t.Fatalf("read across a replaced base: %v locked=%v", err, stale.Locked)
+	// ev001.ics is replaced by an object with another UID, which its parts are bound to.
+	for name, uid := range map[string]string{"ev000.ics": "ev000", "ev001.ics": "other"} {
+		stale, err := st.Calendars().GetObject(context.Background(), f.cal.ID, name)
+		if err != nil || stale.Sealed == nil {
+			t.Fatalf("swept object: %v", err)
+		}
+		edited := strings.ReplaceAll(strings.ReplaceAll(sealedEvent, "UID:ev1", "UID:"+uid), "Room 42", "Room 43")
+		if _, err := f.put(t, f.unlocked(), name, edited); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.OpenObjectForTest(f.unlocked(), st, stale); err != nil || stale.Locked || string(stale.Data) != edited || stale.UID != uid {
+			t.Fatalf("%s: read across a replaced base: %v locked=%v", name, err, stale.Locked)
+		}
 	}
 }
