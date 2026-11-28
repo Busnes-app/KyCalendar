@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -251,6 +252,31 @@ func (s *suite) s3Files(bucket, prefix string) int {
 }
 
 var treeFiles = regexp.MustCompile(`(?m)^\d+ directories, (\d+) files$`)
+
+// s3OrgFiles counts objects in bucket whose key holds orgs/<org>/ after any prefix:
+// KyNotes-server #213 moves keys from orgs/<org>/ to cells/<cell>/orgs/<org>/.
+func (s *suite) s3OrgFiles(bucket, org string) int {
+	s.t.Helper()
+	out, err := s.compose("exec", "-T", "s3", "sh", "-c", "echo 'fs.tree /buckets/"+bucket+"/' | weed shell")
+	if err != nil || !treeFiles.MatchString(out) {
+		s.t.Fatalf("list s3 %s: %v\n%s", bucket, err, out)
+	}
+	// fs.tree draws each level as 4 runes of indent, then "├──" or "└──" and the name.
+	n, path := 0, []string{}
+	for _, line := range strings.Split(out, "\n") {
+		depth, name := 0, line
+		if i := strings.Index(line, "──"); i > 0 {
+			depth, name = utf8.RuneCountInString(line[:i])/4+1, line[i+len("──"):]
+		} else if line == "" || treeFiles.MatchString(line) {
+			continue
+		}
+		path = append(path[:min(depth, len(path))], name)
+		if depth > 0 && name == org && path[depth-1] == "orgs" {
+			n += s.s3Files(bucket, strings.Join(path, "/")+"/")
+		}
+	}
+	return n
+}
 
 // sql runs one statement against Postgres database db and returns its unaligned output.
 func (s *suite) sql(db, query string) string {

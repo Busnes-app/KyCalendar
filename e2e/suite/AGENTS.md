@@ -74,7 +74,7 @@ repository as a copy.
     404, a1's keep working; after resume the links serve again, while the session and the SSO-derived
     device stay ended. S7: KyNotes purges B: after its purge fence is moved past the late-PUT
     window, no `org_id` column names B but `erased_subjects` (b1's subject, kept so a restore
-    re-erases), no object is left under `orgs/<B>/`, KyIdentity holds no usage for B from KyNotes,
+    re-erases), no object key holds `orgs/<B>/` (bare or after `cells/<cell>/`), KyIdentity holds no usage for B from KyNotes,
     b1's account is gone, B's credentials are refused, and A's notebook and objects are intact.
   - **S6 (org suspension & resume)**: suspends org B via the platform API (`PATCH /v1/orgs/{id}`
     `{"status":"suspended"}`), verifies KyIdentity refuses b1 (`org_suspended`), KyCalendar X
