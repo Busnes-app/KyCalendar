@@ -49,6 +49,7 @@ func newContentFixture(t *testing.T, st store.Store, id string, setUp bool) cont
 		t.Fatal(err)
 	}
 	f := contentFixture{st: st, user: id, cal: c, session: store.Credential{UserID: id, Kind: contentkey.SlotSession, SlotID: "sess-" + id, Secret: secret(t, "session "+id)}}
+	liveSession(t, st, id, f.session.SlotID, time.Hour)
 	if setUp {
 		_, code, err := contentkey.NewRecoveryCode()
 		if err != nil {
@@ -59,6 +60,22 @@ func newContentFixture(t *testing.T, st store.Store, id string, setUp bool) cont
 		}
 	}
 	return f
+}
+
+// liveSession inserts a session row, so rotation and pruning treat its slot as a live credential.
+func liveSession(t *testing.T, st store.Store, user, tokenHash string, ttl time.Duration) {
+	t.Helper()
+	db, q := store.DBForTest(st)
+	if _, err := db.Exec(q(`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`), tokenHash, user, time.Now().UTC(), time.Now().Add(ttl).UTC()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func liveAppPassword(t *testing.T, st store.Store, user, id string) {
+	t.Helper()
+	if err := st.AppPasswords().Create(context.Background(), store.Seed, &store.AppPassword{ID: id, UserID: user, Label: id, Hash: "x", Scope: store.ScopeDAV}, 0); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (f contentFixture) unlocked() context.Context {
@@ -283,6 +300,9 @@ func TestAppPasswordsMoveOverDuringTheTransitionAndRotationEndsIt(t *testing.T) 
 		}
 		return o
 	}
+	liveAppPassword(t, st, f.user, "ap1")
+	liveAppPassword(t, st, f.user, "ap2")
+	liveSession(t, st, f.user, "sess-expired", -time.Minute)
 	// Two existing app passwords both keep syncing through the transition: the second still
 	// unlocks after the first has its own slot.
 	for _, id := range []string{"ap1", "ap2", "ap1"} {
@@ -293,6 +313,10 @@ func TestAppPasswordsMoveOverDuringTheTransitionAndRotationEndsIt(t *testing.T) 
 	db, q := store.DBForTest(st)
 	var tWrapped, tAccountWrap []byte
 	if err := db.QueryRow(q(`SELECT wrapped, account_wrap FROM key_slots WHERE user_id = ? AND kind = 'transition'`), f.user).Scan(&tWrapped, &tAccountWrap); err != nil {
+		t.Fatal(err)
+	}
+	expired := store.Credential{UserID: f.user, Kind: contentkey.SlotSession, SlotID: "sess-expired", Secret: secret(t, "expired")}
+	if err := st.Content().Unlock(context.Background(), store.Credential{UserID: f.user, Kind: contentkey.SlotPassphrase, SlotID: "passphrase", Secret: []byte("correct horse battery")}, expired); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := st.Content().RotateDue(context.Background(), time.Now(), transitionKey); err != nil || n != 0 {
@@ -346,6 +370,12 @@ func TestAppPasswordsMoveOverDuringTheTransitionAndRotationEndsIt(t *testing.T) 
 	}
 	if _, err := contentkey.OpenCalendarSeed(k0, f.cal.ID, 2, f.user, seeds[2]); err == nil {
 		t.Fatal("the transition-window account key opens the calendar key made at the rotation")
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM key_slots WHERE slot_id = 'sess-expired'`); n != 0 {
+		t.Fatal("the rotation resealed the new account key to an expired session's slot")
+	}
+	if st, err := st.Content().Status(context.Background(), f.user, f.session.SlotID); err != nil || st.TransitionUntil != nil {
+		t.Fatalf("status after the rotation still shows a transition: %+v %v", st, err)
 	}
 	if n := countRows(t, st, `SELECT COUNT(*) FROM key_slots WHERE kind = 'transition'`); n != 0 {
 		t.Fatalf("%d transition slots left after rotation", n)
@@ -524,5 +554,73 @@ func TestRealClientObjectsRoundTrip(t *testing.T) {
 	}
 	if n < 10 {
 		t.Fatalf("only %d fixtures round-tripped", n)
+	}
+}
+
+// A calendar made after setup is keyed at its first write, whoever writes: a locked session is
+// refused and a worker seals, so nothing reaches it in plaintext.
+func TestNewCalendarAfterSetupNeverTakesPlaintext(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_nc", true)
+	ctx := context.Background()
+	c2 := &store.Calendar{ID: "cal_nc2", OwnerKind: "user", OwnerID: f.user, Slug: "second", Name: "Second"}
+	if err := st.Calendars().CreateCalendar(ctx, c2, 0); err != nil {
+		t.Fatal(err)
+	}
+	put := func(ctx context.Context, name, uid string) error {
+		o := &store.CalendarObject{CalendarID: c2.ID, Name: name, Component: "VEVENT", UID: uid, Data: []byte(strings.ReplaceAll(sealedEvent, "UID:ev1", "UID:"+uid)), FirstStart: 1}
+		_, err := st.Calendars().PutObject(ctx, o, "", false, store.OwnerLimits{})
+		return err
+	}
+	locked := st.Content().WithUnlock(ctx, store.Credential{UserID: f.user, Kind: contentkey.SlotSession, SlotID: "sess-none", Secret: secret(t, "none")})
+	if err := put(locked, "a.ics", "a"); !errors.Is(err, store.ErrLocked) {
+		t.Fatalf("a locked session wrote to a new calendar: %v", err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM calendar_objects WHERE calendar_id = 'cal_nc2'`); n != 0 {
+		t.Fatal("the refused write was stored")
+	}
+	if err := put(ctx, "b.ics", "b"); err != nil {
+		t.Fatal(err)
+	}
+	noPlaintext(t, rowOf(t, st, c2.ID, "b.ics").data)
+	if rowOf(t, st, c2.ID, "b.ics").sealed == nil {
+		t.Fatal("a worker's write to a new calendar was not sealed")
+	}
+}
+
+// Keying a calendar drops its plaintext task search rows at once (shared lists included).
+func TestKeyingPurgesTaskSearchRows(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_ts", false)
+	ctx := context.Background()
+	if err := st.Tasks().IndexTasks(ctx, f.cal.ID, []store.TaskDoc{{UID: "t1", ETag: "e", Body: "Secret board meeting"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, code, _ := contentkey.NewRecoveryCode()
+	if err := st.Content().Setup(ctx, f.user, store.Setup{Passphrase: "correct horse battery", Recovery: code, Session: f.session, Transition: transitionKey, Now: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, st, `SELECT COUNT(*) FROM task_search`); n != 0 {
+		t.Fatalf("%d plaintext search rows survived keying", n)
+	}
+	if keyed, err := st.Content().Keyed(ctx, f.cal.ID); err != nil || !keyed {
+		t.Fatalf("Keyed = %v %v", keyed, err)
+	}
+}
+
+// A worker putting a different object under an existing sealed name seals it afresh.
+func TestWorkerReplacingASealedNameWithANewUID(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_ru", true)
+	if _, err := f.put(t, f.unlocked(), "x.ics", sealedEvent); err != nil {
+		t.Fatal(err)
+	}
+	next := strings.ReplaceAll(sealedEvent, "UID:ev1", "UID:ev9")
+	if _, err := f.put(t, context.Background(), "x.ics", next); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Calendars().GetObject(f.unlocked(), f.cal.ID, "x.ics")
+	if err != nil || got.Locked || string(got.Data) != next {
+		t.Fatalf("after a new UID under the same name: locked=%v %v", got.Locked, err)
 	}
 }

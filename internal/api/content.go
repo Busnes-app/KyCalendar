@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/apppass"
@@ -18,6 +19,21 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
+
+// stretchSlots bounds concurrent Argon2id derivations (64 MiB each) from setup and unlock, so
+// signed-in users cannot exhaust memory shared with everyone; a full pool answers 503.
+var stretchSlots = make(chan struct{}, 4)
+
+func stretching(w http.ResponseWriter, s *Server) (func(), bool) {
+	select {
+	case stretchSlots <- struct{}{}:
+		return func() { <-stretchSlots }, true
+	default:
+		w.Header().Set("Retry-After", "2")
+		s.writeError(w, http.StatusServiceUnavailable, "Busy; try again in a moment")
+		return nil, false
+	}
+}
 
 // contentTransitionLabel derives the key the transition slot is wrapped under (E11).
 const contentTransitionLabel = "kycalendar:content-transition"
@@ -153,6 +169,19 @@ func (s *Server) handleContentSetup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
+	// Refuse a repeat before any key stretching; the store's insert stays the real check.
+	if st, err := s.store.Content().Status(r.Context(), user.ID, ""); err != nil {
+		s.writeUnavailable(w, err)
+		return
+	} else if st.SetUp {
+		s.writeJSON(w, http.StatusConflict, map[string]string{"error": "Encryption is already set up", "code": "already_set_up"})
+		return
+	}
+	done, ok := stretching(w, s)
+	if !ok {
+		return
+	}
+	defer done()
 	err = s.store.Content().Setup(r.Context(), user.ID, store.Setup{Passphrase: b.Passphrase, Recovery: recovery, Session: cred, Transition: s.transitionKey(), Now: time.Now()})
 	switch {
 	case errors.Is(err, store.ErrAlreadyExists):
@@ -186,9 +215,23 @@ func (s *Server) handleContentUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	if limited, _ := s.davLimited(w, r, "content-unlock:"+user.ID, davFailsPerUser, now); limited {
+	// Counted before the secret is checked, so concurrent guesses cannot pass the limit together.
+	release, reserved, wait, err := s.davReserve(r.Context(), "content-unlock:"+user.ID, davFailsPerUser, now)
+	if err != nil {
+		s.writeUnavailable(w, err)
 		return
 	}
+	if !reserved {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		s.writeError(w, http.StatusTooManyRequests, "Too many failed attempts")
+		return
+	}
+	done, ok := stretching(w, s)
+	if !ok {
+		release()
+		return
+	}
+	defer done()
 	with := store.Credential{UserID: user.ID, Kind: contentkey.SlotPassphrase, SlotID: "passphrase", Secret: []byte(b.Passphrase)}
 	if b.RecoveryCode != "" {
 		secret, err := contentkey.ParseRecoveryCode(b.RecoveryCode)
@@ -198,9 +241,12 @@ func (s *Server) handleContentUnlock(w http.ResponseWriter, r *http.Request) {
 		}
 		with = store.Credential{UserID: user.ID, Kind: contentkey.SlotRecovery, SlotID: "recovery", Secret: secret}
 	}
-	switch err := s.store.Content().Unlock(r.Context(), with, session); {
+	err = s.store.Content().Unlock(r.Context(), with, session)
+	if !errors.Is(err, store.ErrLocked) {
+		release() // only a wrong secret stays counted
+	}
+	switch {
 	case errors.Is(err, store.ErrLocked):
-		s.davFail(r.Context(), "content-unlock:"+user.ID, davFailsPerUser, now)
 		_ = s.store.Audit().LogAudit(r.Context(), &store.AuditRecord{UserID: user.ID, Action: "content.unlock_failed", Resource: "user:" + user.ID, IPAddress: s.requestIP(r)})
 		s.writeJSON(w, http.StatusForbidden, map[string]string{"error": "That did not unlock your calendars", "code": "wrong_secret"})
 		return

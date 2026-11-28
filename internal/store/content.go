@@ -167,6 +167,9 @@ func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *Calenda
 	if o.UID == "" {
 		o.UID = prevUID // an in-place rewrite keeps the object's UID
 	}
+	if err := c.store.keyCalendarTx(ctx, tx, o.CalendarID); err != nil {
+		return w, err
+	}
 	version, pub, keyed, err := c.store.currentCalendarKey(ctx, tx, o.CalendarID)
 	if err != nil {
 		return w, err
@@ -193,6 +196,13 @@ func (c *calendarStore) sealForWrite(ctx context.Context, tx *sql.Tx, o *Calenda
 		}
 		w.data, w.plainSize = skel, sql.NullInt64{Int64: int64(len(o.Data)), Valid: true}
 		return w, c.dropWorkerKeys(ctx, tx, o.CalendarID, prevSealed)
+	}
+	if prevSealed != nil && o.UID != prevUID && keyed {
+		// A new object under the old name: the old parts are bound to the old UID.
+		if err := c.dropWorkerKeys(ctx, tx, o.CalendarID, prevSealed); err != nil {
+			return w, err
+		}
+		return c.workerBase(ctx, tx, o, w, version, pub)
 	}
 	if prevSealed != nil {
 		skel, err := skeleton.Split(o.Data)
@@ -355,6 +365,8 @@ type ContentStore interface {
 	EndTransition(ctx context.Context, userID string, transition []byte) error
 	// PruneSlots drops the slots of credentials that no longer exist.
 	PruneSlots(ctx context.Context) error
+	// Keyed reports whether a calendar has a key.
+	Keyed(ctx context.Context, calendarID string) (bool, error)
 	// SetUpAccounts counts accounts with an account key.
 	SetUpAccounts(ctx context.Context) (int, error)
 }
@@ -410,7 +422,13 @@ func (c contentStore) Status(ctx context.Context, userID, sessionSlot string) (C
 		return ContentStatus{}, err
 	}
 	st := ContentStatus{SetUp: true}
-	var n int
+	var n, transition int
+	if err := c.s.db.QueryRowContext(ctx, c.s.rebind(`SELECT COUNT(*) FROM key_slots WHERE user_id = ? AND kind = 'transition'`), userID).Scan(&transition); err != nil {
+		return st, err
+	}
+	if transition == 0 {
+		a.transitionUntil.Valid = false // ended: rotated, or ended early
+	}
 	if err := c.s.db.QueryRowContext(ctx, c.s.rebind(`SELECT COUNT(*) FROM key_slots WHERE user_id = ? AND slot_id = ? AND kind = 'session'`), userID, sessionSlot).Scan(&n); err != nil {
 		return st, err
 	}
@@ -528,10 +546,6 @@ func (c contentStore) Setup(ctx context.Context, userID string, in Setup) error 
 		if err := c.s.insertSlot(ctx, tx, userID, r, in.Now.UTC()); err != nil {
 			return err
 		}
-	}
-	// An encrypted account's tasks are searched by decrypting them per request (Readers).
-	if _, err := tx.ExecContext(ctx, c.s.rebind(`DELETE FROM task_search WHERE calendar_id IN (SELECT id FROM calendars WHERE owner_kind = 'user' AND owner_id = ?)`), userID); err != nil {
-		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
@@ -682,15 +696,28 @@ UNION SELECT g.calendar_id FROM calendar_grants g JOIN group_members m ON m.grou
 // keyCalendar gives calendarID its first key once every holder has an account key (E12),
 // wrapped to each of them. It is exposed while any holder is in its transition (E11).
 func (c contentStore) keyCalendar(ctx context.Context, calendarID string) error {
-	tx, err := c.s.lockedTx(ctx, "calendar-key:"+calendarID)
+	tx, err := c.s.beginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, _, keyed, err := c.s.currentCalendarKey(ctx, tx, calendarID); err != nil || keyed {
+	if err := c.s.keyCalendarTx(ctx, tx, calendarID); err != nil {
 		return err
 	}
-	holders, err := c.s.holders(ctx, tx, calendarID)
+	return tx.Commit()
+}
+
+// keyCalendarTx is keyCalendar inside tx. It needs only holders' public keys, so every write
+// runs it: a calendar made after setup is keyed before anything is written to it, whoever
+// writes. Keying drops the calendar's plaintext task search rows (Readers, task search).
+func (s *SQLStore) keyCalendarTx(ctx context.Context, tx *sql.Tx, calendarID string) error {
+	if err := s.lockKey(ctx, tx, "calendar-key:"+calendarID); err != nil {
+		return err
+	}
+	if _, _, keyed, err := s.currentCalendarKey(ctx, tx, calendarID); err != nil || keyed {
+		return err
+	}
+	holders, err := s.holders(ctx, tx, calendarID)
 	if err != nil || len(holders) == 0 {
 		return err
 	}
@@ -698,13 +725,20 @@ func (c contentStore) keyCalendar(ctx context.Context, calendarID string) error 
 	if err != nil {
 		return err
 	}
-	if err := c.s.wrapVersion(ctx, tx, calendarID, k, holders, true); err != nil {
+	if err := s.wrapVersion(ctx, tx, calendarID, k, holders, true); err != nil {
 		if errors.Is(err, ErrNoAccountKey) {
 			return nil // a member has not run setup: the calendar waits for them (E12)
 		}
 		return err
 	}
-	return tx.Commit()
+	_, err = tx.ExecContext(ctx, s.rebind(`DELETE FROM task_search WHERE calendar_id = ?`), calendarID)
+	return err
+}
+
+// Keyed reports whether calendarID has a key: its tasks are then never indexed in plaintext.
+func (c contentStore) Keyed(ctx context.Context, calendarID string) (bool, error) {
+	_, _, keyed, err := c.s.currentCalendarKey(ctx, c.s.db, calendarID)
+	return keyed, err
 }
 
 // wrapVersion stores calendar key version k, wrapped to every holder's current account key. With
@@ -780,8 +814,8 @@ func (c contentStore) RotateDue(ctx context.Context, now time.Time, transition [
 // PruneSlots drops slots whose credential is gone: an expired or signed-out session's, a
 // revoked app password's. They open nothing anyone still holds.
 func (c contentStore) PruneSlots(ctx context.Context) error {
-	_, err := c.s.db.ExecContext(ctx, `DELETE FROM key_slots WHERE (kind = 'session' AND slot_id NOT IN (SELECT token_hash FROM sessions))
- OR (kind IN ('apppass', 'mcp') AND slot_id NOT IN (SELECT id FROM app_passwords))`)
+	_, err := c.s.db.ExecContext(ctx, c.s.rebind(`DELETE FROM key_slots WHERE (kind = 'session' AND NOT EXISTS (SELECT 1 FROM sessions x WHERE x.token_hash = key_slots.slot_id AND x.expires_at > ?))
+ OR (kind IN ('apppass', 'mcp') AND slot_id NOT IN (SELECT id FROM app_passwords))`), time.Now().UTC())
 	return err
 }
 
@@ -817,6 +851,13 @@ func (c contentStore) EndTransition(ctx context.Context, userID string, transiti
 	if now, err := s.accountKey(ctx, tx, userID); err != nil || !bytes.Equal(now.public, a.public) {
 		return cmpErr(err, nil) // rotated by another replica since
 	}
+	// Only live credentials get K1: an expired or signed-out session's slot, or a revoked app
+	// password's, is deleted here rather than resealed.
+	if _, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM key_slots WHERE user_id = ? AND (
+ (kind = 'session' AND NOT EXISTS (SELECT 1 FROM sessions x WHERE x.token_hash = key_slots.slot_id AND x.user_id = key_slots.user_id AND x.expires_at > ?))
+ OR (kind IN ('apppass', 'mcp') AND NOT EXISTS (SELECT 1 FROM app_passwords p WHERE p.id = key_slots.slot_id AND p.user_id = key_slots.user_id)))`), userID, time.Now().UTC()); err != nil {
+		return err
+	}
 	k1, err := contentkey.NewKeyPair()
 	if err != nil {
 		return err
@@ -832,7 +873,7 @@ func (c contentStore) EndTransition(ctx context.Context, userID string, transiti
 	if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO account_previous_keys (user_id, key_version, sealed_seed) VALUES (?, ?, ?)`), userID, a.version, prev); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE account_keys SET public_key = ?, key_version = ? WHERE user_id = ?`), k1.PublicKey(), v1, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE account_keys SET public_key = ?, key_version = ?, transition_until = NULL WHERE user_id = ?`), k1.PublicKey(), v1, userID); err != nil {
 		return err
 	}
 	if err := s.rewrapSeeds(ctx, tx, userID, k0, k1); err != nil {

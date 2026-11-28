@@ -171,3 +171,27 @@ func TestContentEncryptionOffChangesNothing(t *testing.T) {
 		t.Fatalf("setup with the setting off: %d", w.Code)
 	}
 }
+
+// Wrong unlock secrets are counted before they are checked: after the per-user limit even the
+// right passphrase waits.
+func TestContentUnlockIsRateLimited(t *testing.T) {
+	srv, st, _ := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
+	alice := loginAs(t, srv, st, "alice", "user")
+	w := do(t, srv, "POST", "/api/encryption/recovery-code", alice)
+	var rc struct {
+		Code string `json:"recovery_code"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &rc)
+	if w := doJSON(t, srv, "POST", "/api/encryption/setup", alice, map[string]string{"passphrase": "correct horse battery", "recovery_code": rc.Code}); w.Code != http.StatusNoContent {
+		t.Fatalf("setup: %d", w.Code)
+	}
+	second := signIn(t, srv, "alice")
+	for i := 0; i < 50; i++ {
+		if w := doJSON(t, srv, "POST", "/api/encryption/unlock", second, map[string]string{"recovery_code": "AAAA-AAAA-AAAA-AAAA-AAAAA-AAAAA"}); w.Code != http.StatusForbidden {
+			t.Fatalf("wrong code %d: %d", i, w.Code)
+		}
+	}
+	if w := doJSON(t, srv, "POST", "/api/encryption/unlock", second, map[string]string{"recovery_code": rc.Code}); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("after 50 failures the right code got %d, want 429", w.Code)
+	}
+}
