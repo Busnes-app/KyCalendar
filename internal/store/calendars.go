@@ -321,7 +321,13 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 
 	ownTx := tx == nil
 	if u := unlockOf(ctx); u != nil && ownTx {
-		_, _ = u.Account(ctx) // before the transaction: sealForWrite reads the opened key (content.go)
+		// Before the transaction: sealForWrite reads the opened key (content.go). A calendar made
+		// after setup gets its key at its first unlocked write (E12).
+		if _, err := u.Account(ctx); err == nil {
+			if err := (contentStore{c.store}).keyCalendar(ctx, o.CalendarID); err != nil {
+				return false, err
+			}
+		}
 	}
 	if ownTx {
 		var err error

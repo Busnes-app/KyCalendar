@@ -252,6 +252,11 @@ func apiRows(w *world) map[string]apiRow {
 		"/scim/v2":                                  {method: "GET", path: "/scim/v2", want: scimOnly},
 		"/scim/v2/":                                 {method: "GET", path: "/scim/v2/Users", want: scimOnly},
 		"GET /api/app-passwords":                    {method: "GET", path: "/api/app-passwords", want: everyday},
+		"GET /api/encryption":                       {method: "GET", path: "/api/encryption", want: everyday},
+		"POST /api/encryption/recovery-code":        {method: "POST", path: "/api/encryption/recovery-code", want: everyday},
+		"POST /api/encryption/setup":                {method: "POST", path: "/api/encryption/setup", body: `{}`, want: everyday},
+		"POST /api/encryption/unlock":               {method: "POST", path: "/api/encryption/unlock", body: `{}`, want: everyday},
+		"POST /api/encryption/end-transition":       {method: "POST", path: "/api/encryption/end-transition", want: everyday},
 		"POST /api/app-passwords":                   {method: "POST", path: "/api/app-passwords", body: `{"label":"matrix-new","scope":"dav"}`, want: everyday},
 		// Each caller deletes its own app password; the anonymous caller names a placeholder so
 		// the path still matches the pattern instead of falling through to the SPA.

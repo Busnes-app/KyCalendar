@@ -345,6 +345,37 @@ that possible:
   - Reading the database alone gives none of this. Option 1, with device-held keys and holders
     confirming new members, would close it.
 
+## As built (CE2, first PR)
+
+Behind `KYCALENDAR_CONTENT_ENCRYPTION`, default off; startup refuses to run with it off once an
+account has set up. Migration 43 and `internal/store/content.go`, `internal/api/content.go`,
+`web/src/pages/Encryption.tsx`. Built: seal on write and merge on read for every request path
+that reaches the store (CalDAV, web, MCP, imports); E10 refusal with `403` on CalDAV and
+`content_locked` on the web; app-password, MCP, session, passphrase, recovery and transition
+slots; web setup and unlock with the passphrase or the recovery code; the 14-day transition and
+its rotation (elected job every 10 minutes, and "end now"); calendar keys only once every holder
+has an account key (E12); usage counting `plain_size`; task search of encrypted lists by
+decrypting per request.
+
+Choices made where the spec left them open, each the narrowest that keeps its promises:
+
+- **Workers before CE3.** A worker's new object in a keyed calendar, or its rewrite of a legacy
+  row there, is sealed as a base under a fresh worker key used for that one object (not one key
+  per run). A worker writing over a sealed row changes readable properties only: its object's
+  skeleton replaces `data` and the parts stay, so content never reaches `data` and nothing the
+  worker could not read is lost. Until CE3's patches and `keep-alarms` bases, a worker's
+  *content* change to an existing sealed object (an organizer's new title reaching an
+  attendee's copy, a room's `LOCATION`, a KyMessages link) is dropped; readable changes apply.
+- **Rotation** rewraps the account's older calendar seeds to K1 rather than reaching them through
+  `account_previous_keys` (which it still writes). Versions made before the rotation stay
+  exposed to a copy taken during the transition, as E11 already says; versions made at and after
+  it are wrapped only to keys sealed to user slots.
+- **No passkey PRF yet**: the passphrase (E8) is the web unlock; the recovery code unlocks too.
+
+Left for later PRs: the sweep of legacy rows (CE6), folding and patches (CE3), outbox, booking-hold
+and feed sealing (CE3), pending shares (CE5), passkeys, password slots, reset, admin pages,
+`export-org`/`open-export`, and the 2,000-object multiget timing.
+
 ## Phased build plan
 
 Every PR ships behind the hidden setting `KYCALENDAR_CONTENT_ENCRYPTION` (default off) until CE6
