@@ -51,8 +51,8 @@ func (s *suite) browser() *browser {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
-// csrfCookies are the double-submit cookies of KyIdentity, KyCalendar and KyMessages.
-var csrfCookies = []string{"kyidentity_csrf", "ky_csrf", "__Host-ky_csrf"}
+// csrfCookies are the double-submit cookies of KyIdentity, KyCalendar, KyMessages and KyNotes.
+var csrfCookies = []string{"kyidentity_csrf", "ky_csrf", "__Host-ky_csrf", "csrf_token"}
 
 // do sends one request as the page on that origin would: same Origin, its CSRF cookie
 // echoed in X-CSRF-Token, a JSON body. It returns the response with the body read.
@@ -65,18 +65,21 @@ func (b *browser) do(method, rawURL string, body any, hdr map[string]string) (in
 func (b *browser) send(method, rawURL string, body any, hdr map[string]string) (*http.Response, []byte) {
 	b.t.Helper()
 	var r io.Reader
-	if body != nil {
-		raw, err := json.Marshal(body)
-		if err != nil {
+	raw, isRaw := body.([]byte) // a raw body (KyNotes ciphertext) goes as is
+	if body != nil && !isRaw {
+		var err error
+		if raw, err = json.Marshal(body); err != nil {
 			b.t.Fatal(err)
 		}
+	}
+	if body != nil {
 		r = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequest(method, rawURL, r)
 	if err != nil {
 		b.t.Fatal(err)
 	}
-	if body != nil {
+	if body != nil && !isRaw {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if method != "GET" {

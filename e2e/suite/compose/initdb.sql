@@ -4,3 +4,4 @@ CREATE DATABASE kycal_y;
 CREATE DATABASE kyidentity ENCODING 'UTF8' LOCALE 'C' TEMPLATE template0; -- KyIdentity compares names as SQLite does
 CREATE DATABASE kymessages;
 CREATE DATABASE kypost ENCODING 'UTF8' LOCALE 'C' TEMPLATE template0; -- KyPost requires the C locale too
+CREATE DATABASE kynotes;

@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -72,6 +73,9 @@ var targets = []target{
 	{"kypost", "/usr/local/bin/kypost-server", []string{"kypost"}, "https://post.e2e.test/readyz",
 		"kypost-release", "KYPOST_TENANCY=multi is not available in this release",
 		"", "", []string{"--build-arg", "INSTALL_OLLAMA=false"}, true},
+	{"kynotes", "/kynotes-server", []string{"kynotes"}, "https://notes.e2e.test/readyz",
+		"kynotes-release", "KYNOTES_TENANCY: multi is not available in this release",
+		"KYNOTES_SSO_ISSUER", "this end-to-end test build serves only an https issuer under .test", nil, false},
 }
 
 // The first check: each pinned kye2e image starts in multi mode against the .test issuer, the
@@ -140,7 +144,9 @@ func start(t *testing.T) *suite {
 		"E2E_SESSION_SECRET="+random(32), "E2E_ENCRYPTION_KEY="+random(32), "E2E_ADMIN_PASSWORD="+adminPass,
 		"E2E_POSTGRES_PASSWORD="+random(16), "E2E_S3_SECRET="+random(16), "E2E_KYIDENTITY_SECRET_KEY="+random(32),
 		"E2E_KYIDENTITY_RSA="+rsaKey(t), "E2E_KYIDENTITY_VAPID="+vapidKey(t), "E2E_KYMESSAGES_SEAL="+random(32),
-		"E2E_MEETING_PAIR="+random(32), "E2E_KYPOST_KEYS="+kypostKeys(t), "E2E_KYPOST_VAPID="+ecKey(t))
+		"E2E_MEETING_PAIR="+random(32), "E2E_KYPOST_KEYS="+kypostKeys(t), "E2E_KYPOST_VAPID="+ecKey(t),
+		"E2E_KYNOTES_PAIRING_SECRET="+random(32), "E2E_KYNOTES_SALT_KEY="+random(32), "E2E_KYNOTES_HMAC_SECRET="+random(32),
+		"E2E_KYNOTES_VAPID="+base64.StdEncoding.EncodeToString(rawP256(t)))
 	for _, a := range targets {
 		pin, ok := s.pins[a.name]
 		if !ok {
@@ -189,9 +195,10 @@ func start(t *testing.T) *suite {
 	})
 
 	// KyMessages will not serve before its first sync with KyIdentity, which needs a client.
-	if out, err := s.compose("up", "-d", "--wait", "--wait-timeout", "180", "kyidentity", "front", "mail"); err != nil {
+	if out, err := s.compose("up", "-d", "--wait", "--wait-timeout", "180", "kyidentity", "front", "mail", "s3"); err != nil {
 		t.Fatalf("kye2e KyIdentity did not start in multi mode: %v\n%s", err, out)
 	}
+	s.bucket("kynotes")
 	s.web = frontTransport(t, ca, hostPort(t, s.compose, "front", "443"))
 	s.staff = s.browser()
 	s.adminPass = firstAdminSignIn(s.staff, adminPass)
@@ -202,7 +209,8 @@ func start(t *testing.T) *suite {
 		"E2E_KYMESSAGES_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kymessages", "https://messages.e2e.test/api/sso/kyidentity/callback"),
 		"E2E_KYCALENDAR_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kycalendar",
 			"https://cal-x.e2e.test/api/sso/kysignon/callback", "https://cal-y.e2e.test/api/sso/kysignon/callback"),
-		"E2E_KYPOST_PAIRING_SECRET="+kypostPairing)
+		"E2E_KYPOST_PAIRING_SECRET="+kypostPairing,
+		"E2E_KYNOTES_CLIENT_SECRET="+registerClient(s.staff, s.adminPass, "kynotes", "https://notes.e2e.test/api/v1/auth/oidc/callback"))
 	// One client, two deployments: KyIdentity sends each org's members to its cell's origin.
 	s.staff.admin(s.adminPass, 200, "PUT", issuer+"/api/admin/clients/kycalendar/regions",
 		map[string]any{"regions": map[string]string{"e2e-1": "https://cal-x.e2e.test", "e2e-2": "https://cal-y.e2e.test"}})
@@ -216,6 +224,33 @@ func start(t *testing.T) *suite {
 	s.setKyPostSSO(issuer)
 	return s
 }
+
+// bucket creates a versioned S3 bucket, retrying while SeaweedFS starts.
+func (s *suite) bucket(name string) {
+	s.t.Helper()
+	var out string
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(time.Second) {
+		s.compose("exec", "-T", "s3", "sh", "-c", "echo 's3.bucket.create -name "+name+"' | weed shell")
+		if out, _ = s.compose("exec", "-T", "s3", "sh", "-c", "echo 's3.bucket.versioning -name "+name+" -enable' | weed shell"); strings.Contains(out, "set to Enabled") {
+			return
+		}
+	}
+	s.t.Fatalf("S3 bucket %s: %s", name, out)
+}
+
+// s3Files counts the objects under prefix in bucket, from inside the S3 container.
+func (s *suite) s3Files(bucket, prefix string) int {
+	s.t.Helper()
+	out, err := s.compose("exec", "-T", "s3", "sh", "-c", "echo 'fs.tree /buckets/"+bucket+"/"+prefix+"' | weed shell")
+	m := treeFiles.FindStringSubmatch(out)
+	if err != nil || m == nil {
+		s.t.Fatalf("list s3 %s/%s: %v\n%s", bucket, prefix, err, out)
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
+}
+
+var treeFiles = regexp.MustCompile(`(?m)^\d+ directories, (\d+) files$`)
 
 // sql runs one statement against Postgres database db and returns its unaligned output.
 func (s *suite) sql(db, query string) string {
@@ -371,7 +406,7 @@ func tlsFiles(t *testing.T) (ca, cert, key string) {
 		t.Fatal(err)
 	}
 	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "id.e2e.test"},
-		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "post.e2e.test", "smtp.e2e.test", "postgres", "kypost"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
+		DNSNames: []string{"id.e2e.test", "cal-x.e2e.test", "cal-y.e2e.test", "messages.e2e.test", "post.e2e.test", "notes.e2e.test", "s3.e2e.test", "smtp.e2e.test", "postgres", "kypost"}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, caTmpl, &leafKey.PublicKey, caKey)
 	if err != nil {
@@ -539,12 +574,15 @@ func rsaKey(t *testing.T) string {
 }
 
 // vapidKey is KyIdentity's Web Push key: the raw P-256 scalar, base64url without padding.
-func vapidKey(t *testing.T) string {
+func vapidKey(t *testing.T) string { return base64.RawURLEncoding.EncodeToString(rawP256(t)) }
+
+// rawP256 is a raw P-256 private scalar (Web Push keys; KyNotes takes it standard base64).
+func rawP256(t *testing.T) []byte {
 	k, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return base64.RawURLEncoding.EncodeToString(k.Bytes())
+	return k.Bytes()
 }
 
 // kypostKeys are the keys KyPost's table mode requires provisioned, "<file> <base64>" per
