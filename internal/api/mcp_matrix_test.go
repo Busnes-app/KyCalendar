@@ -31,7 +31,7 @@ func TestMCPAuthorizationMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 	mirrored, _, err := feed.Parse(ctx, sub.ID, []byte(eventICS("work-uid")))
-	if err != nil || w.st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, mirrored, store.OwnerLimits{}) != nil {
+	if err != nil || w.st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, mirrored, store.OwnerLimits{}, nil) != nil {
 		t.Fatalf("mirror: %v", err)
 	}
 

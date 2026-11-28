@@ -318,7 +318,7 @@ func TestNewRowsJoinTheirParentsOrg(t *testing.T) {
 		if err := cs.CreateSubscribedCalendar(ctx, &Calendar{ID: "fb", OwnerKind: "user", OwnerID: "ub", Slug: "feed", Name: "F"}, &Subscription{URLSealed: "x", URLHost: "example.com"}, 0, 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := cs.ReplaceSubscriptionObjects(ctx, "fb", []*CalendarObject{{CalendarID: "fb", Name: "f1.ics", Component: "VEVENT", UID: "f1", ETag: "1", Data: ics}}, OwnerLimits{}); err != nil {
+		if err := cs.ReplaceSubscriptionObjects(ctx, "fb", []*CalendarObject{{CalendarID: "fb", Name: "f1.ics", Component: "VEVENT", UID: "f1", ETag: "1", Data: ics}}, OwnerLimits{}, nil); err != nil {
 			t.Fatal(err)
 		}
 		for _, q := range []string{

@@ -148,7 +148,7 @@ func TestOrgQuotasBoundTheOrg(t *testing.T) {
 		if err := s.Calendars().CreateSubscribedCalendar(ctx, feed, &Subscription{URLSealed: "x", URLHost: "example.net"}, 0, 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.Calendars().ReplaceSubscriptionObjects(ctx, "cal_feed", []*CalendarObject{object("", "f1", 2000)}, installLimits); !errors.Is(err, ErrQuotaExceeded) {
+		if err := s.Calendars().ReplaceSubscriptionObjects(ctx, "cal_feed", []*CalendarObject{object("", "f1", 2000)}, installLimits, nil); !errors.Is(err, ErrQuotaExceeded) {
 			t.Fatalf("a feed past max_bytes: %v", err)
 		}
 	})

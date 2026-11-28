@@ -128,6 +128,12 @@ func Seal(master []byte, link string) (string, error) {
 	return crypto.EncryptAESGCM([]byte(link), crypto.DeriveKey(master, urlLabel))
 }
 
+// ChangeKey is the key a keyed calendar's feed ETags are an HMAC under (content encryption,
+// Readers: feed refresh), derived for that use alone.
+func ChangeKey(master []byte) []byte {
+	return crypto.DeriveKey(master, "kycalendar:feed-change")
+}
+
 // Open reverses Seal.
 func Open(master []byte, sealed string) (string, error) {
 	b, err := crypto.DecryptAESGCM(sealed, crypto.DeriveKey(master, urlLabel))

@@ -41,14 +41,14 @@ func TestReplaceSubscriptionObjectsDiff(t *testing.T) {
 	}
 
 	first := []*store.CalendarObject{obj("", "a.ics", "a", "A1", 1, i64(2)), obj("", "b.ics", "b", "B1", 1, i64(2)), obj("", "c.ics", "c", "C1", 1, nil)}
-	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, first, store.OwnerLimits{}); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, first, store.OwnerLimits{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	after1, _ := cs.GetCalendarByID(ctx, c.ID)
 
 	// Unchanged feed: no writes, no changes, no seq bump.
 	same := []*store.CalendarObject{obj("", "a.ics", "a", "A1", 1, i64(2)), obj("", "b.ics", "b", "B1", 1, i64(2)), obj("", "c.ics", "c", "C1", 1, nil)}
-	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, same, store.OwnerLimits{}); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, same, store.OwnerLimits{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if again, _ := cs.GetCalendarByID(ctx, c.ID); again.Seq != after1.Seq {
@@ -57,7 +57,7 @@ func TestReplaceSubscriptionObjectsDiff(t *testing.T) {
 
 	// a unchanged, b moved, c gone, d new: exactly three changes.
 	next := []*store.CalendarObject{obj("", "a.ics", "a", "A1", 1, i64(2)), obj("", "b.ics", "b", "B2", 5, i64(6)), obj("", "d.ics", "d", "D1", 1, i64(2))}
-	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, next, store.OwnerLimits{}); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, next, store.OwnerLimits{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	changes, err := cs.ChangesSince(ctx, c.ID, after1.Seq)
@@ -76,7 +76,7 @@ func TestReplaceSubscriptionObjectsDiff(t *testing.T) {
 	}
 
 	// An empty feed empties the calendar.
-	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, nil, store.OwnerLimits{}); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, nil, store.OwnerLimits{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if n := names(t, cs, c.ID); len(n) != 0 {
@@ -88,7 +88,7 @@ func TestSubscribedCalendarRefusesEventWrites(t *testing.T) {
 	ctx := context.Background()
 	cs, plain := calStore(t)
 	c := subscribed(t, cs, "cal_sub")
-	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, []*store.CalendarObject{obj("", "a.ics", "a", "A1", 1, i64(2))}, store.OwnerLimits{}); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, c.ID, []*store.CalendarObject{obj("", "a.ics", "a", "A1", 1, i64(2))}, store.OwnerLimits{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cs.PutObject(ctx, obj(c.ID, "new.ics", "n", "N", 1, i64(2)), "", false, store.OwnerLimits{}); !errors.Is(err, store.ErrReadOnly) {
@@ -112,7 +112,7 @@ func TestSubscribedCalendarRefusesEventWrites(t *testing.T) {
 	if _, err := cs.PutObject(ctx, obj(plain.ID, "p.ics", "p", "P", 1, i64(2)), "", false, store.OwnerLimits{}); err != nil {
 		t.Errorf("plain calendar: %v", err)
 	}
-	if err := cs.ReplaceSubscriptionObjects(ctx, plain.ID, nil, store.OwnerLimits{}); !errors.Is(err, store.ErrNotFound) {
+	if err := cs.ReplaceSubscriptionObjects(ctx, plain.ID, nil, store.OwnerLimits{}, nil); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("replace on a plain calendar: %v, want ErrNotFound", err)
 	}
 }
@@ -140,20 +140,20 @@ func TestSubscriptionLimitsAndQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	two := []*store.CalendarObject{obj("", "a.ics", "a", "A", 1, i64(2)), obj("", "b.ics", "b", "B", 1, i64(2))}
-	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", two, lim); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", two, lim, nil); err != nil {
 		t.Fatalf("2 + 1 within 3: %v", err)
 	}
-	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", two, lim); err != nil {
+	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", two, lim, nil); err != nil {
 		t.Fatalf("the same 2 again: %v", err)
 	}
 	three := append(two, obj("", "c.ics", "c", "C", 1, i64(2)))
-	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", three, lim); !errors.Is(err, store.ErrQuotaExceeded) {
+	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", three, lim, nil); !errors.Is(err, store.ErrQuotaExceeded) {
 		t.Fatalf("3 + 1 over 3: %v", err)
 	}
 	if n := names(t, cs, "s1"); len(n) != 2 {
 		t.Fatalf("a refused feed changed the calendar: %v", n)
 	}
-	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", two, store.OwnerLimits{MaxTotalBytes: 2}); !errors.Is(err, store.ErrQuotaExceeded) {
+	if err := cs.ReplaceSubscriptionObjects(ctx, "s1", two, store.OwnerLimits{MaxTotalBytes: 2}, nil); !errors.Is(err, store.ErrQuotaExceeded) {
 		t.Fatalf("instance byte cap: %v", err)
 	}
 }

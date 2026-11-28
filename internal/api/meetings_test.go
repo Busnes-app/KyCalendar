@@ -639,7 +639,7 @@ func TestDeletingASubscriptionWithMeetings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{o}, store.OwnerLimits{}); err != nil {
+	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{o}, store.OwnerLimits{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if w := call(t, srv, "DELETE", "/api/calendars/"+sub.ID, "", alice); w.Code != http.StatusNoContent {

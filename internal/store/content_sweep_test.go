@@ -98,7 +98,7 @@ func sweepAll(t *testing.T, st store.Store) int {
 		var at store.SweepCursor
 		sealed := 0
 		for {
-			n, next, done, err := st.Content().SweepOnce(context.Background(), at, 7)
+			n, next, done, err := st.Content().SweepOnce(context.Background(), at, 7, feedKey)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -178,7 +178,7 @@ func TestSweepSealsLegacyRowsResumablyAndOnce(t *testing.T) {
 	var at store.SweepCursor
 	committed := 0
 	for {
-		n, next, done, err := st.Content().SweepOnce(context.Background(), at, 7)
+		n, next, done, err := st.Content().SweepOnce(context.Background(), at, 7, feedKey)
 		if err != nil {
 			break
 		}
@@ -244,7 +244,7 @@ func TestSweepSkipsARowChangedUnderIt(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	n, _, _, err := st.Content().SweepOnce(context.Background(), store.SweepCursor{}, 10)
+	n, _, _, err := st.Content().SweepOnce(context.Background(), store.SweepCursor{}, 10, feedKey)
 	restore()
 	if err != nil {
 		t.Fatal(err)
@@ -278,37 +278,115 @@ func TestSweptNeighboursSurviveARewrite(t *testing.T) {
 
 // A subscribed calendar is left to its feed: the sweep does not seal it, so a refresh that
 // rewrites its rows never sits beside a stale sealed base, and reads return the refresh.
-func TestSweepLeavesSubscribedCalendars(t *testing.T) {
+// Subscribed calendars are sealed like any other once they have a key (CE3, feed refresh): the
+// sweep seals a feed's legacy rows, a refresh writes each changed object as a sealed base, a
+// row stored in the wrong format is written again, and an unchanged feed rewrites nothing.
+// The ETag is an HMAC under the feed key, never the plaintext's digest.
+func TestSubscribedCalendarsAreSealed(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	f := newContentFixture(t, st, "usr_sf", false)
 	cs := st.Calendars()
+	db, q := store.DBForTest(st)
 	feed := &store.Calendar{ID: "cal_sf_feed", OwnerKind: "user", OwnerID: f.user, Slug: "feed", Name: "Feed"}
 	if err := cs.CreateSubscribedCalendar(ctx, feed, &store.Subscription{URLSealed: "sealed", URLHost: "example.com", NextCheckAt: time.Now()}, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	object := func(summary string) []*store.CalendarObject {
-		body := strings.ReplaceAll(sealedEvent, "Secret board meeting", summary)
-		return []*store.CalendarObject{{Name: "ev1.ics", Component: "VEVENT", UID: "ev1", Data: []byte(body), FirstStart: 1}}
+	body := func(summary string) []byte {
+		return []byte(strings.ReplaceAll(sealedEvent, "Secret board meeting", summary))
 	}
-	if err := cs.ReplaceSubscriptionObjects(ctx, feed.ID, object("Feed one"), store.OwnerLimits{}); err != nil {
+	refresh := func(data []byte, key []byte) error {
+		return cs.ReplaceSubscriptionObjects(ctx, feed.ID, []*store.CalendarObject{{Name: "ev1.ics", Component: "VEVENT", UID: "ev1", Data: data, FirstStart: 1}}, store.OwnerLimits{}, key)
+	}
+	seq := func() int64 {
+		var n int64
+		if err := db.QueryRow(q(`SELECT seq FROM calendars WHERE id = ?`), feed.ID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	plainETag := func(data []byte) string {
+		sum := sha256.Sum256(data)
+		return hex.EncodeToString(sum[:])
+	}
+	sealedAs := func(want []byte) storedRow {
+		t.Helper()
+		r := rowOf(t, st, feed.ID, "ev1.ics")
+		if r.sealed == nil {
+			t.Fatal("the feed's row is not sealed")
+		}
+		noPlaintext(t, r.data)
+		if r.etag == plainETag(want) {
+			t.Fatal("a sealed feed row keeps the plaintext's SHA-256 as its ETag")
+		}
+		o, err := cs.GetObject(f.unlocked(), feed.ID, "ev1.ics")
+		if err != nil || o.Locked || !bytes.Equal(o.Data, want) {
+			t.Fatalf("unlocked read: %v locked=%v %q", err, o != nil && o.Locked, o.Data)
+		}
+		return r
+	}
+
+	// Before setup the feed is stored as today.
+	first := body("Secret board meeting")
+	if err := refresh(first, nil); err != nil {
 		t.Fatal(err)
+	}
+	if r := rowOf(t, st, feed.ID, "ev1.ics"); r.sealed != nil || r.etag != plainETag(first) {
+		t.Fatal("an account without a key changed how its feed is stored")
 	}
 	setUp(t, f)
-	if n, _ := st.Content().LegacyRows(ctx); n != 0 {
-		t.Fatalf("subscribed rows counted as legacy: %d", n)
+	if n, _ := st.Content().LegacyRows(ctx); n != 1 {
+		t.Fatalf("legacy rows after setup: %d, want the feed's row", n)
 	}
-	sweepAll(t, st)
-	if r := rowOf(t, st, feed.ID, "ev1.ics"); r.sealed != nil {
-		t.Fatal("the sweep sealed a subscribed calendar's row")
+
+	// The sweep seals it with the ETag a refresh gives, so an unchanged refresh changes nothing.
+	if sweepAll(t, st) != 1 {
+		t.Fatal("the sweep did not seal the feed's row")
 	}
-	if err := cs.ReplaceSubscriptionObjects(ctx, feed.ID, object("Feed two"), store.OwnerLimits{}); err != nil {
+	swept := sealedAs(first)
+	at := seq()
+	if err := refresh(first, feedKey); err != nil {
 		t.Fatal(err)
 	}
-	o, err := cs.GetObject(f.unlocked(), feed.ID, "ev1.ics")
-	if err != nil || !strings.Contains(string(o.Data), "Feed two") {
-		t.Fatalf("unlocked read after a refresh: %v %q", err, o.Data)
+	if r := rowOf(t, st, feed.ID, "ev1.ics"); seq() != at || !bytes.Equal(r.sealed, swept.sealed) || r.etag != swept.etag {
+		t.Fatal("an unchanged feed rewrote its swept row")
 	}
+
+	// A changed object is written as a new sealed base.
+	second := body("Merger with Acme agenda")
+	if err := refresh(second, feedKey); err != nil {
+		t.Fatal(err)
+	}
+	changed := sealedAs(second)
+	if changed.etag == swept.etag || seq() == at {
+		t.Fatal("a changed feed object kept its ETag or logged no change")
+	}
+
+	// A row in the wrong format is written again on the next refresh: a legacy row even with the
+	// right ETag, and plaintext beside parts with its SHA-256 ETag, as an older refresh left it.
+	if _, err := db.Exec(q(`UPDATE calendar_objects SET data = ?, sealed = NULL WHERE calendar_id = ? AND name = ?`), second, feed.ID, "ev1.ics"); err != nil {
+		t.Fatal(err)
+	}
+	if err := refresh(second, feedKey); err != nil {
+		t.Fatal(err)
+	}
+	sealedAs(second)
+	if _, err := db.Exec(q(`UPDATE calendar_objects SET data = ?, etag = ? WHERE calendar_id = ? AND name = ?`), second, plainETag(second), feed.ID, "ev1.ics"); err != nil {
+		t.Fatal(err)
+	}
+	if err := refresh(second, feedKey); err != nil {
+		t.Fatal(err)
+	}
+	sealedAs(second)
+	if n, _ := st.Content().LegacyRows(ctx); n != 0 {
+		t.Fatalf("legacy rows left: %d", n)
+	}
+
+	// Without the feed key a keyed calendar's refresh is refused, never stored in plaintext.
+	if err := refresh(body("Third"), nil); err == nil {
+		t.Fatal("a keyed feed refresh without the feed key succeeded")
+	}
+	sealedAs(second)
 }
 
 // A read that loaded a swept object just before a write replaced its base (and dropped the
@@ -333,6 +411,34 @@ func TestReadAcrossAReplacedBase(t *testing.T) {
 		}
 		if err := store.OpenObjectForTest(f.unlocked(), st, stale); err != nil || stale.Locked || string(stale.Data) != edited || stale.UID != uid {
 			t.Fatalf("%s: read across a replaced base: %v locked=%v", name, err, stale.Locked)
+		}
+	}
+}
+
+// A feed subscribed after setup is keyed by its first refresh: the first import and every
+// refresh after it are sealed, never stored in plaintext beside an account key.
+func TestFeedSubscribedAfterSetupIsSealed(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	f := newContentFixture(t, st, "usr_sf2", true)
+	cs := st.Calendars()
+	feed := &store.Calendar{ID: "cal_sf2_feed", OwnerKind: "user", OwnerID: f.user, Slug: "feed", Name: "Feed"}
+	if err := cs.CreateSubscribedCalendar(ctx, feed, &store.Subscription{URLSealed: "sealed", URLHost: "example.com", NextCheckAt: time.Now()}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range []string{"Secret board meeting", "Merger with Acme agenda"} {
+		data := []byte(strings.ReplaceAll(sealedEvent, "Secret board meeting", summary))
+		if err := cs.ReplaceSubscriptionObjects(ctx, feed.ID, []*store.CalendarObject{{Name: "ev1.ics", Component: "VEVENT", UID: "ev1", Data: data, FirstStart: 1}}, store.OwnerLimits{}, feedKey); err != nil {
+			t.Fatal(err)
+		}
+		r := rowOf(t, st, feed.ID, "ev1.ics")
+		if r.sealed == nil {
+			t.Fatalf("%q: a feed subscribed after setup is stored in plaintext", summary)
+		}
+		noPlaintext(t, r.data)
+		o, err := cs.GetObject(f.unlocked(), feed.ID, "ev1.ics")
+		if err != nil || o.Locked || !bytes.Equal(o.Data, data) {
+			t.Fatalf("unlocked read: %v %q", err, o.Data)
 		}
 	}
 }

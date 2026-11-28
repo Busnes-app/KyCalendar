@@ -115,7 +115,7 @@ func TestPendingOutboxCountsOnEveryWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	mirrored := &store.CalendarObject{CalendarID: sub.ID, Name: "f.ics", Component: "VEVENT", UID: "f", Data: make([]byte, 2000)}
-	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{mirrored}, store.OwnerLimits{MaxTotalBytes: 6000}); !errors.Is(err, store.ErrQuotaExceeded) {
+	if err := st.Calendars().ReplaceSubscriptionObjects(ctx, sub.ID, []*store.CalendarObject{mirrored}, store.OwnerLimits{MaxTotalBytes: 6000}, nil); !errors.Is(err, store.ErrQuotaExceeded) {
 		t.Fatalf("a subscription refresh past the cap with pending bodies: %v", err)
 	}
 	if err := st.Calendars().FinishOutbox(ctx, "a", "delivered", time.Now(), ""); err != nil {

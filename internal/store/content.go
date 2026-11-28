@@ -425,7 +425,8 @@ type ContentStore interface {
 	// PruneSlots drops the slots of credentials that no longer exist.
 	PruneSlots(ctx context.Context) error
 	// SweepOnce seals one batch of legacy rows in keyed calendars (content_sweep.go).
-	SweepOnce(ctx context.Context, after SweepCursor, limit int) (int, SweepCursor, bool, error)
+	// feedKey is the feed ETag key (ReplaceSubscriptionObjects).
+	SweepOnce(ctx context.Context, after SweepCursor, limit int, feedKey []byte) (int, SweepCursor, bool, error)
 	// LegacyRows counts plaintext rows left in keyed calendars.
 	LegacyRows(ctx context.Context) (int, error)
 	// SetUpAccounts counts accounts with an account key.
