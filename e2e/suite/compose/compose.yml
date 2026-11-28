@@ -1,7 +1,7 @@
 # The suite end-to-end topology (docs/superpowers/specs/2026-11-24-multi-tenant-e2e-design.md,
 # Topology). The driver (e2e/suite/smoke_test.go) sets every ${...}; only the driver's loopback
 # ports are published. dockerd starts these outside any kslot scope, so each has its own memory
-# limit, and the driver refuses a service without one or a total over 5 GiB. S3, CoreDNS and
+# limit, and the driver refuses a service without one or a total over 5 GiB. CoreDNS and
 # KyRecovery join with the scenarios that need them.
 name: ${E2E_PROJECT:?}
 
@@ -45,8 +45,8 @@ x-kycalendar: &kycalendar
 services:
   postgres:
     image: postgres:18.7-trixie@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b
-    mem_limit: 1g
-    memswap_limit: 1g
+    mem_limit: 768m
+    memswap_limit: 768m
     shm_size: 256m
     environment:
       POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:?}
@@ -144,7 +144,7 @@ services:
     ports: ["127.0.0.1::443"]
     networks:
       default:
-        aliases: [id.e2e.test, cal-x.e2e.test, cal-y.e2e.test, messages.e2e.test, post.e2e.test]
+        aliases: [id.e2e.test, cal-x.e2e.test, cal-y.e2e.test, messages.e2e.test, post.e2e.test, notes.e2e.test, s3.e2e.test]
 
   # The mail sink KyIdentity's invitations go to (STARTTLS, the run's certificate). Its API is
   # how the driver reads activation links and proves that no mail went out.
@@ -262,7 +262,71 @@ services:
     memswap_limit: 128m
     profiles: [release]
 
+  # The suite's S3 (the SeaweedFS image KyCalendar CI pins), behind front as https://s3.e2e.test.
+  # The driver creates each bucket it needs (today: kynotes, versioned) before that app starts.
+  s3:
+    image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
+    mem_limit: 256m
+    memswap_limit: 256m
+    restart: "no"
+    configs:
+      - { source: s3_identities, target: /etc/s3.json }
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/s3.json"]
+
+  # One deployment in cell e2e-1 (KYNOTES_REGION: KyNotes serves one cell), PostgreSQL and
+  # object storage only. The SSO client and directory poll are fixed by the environment.
+  kynotes: &kynotes
+    image: ${KYNOTES_IMAGE:?}
+    mem_limit: 320m
+    memswap_limit: 320m
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+      front: { condition: service_started }
+    secrets: [e2e_ca]
+    environment:
+      KYNOTES_TENANCY: multi
+      PUSH_RELAY_URL: ""
+      APNS_RELAY_URL: ""
+      BOOTSTRAP_ADMIN_PASS: ""
+      BOOTSTRAP_EVERYDAY_USER: ""
+      BOOTSTRAP_EVERYDAY_PASS: ""
+      KYNOTES_STAFF_ORG_ID: ${E2E_STAFF_ORG_ID:?}
+      KYNOTES_REGION: e2e-1
+      KYNOTES_DB_DSN: postgres://postgres:${E2E_POSTGRES_PASSWORD}@postgres:5432/kynotes?sslmode=disable
+      KYNOTES_SECRETS_PAIRING_SECRET: ${E2E_KYNOTES_PAIRING_SECRET:?}
+      KYNOTES_SECRETS_SERVER_SALT_KEY: ${E2E_KYNOTES_SALT_KEY:?}
+      KYNOTES_SSO_ISSUER: https://id.e2e.test
+      KYNOTES_SSO_CLIENT_ID: kynotes
+      KYNOTES_SSO_CLIENT_SECRET: ${E2E_KYNOTES_CLIENT_SECRET:-}
+      KYNOTES_SSO_HMAC_SECRET: ${E2E_KYNOTES_HMAC_SECRET:?}
+      KYNOTES_VAPID_KEY: ${E2E_KYNOTES_VAPID:?}
+      KYNOTES_BLOB_BACKEND: object
+      KYNOTES_BLOB_S3_ENDPOINT: https://s3.e2e.test
+      KYNOTES_BLOB_S3_BUCKET: kynotes
+      KYNOTES_BLOB_S3_REGION: e2e
+      KYNOTES_BLOB_S3_ACCESS_KEY: e2e
+      KYNOTES_BLOB_S3_SECRET: ${E2E_S3_SECRET:?}
+      KYNOTES_BACKUP_DEPOSIT_INTERVAL: "0" # native archives are S6b/S8's, not in this run
+      # front reaches KyNotes from the compose network; its forwarded https origin is trusted.
+      KYNOTES_SERVER_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      SSL_CERT_FILE: /run/secrets/e2e_ca
+    healthcheck:
+      test: ["CMD", "/kynotes-server", "healthcheck"]
+      interval: 2s
+      retries: 60
+
+  kynotes-release:
+    <<: *kynotes
+    image: ${KYNOTES_RELEASE_IMAGE:?}
+    mem_limit: 64m
+    memswap_limit: 64m
+    profiles: [release]
+
 configs:
+  s3_identities:
+    content: |
+      {"identities":[{"name":"e2e","credentials":[{"accessKey":"e2e","secretKey":"${E2E_S3_SECRET:?}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
   caddyfile:
     content: |
       {
@@ -290,6 +354,14 @@ configs:
       https://messages.e2e.test {
         import cert
         reverse_proxy kymessages:8080
+      }
+      https://notes.e2e.test {
+        import cert
+        reverse_proxy kynotes:8080
+      }
+      https://s3.e2e.test {
+        import cert
+        reverse_proxy s3:8333
       }
       https://post.e2e.test {
         import cert

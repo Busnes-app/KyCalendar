@@ -59,7 +59,8 @@ per-run CA:
 | Service | Instances | Cells | Notes |
 |---|---|---|---|
 | PostgreSQL 17 (`postgres:17-alpine`) | 1 server | — | One database per deployment: `kyidentity`, `kycal_x`, `kycal_y`, `kypost`, `kymessages`, `kyrecovery` (if it uses PostgreSQL; unverified). A unique container name, removed by a trap. |
-| S3 (the seaweedfs image KyCalendar CI pins) | 1 | — | One versioned bucket per app, so the run also proves cell prefixes keep deployments apart |
+| S3 (the seaweedfs image KyCalendar CI pins) | 1 | — | One versioned bucket per app, so the run also proves cell prefixes keep deployments apart. In the run since 2026-11-27 behind `https://s3.e2e.test`, with the `kynotes` bucket; the other apps' buckets come with their S3 checks |
+| KyNotes | 1 | `KYNOTES_REGION=e2e-1` | PostgreSQL and object storage only (KyNotes-server #211). It takes one cell, not a `KY_CELLS` list, and its object keys are `orgs/<org>/…`, not cell-scoped (Cells decision, C5): both unbuilt in KyNotes |
 | KyIdentity | 1 | issuer for every cell | Issuer `https://id.e2e.test`. Region map for `kycalendar`: `e2e-1` → X, `e2e-2` → Y (`PUT /api/admin/clients/{id}/regions`, `internal/api/server.go:339`) |
 | KyCalendar X | 2 replicas, one database | `KY_CELLS=e2e-1` | Two replicas, because hosted runs as several (D2) |
 | KyCalendar Y | 1 | `KY_CELLS=e2e-2` | A second cell on its own database, the same bucket |
@@ -70,10 +71,14 @@ per-run CA:
 | Driver | 1 | — | `go test -tags kye2e ./...` in `e2e/suite`, with a `-timeout` |
 
 Memory budget: 5 GB across the containers; the driver refuses a service without `mem_limit` and an
-equal `memswap_limit`, or a total over 5 GiB, before anything starts. Limits today: PostgreSQL
-1 GiB, each KyCalendar 512 MiB, KyIdentity 512 MiB, KyMessages 512 MiB, the KyCalendar release
-refusal run 256 MiB, the other two 128 MiB each, `front` 64 MiB, the mail sink 64 MiB, and
-KyPost's two one-off runs 384 and 128 MiB: 4,736 MiB. Measured at the
+equal `memswap_limit`, or a total over 5 GiB, before anything starts. Limits today (2026-11-27,
+with KyNotes and S3): PostgreSQL 768 MiB, each KyCalendar 512 MiB, KyIdentity 512 MiB, KyMessages
+512 MiB, the KyCalendar release refusal run 256 MiB, KyIdentity's and KyMessages' 128 MiB each,
+`front` 64 MiB, the mail sink 64 MiB, KyPost 384 MiB and its release run 128 MiB, KyNotes 320 MiB
+and its release run 64 MiB, S3 256 MiB: 5,120 MiB. Measured at the end of the five-app smoke run
+(Major, 2026-11-27): PostgreSQL 138 MiB, KyCalendar 10, 76 and 75 MiB, KyIdentity 152 MiB,
+KyMessages 75 MiB, KyPost 141 MiB, KyNotes 9 MiB, S3 65 MiB, `front` 14 MiB, mail 8 MiB. Before
+KyNotes, PostgreSQL was 1 GiB: 4,736 MiB. Measured at the
 end of the three-app smoke run (Major, 2026-11-25): PostgreSQL 101 MiB, KyCalendar 8, 72 and
 72 MiB, KyIdentity 150 MiB, KyMessages 75 MiB, `front` 11 MiB. Measured at the end of the first
 smoke run (Major, 2026-11-25): PostgreSQL 49 MiB, KyCalendar X replicas 8 and 76 MiB, Y 72 MiB.
@@ -186,8 +191,9 @@ replayed. Nothing after S7 uses B except the restore of K.
 | KyMessages | The `kye2e` gate with the `KY_ATTACHMENTS_S3_*` requirement (`internal/config/config.go:278-279`) | Merged (#52); pinned at #58's merge `703c067`. Its tenancy build PRs #35, #38–#42 and #44–#51 are merged. Whether they cover every row of its spec's §12 is unverified, and the spec still lists "hosted qualification" as gated. |
 | KyCalendar | OIDC callbacks routed to a different replica | The pinned build returns `400 Invalid or expired SSO nonce` when the callback reaches a different X replica. The harness uses browser affinity for sign-in and leaves cross-replica callbacks unqualified. |
 | KyCalendar, KyMessages | The meeting PUT contract: KyCalendar sends the organizer as `sub`, KyMessages reads `organizer_sub`, so the organizer is not added to the room. Its secret is KyMessages' `KY_MEETING_SYNC_SECRET` (or `KY_KYIDENTITY_HMAC_SECRET`), not KyCalendar's pair secret | Fixed by KyMessages #58 (contract B), pinned at `703c067`. The harness pairs the two apps with one per-run secret; S3 verifies (2026-11-26) that a1's meeting with a2 at X makes a KyMessages room holding exactly a1 and a2, which b1 (org B) cannot open |
+| KyNotes | The `kye2e` gate and the multi-tenant runtime (PostgreSQL, S3, SSO, org poll, storage reports, purge) | Merged (gate, #211 runtime) and pinned at `58259478`. Live in the harness 2026-11-27: S1 sign-in, S1 storage reports reaching KyIdentity, S2 wrong-cell refusal, cross-org isolation on session, device and links, S6 and S7 pass. `KY_CELLS` and a cell-scoped object prefix are not built (Topology). |
 | KyRecovery | A synthetic ceremony that a harness can run without a person | Unverified |
-| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25; live KyPost + S6/S7 added 2026-11-27. `TestSmoke` runs all four apps live (KyCalendar X1/X2/Y, KyIdentity, KyMessages, KyPost) and verifies release-gate and non-`.test` issuer refusals. `TestScenarios` exercises S1–S3, S6 (org suspension & resume), and S7 (org deletion & purge) across KyIdentity, KyCalendar, KyMessages, and KyPost, logging checks that require CoreDNS, S3/SeaweedFS, or KyRecovery as `NOT RUN:`. |
+| Harness | `e2e/suite/` itself: images, `apps.lock`, compose file, driver, workflow | Scaffold built 2026-11-25; live KyPost + S6/S7 added 2026-11-27. `TestSmoke` runs all five apps live (KyCalendar X1/X2/Y, KyIdentity, KyMessages, KyPost, and KyNotes since 2026-11-27) and verifies release-gate and non-`.test` issuer refusals. `TestScenarios` exercises S1–S3, S6 (org suspension & resume), and S7 (org deletion & purge) across KyIdentity, KyCalendar, KyMessages, KyPost and KyNotes (with a KyNotes cross-org isolation row), logging checks that require CoreDNS, the other apps' S3 buckets, or KyRecovery as `NOT RUN:`. S3 (SeaweedFS) is in the run for KyNotes. |
 
 Order: the four gate PRs are independent and small, and each can merge with its release check while
 nothing yet builds with the tag. S1–S3, S6, and S7 now run end-to-end across all four apps

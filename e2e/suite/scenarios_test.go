@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ type person struct {
 
 func (p *person) mailbox() string { return p.name + "@" + suiteMail }
 
-// TestScenarios runs S1-S3, S6, and S7 of the e2e design: orgs A and B in cell e2e-1, C in e2e-2,
+// TestScenarios runs S1-S3, S6, and S7 of the e2e design, with KyNotes' org isolation: orgs A and B in cell e2e-1, C in e2e-2,
 // made through KyIdentity's platform API only (E5), then each app's checks.
 func TestScenarios(t *testing.T) {
 	s := start(t)
@@ -97,11 +98,16 @@ func TestScenarios(t *testing.T) {
 	enableApps(billing, orgs)
 	// KyMessages polls every five minutes and KyPost every minute; restarting both runs their
 	// startup full org sync immediately so S1 can proceed without waiting for a poll tick.
-	s.restartServices("kymessages", "kypost")
+	s.restartServices("kymessages", "kypost", "kynotes")
 	waitUntil(t, 30*time.Second, "KyPost cached orgs A, B, C", func() bool {
 		q := fmt.Sprintf("SELECT count(*) FROM kypost_tenancy.orgs WHERE id IN ('%s','%s','%s') AND status = 'active'",
 			orgs["A"].id, orgs["B"].id, orgs["C"].id)
 		return s.sql("kypost", q) == "3"
+	})
+	waitUntil(t, 30*time.Second, "KyNotes mirrored orgs A, B, C enabled", func() bool {
+		q := fmt.Sprintf("SELECT count(*) FROM orgs WHERE id IN ('%s','%s','%s') AND status = 'active' AND enabled = 1",
+			orgs["A"].id, orgs["B"].id, orgs["C"].id)
+		return s.sql("kynotes", q) == "3"
 	})
 	// KyPost creates accounts in multi mode only from signed directory webhooks, never from OIDC
 	// tokens. Trigger a full resync now that KyPost holds orgs A, B, and C.
@@ -120,6 +126,7 @@ func TestScenarios(t *testing.T) {
 			{calX, []string{"a1", "a2", "b1"}}, {calY, []string{"c1"}},
 			{messages, []string{"a1", "a2", "b1", "c1"}},
 			{post, []string{"a1", "a2", "b1", "c1"}},
+			{notes, []string{"a1", "a2", "b1"}}, // KyNotes serves cell e2e-1 only
 		} {
 			for _, name := range c.who {
 				if _, r := people[name].signInToApp(t, c.app); !r.signedIn {
@@ -128,20 +135,28 @@ func TestScenarios(t *testing.T) {
 			}
 		}
 		notRun(t, "KyCalendar OIDC callbacks on a different replica: X uses cookie affinity for its process-local nonce key")
-		notRun(t, "each app's first storage report reaching KyIdentity: no API shows an org's reported usage")
+		// KyNotes reports each org it serves to KyIdentity (POST /api/suite/storage); KyIdentity
+		// stores it in org_storage, and its answer is the grant KyNotes admits writes under.
+		waitUntil(t, 90*time.Second, "KyNotes' storage reports for A and B reach KyIdentity", func() bool {
+			return s.notesReported(orgs["A"].id) != "" && s.notesReported(orgs["B"].id) != ""
+		})
+		if r := s.notesReported(orgs["C"].id); r != "" {
+			t.Errorf("KyNotes (cell e2e-1) reported usage %s for org C (e2e-2)", r)
+		}
+		notRun(t, "the other apps' first storage report reaching KyIdentity: checked for KyNotes only")
 		notRun(t, "KyPost native mailbox allocation: requires CoreDNS TXT/MX verification for the suite mail domain")
 	})
 
 	t.Run("S2 cells", func(t *testing.T) {
 		// Refused as an org the deployment does not serve: KyCalendar's org gate answer.
-		for _, c := range []struct{ app, who string }{{calX, "c1"}, {calY, "a1"}, {calY, "b1"}} {
+		for _, c := range []struct{ app, who string }{{calX, "c1"}, {calY, "a1"}, {calY, "b1"}, {notes, "c1"}} {
 			_, r := people[c.who].signInToApp(t, c.app)
 			if r.signedIn || r.status != http.StatusForbidden || !strings.Contains(r.body, `"org_not_active"`) {
 				t.Errorf("%s at %s: want 403 org_not_active, got %+v", c.who, c.app, r)
 			}
 		}
 		notRun(t, "KyPost cell isolation and booking page of a slug made on Y: KyPost runs as one deployment serving both cells (e2e-1,e2e-2) with native mail off")
-		notRun(t, "backup and attachment keys under cells/<cell>/ (S3 and KyRecovery are not in the run)")
+		notRun(t, "backup and attachment keys under cells/<cell>/: only KyNotes uses the run's S3, under orgs/<org>/ (no cell prefix yet), and KyRecovery is not in the run")
 	})
 
 	t.Run("S3 invitation within one org, delivered directly", func(t *testing.T) {
@@ -187,11 +202,71 @@ func TestScenarios(t *testing.T) {
 		notRun(t, "KyPost's outbound send log: native mail/SMTP outbound requires CoreDNS")
 	})
 
+	// KyNotes' data for S6 and S7: a1's and b1's notebook, page, attachment, links and device.
+	var aNotes, bNotes notesData
+	t.Run("KyNotes cross-org isolation on every credential", func(t *testing.T) {
+		a1n, b1n := people["a1"].signedIn(t, notes), people["b1"].signedIn(t, notes)
+		waitUntil(t, 90*time.Second, "KyNotes holds pool grants for A and B", func() bool {
+			return s.sql("kynotes", fmt.Sprintf("SELECT count(*) FROM org_pool WHERE org_id IN ('%s','%s')", orgs["A"].id, orgs["B"].id)) == "2"
+		})
+		aNotes, bNotes = s.notesWrite(t, a1n, orgs["A"].id, people["a1"].userID), s.notesWrite(t, b1n, orgs["B"].id, people["b1"].userID)
+		if s.s3Files("kynotes", "orgs/"+orgs["B"].id+"/") == 0 {
+			t.Errorf("no KyNotes object under orgs/%s/ in S3", orgs["B"].id)
+		}
+		// Each credential works for its own org.
+		if got := s.notesAnswers(b1n, bNotes); got != [4]int{200, 200, 200, 200} {
+			t.Errorf("b1's KyNotes credentials (session, device, sealed link, page link): %v", got)
+		}
+		a1n.must(200, "GET", notes+"/api/v1/objects/"+aNotes.oid, nil, notesHdr)
+		// And none reaches the other org's notebook: session, device, or the org's links.
+		for _, c := range []struct {
+			who  string
+			code int
+		}{
+			{"b1 session", func() int { c, _ := b1n.do("GET", notes+"/api/v1/objects/"+aNotes.oid, nil, notesHdr); return c }()},
+			{"b1 session changes", func() int {
+				c, _ := b1n.do("GET", notes+"/api/v1/containers/"+aNotes.cid+"/changes", nil, notesHdr)
+				return c
+			}()},
+			{"b1 device", s.notesDevice(bNotes, "/api/v1/objects/"+aNotes.oid)},
+			{"a1 session", func() int { c, _ := a1n.do("GET", notes+"/api/v1/objects/"+bNotes.oid, nil, notesHdr); return c }()},
+		} {
+			if c.code == http.StatusOK || c.code/100 == 5 {
+				t.Errorf("%s read the other org's KyNotes page: %d", c.who, c.code)
+			}
+		}
+		var listed []struct{ ID string }
+		var wrap struct{ Containers []struct{ ID string } }
+		raw := b1n.must(200, "GET", notes+"/api/v1/containers", nil, notesHdr)
+		if json.Unmarshal(raw, &listed) != nil {
+			json.Unmarshal(raw, &wrap)
+			listed = wrap.Containers
+		}
+		for _, c := range listed {
+			if c.ID == aNotes.cid {
+				t.Errorf("b1's KyNotes notebook list holds org A's notebook %s", aNotes.cid)
+			}
+		}
+		// The pool usage KyNotes reports to KyIdentity grows with B's writes.
+		waitUntil(t, 90*time.Second, "KyNotes reports org B's new bytes to KyIdentity", func() bool {
+			n, _ := strconv.ParseInt(s.notesReported(orgs["B"].id), 10, 64)
+			return n > 0
+		})
+	})
+
 	t.Run("S6 org suspension and resume", func(t *testing.T) {
 		a1Cal, a1Msg, a1Post := people["a1"].signedIn(t, calX), people["a1"].signedIn(t, messages), people["a1"].signedIn(t, post)
 		b1Old := people["b1"].browser
 		b1Cal, b1Msg, b1Post := people["b1"].signedIn(t, calX), people["b1"].signedIn(t, messages), people["b1"].signedIn(t, post)
 		b1Me := b1Cal.me(calX)
+		b1Notes := people["b1"].signedIn(t, notes)
+		a1Notes := people["a1"].signedIn(t, notes)
+		var state string // the last state a wait saw, for a timeout
+		defer func() {
+			if t.Failed() {
+				t.Logf("last state: %s", state)
+			}
+		}()
 		var b1DAV struct {
 			Password string `json:"password"`
 		}
@@ -210,7 +285,9 @@ func TestScenarios(t *testing.T) {
 			calDown := davPropfind(s.web, calX+"/dav/"+b1Me.ID+"/", b1Me.Username, b1DAV.Password) == http.StatusForbidden
 			code, body := b1Post.do("GET", post+"/api/auth/me", nil, nil)
 			postDown := code != http.StatusOK || strings.Contains(string(body), `"authenticated":false`)
-			return calDown && postDown
+			got := s.notesAnswers(b1Notes, bNotes)
+			state = fmt.Sprintf("kycal_x down %t, kypost down %t, kynotes %v", calDown, postDown, got)
+			return calDown && postDown && got == [4]int{401, 401, 404, 404}
 		})
 
 		// Every credential of org B is refused across all four apps.
@@ -239,6 +316,9 @@ func TestScenarios(t *testing.T) {
 		if code, body := a1Post.do("GET", post+"/api/auth/me", nil, nil); code != http.StatusOK || !strings.Contains(string(body), `"authenticated":true`) {
 			t.Errorf("a1 KyPost session affected by org B suspension: %d %s", code, body)
 		}
+		if got := s.notesAnswers(a1Notes, aNotes); got != [4]int{200, 200, 200, 200} {
+			t.Errorf("a1's KyNotes credentials during org B's suspension: %v", got)
+		}
 
 		// Resume org B through the platform API.
 		orgs["B"].revision++
@@ -247,8 +327,15 @@ func TestScenarios(t *testing.T) {
 		waitUntil(t, 90*time.Second, "KyCalendar X and KyPost observe org B resumed", func() bool {
 			calUp := davPropfind(s.web, calX+"/dav/"+b1Me.ID+"/", b1Me.Username, b1DAV.Password) == http.StatusMultiStatus
 			postUp := s.sql("kypost", fmt.Sprintf("SELECT status FROM kypost_tenancy.orgs WHERE id = '%s'", orgs["B"].id)) == "active"
-			return calUp && postUp
+			notesStatus := s.sql("kynotes", fmt.Sprintf("SELECT status FROM orgs WHERE id = '%s'", orgs["B"].id))
+			state = fmt.Sprintf("kycal_x up %t, kypost up %t, kynotes %s", calUp, postUp, notesStatus)
+			return calUp && postUp && notesStatus == "active"
 		})
+		// KyNotes: the links serve again with no re-linking; the session and the device paired
+		// from it ended with the suspension (an SSO-derived device must be linked again).
+		if got := s.notesAnswers(b1Notes, bNotes); got != [4]int{401, 401, 200, 200} {
+			t.Errorf("b1's KyNotes credentials after resume (session, device, sealed link, page link): %v, want [401 401 200 200]", got)
+		}
 
 		// Old revoked browser sessions stay dead after resume; DAV app passwords work again.
 		if code, _ := b1Cal.do("GET", calX+"/api/calendars", nil, nil); code != http.StatusUnauthorized {
@@ -260,7 +347,7 @@ func TestScenarios(t *testing.T) {
 		// Fresh sign-in succeeds across all four apps.
 		people["b1"].browser = s.browser()
 		people["b1"].browser.signIn(people["b1"].email, people["b1"].password)
-		for _, app := range []string{calX, messages, post} {
+		for _, app := range []string{calX, messages, post, notes} {
 			if _, r := people["b1"].signInToApp(t, app); !r.signedIn {
 				t.Errorf("b1 fresh sign-in at %s after resume failed: %+v", app, r)
 			}
@@ -292,15 +379,66 @@ func TestScenarios(t *testing.T) {
 		// KyMessages polls every five minutes; restart it so SyncTenancy and PurgeDeletedOrgs run.
 		// KyCalendar (orgs + org-purge) and KyPost (StartOrgPoller) purge on their 1-minute ticks.
 		s.restartServices("kymessages")
-		waitUntil(t, 150*time.Second, "KyCalendar X, KyMessages, and KyPost purge org B", func() bool {
+		var purge string // the last state seen, for a timeout
+		defer func() {
+			if t.Failed() {
+				t.Logf("purge state: %s", purge)
+			}
+		}()
+		waitUntil(t, 150*time.Second, "KyCalendar X, KyMessages, KyPost and KyNotes purge org B", func() bool {
 			calPurged := s.sql("kycal_x", fmt.Sprintf("SELECT status || ':' || (purged_at IS NOT NULL)::text FROM orgs WHERE id = '%s'", orgs["B"].id)) == "deleted:true"
 			postPurged := s.sql("kypost", fmt.Sprintf(
 				"SELECT o.status || ':' || EXISTS(SELECT 1 FROM kypost_tenancy.org_purges p WHERE p.org_id = o.id AND p.done_at IS NOT NULL)::text FROM kypost_tenancy.orgs o WHERE o.id = '%s'",
 				orgs["B"].id)) == "deleted:true"
 			msgPurged := s.sql("kymessages", fmt.Sprintf("SELECT status FROM tenants WHERE id = '%s'", orgs["B"].id)) == "deleted" &&
 				s.sql("kymessages", fmt.Sprintf("SELECT count(*) FROM users WHERE org_id = '%s'", orgs["B"].id)) == "0"
-			return calPurged && postPurged && msgPurged
+			notesStatus, notesRows, notesFiles := s.sql("kynotes", fmt.Sprintf("SELECT status FROM orgs WHERE id = '%s'", orgs["B"].id)),
+				s.notesOrgRows(orgs["B"].id), s.s3Files("kynotes", "orgs/"+orgs["B"].id+"/")
+			purge = fmt.Sprintf("kycal_x %t, kypost %t, kymessages %t, kynotes status %s rows %v objects %d",
+				calPurged, postPurged, msgPurged, notesStatus, notesRows, notesFiles)
+			// KyNotes keeps erased_subjects (a restore re-erases from it), and org_usage until
+			// its late-PUT window has passed (checked below).
+			delete(notesRows, "erased_subjects")
+			delete(notesRows, "org_usage")
+			return calPurged && postPurged && msgPurged && notesStatus == "deleted" && len(notesRows) == 0 && notesFiles == 0
 		})
+		// KyNotes marks the purge done, deleting org_usage and B's prefix once more, only after a
+		// purge run that began 20 minutes (blobstore.LatePutWindow) after it fenced B's writers.
+		// Documented shortcut, like delete_after above: move the fence back past that window.
+		s.sql("kynotes", fmt.Sprintf("UPDATE server_settings SET value = (value::bigint - 1260)::text WHERE key = 'purge_fence:%s'", orgs["B"].id))
+		waitUntil(t, 90*time.Second, "KyNotes marks org B purged", func() bool {
+			return s.sql("kynotes", fmt.Sprintf("SELECT purged_at <> '' FROM orgs WHERE id = '%s' AND status = 'deleted'", orgs["B"].id)) == "t"
+		})
+		// No org_id column names B but erased_subjects, which holds b1's subject only; no
+		// object is left under B's prefix; the tombstone stays; B's credentials are refused.
+		left := s.notesOrgRows(orgs["B"].id)
+		if left["erased_subjects"] != "1" || s.sql("kynotes", fmt.Sprintf("SELECT subject FROM erased_subjects WHERE org_id = '%s'", orgs["B"].id)) != people["b1"].userID {
+			t.Errorf("kynotes erased_subjects for org B: want b1's subject only, got %v", left)
+		}
+		delete(left, "erased_subjects")
+		if len(left) != 0 {
+			t.Errorf("kynotes rows still naming deleted org B: %v", left)
+		}
+		if n := s.s3Files("kynotes", "orgs/"+orgs["B"].id+"/"); n != 0 {
+			t.Errorf("%d KyNotes objects left under deleted org B's prefix", n)
+		}
+		if r := s.notesReported(orgs["B"].id); r != "" && r != "0" {
+			t.Errorf("KyIdentity still holds %s bytes reported by KyNotes for deleted org B, want none or 0", r)
+		}
+		if n := s.sql("kynotes", fmt.Sprintf("SELECT count(*) FROM users WHERE id = '%s'", bNotes.user)); n != "0" {
+			t.Errorf("kynotes still holds b1's account")
+		}
+		if got := s.notesAnswers(s.browser(), bNotes); got != [4]int{401, 401, 404, 404} {
+			t.Errorf("deleted org B's KyNotes credentials: %v, want [401 401 404 404]", got)
+		}
+		if a1n, r := people["a1"].signInToApp(t, notes); !r.signedIn {
+			t.Errorf("a1 at KyNotes after org B deletion: %+v", r)
+		} else {
+			a1n.must(200, "GET", notes+"/api/v1/objects/"+aNotes.oid, nil, notesHdr)
+		}
+		if s.s3Files("kynotes", "orgs/"+orgs["A"].id+"/") == 0 {
+			t.Errorf("org A's KyNotes objects went with org B's purge")
+		}
 
 		if n := s.sql("kycal_x", fmt.Sprintf("SELECT count(*) FROM users WHERE org_id = '%s'", orgs["B"].id)); n != "0" {
 			t.Errorf("kycal_x still holds %s users for deleted org B", n)
@@ -396,13 +534,14 @@ func meeting(t *testing.T, a1b *browser, people map[string]*person, at time.Time
 	}
 }
 
-// enableApps enables all three apps for every org through the platform API.
+// enableApps enables every app for every org through the platform API.
 func enableApps(billing platform, orgs map[string]*org) {
 	for _, o := range orgs {
 		billing.must(http.StatusOK, "PATCH", "/orgs/"+o.id, map[string]any{"revision": o.revision + 1, "apps": map[string]any{
 			"kycalendar": map[string]any{"enabled": true, "quotas": map[string]any{}},
 			"kymessages": map[string]any{"enabled": true, "quotas": map[string]any{}},
-			"kypost":     map[string]any{"enabled": true, "quotas": map[string]any{}}}})
+			"kypost":     map[string]any{"enabled": true, "quotas": map[string]any{}},
+			"kynotes":    map[string]any{"enabled": true, "quotas": map[string]any{}}}})
 		o.revision++
 	}
 }
@@ -499,6 +638,7 @@ func (b *browser) appSignIn(app string, p *person) signIn {
 		calY:     "/api/sso/kysignon/login",
 		messages: "/api/sso/kyidentity/login",
 		post:     "/api/auth/oidc/login",
+		notes:    "/api/v1/auth/oidc/login",
 	}[app]
 	next, r := app+start, signIn{}
 	for hop := 0; hop < 12; hop++ {
@@ -527,7 +667,11 @@ func (b *browser) appSignIn(app string, p *person) signIn {
 		}
 		next = loc.String()
 	}
-	code, me := b.do("GET", app+"/api/auth/me", nil, nil)
+	mePath := "/api/auth/me"
+	if app == notes {
+		mePath = "/api/v1/auth/session"
+	}
+	code, me := b.do("GET", app+mePath, nil, nil)
 	r.signedIn = code == 200 && !strings.Contains(string(me), `"authenticated":false`)
 	return r
 }
