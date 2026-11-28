@@ -81,34 +81,26 @@ func (c contentStore) sweepBatch(ctx context.Context, batch []sweepRow) (int, er
 		return 0, err
 	}
 	defer tx.Rollback()
-	keys := map[string]*contentkey.WorkerKey{} // one worker key per calendar per batch (E4)
-	versions := map[string]uint32{}
-	now := time.Now().UTC()
+	type calKey struct {
+		version uint32
+		pub     []byte
+		keyed   bool
+	}
+	cals := map[string]calKey{}
 	n := 0
 	for _, r := range batch {
-		wk := keys[r.cal]
-		if wk == nil {
-			version, pub, keyed, err := s.currentCalendarKey(ctx, tx, r.cal)
-			if err != nil {
+		k, seen := cals[r.cal]
+		if !seen {
+			var err error
+			if k.version, k.pub, k.keyed, err = s.currentCalendarKey(ctx, tx, r.cal); err != nil {
 				return 0, err
 			}
-			if !keyed {
-				continue
-			}
-			if wk, err = contentkey.NewWorkerKey(); err != nil {
-				return 0, err
-			}
-			wrapped, err := wk.WrapFor(r.cal, version, pub)
-			if err != nil {
-				return 0, err
-			}
-			if _, err := tx.ExecContext(ctx, s.rebind(`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at, key_version) VALUES (?, ?, ?, ?, ?, ?)`),
-				wk.ID, r.cal, wrapped, now, now, version); err != nil {
-				return 0, err
-			}
-			keys[r.cal], versions[r.cal] = wk, version
+			cals[r.cal] = k
 		}
-		ok, err := s.sweepRow(ctx, tx, wk, versions[r.cal], r)
+		if !k.keyed {
+			continue
+		}
+		ok, err := s.sweepRow(ctx, tx, k.version, k.pub, r)
 		if err != nil {
 			return 0, err
 		}
@@ -127,10 +119,18 @@ func (c contentStore) sweepBatch(ctx context.Context, batch []sweepRow) (int, er
 
 // sweepRow seals one legacy row; false when the row is not one object the skeleton can carry
 // (it stays legacy and readable, as today) or changed since it was read.
-func (s *SQLStore) sweepRow(ctx context.Context, tx *sql.Tx, wk *contentkey.WorkerKey, version uint32, r sweepRow) (bool, error) {
+//
+// Each row gets its own worker key (E4 allows one per run; one per object keeps the rule every
+// writer relies on: a new base drops the worker keys its old parts named, which must open
+// nothing else). The key is stored only with a row it sealed, so a skipped row leaves none.
+func (s *SQLStore) sweepRow(ctx context.Context, tx *sql.Tx, version uint32, pub []byte, r sweepRow) (bool, error) {
 	skel, err := skeleton.Split(r.data)
 	if err != nil {
 		return false, nil // unparseable legacy bytes are served as stored; never rewritten
+	}
+	wk, err := contentkey.NewWorkerKey()
+	if err != nil {
+		return false, err
 	}
 	seq := r.version + 1
 	part, err := wk.Seal(contentkey.Part{Kind: contentkey.PartBase, Seq: uint64(seq)}, r.cal, version, r.uid, r.data)
@@ -155,8 +155,17 @@ WHERE calendar_id = ? AND name = ? AND sealed IS NULL AND etag = ?`), skel, seal
 	if err != nil {
 		return false, err
 	}
-	affected, err := res.RowsAffected()
-	return affected == 1, err
+	if affected, err := res.RowsAffected(); err != nil || affected != 1 {
+		return false, err
+	}
+	wrapped, err := wk.WrapFor(r.cal, version, pub)
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UTC()
+	_, err = tx.ExecContext(ctx, s.rebind(`INSERT INTO worker_keys (id, calendar_id, wrapped, created_at, ended_at, key_version) VALUES (?, ?, ?, ?, ?, ?)`),
+		wk.ID, r.cal, wrapped, now, now, version)
+	return err == nil, err
 }
 
 // LegacyRows counts rows still in plaintext in calendars that have a key: what the sweep has

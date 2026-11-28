@@ -250,3 +250,25 @@ func TestSweepSkipsARowChangedUnderIt(t *testing.T) {
 		t.Fatalf("sealed %d; the changed row was overwritten", n)
 	}
 }
+
+// An unlocked rewrite of one swept object drops only that object's worker key: the objects
+// swept beside it still open byte for byte, and no worker key is left without an object.
+func TestSweptNeighboursSurviveARewrite(t *testing.T) {
+	st := newTestStore(t)
+	a := newContentFixture(t, st, "usr_sn", false)
+	want := legacyCorpus(t, a, 2)
+	setUp(t, a)
+	sweepAll(t, st)
+	if _, err := a.put(t, a.unlocked(), "ev000.ics", strings.ReplaceAll(sealedEvent, "UID:ev1", "UID:ev000")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Calendars().GetObject(a.unlocked(), a.cal.ID, "ev001.ics")
+	if err != nil || got.Locked || !bytes.Equal(got.Data, want["ev001.ics"]) {
+		t.Fatalf("a neighbour of a rewritten object no longer opens: locked=%v %v", got.Locked, err)
+	}
+	keys := countRows(t, st, `SELECT COUNT(*) FROM worker_keys`)
+	swept := countRows(t, st, `SELECT COUNT(*) FROM calendar_objects WHERE sealed IS NOT NULL`) - 1 // ev000 is now the holder's own base
+	if keys != swept {
+		t.Fatalf("%d worker keys for %d swept objects", keys, swept)
+	}
+}
