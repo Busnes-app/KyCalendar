@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -711,14 +712,28 @@ func (c contentStore) keyCalendar(ctx context.Context, calendarID string) error 
 // runs it: a calendar made after setup is keyed before anything is written to it, whoever
 // writes. Keying drops the calendar's plaintext task search rows (Readers, task search).
 func (s *SQLStore) keyCalendarTx(ctx context.Context, tx *sql.Tx, calendarID string) error {
+	if _, _, keyed, err := s.currentCalendarKey(ctx, tx, calendarID); err != nil || keyed {
+		return err
+	}
+	holders, err := s.holders(ctx, tx, calendarID)
+	if err != nil || len(holders) == 0 {
+		return err
+	}
+	// Each holder's rotation lock, then the calendar's, as EndTransition takes them: no holder's
+	// account key changes between reading it and wrapping the seed to it.
+	sort.Strings(holders)
+	for _, h := range holders {
+		if err := s.lockKey(ctx, tx, "content:"+h); err != nil {
+			return err
+		}
+	}
 	if err := s.lockKey(ctx, tx, "calendar-key:"+calendarID); err != nil {
 		return err
 	}
 	if _, _, keyed, err := s.currentCalendarKey(ctx, tx, calendarID); err != nil || keyed {
 		return err
 	}
-	holders, err := s.holders(ctx, tx, calendarID)
-	if err != nil || len(holders) == 0 {
+	if holders, err = s.holders(ctx, tx, calendarID); err != nil || len(holders) == 0 {
 		return err
 	}
 	k, err := contentkey.NewCalendarKey(calendarID, 1)
@@ -835,19 +850,22 @@ func (c contentStore) EndTransition(ctx context.Context, userID string, transiti
 	} else if err != nil {
 		return err
 	}
-	calendars, err := s.heldCalendars(ctx, userID)
-	if err != nil {
-		return err
-	}
-	keys := []string{"content:" + userID}
-	for _, id := range calendars {
-		keys = append(keys, "calendar-key:"+id)
-	}
-	tx, err := s.lockedTx(ctx, keys...)
+	// The account lock first, then the calendars it holds, read under it: a calendar keyed while
+	// this waited is in the list, and keyCalendarTx takes the same locks in the same order.
+	tx, err := s.lockedTx(ctx, "content:"+userID)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	calendars, err := s.heldCalendars(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	for _, id := range calendars {
+		if err := s.lockKey(ctx, tx, "calendar-key:"+id); err != nil {
+			return err
+		}
+	}
 	if now, err := s.accountKey(ctx, tx, userID); err != nil || !bytes.Equal(now.public, a.public) {
 		return cmpErr(err, nil) // rotated by another replica since
 	}
@@ -903,8 +921,8 @@ func (c contentStore) EndTransition(ctx context.Context, userID string, transiti
 }
 
 // heldCalendars are the calendars userID holds a current wrap of.
-func (s *SQLStore) heldCalendars(ctx context.Context, userID string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, s.rebind(`SELECT DISTINCT calendar_id FROM calendar_key_holders WHERE user_id = ? AND NOT former ORDER BY calendar_id`), userID)
+func (s *SQLStore) heldCalendars(ctx context.Context, tx *sql.Tx, userID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, s.rebind(`SELECT DISTINCT calendar_id FROM calendar_key_holders WHERE user_id = ? AND NOT former ORDER BY calendar_id`), userID)
 	if err != nil {
 		return nil, err
 	}
