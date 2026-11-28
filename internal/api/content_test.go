@@ -195,3 +195,19 @@ func TestContentUnlockIsRateLimited(t *testing.T) {
 		t.Fatalf("after 50 failures the right code got %d, want 429", w.Code)
 	}
 }
+
+// Setup needs a recent sign-in: a stale session cannot plant permanent unlock secrets.
+func TestContentSetupNeedsRecentSignIn(t *testing.T) {
+	srv, st, _ := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
+	alice := loginAs(t, srv, st, "alice", "user")
+	w := do(t, srv, "POST", "/api/encryption/recovery-code", alice)
+	code := between(w.Body.String(), `"recovery_code":"`, `"`)
+	restore := api.SetStepUpWindowForTest(0)
+	defer restore()
+	if w := doJSON(t, srv, "POST", "/api/encryption/setup", alice, map[string]string{"passphrase": "correct horse battery", "recovery_code": code}); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "reauth_required") {
+		t.Fatalf("setup on a stale session: %d %s", w.Code, w.Body.String())
+	}
+	if n, err := st.Content().SetUpAccounts(context.Background()); err != nil || n != 0 {
+		t.Fatalf("a stale session created %d account keys (%v)", n, err)
+	}
+}

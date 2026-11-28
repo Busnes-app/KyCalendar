@@ -149,6 +149,10 @@ func (s *Server) handleContentSetup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusNotFound, "Not found")
 		return
 	}
+	// Setup makes credentials that outlive the session, so a stale or stolen one must not.
+	if !s.requireStepUp(w, r, "set up encryption") {
+		return
+	}
 	b, ok := decodeContentSecrets(r)
 	if !ok {
 		s.writeError(w, http.StatusBadRequest, "Invalid JSON body")
