@@ -3,6 +3,8 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -123,7 +125,7 @@ func countedUsage(t *testing.T, st store.Store) int64 {
 	return n
 }
 
-// assertSealed: every row of cal is sealed, holds no content in data, keeps its ETag, and an
+// assertSealed: every row of cal is sealed, holds no content in data, no longer has its plaintext ETag, and an
 // unlocked read returns the bytes it was written with.
 func assertSealed(t *testing.T, f contentFixture, want map[string][]byte, before map[string]snapshotRow) {
 	t.Helper()
@@ -137,8 +139,9 @@ func assertSealed(t *testing.T, f contentFixture, want map[string][]byte, before
 			t.Fatalf("%s: data holds content properties:\n%s", name, r.data)
 		}
 		noPlaintext(t, r.data)
-		if r.etag != before[name].etag {
-			t.Fatalf("%s: the sweep changed the ETag, so every client would refetch", name)
+		// The legacy ETag is the plaintext's SHA-256: it must not survive the sweep.
+		if sum := sha256.Sum256(body); r.etag == before[name].etag || r.etag == hex.EncodeToString(sum[:]) || r.etag != fmt.Sprintf("%x", sha256.Sum256(append(append([]byte{}, r.data...), r.sealed...))) {
+			t.Fatalf("%s: the sweep kept a plaintext-derived ETag %q", name, r.etag)
 		}
 		got, err := f.st.Calendars().GetObject(f.unlocked(), f.cal.ID, name)
 		if err != nil || got.Locked || !bytes.Equal(got.Data, body) {
@@ -305,5 +308,28 @@ func TestSweepLeavesSubscribedCalendars(t *testing.T) {
 	o, err := cs.GetObject(f.unlocked(), feed.ID, "ev1.ics")
 	if err != nil || !strings.Contains(string(o.Data), "Feed two") {
 		t.Fatalf("unlocked read after a refresh: %v %q", err, o.Data)
+	}
+}
+
+// A read that loaded a swept object just before a write replaced its base (and dropped the
+// worker key the old base named) reads the object again instead of reporting it locked.
+func TestReadAcrossAReplacedBase(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_rb", false)
+	legacyCorpus(t, f, 1)
+	setUp(t, f)
+	if sweepAll(t, st) == 0 {
+		t.Fatal("nothing swept")
+	}
+	stale, err := st.Calendars().GetObject(context.Background(), f.cal.ID, "ev000.ics")
+	if err != nil || stale.Sealed == nil {
+		t.Fatalf("swept object: %v", err)
+	}
+	edited := strings.ReplaceAll(strings.ReplaceAll(sealedEvent, "UID:ev1", "UID:ev000"), "Room 42", "Room 43")
+	if _, err := f.put(t, f.unlocked(), "ev000.ics", edited); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.OpenObjectForTest(f.unlocked(), st, stale); err != nil || stale.Locked || string(stale.Data) != edited {
+		t.Fatalf("read across a replaced base: %v locked=%v", err, stale.Locked)
 	}
 }

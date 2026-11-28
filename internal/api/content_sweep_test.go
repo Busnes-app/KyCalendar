@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -15,11 +16,12 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/config"
 )
 
-// TestSweepKeepsCalDAVByteIdentical: real clients' events (Apple, Thunderbird, Google, Outlook)
-// written before setup answer GET, multiget, calendar-query and sync byte for byte the same
-// after the sweep sealed them, ETags included, so a client notices nothing. The sweep then
-// truncates SQLite's WAL.
-func TestSweepKeepsCalDAVByteIdentical(t *testing.T) {
+// TestSweepKeepsCalDAVBodiesAndReportsNewETags: real clients' events (Apple, Thunderbird, Google,
+// Outlook) written before setup answer GET, multiget and calendar-query with the same bytes after
+// the sweep sealed them. Only the ETags change: the old ones were the plaintext's SHA-256, so the
+// sweep replaces them and logs a change, and an incremental sync reports every swept object
+// once with its new ETag. The sweep then truncates SQLite's WAL.
+func TestSweepKeepsCalDAVBodiesAndReportsNewETags(t *testing.T) {
 	srv, st, cfg := setupTestServerWith(t, func(c *config.Config) { c.Calendar.ContentEncryption = true })
 	alice := loginAs(t, srv, st, "alice", "user")
 	phone := seedAppPassword(t, st, "usr_alice")
@@ -55,19 +57,23 @@ func TestSweepKeepsCalDAVByteIdentical(t *testing.T) {
 	}
 	multiget := `<?xml version="1.0"?><C:calendar-multiget xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:getetag/><C:calendar-data/></D:prop>` + hrefs + `</C:calendar-multiget>`
 	query := `<?xml version="1.0"?><C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:getetag/><C:calendar-data/></D:prop><C:filter><C:comp-filter name="VCALENDAR"/></C:filter></C:calendar-query>`
-	syncReq := `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token/><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`
-	capture := func() map[string]string {
-		out := map[string]string{}
+	syncReq := func(tok string) string {
+		return `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token>` + tok + `</D:sync-token><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`
+	}
+	etags := regexp.MustCompile(`<getetag[^>]*>[^<]*</getetag>`)
+	capture := func() (map[string]string, map[string]string) {
+		out, tags := map[string]string{}, map[string]string{}
 		for _, n := range names {
 			r := rawDAV(t, ts, "GET", path+n, "alice", phone, "", nil)
-			out["GET "+n] = r.Header.Get("ETag") + "\n" + readAll(r)
+			out["GET "+n] = readAll(r)
+			tags[n] = strings.Trim(r.Header.Get("ETag"), `"`)
 		}
-		out["multiget"] = readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, multiget, map[string]string{"Content-Type": "application/xml", "Depth": "1"}))
-		out["query"] = readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, query, map[string]string{"Content-Type": "application/xml", "Depth": "1"}))
-		out["sync"] = readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, syncReq, map[string]string{"Content-Type": "application/xml"}))
-		return out
+		out["multiget"] = etags.ReplaceAllString(readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, multiget, map[string]string{"Content-Type": "application/xml", "Depth": "1"})), "")
+		out["query"] = etags.ReplaceAllString(readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, query, map[string]string{"Content-Type": "application/xml", "Depth": "1"})), "")
+		return out, tags
 	}
-	before := capture()
+	before, beforeTags := capture()
+	token := between(readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, syncReq(""), map[string]string{"Content-Type": "application/xml"})), "<sync-token>", "</sync-token>")
 
 	w := do(t, srv, "POST", "/api/encryption/recovery-code", alice)
 	code := between(w.Body.String(), `"recovery_code":"`, `"`)
@@ -94,10 +100,19 @@ func TestSweepKeepsCalDAVByteIdentical(t *testing.T) {
 			t.Fatalf("%s not sealed: %v", n, err)
 		}
 	}
-	after := capture()
+	after, afterTags := capture()
 	for k, v := range before {
 		if after[k] != v {
 			t.Fatalf("%s changed across the sweep:\nbefore %q\nafter  %q", k, v, after[k])
+		}
+	}
+	delta := readAll(rawDAV(t, ts, "REPORT", path, "alice", phone, syncReq(token), map[string]string{"Content-Type": "application/xml"}))
+	for _, n := range names {
+		if afterTags[n] == beforeTags[n] || afterTags[n] == "" {
+			t.Fatalf("%s kept its plaintext ETag %q", n, beforeTags[n])
+		}
+		if !strings.Contains(delta, path+n) || !strings.Contains(delta, afterTags[n]) || strings.Contains(delta, beforeTags[n]) {
+			t.Fatalf("the incremental sync does not report %s with its new ETag:\n%s", n, delta)
 		}
 	}
 }

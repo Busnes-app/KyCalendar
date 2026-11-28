@@ -191,7 +191,9 @@ Every place that reads `calendar_objects.data` or another content column, from t
 **ETags** become the SHA-256 of `data` followed by `sealed`, computed at each write (today the
 body's, `calendars.go:369-370`) and stored in the existing `etag` column. They change whenever a
 write changes either, and the server computes them without a key. Folding (E4) does not count as
-a write, so it leaves the stored ETag as it was.
+a write, so it leaves the stored ETag as it was. No sealed row keeps an ETag derived from its plaintext: every
+sealed write hashes the skeleton and the sealed parts, and the sweep replaces a legacy row's
+ETag the same way (below).
 
 ## Schema
 
@@ -373,7 +375,7 @@ Choices made where the spec left them open, each the narrowest that keeps its pr
   it are wrapped only to keys sealed to user slots.
 - **No passkey PRF yet**: the passphrase (E8) is the web unlock; the recovery code unlocks too.
 
-**The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. ETags and counted usage do not change, so clients refetch nothing. Rows of accounts that never ran setup are not touched (option A, the spec default). Subscribed calendars are not swept either: a feed refresh rewrites their rows in plaintext until feeds are sealed (CE3), and sealing them first would leave a stale base beside the refresh. Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
+**The sweep (second PR).** Every 2 minutes an elected job seals the legacy rows of every calendar that has a key. It works in batches of 200, each batch in one transaction, with one worker key per object so that a later write dropping that key affects only its own object. A row is replaced only after its sealed base opens again and merges back to the exact original bytes, and only if it is still the row the batch read. **ETags change (owner decision, 28 Nov 2026, option B; this supersedes the earlier text that kept them).** A legacy ETag is the SHA-256 of the plaintext, so a database or backup reader could confirm a guess about a predictable event. In the same transaction that seals a row, the sweep sets its ETag to the SHA-256 of the skeleton and the sealed parts and logs a sync change (the calendar's sequence, which is the CTag and sync token, advances), so each CalDAV client refetches every swept object once and gets the same bytes. Counted usage does not change. Rows of accounts that never ran setup are not touched (option A, the spec default). Subscribed calendars are not swept either: a feed refresh rewrites their rows in plaintext until feeds are sealed (CE3), and sealing them first would leave a stale base beside the refresh. Downgrading to a release before CE2 once anything is sealed is unsupported: an older server would serve skeletons. The content is not lost; upgrading again serves it.
 
 Left for later PRs: folding and patches (CE3), outbox, booking-hold
 and feed sealing (CE3), pending shares (CE5), passkeys, password slots, reset, admin pages,

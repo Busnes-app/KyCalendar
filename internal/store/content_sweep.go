@@ -39,8 +39,8 @@ type SweepCursor struct{ Calendar, Name string }
 // never blocks the rows after it. It is resumable (each batch commits on its own,
 // and a batch that dies changes nothing), idempotent (only rows still legacy and unchanged
 // since they were read are touched) and non-destructive: a row's plaintext is replaced only
-// after its sealed base was opened again and merges back to the exact original bytes. ETags
-// and counted usage stay as they were, so clients refetch nothing and quotas do not move.
+// after its sealed base was opened again and merges back to the exact original bytes. Each
+// sealed row gets a new ETag and a sync change, so clients refetch it once; counted usage stays.
 func (c contentStore) SweepOnce(ctx context.Context, after SweepCursor, limit int) (sealedN int, next SweepCursor, done bool, err error) {
 	s := c.s
 	rows, err := s.db.QueryContext(ctx, s.rebind(`SELECT o.calendar_id, o.name, o.uid, o.etag, o.data, o.parts_version FROM calendar_objects o
@@ -151,12 +151,17 @@ func (s *SQLStore) sweepRow(ctx context.Context, tx *sql.Tx, version uint32, pub
 	if err != nil {
 		return false, err
 	}
-	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_objects SET data = ?, sealed = ?, parts_version = ?, plain_size = ?
-WHERE calendar_id = ? AND name = ? AND sealed IS NULL AND etag = ?`), skel, sealed, seq, int64(len(r.data)), r.cal, r.name, r.etag)
+	// The legacy ETag is the plaintext's SHA-256, which lets a database reader confirm a guess,
+	// so the row takes the sealed write's ETag and logs a change: clients refetch it once.
+	res, err := tx.ExecContext(ctx, s.rebind(`UPDATE calendar_objects SET data = ?, sealed = ?, parts_version = ?, plain_size = ?, etag = ?
+WHERE calendar_id = ? AND name = ? AND sealed IS NULL AND etag = ?`), skel, sealed, seq, int64(len(r.data)), objectETag(skel, sealed), r.cal, r.name, r.etag)
 	if err != nil {
 		return false, err
 	}
 	if affected, err := res.RowsAffected(); err != nil || affected != 1 {
+		return false, err
+	}
+	if err := s.calendars.bump(ctx, tx, r.cal, r.name, false); err != nil {
 		return false, err
 	}
 	wrapped, err := wk.WrapFor(r.cal, version, pub)

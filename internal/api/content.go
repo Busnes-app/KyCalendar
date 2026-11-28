@@ -96,7 +96,7 @@ func (s *Server) slotForAppPassword(r *http.Request, user *store.User, p *store.
 	for try := 0; try < 2; try++ { // a rotation between opening and adding: open the new key once
 		account, openErr := store.UnlockOf(s.store.Content().WithUnlock(r.Context(), cred)).Account(r.Context())
 		if openErr != nil {
-			if try == 0 {
+			if try == 0 && (errors.Is(openErr, store.ErrLocked) || errors.Is(openErr, store.ErrNoAccountKey)) {
 				return nil // not unlocked, or not set up
 			}
 			return openErr

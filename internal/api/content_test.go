@@ -295,4 +295,21 @@ func TestNewAppPasswordAlwaysUnlocks(t *testing.T) {
 	if l := labels(); slices.Contains(l, "tablet") {
 		t.Fatalf("the credential without a slot was kept: %v", l)
 	}
+
+	// Opening the account fails for a reason other than locked or not set up: the same.
+	api.SetStoreForTest(srv, st)
+	db := rawDB(t, cfg.Database.Driver, cfg.Database.DSN)
+	if _, err := db.Exec(`ALTER TABLE key_slots RENAME TO key_slots_away`); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(t, srv, "POST", "/api/app-passwords", alice, map[string]string{"label": "watch", "scope": "dav"})
+	if _, err := db.Exec(`ALTER TABLE key_slots_away RENAME TO key_slots`); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), `"password":`) {
+		t.Fatalf("an account that failed to open: %d %s", w.Code, w.Body.String())
+	}
+	if l := labels(); slices.Contains(l, "watch") {
+		t.Fatalf("the credential without a slot was kept: %v", l)
+	}
 }

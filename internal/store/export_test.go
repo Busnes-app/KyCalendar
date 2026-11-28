@@ -88,3 +88,8 @@ func WaitingOnLockForTest(st Store, key string) (bool, error) {
 AND objsubid = 1 AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 0))`, key).Scan(&waiting)
 	return waiting, err
 }
+
+// OpenObjectForTest merges o, an object read earlier, for ctx's credential, as a read does.
+func OpenObjectForTest(ctx context.Context, st Store, o *CalendarObject) error {
+	return st.(*SQLStore).calendars.openObjects(ctx, []*CalendarObject{o})
+}

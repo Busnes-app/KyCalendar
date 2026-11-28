@@ -337,6 +337,33 @@ func (c *calendarStore) openObjects(ctx context.Context, list []*CalendarObject)
 }
 
 func (c *calendarStore) openObject(ctx context.Context, u *Unlock, o *CalendarObject) ([]byte, error) {
+	merged, err := c.openParts(ctx, u, o)
+	if !errors.Is(err, errWorkerKeyGone) {
+		return merged, err
+	}
+	// A write replaced the object after it was read and dropped the worker keys its old parts
+	// named: read the object again, once.
+	err = c.store.db.QueryRowContext(ctx, c.q(`SELECT data, sealed, etag FROM calendar_objects WHERE calendar_id = ? AND name = ?`),
+		o.CalendarID, o.Name).Scan(&o.Data, &o.Sealed, &o.ETag)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrLocked // deleted meanwhile
+	} else if err != nil {
+		return nil, err
+	}
+	if o.Sealed == nil {
+		return o.Data, nil
+	}
+	merged, err = c.openParts(ctx, u, o)
+	if errors.Is(err, errWorkerKeyGone) {
+		return nil, ErrLocked
+	}
+	return merged, err
+}
+
+// errWorkerKeyGone: a part names a worker key that no longer exists.
+var errWorkerKeyGone = errors.New("store: worker key gone")
+
+func (c *calendarStore) openParts(ctx context.Context, u *Unlock, o *CalendarObject) ([]byte, error) {
 	parts, err := contentkey.DecodeParts(o.Sealed)
 	if err != nil {
 		return nil, err
@@ -350,11 +377,16 @@ func (c *calendarStore) openObject(ctx context.Context, u *Unlock, o *CalendarOb
 		if err != nil {
 			return nil, err
 		}
+		gone := false
 		pt, err := k.Open(p, o.UID, func(id string) ([]byte, error) {
 			var wrapped []byte
 			err := c.store.db.QueryRowContext(ctx, c.q(`SELECT wrapped FROM worker_keys WHERE id = ? AND calendar_id = ?`), id, o.CalendarID).Scan(&wrapped)
+			gone = errors.Is(err, sql.ErrNoRows)
 			return wrapped, err
 		})
+		if gone {
+			return nil, errWorkerKeyGone
+		}
 		if err != nil {
 			return nil, ErrLocked
 		}
