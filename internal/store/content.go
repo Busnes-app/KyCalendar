@@ -628,10 +628,16 @@ func (c contentStore) Setup(ctx context.Context, userID string, in Setup) error 
 // openAccount opens cred's account key (E6). An app password or MCP token without its own slot
 // opens the account through the transition slot while the transition lasts, and gets its own
 // slot then (E11). Anything else without a slot is ErrLocked.
+// betweenAccountAndSlot, when set by a test, runs between openAccount's two reads.
+var betweenAccountAndSlot func()
+
 func (s *SQLStore) openAccount(ctx context.Context, cred Credential) (*contentkey.KeyPair, error) {
 	a, err := s.accountKey(ctx, s.db, cred.UserID)
 	if err != nil {
 		return nil, err
+	}
+	if betweenAccountAndSlot != nil {
+		betweenAccountAndSlot()
 	}
 	account, err := s.openSlot(ctx, cred, a)
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -669,8 +675,14 @@ func (s *SQLStore) openSlot(ctx context.Context, cred Credential, a accountRow) 
 		return nil, ErrLocked
 	}
 	account, err := contentkey.OpenAccount(pair, cred.Kind, cred.UserID, cred.SlotID, version, accountWrap)
-	if err != nil || version != a.version || !bytes.Equal(account.PublicKey(), a.public) {
+	if err != nil {
 		return nil, ErrLocked
+	}
+	if version != a.version || !bytes.Equal(account.PublicKey(), a.public) {
+		// A rotation may have committed between reading a and the slot: check the current key once.
+		if a, err = s.accountKey(ctx, s.db, cred.UserID); err != nil || version != a.version || !bytes.Equal(account.PublicKey(), a.public) {
+			return nil, ErrLocked
+		}
 	}
 	_, _ = s.db.ExecContext(ctx, s.rebind(`UPDATE key_slots SET last_used_at = ? WHERE user_id = ? AND slot_id = ?`), time.Now().UTC(), cred.UserID, cred.SlotID)
 	return account, nil

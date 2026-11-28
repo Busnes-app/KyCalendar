@@ -753,3 +753,26 @@ func TestReadAcrossARotation(t *testing.T) {
 		t.Fatalf("read across the rotation: %v locked=%v", err, o != nil && o.Locked)
 	}
 }
+
+// A rotation that commits between opening the account's row and its slot does not lock out
+// the request: the slot already holds the new key, which the current row names.
+func TestOpenAcrossARotationBetweenReads(t *testing.T) {
+	st := newTestStore(t)
+	f := newContentFixture(t, st, "usr_rs", true)
+	if _, err := f.put(t, f.unlocked(), "ev1.ics", sealedEvent); err != nil {
+		t.Fatal(err)
+	}
+	once := false
+	defer store.SetBetweenAccountAndSlotForTest(func() {
+		if !once {
+			once = true
+			if err := st.Content().EndTransition(context.Background(), f.user, transitionKey); err != nil {
+				t.Error(err)
+			}
+		}
+	})()
+	o, err := st.Calendars().GetObject(f.unlocked(), f.cal.ID, "ev1.ics")
+	if err != nil || !once || o.Locked || string(o.Data) != sealedEvent {
+		t.Fatalf("read with a rotation between the reads: %v locked=%v rotated=%v", err, o != nil && o.Locked, once)
+	}
+}

@@ -93,3 +93,11 @@ AND objsubid = 1 AND ((classid::bigint << 32) | objid::bigint) = hashtextextende
 func OpenObjectForTest(ctx context.Context, st Store, o *CalendarObject) error {
 	return st.(*SQLStore).calendars.openObjects(ctx, []*CalendarObject{o})
 }
+
+// SetBetweenAccountAndSlotForTest runs f between openAccount's account and slot reads and
+// returns the restore func.
+func SetBetweenAccountAndSlotForTest(f func()) func() {
+	old := betweenAccountAndSlot
+	betweenAccountAndSlot = f
+	return func() { betweenAccountAndSlot = old }
+}
