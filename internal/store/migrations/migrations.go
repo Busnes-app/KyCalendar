@@ -614,6 +614,8 @@ CREATE TABLE sso_logouts (
 	{Version: 41, Name: "pool_refresh", SQLite: `ALTER TABLE orgs ADD COLUMN pool_refresh BOOLEAN NOT NULL DEFAULT FALSE;`, Postgres: `ALTER TABLE orgs ADD COLUMN pool_refresh BOOLEAN NOT NULL DEFAULT FALSE;`},
 	// The org's cell (tenancy spec, Cells): KyIdentity's home_region, mirrored by the poll.
 	{Version: 42, Name: "org_home_region", SQLite: `ALTER TABLE orgs ADD COLUMN home_region TEXT NOT NULL DEFAULT '';`, Postgres: `ALTER TABLE orgs ADD COLUMN home_region TEXT NOT NULL DEFAULT '';`},
+	// Content encryption CE2 (docs/superpowers/specs/2026-11-22-content-encryption-design.md, Schema).
+	{Version: 43, Name: "content_encryption_ce2", SQLite: contentEncryptionCE2("BLOB", false), Postgres: contentEncryptionCE2("BYTEA", true)},
 }
 
 // storagePool is the product-side shared state of KyIdentity's reserved-byte grant.
@@ -687,6 +689,96 @@ ALTER TABLE bookings ADD COLUMN sealed_hold ` + blob + `;
 ALTER TABLE bookings ADD COLUMN public_key ` + blob + `;
 ALTER TABLE bookings ADD COLUMN wrapped_seed ` + blob + `;
 ALTER TABLE bookings ADD COLUMN sealed_copy ` + blob + `;`
+}
+
+// ObjectBytes is an object row's counted size (content encryption E4): its plaintext size when
+// it is sealed, else the bytes of data. r is the row's name or alias (NEW, OLD, o).
+func ObjectBytes(r string) string {
+	return "(CASE WHEN " + r + ".sealed IS NULL THEN LENGTH(" + r + ".data) ELSE " + r + ".plain_size END)"
+}
+
+// contentEncryptionCE2 is CE2's migration: key versions (E3, E11), slot public keys and account
+// wraps (E6), the sizes a worker change needs (E4), and the usage triggers counting plain_size
+// for sealed rows. calendar_keys and calendar_key_holders are rebuilt with version in their keys:
+// migration 38 made them, and nothing has written them since.
+func contentEncryptionCE2(blob string, postgres bool) string {
+	s := `ALTER TABLE account_keys ADD COLUMN key_version BIGINT NOT NULL DEFAULT 1;
+CREATE TABLE account_previous_keys (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ key_version BIGINT NOT NULL,
+ sealed_seed ` + blob + ` NOT NULL,
+ PRIMARY KEY (user_id, key_version)
+);
+ALTER TABLE key_slots ADD COLUMN public_key ` + blob + `;
+ALTER TABLE key_slots ADD COLUMN account_wrap ` + blob + `;
+ALTER TABLE key_slots ADD COLUMN account_key_version BIGINT NOT NULL DEFAULT 1;
+DROP TABLE calendar_key_holders;
+DROP TABLE calendar_keys;
+CREATE TABLE calendar_keys (
+ calendar_id TEXT NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+ version BIGINT NOT NULL,
+ public_key ` + blob + ` NOT NULL,
+ exposed BOOLEAN NOT NULL DEFAULT FALSE,
+ PRIMARY KEY (calendar_id, version)
+);
+CREATE TABLE calendar_key_holders (
+ calendar_id TEXT NOT NULL,
+ version BIGINT NOT NULL,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ wrapped_seed ` + blob + ` NOT NULL,
+ former BOOLEAN NOT NULL DEFAULT FALSE,
+ PRIMARY KEY (calendar_id, version, user_id),
+ FOREIGN KEY (calendar_id, version) REFERENCES calendar_keys(calendar_id, version) ON DELETE CASCADE
+);
+CREATE INDEX calendar_key_holders_user ON calendar_key_holders(user_id);
+ALTER TABLE worker_keys ADD COLUMN key_version BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE calendar_objects ADD COLUMN content_sizes TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE calendar_objects ADD COLUMN alarm_bytes BIGINT NOT NULL DEFAULT 0;
+`
+	n, o := ObjectBytes("NEW"), ObjectBytes("OLD")
+	if postgres {
+		return s + `CREATE OR REPLACE FUNCTION calendar_usage_track() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d BIGINT;
+BEGIN
+    IF TG_OP = 'INSERT' THEN d := ` + n + `;
+    ELSIF TG_OP = 'UPDATE' THEN d := ` + n + ` - ` + o + `;
+    ELSE d := -` + o + `;
+    END IF;
+    UPDATE calendar_usage SET bytes = bytes + d WHERE id = 1;
+    RETURN NULL;
+END $$;
+DROP TRIGGER calendar_usage_track ON calendar_objects;
+CREATE TRIGGER calendar_usage_track AFTER INSERT OR UPDATE OF data, sealed, plain_size OR DELETE ON calendar_objects
+FOR EACH ROW EXECUTE FUNCTION calendar_usage_track();
+CREATE OR REPLACE FUNCTION org_usage_track() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN UPDATE org_usage SET bytes = bytes + ` + n + ` WHERE org_id = NEW.org_id;
+    ELSIF TG_OP = 'UPDATE' THEN UPDATE org_usage SET bytes = bytes + ` + n + ` - ` + o + ` WHERE org_id = NEW.org_id;
+    ELSE UPDATE org_usage SET bytes = bytes - ` + o + ` WHERE org_id = OLD.org_id;
+    END IF;
+    RETURN NULL;
+END $$;
+DROP TRIGGER org_usage_track ON calendar_objects;
+CREATE TRIGGER org_usage_track AFTER INSERT OR UPDATE OF data, sealed, plain_size OR DELETE ON calendar_objects FOR EACH ROW EXECUTE FUNCTION org_usage_track();`
+	}
+	return s + `DROP TRIGGER calendar_usage_insert;
+DROP TRIGGER calendar_usage_update;
+DROP TRIGGER calendar_usage_delete;
+CREATE TRIGGER calendar_usage_insert AFTER INSERT ON calendar_objects
+BEGIN UPDATE calendar_usage SET bytes = bytes + ` + n + ` WHERE id = 1; END;
+CREATE TRIGGER calendar_usage_update AFTER UPDATE OF data, sealed, plain_size ON calendar_objects
+BEGIN UPDATE calendar_usage SET bytes = bytes - ` + o + ` + ` + n + ` WHERE id = 1; END;
+CREATE TRIGGER calendar_usage_delete AFTER DELETE ON calendar_objects
+BEGIN UPDATE calendar_usage SET bytes = bytes - ` + o + ` WHERE id = 1; END;
+DROP TRIGGER org_usage_insert;
+DROP TRIGGER org_usage_update;
+DROP TRIGGER org_usage_delete;
+CREATE TRIGGER org_usage_insert AFTER INSERT ON calendar_objects
+BEGIN UPDATE org_usage SET bytes = bytes + ` + n + ` WHERE org_id = NEW.org_id; END;
+CREATE TRIGGER org_usage_update AFTER UPDATE OF data, sealed, plain_size ON calendar_objects
+BEGIN UPDATE org_usage SET bytes = bytes - ` + o + ` + ` + n + ` WHERE org_id = NEW.org_id; END;
+CREATE TRIGGER org_usage_delete AFTER DELETE ON calendar_objects
+BEGIN UPDATE org_usage SET bytes = bytes - ` + o + ` WHERE org_id = OLD.org_id; END;`
 }
 
 // DefaultOrgID is the one org of a single-tenant install (KyIdentity's default-org ID).

@@ -178,7 +178,7 @@ func (u *userStore) StoredBytes(ctx context.Context, ids []string) (map[string]i
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(`SELECT c.owner_id, COALESCE(SUM(LENGTH(o.data)), 0)
+	rows, err := u.store.db.QueryContext(ctx, u.store.rebind(`SELECT c.owner_id, COALESCE(SUM(`+oBytes+`), 0)
 FROM calendars c JOIN calendar_objects o ON o.calendar_id = c.id
 WHERE c.owner_kind = 'user' AND c.owner_id IN (?`+strings.Repeat(", ?", len(ids)-1)+`) GROUP BY c.owner_id`), args...)
 	if err != nil {

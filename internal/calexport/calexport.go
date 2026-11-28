@@ -18,6 +18,9 @@ import (
 // that go-ical cannot write back. A caller hands those over as stored, so an export is never short.
 func CalendarICS(ctx context.Context, st store.Store, calID string) (body []byte, items int, unmerged []*store.CalendarObject, err error) {
 	objs, err := st.Calendars().ListObjects(ctx, calID)
+	if err == nil {
+		err = store.RefuseLocked(objs...)
+	}
 	if err != nil {
 		return nil, 0, nil, err
 	}

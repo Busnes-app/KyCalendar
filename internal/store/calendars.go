@@ -2,9 +2,7 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -219,10 +217,13 @@ name = COALESCE(?, name), description = COALESCE(?, description), color = COALES
 
 const objectCols = `calendar_id, name, component, uid, etag, data, first_start, last_end, modified_at, invitation_sender, invitation_attendee, invitation_recipient`
 
+// readCols are objectCols and the sealed parts, for reads that merge (content.go).
+const readCols = objectCols + `, sealed`
+
 func scanObject(row interface{ Scan(...any) error }) (*CalendarObject, error) {
 	var o CalendarObject
 	var last sql.NullInt64
-	err := row.Scan(&o.CalendarID, &o.Name, &o.Component, &o.UID, &o.ETag, &o.Data, &o.FirstStart, &last, &o.ModifiedAt, &o.InvitationSender, &o.InvitationAttendee, &o.InvitationRecipient)
+	err := row.Scan(&o.CalendarID, &o.Name, &o.Component, &o.UID, &o.ETag, &o.Data, &o.FirstStart, &last, &o.ModifiedAt, &o.InvitationSender, &o.InvitationAttendee, &o.InvitationRecipient, &o.Sealed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -246,27 +247,37 @@ func (c *calendarStore) queryObjects(ctx context.Context, query string, args ...
 		}
 		out = append(out, o)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // SQLite has one connection: free it before openObjects reads keys
+	return out, c.openObjects(ctx, out)
+}
+
+func (c *calendarStore) getObject(ctx context.Context, where string, args ...any) (*CalendarObject, error) {
+	o, err := scanObject(c.store.db.QueryRowContext(ctx, c.q(`SELECT `+readCols+` FROM calendar_objects WHERE `+where), args...))
+	if err != nil {
+		return nil, err
+	}
+	return o, c.openObjects(ctx, []*CalendarObject{o})
 }
 
 func (c *calendarStore) GetObject(ctx context.Context, calendarID, name string) (*CalendarObject, error) {
-	return scanObject(c.store.db.QueryRowContext(ctx, c.q(`SELECT `+objectCols+` FROM calendar_objects
-WHERE calendar_id = ? AND name = ?`), calendarID, name))
+	return c.getObject(ctx, `calendar_id = ? AND name = ?`, calendarID, name)
 }
 
 func (c *calendarStore) GetObjectByUID(ctx context.Context, calendarID, uid string) (*CalendarObject, error) {
-	return scanObject(c.store.db.QueryRowContext(ctx, c.q(`SELECT `+objectCols+` FROM calendar_objects
-WHERE calendar_id = ? AND uid = ?`), calendarID, uid))
+	return c.getObject(ctx, `calendar_id = ? AND uid = ?`, calendarID, uid)
 }
 
 func (c *calendarStore) ListObjects(ctx context.Context, calendarID string) ([]*CalendarObject, error) {
-	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects WHERE calendar_id = ? ORDER BY name`, calendarID)
+	return c.queryObjects(ctx, `SELECT `+readCols+` FROM calendar_objects WHERE calendar_id = ? ORDER BY name`, calendarID)
 }
 
 // ListObjectsInRange is a superset of the component's objects overlapping [start, end): last_end
 // equal to start keeps a zero-length event at start (RFC 4791 §9.9); callers apply the exact overlap.
 func (c *calendarStore) ListObjectsInRange(ctx context.Context, calendarID, component string, start, end int64) ([]*CalendarObject, error) {
-	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects
+	return c.queryObjects(ctx, `SELECT `+readCols+` FROM calendar_objects
 WHERE calendar_id = ? AND component = ? AND first_start < ? AND (last_end IS NULL OR last_end >= ?) ORDER BY name`, calendarID, component, end, start)
 }
 
@@ -309,6 +320,9 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	o.ModifiedAt = time.Now().UTC()
 
 	ownTx := tx == nil
+	if u := unlockOf(ctx); u != nil && ownTx {
+		_, _ = u.Account(ctx) // before the transaction: sealForWrite reads the opened key (content.go)
+	}
 	if ownTx {
 		var err error
 		tx, err = c.store.beginTx(ctx)
@@ -367,8 +381,11 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 	if err != nil {
 		return false, err
 	}
-	sum := sha256.Sum256(o.Data)
-	o.ETag = hex.EncodeToString(sum[:])
+	stored, err := c.sealForWrite(ctx, tx, o)
+	if err != nil {
+		return false, err
+	}
+	o.ETag = objectETag(stored.data, stored.sealed)
 	var other string
 	err = tx.QueryRowContext(ctx, c.q(`SELECT name FROM calendar_objects WHERE calendar_id = ? AND uid = ? AND name <> ?`),
 		o.CalendarID, o.UID, o.Name).Scan(&other)
@@ -439,7 +456,7 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		// calendar_usage is kept by triggers in each writing transaction (migration 12). Pending
 		// outbox bodies share the cap: they sit in the same database and the same capsule.
 		var used int64
-		err := tx.QueryRowContext(ctx, c.q(`SELECT bytes - COALESCE((SELECT LENGTH(data) FROM calendar_objects WHERE calendar_id = ? AND name = ?), 0)
+		err := tx.QueryRowContext(ctx, c.q(`SELECT bytes - COALESCE((SELECT `+objBytes+` FROM calendar_objects WHERE calendar_id = ? AND name = ?), 0)
 + `+pendingOutboxBytes+` FROM calendar_usage WHERE id = 1`), o.CalendarID, o.Name).Scan(&used)
 		if err != nil {
 			return false, err
@@ -458,10 +475,12 @@ func (c *calendarStore) putObjectPlanned(ctx context.Context, o *CalendarObject,
 		}
 	}
 
-	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
+	_, err = tx.ExecContext(ctx, c.q(`INSERT INTO calendar_objects (`+objectCols+`, sealed, parts_version, plain_size, org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+calendarOrg+`)
 ON CONFLICT (calendar_id, name) DO UPDATE SET component = excluded.component, uid = excluded.uid, etag = excluded.etag, data = excluded.data,
-first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at, invitation_sender = excluded.invitation_sender, invitation_attendee = excluded.invitation_attendee, invitation_recipient = excluded.invitation_recipient`),
-		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, o.Data, o.FirstStart, o.LastEnd, o.ModifiedAt, o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient, o.CalendarID)
+first_start = excluded.first_start, last_end = excluded.last_end, modified_at = excluded.modified_at, invitation_sender = excluded.invitation_sender, invitation_attendee = excluded.invitation_attendee, invitation_recipient = excluded.invitation_recipient,
+sealed = excluded.sealed, parts_version = excluded.parts_version, plain_size = excluded.plain_size`),
+		o.CalendarID, o.Name, o.Component, o.UID, o.ETag, stored.data, o.FirstStart, o.LastEnd, o.ModifiedAt, o.InvitationSender, o.InvitationAttendee, o.InvitationRecipient,
+		stored.sealed, stored.version, stored.plainSize, o.CalendarID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return false, ErrUIDConflict

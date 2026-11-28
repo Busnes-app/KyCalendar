@@ -1,6 +1,9 @@
 package store
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // SetBetweenSCIMWritesForTest runs f between UpdateSCIMUser's removal and grant transactions and
 // returns the restore func. Test-only.
@@ -56,4 +59,10 @@ func HoldLockForTest(st Store, key string) (func(stmt string, args ...any) error
 		}
 		return tx.Commit()
 	}, nil
+}
+
+// DBForTest is st's database and its placeholder rebinding. Test-only.
+func DBForTest(st Store) (*sql.DB, func(string) string) {
+	s := st.(*SQLStore)
+	return s.db, s.rebind
 }

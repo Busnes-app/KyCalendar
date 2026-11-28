@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Busnes-app/kycalendar/internal/apppass"
+	"github.com/Busnes-app/kycalendar/internal/contentkey"
 	"github.com/Busnes-app/kycalendar/internal/crypto"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
@@ -259,7 +260,8 @@ func (s *Server) withDAVAuth(next http.Handler) http.Handler {
 			http.Error(w, "Administrator accounts cannot use calendars", http.StatusForbidden)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), davUserKey{}, user)))
+		ctx := s.unlockApp(r.Context(), user.ID, contentkey.SlotAppPassword, id, secret)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, davUserKey{}, user)))
 	})
 }
 

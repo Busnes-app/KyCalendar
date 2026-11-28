@@ -332,6 +332,9 @@ func (s *Server) loadTasks(ctx context.Context, c *store.Calendar, viewer *time.
 		return nil, nil
 	}
 	objs, err := s.store.Calendars().ListObjects(ctx, c.ID)
+	if err == nil {
+		err = store.RefuseLocked(objs...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +499,9 @@ func (s *Server) listTasks(ctx context.Context, user *store.User, f taskFilter, 
 	var all []loadedTask
 	for _, c := range lists {
 		ts, err := s.loadTasks(ctx, c, viewer)
-		if err != nil {
+		if errors.Is(err, store.ErrLocked) {
+			return nil, errContentLocked
+		} else if err != nil {
 			return nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load tasks"}
 		}
 		all = append(all, ts...)
@@ -622,14 +627,34 @@ func (s *Server) searchTasks(ctx context.Context, lists []*store.Calendar, all [
 		body := strings.Join(append([]string{t.task.Title, t.task.Notes}, t.task.Tags...), "\n")
 		docs[t.cal.ID] = append(docs[t.cal.ID], store.TaskDoc{UID: t.task.UID, ETag: t.obj.ETag, Body: body})
 	}
+	sealed := map[string]bool{} // an encrypted list's tasks are matched here, never indexed (CE2)
+	for _, t := range all {
+		sealed[t.cal.ID] = sealed[t.cal.ID] || t.obj.Sealed != nil
+	}
+	words := strings.Fields(q)
 	ids := make([]string, 0, len(lists))
 	for _, c := range lists {
+		if sealed[c.ID] {
+			if err := s.store.Tasks().IndexTasks(ctx, c.ID, nil); err != nil { // drop rows made before it was keyed
+				return nil, err
+			}
+			continue
+		}
 		if err := s.store.Tasks().IndexTasks(ctx, c.ID, docs[c.ID]); err != nil {
 			return nil, err
 		}
 		ids = append(ids, c.ID)
 	}
-	return s.store.Tasks().SearchTasks(ctx, ids, strings.Fields(q))
+	out, err := s.store.Tasks().SearchTasks(ctx, ids, words)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range all {
+		if sealed[t.cal.ID] && store.MatchFold(strings.Join(append([]string{t.task.Title, t.task.Notes}, t.task.Tags...), "\n"), words) {
+			out[t.cal.ID+"/"+t.task.UID] = true
+		}
+	}
+	return out, nil
 }
 
 // taskList authorizes a write on the task list id for the session user.
@@ -790,6 +815,9 @@ func (s *Server) loadTaskObject(ctx context.Context, c *store.Calendar, uid stri
 	o, err := s.store.Calendars().GetObjectByUID(ctx, c.ID, uid)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && o.Component != ical.CompToDo) {
 		return nil, nil, errNoTask
+	}
+	if err == nil && o.Locked {
+		return nil, nil, errContentLocked
 	}
 	if err != nil {
 		return nil, nil, &apiError{status: http.StatusInternalServerError, msg: "Failed to load the task"}

@@ -15,6 +15,7 @@ import (
 	"github.com/Busnes-app/kycalendar/internal/apppass"
 	"github.com/Busnes-app/kycalendar/internal/appversion"
 	"github.com/Busnes-app/kycalendar/internal/calendar"
+	"github.com/Busnes-app/kycalendar/internal/contentkey"
 	"github.com/Busnes-app/kycalendar/internal/store"
 )
 
@@ -141,7 +142,8 @@ func (s *Server) withMCPAuth(next http.Handler) http.Handler {
 			return
 		}
 		_ = s.store.AppPasswords().TouchLastUsed(r.Context(), p.ID, now)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), mcpCallerKey{}, mcpCaller{user: user, token: p})))
+		ctx := s.unlockApp(r.Context(), user.ID, contentkey.SlotMCP, p.ID, secret)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, mcpCallerKey{}, mcpCaller{user: user, token: p})))
 	})
 }
 

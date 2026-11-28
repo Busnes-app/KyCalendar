@@ -12,7 +12,7 @@ const cancellationRecipient = `EXISTS (SELECT 1 FROM users r WHERE r.id = ? AND 
  AND 1 = (SELECT COUNT(*) FROM users v WHERE LOWER(v.email) = LOWER(r.email) AND v.status = 'active' AND v.role = 'user'))`
 
 func (c *calendarStore) SponsoredCancellationCopies(ctx context.Context, deliveryID, recipientID, uid string) ([]*CalendarObject, error) {
-	return c.queryObjects(ctx, `SELECT `+objectCols+` FROM calendar_objects
+	return c.queryObjects(ctx, `SELECT `+readCols+` FROM calendar_objects
 WHERE invitation_sender <> '' AND invitation_recipient = ? AND uid = ?
 AND EXISTS (SELECT 1 FROM scheduling_outbox m WHERE m.id = ? AND m.status = 'pending'
  AND m.method = 'CANCEL' AND m.sender_id = invitation_sender AND `+cancellationRecipient+`)
